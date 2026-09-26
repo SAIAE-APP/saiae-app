@@ -175,7 +175,7 @@ export function Dashboard() {
         </p>
       </div>
 
-      <div className="grid grid-cols-2 gap-3 px-6 pb-4 pt-4">
+      <div className="grid grid-cols-2 gap-3 px-6 pb-4 pt-4 md:grid-cols-4">
         <CardDashboard
           icone="receipt_long"
           titulo="Caixa"
@@ -205,7 +205,7 @@ export function Dashboard() {
         />
       </div>
 
-      <div className="px-6 pb-4">
+      <div className="px-6 pb-4 md:max-w-2xl">
         <Card className="flex flex-col gap-3">
           <div className="flex items-center justify-between">
             <span className="flex items-center gap-2 text-sm font-semibold text-mesa-text-primary">

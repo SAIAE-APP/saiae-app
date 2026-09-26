@@ -8,6 +8,7 @@ import { useAssinaturaBarraca } from '../hooks/useAssinaturaBarraca'
 import { NaoEncontrado } from '../pages/NaoEncontrado'
 import { Planos } from '../pages/Planos'
 import { BarraNavegacao } from '../components/BarraNavegacao'
+import { SidebarDesktop } from '../components/SidebarDesktop'
 import { BannerTrial } from '../components/BannerTrial'
 import { BarracaContext, SincronizacaoContext } from './contextoBarraca'
 import { PedidosContext } from './contextoPedidos'
@@ -25,6 +26,14 @@ export function LayoutBarraca() {
   const emConfirmarPedido = location.pathname.endsWith('/confirmar')
   const emDashboard = location.pathname === `/${slug}` || location.pathname === `/${slug}/`
   const emPlanos = location.pathname.endsWith('/planos')
+  const emHistorico = location.pathname.endsWith('/historico')
+  const emAjustes = location.pathname.endsWith('/ajustes')
+  const emFaturamento = location.pathname.endsWith('/desktop')
+  // Telas de gestão (dono da barraca) ganham sidebar no desktop em vez da
+  // BarraNavegacao inferior; Lançar/Cozinha/Chamada continuam mobile-only
+  // em qualquer largura — separação decidida com o dono do produto em
+  // 2026-09-26 (ver CLAUDE.md).
+  const mostrarSidebar = emDashboard || emHistorico || emAjustes || emFaturamento
   // Regra inviolável do design system (seção 2.2): o glow atmosférico nunca
   // aparece na Cozinha (atrapalha a leitura do semáforo) nem na Chamada
   // (que já tem fundo escuro absoluto próprio, com layout fora daqui).
@@ -88,15 +97,21 @@ export function LayoutBarraca() {
       <SincronizacaoContext.Provider value={sincronizacao}>
         <PedidosContext.Provider value={estadoPedidos}>
           {mostraBannerTrial && <BannerTrial assinatura={assinatura} />}
+          {mostrarSidebar && !acessoBloqueado && <SidebarDesktop />}
           <div
             className={clsx(
               'min-h-dvh',
               semGradiente ? 'bg-mesa-bg-kanban' : '[background:var(--mesa-gradient-atmosphere)]',
+              mostrarSidebar && !acessoBloqueado && 'md:pl-64',
             )}
           >
             {acessoBloqueado ? <Planos /> : <Outlet />}
           </div>
-          {!semBottomNav && !acessoBloqueado && <BarraNavegacao />}
+          {!semBottomNav && !acessoBloqueado && (
+            <div className={mostrarSidebar ? 'md:hidden' : undefined}>
+              <BarraNavegacao />
+            </div>
+          )}
         </PedidosContext.Provider>
       </SincronizacaoContext.Provider>
     </BarracaContext.Provider>

@@ -2143,17 +2143,19 @@ export function Ajustes() {
     <GateSenhaAdmin key={barraca.id} barracaId={barraca.id} slug={barraca.slug}>
       <div className="min-h-dvh">
         <div className="sticky top-0 z-[var(--mesa-z-sticky)] bg-[var(--mesa-color-surface-blur)] px-6 py-5 [backdrop-filter:blur(var(--mesa-surface-blur-strength))]">
-          <Link
-            to={`/${barraca.slug}`}
-            aria-label="Voltar para o início"
-            className="inline-flex items-center gap-2 text-mesa-text-primary"
-          >
-            <Icone nome="chevron_left" size={28} />
-            <h1 className="text-[32px] font-bold leading-[40px]">Ajustes</h1>
-          </Link>
+          <div className="md:mx-auto md:max-w-3xl">
+            <Link
+              to={`/${barraca.slug}`}
+              aria-label="Voltar para o início"
+              className="inline-flex items-center gap-2 text-mesa-text-primary"
+            >
+              <Icone nome="chevron_left" size={28} />
+              <h1 className="text-[32px] font-bold leading-[40px]">Ajustes</h1>
+            </Link>
+          </div>
         </div>
 
-        <div className="flex flex-col gap-8 px-6 pb-28 pt-2">
+        <div className="flex flex-col gap-8 px-6 pb-28 pt-2 md:mx-auto md:max-w-3xl">
           <SecaoAssinatura slug={barraca.slug} />
           <SecaoIdentidade barraca={barraca} />
           <SecaoCardapio barracaId={barraca.id} />

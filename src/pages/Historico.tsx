@@ -656,7 +656,7 @@ export function Historico() {
         )}
 
         {!carregando && !erro && pedidosExibidos.length > 0 && (
-          <div className="flex flex-col gap-4">
+          <div className="flex flex-col gap-4 md:grid md:grid-cols-2 md:items-start md:gap-4 xl:grid-cols-3">
             {pedidosExibidos.map((pedido) => (
               <CardHistorico key={pedido.id} pedido={pedido} onRestaurar={restaurarPedido} />
             ))}
