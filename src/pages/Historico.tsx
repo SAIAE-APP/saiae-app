@@ -9,6 +9,7 @@ import { corMetodo, humanizarMetodo, METODOS_DISPONIVEIS } from '../lib/metodoPa
 import { hojeISO } from '../lib/datas'
 import { calcularIntervalosRelatorio, calcularTotalPedido, ehEntregaDireta } from '../lib/relatorio'
 import { useOcultarAoRolar } from '../hooks/useOcultarAoRolar'
+import { useAssinaturaBarraca } from '../hooks/useAssinaturaBarraca'
 import type { TipoFiltroRelatorio } from '../lib/relatorio'
 import { GateSenhaAdmin } from '../components/GateSenhaAdmin'
 import { Badge } from '../components/ui/Badge'
@@ -289,6 +290,15 @@ export function Historico() {
   const { tema, alternarTema } = useTheme()
   const escuro = tema === 'escuro'
 
+  // Plano Essencial: histórico de 7 dias e sem exportar (as outras
+  // diferenças de src/lib/planos.ts, gap fechado em 2026-09-26 — trial
+  // sempre nasce plano 'pro', então nunca cai nessa restrição).
+  const { assinatura } = useAssinaturaBarraca(barraca.slug)
+  const planoEssencial = assinatura?.plano === 'essencial'
+  const periodosDisponiveis = planoEssencial
+    ? PERIODOS.filter((p) => p.valor !== 'mes' && p.valor !== 'intervalo')
+    : PERIODOS
+
   const [pedidos, setPedidos] = useState<PedidoComItens[]>([])
   const [carregando, setCarregando] = useState(true)
   const [erro, setErro] = useState<string | null>(null)
@@ -308,12 +318,19 @@ export function Historico() {
   const [erroExclusao, setErroExclusao] = useState<string | null>(null)
   const [exportando, setExportando] = useState(false)
 
+  // Derivado, não guardado em state: cobre o período rebaixar sozinho se a
+  // assinatura ainda estava carregando quando o usuário escolheu Mês/
+  // Período (só possível nessa janela, já que periodosDisponiveis já
+  // esconde essas opções assim que planoEssencial é true).
+  const periodoEfetivo =
+    planoEssencial && (periodo === 'mes' || periodo === 'intervalo') ? '7dias' : periodo
+
   useEffect(() => {
     let cancelado = false
     setCarregando(true)
     setErro(null)
 
-    const intervalo = calcularIntervalosRelatorio({ tipo: periodo, dataInicio, dataFim }).atual
+    const intervalo = calcularIntervalosRelatorio({ tipo: periodoEfetivo, dataInicio, dataFim }).atual
 
     supabase
       .from('pedidos')
@@ -341,7 +358,7 @@ export function Historico() {
     return () => {
       cancelado = true
     }
-  }, [barraca.id, periodo, dataInicio, dataFim])
+  }, [barraca.id, periodoEfetivo, dataInicio, dataFim])
 
   useEffect(() => {
     let cancelado = false
@@ -393,7 +410,7 @@ export function Historico() {
     itemFiltradoId || tipoConsumo !== 'todos' || metodoFiltrado || buscaNormalizada,
   )
 
-  const intervaloAtual = calcularIntervalosRelatorio({ tipo: periodo, dataInicio, dataFim }).atual
+  const intervaloAtual = calcularIntervalosRelatorio({ tipo: periodoEfetivo, dataInicio, dataFim }).atual
 
   async function restaurarPedido(pedido: PedidoComItens) {
     setPedidos((atual) => atual.filter((p) => p.id !== pedido.id))
@@ -507,8 +524,9 @@ export function Historico() {
               size="sm"
               icon={<Icone nome="download" size={16} />}
               onClick={exportarPlanilha}
-              disabled={pedidosExibidos.length === 0}
+              disabled={pedidosExibidos.length === 0 || planoEssencial}
               loading={exportando}
+              title={planoEssencial ? 'Exportar relatórios é exclusivo do plano Pro' : undefined}
             >
               Exportar
             </Button>
@@ -518,13 +536,18 @@ export function Historico() {
         <div className="mt-4">
           <SegmentedControl
             aria-label="Período do histórico"
-            items={PERIODOS.map((p) => ({ label: p.rotulo }))}
-            activeIndex={PERIODOS.findIndex((p) => p.valor === periodo)}
-            onChange={(indice) => setPeriodo(PERIODOS[indice].valor)}
+            items={periodosDisponiveis.map((p) => ({ label: p.rotulo }))}
+            activeIndex={periodosDisponiveis.findIndex((p) => p.valor === periodo)}
+            onChange={(indice) => setPeriodo(periodosDisponiveis[indice].valor)}
           />
+          {planoEssencial && (
+            <p className="mt-1.5 text-xs text-mesa-text-tertiary">
+              Plano Essencial mostra até 7 dias — o Pro libera o histórico completo.
+            </p>
+          )}
         </div>
 
-        {periodo === 'intervalo' && (
+        {periodoEfetivo === 'intervalo' && (
           <div className="mt-3 flex items-center gap-2">
             <input
               type="date"
@@ -656,7 +679,7 @@ export function Historico() {
         )}
 
         {!carregando && !erro && pedidosExibidos.length > 0 && (
-          <div className="flex flex-col gap-4">
+          <div className="flex flex-col gap-4 md:grid md:grid-cols-2 md:items-start md:gap-4 xl:grid-cols-3">
             {pedidosExibidos.map((pedido) => (
               <CardHistorico key={pedido.id} pedido={pedido} onRestaurar={restaurarPedido} />
             ))}

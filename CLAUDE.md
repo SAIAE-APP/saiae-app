@@ -39,6 +39,25 @@ passa a fazer sentido junto do módulo Fiscal (ver Roadmap) em vez de
 standalone, já que a NFC-e emitida ali normalmente precisa ser
 impressa.
 
+A aba de configuração que faltava foi **implementada em 2026-09-26**
+(`SecaoImpressora`, em Ajustes) — habilitar impressora, escolher
+largura de papel (58mm/80mm), selecionar impressora Bluetooth já
+pareada no Android e "Imprimir teste". Ainda **nenhum botão imprime
+cupom de pedido ou nota fiscal de verdade** — só a conexão/teste,
+decisão de produto de qual gatilho usar (Fiscal, Comanda, ou os dois)
+fica pra depois. Só funciona no app Android instalado, nunca no PWA/
+navegador: Web Bluetooth só fala BLE, e a maioria das térmicas
+baratas do mercado (Elgin, Bematech, Diebold, genéricas) usa
+Bluetooth clássico (SPP), que exige plugin nativo
+(`@devlas/capacitor-thermal-printer`, transporte Bluetooth SPP já
+validado em hardware real pelo autor). Bytes ESC/POS montados no app
+com `@point-of-sale/receipt-printer-encoder` (sucessor não-deprecado
+do `esc-pos-encoder`) — o plugin só transporta bytes crus, não
+formata nada. Colunas novas em `barracas`: `impressora_habilitada`,
+`impressora_endereco`, `impressora_nome`, `impressora_largura_papel`.
+Sem raspagem de mercado necessária: só existem dois tamanhos de papel
+relevantes no Brasil, 58mm e 80mm, já cobertos.
+
 ## Regras de produto
 - Senha sequencial por pedido, reinicia todo dia
 - Mesa é campo opcional; toggle "Viagem" desabilita a mesa
@@ -175,10 +194,38 @@ nenhum item daqui sozinho, só quando for pedido explicitamente.
   de configuração de impressora térmica (varia por tamanho) — ver "O
   que o sistema NÃO é (hoje)" no topo deste arquivo.
 - Cobrança de assinatura do Sai aê (o dono da barraca paga pelo
-  uso do app): só depois que o produto estiver 100% pronto/estável.
-  Isso é billing SaaS Sai aê→cliente, problema completamente
-  diferente do pagamento de pedido cliente-final→barraca citado
-  acima — não misturar os dois ao planejar.
+  uso do app): **implementada** (migration
+  `20260922120000_add_assinaturas_kirvano.sql`) — isso é billing SaaS
+  Sai aê→cliente, problema completamente diferente do pagamento de
+  pedido cliente-final→barraca citado acima, não confundir os dois.
+  Trial de 7 dias nasce no cadastro (trigger em `auth.users`, não na
+  criação da barraca), 1 trial por e-mail pra sempre (mesmo se a
+  conta for excluída e recriada). Fonte da verdade do acesso é
+  sempre o banco (`assinatura_tem_acesso()`), nunca o relógio do
+  celular nem o retorno do checkout — só o webhook da Kirvano (ou o
+  cron de segurança horário) muda o status. Contas cadastradas
+  **antes** dessa migration (22/09/2026, inclui a Sabor Kawashima)
+  receberam backfill direto pra `active`/`pro` sem data de expiração
+  — não passaram pelo trial, ficaram com acesso liberado até alguém
+  mudar isso manualmente no banco. Assinatura é por **dono**
+  (`usuario_id`), não por barraca — funcionário nunca vê/paga,
+  só é liberado/bloqueado pelo status do dono.
+  Planos hoje (`src/lib/planos.ts`, cópia local da landing page):
+  Essencial R$57,90/mês e Pro R$87,90/mês. As diferenças de feature
+  entre os dois eram só texto de marketing até 2026-09-26 — nenhuma
+  era aplicada no código. Fechado nessa data: **limite de 1 barraca
+  no Essencial** (`criar_barraca`, RPC, bloqueia a 2ª barraca por
+  dono no plano Essencial — trial e Pro continuam sem limite, trial
+  sempre nasce com `plan='pro'`) e **histórico de 7 dias + sem
+  exportar no Essencial** (`Historico.tsx`, só front-end — esconde
+  Mês/Período e desabilita o botão Exportar). Ainda **não** aplicado
+  de propósito: "Custo do dia, lucro e taxas da maquininha" (feature
+  nem existe ainda, ver TODO no topo de `Ajustes.tsx`) e "Senha de
+  operador e senha administrativa" — essa por decisão consciente,
+  não lacuna: é segurança universal (`GateSenhaAdmin`) em toda
+  barraca hoje, gatear por plano tiraria segurança de quem paga
+  menos; a copy de marketing está desalinhada da arquitetura, não o
+  código.
 - Cardápio Digital: tela pública (fora do app, sem login, um link
   por barraca — `/:slug/cardapio`) onde o cliente final navega o
   cardápio da mesa — usa os mesmos itens.foto_url/descricao já

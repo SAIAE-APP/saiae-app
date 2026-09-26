@@ -78,11 +78,13 @@ export function ouvirMudancaFila(ouvinte: () => void): () => void {
 }
 
 /**
- * Pub-sub para resolver a senha provisória de um pedido assim que a
- * operação 'criar_pedido' correspondente sincronizar. Se a tela que
- * gerou o pedido já não existir mais quando isso acontecer, ninguém
- * escuta e o resultado é simplesmente descartado — o pedido já foi
- * criado no banco de qualquer forma.
+ * Pub-sub pra avisar a tela que criou o pedido assim que a operação
+ * 'criar_pedido' correspondente sincronizar e o servidor atribuir a
+ * senha real (LancarPedido mostra um spinner até isso acontecer, nunca
+ * um número local/provisório — ver EstadoPedidoEnviado em carrinho.ts).
+ * Se a tela já não existir mais quando isso acontecer, ninguém escuta e
+ * o resultado é simplesmente descartado — o pedido já foi criado no
+ * banco de qualquer forma.
  */
 type OuvinteCriacao = (resultado: { pedidoId: string; senha: number }) => void
 const ouvintesCriacao = new Map<string, OuvinteCriacao[]>()

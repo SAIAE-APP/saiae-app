@@ -6,12 +6,11 @@ import { classesBotaoIcone } from '../lib/estiloBotaoIcone'
 import { useTheme } from '../hooks/useTheme'
 import { enfileirar } from '../lib/fila'
 import { formatarPrecoBR } from '../lib/preco'
-import {
-  proximoNumeroProvisorio,
-  type EntregaDiretaPorItem,
-  type EstadoParaConfirmar,
-  type EstadoParaEditar,
-  type EstadoPedidoEnviado,
+import type {
+  EntregaDiretaPorItem,
+  EstadoParaConfirmar,
+  EstadoParaEditar,
+  EstadoPedidoEnviado,
 } from '../lib/carrinho'
 import { METODOS_DISPONIVEIS } from '../lib/metodoPagamento'
 import type { MetodoPagamento } from '../lib/metodoPagamento'
@@ -209,14 +208,11 @@ export function ConfirmarPedido() {
       p_itens: itensPedido,
     })
 
-    const senhaProvisoria = proximoNumeroProvisorio(barraca.id)
-
     navigate(`/${barraca.slug}/lancar`, {
       replace: true,
       state: {
         senhaEnviada: {
-          valor: senhaProvisoria,
-          provisoria: true,
+          valor: null,
           idFila: operacao.id,
         },
       } satisfies EstadoPedidoEnviado,

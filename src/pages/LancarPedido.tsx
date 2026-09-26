@@ -43,10 +43,12 @@ function lerModoVisualizacaoSalvo(): ModoVisualizacaoCardapio {
   }
 }
 
+// valor null = pedido enfileirado, aguardando o servidor atribuir a senha
+// real (nunca mostramos um número provisório que pode não bater com o
+// definitivo — bug reportado em operação ao vivo, 2026-09-27).
 type SenhaConfirmada = {
-  valor: number
-  provisoria: boolean
-  idFila?: string
+  valor: number | null
+  idFila: string
 }
 
 /**
@@ -389,7 +391,7 @@ export function LancarPedido() {
 
   // Toca só ao chegar nessa tela já com um pedido recém-enviado (state de
   // navegação vindo de ConfirmarPedido) — mount-only de propósito, senão
-  // tocaria de novo quando `senha` passa de provisória pra confirmada.
+  // tocaria de novo quando `senha.valor` chega do servidor.
   useEffect(() => {
     if (senha !== null) tocarSomPedidoCriado()
     // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -511,10 +513,10 @@ export function LancarPedido() {
   }, [itens, buscaItem, filtroEfetivo, itensMaisPedidos, itensPorCategoria])
 
   useEffect(() => {
-    if (!senha?.provisoria || !senha.idFila) return
+    if (!senha || senha.valor !== null) return
 
     return aoConcluirCriacaoPedido(senha.idFila, (resultado) => {
-      setSenha({ valor: resultado.senha, provisoria: false })
+      setSenha((atual) => (atual ? { ...atual, valor: resultado.senha } : atual))
     })
   }, [senha])
 
@@ -617,6 +619,8 @@ export function LancarPedido() {
   // da marca, número herói), mas com o glow atmosférico normal — essa tela é
   // pro operador, não pro balcão, não precisa do contraste absoluto da Chamada.
   if (senha !== null) {
+    const aguardandoSenha = senha.valor === null
+
     return (
       <div className="flex min-h-dvh flex-col items-center justify-center gap-3 px-6 text-center">
         <span className="text-xs font-semibold uppercase tracking-[0.08em] text-mesa-orange-500">
@@ -625,22 +629,27 @@ export function LancarPedido() {
         <span className="text-xs font-semibold uppercase tracking-[0.08em] text-mesa-text-secondary">
           Pedido enviado
         </span>
-        <span
-          className={`text-[96px] font-bold leading-[104px] tracking-tight ${
-            senha.provisoria ? 'text-mesa-text-tertiary' : 'text-mesa-success-700 dark:text-mesa-success-500'
-          }`}
-        >
-          {senha.valor}
-        </span>
 
-        {senha.provisoria ? (
+        {aguardandoSenha ? (
+          <Icone
+            nome="progress_activity"
+            size={64}
+            className="animate-spin text-mesa-text-tertiary"
+          />
+        ) : (
+          <span className="text-[96px] font-bold leading-[104px] tracking-tight text-mesa-success-700 dark:text-mesa-success-500">
+            {senha.valor}
+          </span>
+        )}
+
+        {aguardandoSenha ? (
           <span className="inline-flex items-center gap-2 rounded-mesa-full bg-mesa-neutral-100 px-4 py-2 dark:bg-mesa-neutral-800">
             <span
               className="size-2 animate-pulse rounded-mesa-full bg-mesa-neutral-400"
               aria-hidden
             />
             <span className="text-sm font-medium text-mesa-text-secondary">
-              Provisória — confirmando pedido...
+              Gerando a senha...
             </span>
           </span>
         ) : (

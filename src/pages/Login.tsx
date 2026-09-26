@@ -53,7 +53,7 @@ export function Login() {
 
       <div className="relative w-full max-w-[400px]">
         <div className="flex flex-col items-center text-center">
-          <div className="flex size-16 items-center justify-center rounded-mesa-lg border border-mesa-border-subtle bg-mesa-surface p-3 shadow-mesa-1">
+          <div className="flex size-16 items-center justify-center">
             <img
               src="/brand/saiae-icone-cor.svg"
               alt=""
@@ -65,9 +65,16 @@ export function Login() {
               className="hidden max-h-full max-w-full object-contain dark:block"
             />
           </div>
-          <h1 className="mt-4 text-2xl font-bold tracking-wide text-mesa-text-primary">
-            SAI AÊ
-          </h1>
+          <img
+            src="/brand/saiae-wordmark-horizontal-preto.svg"
+            alt="Sai aê"
+            className="mt-4 h-8 w-auto dark:hidden"
+          />
+          <img
+            src="/brand/saiae-wordmark-horizontal.svg"
+            alt="Sai aê"
+            className="mt-4 hidden h-8 w-auto dark:block"
+          />
           <p className="mt-1 text-sm text-mesa-text-secondary">
             Comanda digital pra feira, food truck e lanchonete
           </p>
