@@ -1,5 +1,6 @@
 export type RegimeTributario = 'simples_nacional' | 'mei'
 export type AmbienteFiscal = 'homologacao' | 'producao'
+export type LarguraPapel = '58mm' | '80mm'
 
 export type Barraca = {
   id: string
@@ -17,6 +18,10 @@ export type Barraca = {
   fiscal_regime_tributario: RegimeTributario | null
   fiscal_ambiente: AmbienteFiscal
   cnpj: string | null
+  impressora_habilitada: boolean
+  impressora_endereco: string | null
+  impressora_nome: string | null
+  impressora_largura_papel: LarguraPapel
 }
 
 export type Item = {

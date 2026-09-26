@@ -13,6 +13,8 @@
     "android:open": "npx cap open android"
   },
   "dependencies": {
+    "@devlas/capacitor-thermal-printer": "^0.8.0",
+    "@point-of-sale/receipt-printer-encoder": "^4.0.1",
     "@supabase/supabase-js": "^2.112.2",
     "@tailwindcss/vite": "^4.3.3",
     "clsx": "^2.1.1",

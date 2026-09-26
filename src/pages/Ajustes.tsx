@@ -20,6 +20,7 @@ import { METODOS_DISPONIVEIS } from '../lib/metodoPagamento'
 import { BPS_MAX, bpsParaPercentual, percentualParaBps } from '../lib/taxas'
 import { ModalTrocarSenha } from '../components/ModalTrocarSenha'
 import { GateSenhaAdmin } from '../components/GateSenhaAdmin'
+import { SecaoImpressora } from '../components/SecaoImpressora'
 import { Button } from '../components/ui/Button'
 import { Card } from '../components/ui/Card'
 import { Chip } from '../components/ui/Chip'
@@ -2159,6 +2160,7 @@ export function Ajustes() {
           <SecaoFaixas barraca={barraca} />
           <SecaoPagamento barraca={barraca} />
           <SecaoFiscal barraca={barraca} />
+          <SecaoImpressora barraca={barraca} />
           <SecaoAparencia />
           <Rodape barracaId={barraca.id} />
         </div>
