@@ -39,6 +39,25 @@ passa a fazer sentido junto do módulo Fiscal (ver Roadmap) em vez de
 standalone, já que a NFC-e emitida ali normalmente precisa ser
 impressa.
 
+A aba de configuração que faltava foi **implementada em 2026-09-26**
+(`SecaoImpressora`, em Ajustes) — habilitar impressora, escolher
+largura de papel (58mm/80mm), selecionar impressora Bluetooth já
+pareada no Android e "Imprimir teste". Ainda **nenhum botão imprime
+cupom de pedido ou nota fiscal de verdade** — só a conexão/teste,
+decisão de produto de qual gatilho usar (Fiscal, Comanda, ou os dois)
+fica pra depois. Só funciona no app Android instalado, nunca no PWA/
+navegador: Web Bluetooth só fala BLE, e a maioria das térmicas
+baratas do mercado (Elgin, Bematech, Diebold, genéricas) usa
+Bluetooth clássico (SPP), que exige plugin nativo
+(`@devlas/capacitor-thermal-printer`, transporte Bluetooth SPP já
+validado em hardware real pelo autor). Bytes ESC/POS montados no app
+com `@point-of-sale/receipt-printer-encoder` (sucessor não-deprecado
+do `esc-pos-encoder`) — o plugin só transporta bytes crus, não
+formata nada. Colunas novas em `barracas`: `impressora_habilitada`,
+`impressora_endereco`, `impressora_nome`, `impressora_largura_papel`.
+Sem raspagem de mercado necessária: só existem dois tamanhos de papel
+relevantes no Brasil, 58mm e 80mm, já cobertos.
+
 ## Regras de produto
 - Senha sequencial por pedido, reinicia todo dia
 - Mesa é campo opcional; toggle "Viagem" desabilita a mesa
