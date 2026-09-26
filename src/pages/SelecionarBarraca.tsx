@@ -135,9 +135,13 @@ function BottomSheetNovaBarraca({
     setCriando(false)
 
     if (error) {
-      setErro(error.message.includes('endereço') || error.message.includes('vazio')
-        ? error.message
-        : 'Não foi possível criar a barraca. Tente novamente.')
+      setErro(
+        error.message.includes('endereço') ||
+          error.message.includes('vazio') ||
+          error.message.includes('Essencial')
+          ? error.message
+          : 'Não foi possível criar a barraca. Tente novamente.',
+      )
       return
     }
 

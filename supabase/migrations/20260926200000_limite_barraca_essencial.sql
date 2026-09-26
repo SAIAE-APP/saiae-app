@@ -1,13 +1,12 @@
--- Onboarding self-service: qualquer usuário autenticado pode criar sua
--- própria barraca e vira "dono" dela automaticamente — sem isso, cada
--- barraca nova precisava ser inserida manualmente no Supabase pela equipe.
--- SECURITY DEFINER de propósito: não existe usuario_tem_acesso_barraca pra
--- checar aqui, porque a barraca ainda não existe (bootstrapping). A única
--- exigência é estar autenticado (auth.uid() não nulo).
+-- Fecha a lacuna descoberta em 2026-09-26: as diferenças Essencial/Pro em
+-- src/lib/planos.ts eram só texto de marketing, nada era aplicado no
+-- código. Este é o 1º dos 3 limites que o dono do produto pediu pra
+-- implementar agora: "1 barraca" no Essencial (os outros dois — histórico
+-- de 7 dias e exportar só no Pro — são só frontend, em Historico.tsx).
 --
--- Plano 'essencial' é limitado a 1 barraca por dono (2026-09-26, ver
--- migration 20260926200000_limite_barraca_essencial.sql) — trial e Pro
--- continuam sem limite.
+-- Plano 'essencial' já é limitado a 1 barraca por dono; trial e Pro
+-- continuam sem limite (trial sempre nasce com plan='pro', ver
+-- criar_assinatura_trial em 20260922120000_add_assinaturas_kirvano.sql).
 create or replace function public.criar_barraca(p_nome text, p_slug text)
 returns public.barracas
 language plpgsql
@@ -59,5 +58,3 @@ begin
   return v_barraca;
 end;
 $$;
-
-grant execute on function public.criar_barraca(text, text) to authenticated;
