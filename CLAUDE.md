@@ -130,7 +130,13 @@ relevantes no Brasil, 58mm e 80mm, já cobertos.
 - Números (preço, senha, contadores) sempre em `font-mesa-display`
   (Outfit) com tabular-nums — a regra tabular entra uma vez em
   `src/index.css` na classe `.font-mesa-display`, não repetida por
-  call site
+  call site. Exceção: o cronômetro/timer chip mm:ss do card de
+  pedido da Cozinha (`Cozinha.tsx`, `DetalheComanda.tsx`) usa
+  `font-mesa-mono` (JetBrains Mono) — confirmado em 2026-09-27 que o
+  site (saiae.com.br) nunca tirou essa fonte, só reduziu a um acento
+  técnico pontual (`.timer`, `.step .n`); o app replica o caso do
+  timer, que é o único com equivalente na UI do app. Não é uma volta
+  geral da Mono — todo o resto continua Outfit.
 - Ícones: Material Symbols Rounded, peso 500, preenchido = estado
   ativo (ver `src/components/ui/Icone.tsx`)
 - Onboarding (`src/pages/Onboarding.tsx`): carrossel de 4 telas

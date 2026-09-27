@@ -168,7 +168,7 @@ function CardPedido({
     // @custom-variant dark em index.css), sem precisar duplicar paleta.
     <div className="dark overflow-hidden rounded-mesa-lg shadow-mesa-1">
       <div className={clsx('flex items-center justify-between gap-2 px-4 py-2.5', CORES_CABECALHO[cor])}>
-        <span className="flex items-center gap-1.5 font-mesa-display text-sm font-bold text-white">
+        <span className="flex items-center gap-1.5 font-mesa-mono text-xs font-semibold text-white">
           <Icone nome="timer" size={16} className="text-white" />
           {formatarDuracao(segundosDecorridos(pedido))}
         </span>
