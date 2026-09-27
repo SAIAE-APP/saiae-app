@@ -113,6 +113,7 @@ export type Pedido = {
 export type ItemDoPedido = {
   id: string
   pedido_id: string
+  barraca_id: string
   item_id: string | null
   nome_item: string
   quantidade: number

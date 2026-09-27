@@ -1,32 +1,30 @@
--- Versão v2 (Fase 4): aceita entrega_direta por item + pedido
--- 100% entrega direta vai direto pro Histórico
---
--- Mudanças em relação à versão v1:
--- 1. Aceita campo `entrega_direta` (boolean) no JSON de cada item
--- 2. Persiste esse campo em itens_do_pedido
--- 3. Marca itens com entrega_direta=true como entregues no ato
---    (entregue = true, entregue_em = now())
--- 4. Se TODOS os itens são entrega_direta, o pedido nasce direto
---    com status='entregue' + pronto_em + entregue_em preenchidos
---    (não aparece em Cozinha nem Chamada, vai direto pro Histórico)
--- 5. Nesse caso, o trigger set_senha_pedido pula geração de senha
---    e deixa senha=NULL (não precisa chamar cliente)
---
--- IMPORTANTE: p_client_uuid é `text`, não `uuid`. A coluna
--- pedidos.client_uuid no banco é text — mantido pra bater com o
--- código do frontend, que sempre enviou string.
---
--- v3 (2026-09-18): aceita `observacao` (text) por item em p_itens, além
--- do p_observacao geral do pedido que já existia — ver migração
--- 20260918130000_add_observacao_item_pedido.sql.
---
--- v4 (2026-09-27): grava barraca_id em cada item (mesmo p_barraca_id do
--- pedido pai) — ver migração 20260927120000_add_barraca_id_itens_pedido.sql.
--- Corrige a única tabela sem barraca_id do projeto, o que permite filtrar
--- a subscription Realtime de itens_do_pedido no servidor em vez de
--- transmitir toda mudança de item de qualquer barraca pra todo cliente
--- conectado (useRealtimePedidos.ts).
+-- itens_do_pedido era a única tabela sem barraca_id, quebrando a regra de
+-- multi-tenant do projeto ("toda tabela tem barraca_id, toda query filtra
+-- por ele" — ver CLAUDE.md). Na prática isso fazia a subscription Realtime
+-- dessa tabela em useRealtimePedidos.ts não ter como filtrar no servidor:
+-- toda mudança de item de QUALQUER barraca era transmitida pra TODO
+-- cliente conectado no sistema inteiro, e descartada no client. Discutido
+-- com o dono do produto em 2026-09-27 como correção de custo/escala antes
+-- de crescer a base de clientes (o volume de mensagens Realtime cresce com
+-- o quadrado do número de barracas ativas simultaneamente sem esse filtro).
 
+alter table public.itens_do_pedido
+  add column barraca_id uuid references public.barracas(id);
+
+update public.itens_do_pedido i
+   set barraca_id = p.barraca_id
+  from public.pedidos p
+ where p.id = i.pedido_id
+   and i.barraca_id is null;
+
+alter table public.itens_do_pedido
+  alter column barraca_id set not null;
+
+create index if not exists itens_do_pedido_barraca_id_idx
+  on public.itens_do_pedido (barraca_id);
+
+-- v4 de criar_pedido (ver supabase/functions/criar_pedido.sql): grava
+-- barraca_id em cada item, usando o mesmo p_barraca_id do pedido pai.
 CREATE OR REPLACE FUNCTION public.criar_pedido(
   p_barraca_id uuid,
   p_mesa text,
