@@ -109,7 +109,7 @@ function CardItemPublico({
   onAdicionar: () => void
 }) {
   return (
-    <div className="relative flex gap-3 rounded-mesa-lg border border-mesa-border-subtle bg-mesa-surface p-3 shadow-mesa-1">
+    <div className="relative flex gap-3 rounded-mesa-xl border border-mesa-border-subtle bg-mesa-surface p-3 shadow-mesa-1">
       <span className="relative flex size-16 shrink-0 items-center justify-center overflow-hidden rounded-mesa-md bg-mesa-neutral-100 text-mesa-text-tertiary dark:bg-mesa-neutral-700">
         {item.item_foto_url ? (
           <img src={item.item_foto_url} alt="" className="size-full object-cover" />
@@ -117,7 +117,7 @@ function CardItemPublico({
           <Icone nome="image" size={20} />
         )}
         {posicaoPopular !== null && !item.item_esgotado && (
-          <span className="absolute left-0.5 top-0.5 flex items-center gap-0.5 whitespace-nowrap rounded-mesa-full bg-mesa-orange-500 px-1.5 py-0.5 text-[9px] font-bold text-mesa-neutral-900 shadow-mesa-1">
+          <span className="absolute left-0.5 top-0.5 flex items-center gap-0.5 whitespace-nowrap rounded-mesa-balao bg-mesa-orange-500 px-1.5 py-0.5 text-[9px] font-bold text-mesa-neutral-900 shadow-mesa-1">
             <Icone nome="star" size={8} preenchido />
             {posicaoPopular === 0 ? 'Top 1' : 'Popular'}
           </span>
@@ -162,7 +162,7 @@ function CardDestaque({
   onAdicionar: () => void
 }) {
   return (
-    <div className="overflow-hidden rounded-mesa-lg border border-mesa-border-subtle bg-mesa-surface shadow-mesa-2">
+    <div className="overflow-hidden rounded-mesa-xl border border-mesa-border-subtle bg-mesa-surface shadow-mesa-2">
       <div className="relative aspect-[16/10] w-full bg-mesa-neutral-100 dark:bg-mesa-neutral-700">
         {item.item_foto_url ? (
           <img src={item.item_foto_url} alt="" className="size-full object-cover" />
@@ -171,7 +171,7 @@ function CardDestaque({
             <Icone nome="image" size={32} />
           </span>
         )}
-        <span className="absolute left-3 top-3 flex items-center gap-1 whitespace-nowrap rounded-mesa-full bg-mesa-orange-500 px-2.5 py-1 text-xs font-bold text-mesa-neutral-900 shadow-mesa-1">
+        <span className="absolute left-3 top-3 flex items-center gap-1 whitespace-nowrap rounded-mesa-balao bg-mesa-orange-500 px-2.5 py-1 text-xs font-bold text-mesa-neutral-900 shadow-mesa-1">
           <Icone nome="trophy" size={14} preenchido />
           Mais pedido do cardápio
         </span>

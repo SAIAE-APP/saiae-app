@@ -80,7 +80,7 @@ export function PaywallConteudo({ assinatura }: { assinatura: AssinaturaBarraca 
               <div className="flex items-center justify-between">
                 <h3 className="text-base font-bold text-mesa-text-primary">{info.nome}</h3>
                 {info.selo && (
-                  <span className="inline-flex items-center gap-1 rounded-mesa-full bg-mesa-orange-50 px-2.5 py-1 text-xs font-semibold text-mesa-orange-700">
+                  <span className="inline-flex items-center gap-1 rounded-mesa-balao bg-mesa-orange-50 px-2.5 py-1 text-xs font-semibold text-mesa-orange-700">
                     <Icone nome="star" size={12} preenchido /> Mais completo
                   </span>
                 )}

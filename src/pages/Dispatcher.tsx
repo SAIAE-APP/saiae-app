@@ -3,6 +3,7 @@ import { useNavigate } from 'react-router'
 import { useAuth } from '../hooks/useAuth'
 import { useBarracasDoUsuario } from '../hooks/useBarracasDoUsuario'
 import { Button } from '../components/ui/Button'
+import { onboardingJaVisto } from './Onboarding'
 
 export function Dispatcher() {
   const navigate = useNavigate()
@@ -13,7 +14,10 @@ export function Dispatcher() {
     if (carregandoAuth) return
 
     if (!usuario) {
-      navigate('/login', { replace: true })
+      // Onboarding só aparece uma vez, no primeiro acesso desse aparelho —
+      // ver src/pages/Onboarding.tsx. Quem já tem conta e só perdeu a
+      // sessão (deslogou, trocou de aparelho já visto) cai direto no login.
+      navigate(onboardingJaVisto() ? '/login' : '/onboarding', { replace: true })
       return
     }
 

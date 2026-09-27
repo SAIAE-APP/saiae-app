@@ -115,7 +115,7 @@ function CardItemCardapio({
           </span>
         )}
         {posicaoPopular !== null && (
-          <span className="absolute -left-1.5 -top-1.5 flex items-center gap-0.5 whitespace-nowrap rounded-mesa-full bg-mesa-orange-500 px-1.5 py-0.5 text-[10px] font-bold text-mesa-neutral-900 shadow-mesa-1">
+          <span className="absolute -left-1.5 -top-1.5 flex items-center gap-0.5 whitespace-nowrap rounded-mesa-balao bg-mesa-orange-500 px-1.5 py-0.5 text-[10px] font-bold text-mesa-neutral-900 shadow-mesa-1">
             <Icone nome="star" size={10} preenchido />
             {posicaoPopular === 0 ? 'Top 1' : 'Popular'}
           </span>
@@ -216,7 +216,7 @@ function CardItemCardapioGrade({
           </span>
         )}
         {posicaoPopular !== null && (
-          <span className="absolute left-2 top-2 flex items-center gap-0.5 whitespace-nowrap rounded-mesa-full bg-mesa-orange-500 px-1.5 py-0.5 text-[10px] font-bold text-mesa-neutral-900 shadow-mesa-1">
+          <span className="absolute left-2 top-2 flex items-center gap-0.5 whitespace-nowrap rounded-mesa-balao bg-mesa-orange-500 px-1.5 py-0.5 text-[10px] font-bold text-mesa-neutral-900 shadow-mesa-1">
             <Icone nome="star" size={10} preenchido />
             {posicaoPopular === 0 ? 'Top 1' : 'Popular'}
           </span>
@@ -643,7 +643,7 @@ export function LancarPedido() {
         )}
 
         {aguardandoSenha ? (
-          <span className="inline-flex items-center gap-2 rounded-mesa-full bg-mesa-neutral-100 px-4 py-2 dark:bg-mesa-neutral-800">
+          <span className="inline-flex items-center gap-2 rounded-mesa-balao bg-mesa-neutral-100 px-4 py-2 dark:bg-mesa-neutral-800">
             <span
               className="size-2 animate-pulse rounded-mesa-full bg-mesa-neutral-400"
               aria-hidden
@@ -653,7 +653,7 @@ export function LancarPedido() {
             </span>
           </span>
         ) : (
-          <span className="inline-flex items-center gap-2 rounded-mesa-full bg-mesa-success-50 px-4 py-2 text-sm font-semibold text-mesa-success-700 dark:bg-mesa-success-500/15 dark:text-mesa-success-500">
+          <span className="inline-flex items-center gap-2 rounded-mesa-balao bg-mesa-success-50 px-4 py-2 text-sm font-semibold text-mesa-success-700 dark:bg-mesa-success-500/15 dark:text-mesa-success-500">
             <Icone nome="check" size={16} />
             Enviado para a cozinha
           </span>
@@ -754,9 +754,24 @@ export function LancarPedido() {
           )}
 
           {!carregandoItens && !erroItens && itens.length === 0 && (
-            <p className="py-8 text-center text-sm text-mesa-text-secondary">
-              Nenhum item cadastrado.
-            </p>
+            <div className="flex flex-col items-center gap-3 rounded-mesa-xl border border-dashed border-mesa-border-default py-10 text-center">
+              <span className="flex size-14 items-center justify-center rounded-mesa-full bg-mesa-orange-50 text-mesa-orange-700 dark:bg-mesa-orange-500/15 dark:text-mesa-orange-400">
+                <Icone nome="restaurant" size={28} />
+              </span>
+              <div className="px-6">
+                <p className="text-base font-semibold text-mesa-text-primary">Seu cardápio está vazio</p>
+                <p className="mt-1 text-sm text-mesa-text-secondary">
+                  Cadastre os itens que sua barraca vende antes de lançar o primeiro pedido.
+                </p>
+              </div>
+              <Button
+                size="md"
+                icon={<Icone nome="add" size={16} />}
+                onClick={() => navigate(`/${barraca.slug}/ajustes`)}
+              >
+                Cadastrar itens em Ajustes
+              </Button>
+            </div>
           )}
 
           {!carregandoItens &&

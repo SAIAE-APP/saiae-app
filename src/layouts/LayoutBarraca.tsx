@@ -1,4 +1,4 @@
-import { useEffect } from 'react'
+import { useEffect, useRef } from 'react'
 import { Outlet, useLocation, useParams } from 'react-router'
 import clsx from 'clsx'
 import { useBarraca } from '../hooks/useBarraca'
@@ -10,6 +10,7 @@ import { Planos } from '../pages/Planos'
 import { BarraNavegacao } from '../components/BarraNavegacao'
 import { SidebarDesktop } from '../components/SidebarDesktop'
 import { BannerTrial } from '../components/BannerTrial'
+import { useToast } from '../components/ui/Toast'
 import { BarracaContext, SincronizacaoContext } from './contextoBarraca'
 import { PedidosContext } from './contextoPedidos'
 
@@ -17,6 +18,28 @@ export function LayoutBarraca() {
   const { slug } = useParams<{ slug: string }>()
   const { barraca, carregando, erro } = useBarraca(slug ?? '')
   const sincronizacao = useSincronizacao()
+  const { mostrarToast } = useToast()
+  // undefined = ainda não sabemos (primeiro render) — só avisa depois de
+  // já ter visto o app online uma vez, senão dispara um toast de "voltou"
+  // falso logo na primeira carga.
+  const onlineAnteriorRef = useRef<boolean | undefined>(undefined)
+
+  useEffect(() => {
+    const anterior = onlineAnteriorRef.current
+    onlineAnteriorRef.current = sincronizacao.online
+
+    if (anterior === undefined) return
+    if (anterior === sincronizacao.online) return
+
+    if (sincronizacao.online) {
+      mostrarToast('Conexão de volta. Enviando o que ficou pendente.', { variante: 'sucesso' })
+    } else {
+      mostrarToast('Sem internet. O pedido fica salvo e sobe quando voltar.', {
+        variante: 'aviso',
+        duracaoMs: 6000,
+      })
+    }
+  }, [sincronizacao.online, mostrarToast])
   const { pedidos, status, pedidosCarregados, aplicarPatchPedido, aplicarPatchItem } =
     useRealtimePedidos(barraca?.id ?? '')
   const { assinatura } = useAssinaturaBarraca(slug ?? '')
@@ -101,7 +124,7 @@ export function LayoutBarraca() {
           <div
             className={clsx(
               'min-h-dvh',
-              semGradiente ? 'bg-mesa-bg-kanban' : '[background:var(--mesa-gradient-atmosphere)]',
+              semGradiente ? 'bg-mesa-bg-kanban' : 'bg-mesa-bg-base',
               mostrarSidebar && !acessoBloqueado && 'md:pl-64',
             )}
           >

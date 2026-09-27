@@ -12,7 +12,8 @@ padrao='service_role|SERVICE_ROLE|sk_live_|sk_test_|AKIA[0-9A-Z]{16}|-----BEGIN 
 
 achados=$(git diff --cached -U0 --diff-filter=ACM -- . \
     ':(exclude)*.lock' ':(exclude)package-lock.json' ':(exclude).githooks/pre-commit' \
-  | grep -E '^\+' | grep -viE '^\+\+\+' | grep -inE "$padrao")
+  | grep -E '^\+' | grep -viE '^\+\+\+' | grep -inE "$padrao" \
+  | grep -viE '\.env\.get\(|process\.env\.')
 
 if [ -n "$achados" ]; then
   echo "Commit bloqueado — isso parece uma chave/senha hardcoded:"

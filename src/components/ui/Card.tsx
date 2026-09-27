@@ -18,7 +18,7 @@ export function Card({ interactive = false, className, onClick, onKeyDown, child
   return (
     <div
       className={clsx(
-        'rounded-mesa-lg border border-mesa-border-subtle bg-mesa-surface p-4 shadow-mesa-1',
+        'rounded-mesa-xl border border-mesa-border-subtle bg-mesa-surface p-4 shadow-mesa-1',
         interactive &&
           'cursor-pointer transition-shadow duration-[var(--mesa-duration-micro)] hover:shadow-mesa-2 ' +
             'outline-none focus-visible:[box-shadow:var(--mesa-focus-ring-primary)]',
