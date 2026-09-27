@@ -1832,6 +1832,158 @@ function SecaoFiscal({ barraca }: { barraca: Barraca }) {
   )
 }
 
+function BottomSheetTokenPagamento({
+  barracaId,
+  open,
+  onClose,
+  onSucesso,
+}: {
+  barracaId: string
+  open: boolean
+  onClose: () => void
+  onSucesso: () => void
+}) {
+  const [token, setToken] = useState('')
+  const [processando, setProcessando] = useState(false)
+  const [erro, setErro] = useState<string | null>(null)
+
+  function fechar() {
+    setToken('')
+    setErro(null)
+    onClose()
+  }
+
+  async function salvar(e: FormEvent) {
+    e.preventDefault()
+    if (processando) return
+
+    if (!token.trim()) {
+      setErro('Cole o Access Token gerado no painel do Mercado Pago')
+      return
+    }
+
+    setProcessando(true)
+    setErro(null)
+
+    const { error } = await supabase.rpc('definir_token_pagamento', {
+      p_barraca_id: barracaId,
+      p_token: token.trim(),
+    })
+
+    setProcessando(false)
+
+    if (error) {
+      setErro('Não foi possível salvar. Tente novamente.')
+      return
+    }
+
+    fechar()
+    onSucesso()
+  }
+
+  return (
+    <BottomSheet open={open} onClose={fechar} aria-label="Access Token do Mercado Pago">
+      <h2 className="text-lg font-semibold text-mesa-text-primary">Access Token do Mercado Pago</h2>
+      <p className="mt-1 text-sm text-mesa-text-secondary">
+        Gerado no painel de desenvolvedores da sua conta Mercado Pago ("Suas integrações" → credenciais
+        de produção). Fica guardado só pra uso do sistema, não é mostrado de novo depois de salvo.
+      </p>
+
+      <form onSubmit={salvar} className="mt-4 flex flex-col gap-4">
+        <Input
+          label="Access Token"
+          type="password"
+          autoComplete="off"
+          autoFocus
+          value={token}
+          onChange={(e) => setToken(e.target.value)}
+        />
+        {erro && <p className="text-sm font-medium text-mesa-error-500">{erro}</p>}
+        <Button
+          type="submit"
+          size="xl"
+          icon={<Icone nome="check" size={20} />}
+          loading={processando}
+          className="w-full"
+        >
+          Salvar
+        </Button>
+      </form>
+    </BottomSheet>
+  )
+}
+
+/** Pagamento online via Pix (CLAUDE.md, roadmap Cardápio Digital Fase
+ * 2+3): cada barraca cria a própria conta no Mercado Pago e cola o
+ * Access Token dela aqui — mesmo modelo do Fiscal (FocusNFe). O dinheiro
+ * cai direto na conta da barraca, o Sai aê nunca guarda nem repassa. */
+function SecaoPagamentoOnline({ barraca }: { barraca: Barraca }) {
+  const [habilitado, setHabilitado] = useState(barraca.pagamento_online_habilitado)
+  const [tokenConfigurado, setTokenConfigurado] = useState(false)
+  const [mostrarSheetToken, setMostrarSheetToken] = useState(false)
+
+  useEffect(() => {
+    let cancelado = false
+
+    supabase
+      .rpc('token_pagamento_configurado', { p_barraca_id: barraca.id })
+      .then(({ data, error }) => {
+        if (cancelado || error) return
+        setTokenConfigurado(Boolean(data))
+      })
+
+    return () => {
+      cancelado = true
+    }
+  }, [barraca.id])
+
+  async function alternarHabilitado(valor: boolean) {
+    setHabilitado(valor)
+    await supabase.from('barracas').update({ pagamento_online_habilitado: valor }).eq('id', barraca.id)
+  }
+
+  return (
+    <section>
+      <RotuloSecao icone="payments">Pagamento online</RotuloSecao>
+      <Card>
+        <p className="text-sm text-mesa-text-secondary">
+          Crie uma conta no Mercado Pago em nome da sua barraca e cole o Access Token de produção
+          abaixo — o dinheiro do Pix cai direto na sua conta, o Sai aê nunca guarda nem repassa esse
+          valor. Só depois do pagamento confirmado o pedido feito no cardápio digital cai na Cozinha.
+        </p>
+
+        <div className="mt-4 flex items-center justify-between gap-3">
+          <span className="text-base text-mesa-text-primary">Pagamento online habilitado</span>
+          <Toggle
+            checked={habilitado}
+            onChange={alternarHabilitado}
+            aria-label="Pagamento online habilitado"
+          />
+        </div>
+
+        <div className="mt-4">
+          <p className="mb-2 text-sm font-medium text-mesa-text-primary">Access Token do Mercado Pago</p>
+          <div className="flex min-w-[220px] flex-1 items-center justify-between gap-3 rounded-mesa-md border border-mesa-border-subtle p-3">
+            <p className="text-xs text-mesa-text-secondary">
+              {tokenConfigurado ? 'Configurado' : 'Não configurado'}
+            </p>
+            <Button variant="outline" size="sm" onClick={() => setMostrarSheetToken(true)}>
+              {tokenConfigurado ? 'Trocar' : 'Definir'}
+            </Button>
+          </div>
+        </div>
+      </Card>
+
+      <BottomSheetTokenPagamento
+        barracaId={barraca.id}
+        open={mostrarSheetToken}
+        onClose={() => setMostrarSheetToken(false)}
+        onSucesso={() => setTokenConfigurado(true)}
+      />
+    </section>
+  )
+}
+
 const PIN_INVALIDO = 'O PIN precisa ter exatamente 4 números'
 
 function BottomSheetSenhaAdmin({
@@ -2162,6 +2314,7 @@ export function Ajustes() {
           <SecaoFaixas barraca={barraca} />
           <SecaoPagamento barraca={barraca} />
           <SecaoFiscal barraca={barraca} />
+          <SecaoPagamentoOnline barraca={barraca} />
           <SecaoImpressora barraca={barraca} />
           <SecaoAparencia />
           <Rodape barracaId={barraca.id} />

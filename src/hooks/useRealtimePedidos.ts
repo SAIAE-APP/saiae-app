@@ -26,9 +26,10 @@ function ordenarPorCriadoEm(lista: PedidoComItens[]): PedidoComItens[] {
 
 /**
  * Mantém a lista de pedidos do dia atual sincronizada via Supabase Realtime.
- * itens_do_pedido não tem barraca_id, então a assinatura dessa tabela não é
- * filtrada no servidor — eventos de pedidos de outras barracas são
- * descartados no cliente (ok na escala atual do produto).
+ * itens_do_pedido ganhou barraca_id em 2026-09-27 (ver migração
+ * 20260927120000_add_barraca_id_itens_pedido.sql) justamente pra permitir
+ * o filtro abaixo — antes disso, toda mudança de item de QUALQUER barraca
+ * era transmitida pra todo cliente conectado no sistema inteiro.
  */
 const JANELA_IGNORAR_ECO_MS = 4000
 
@@ -199,7 +200,12 @@ export function useRealtimePedidos(barracaId: string) {
         )
         .on<ItemDoPedido>(
           'postgres_changes',
-          { event: '*', schema: 'public', table: 'itens_do_pedido' },
+          {
+            event: '*',
+            schema: 'public',
+            table: 'itens_do_pedido',
+            filter: `barraca_id=eq.${barracaId}`,
+          },
           (payload) => {
             const novo = 'id' in payload.new ? payload.new : null
             const antigo = 'id' in payload.old ? (payload.old as ItemDoPedido) : null
