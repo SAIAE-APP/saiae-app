@@ -41,6 +41,14 @@ h1, h2, h3 {
   font-family: var(--font-mesa-display);
 }
 
+/* "Números sempre tabular-nums" (IDV Sai aê) — todo número exibido usa
+   Outfit (font-mesa-display, ver comentário acima), então a regra
+   entra uma vez aqui em vez de repetir tabular-nums em cada call site
+   de preço/senha/contador. Não afeta texto não-numérico. */
+.font-mesa-display {
+  font-feature-settings: var(--mesa-font-feature-tabular);
+}
+
 /* Ícones — Material Symbols Rounded (ver src/components/ui/Icone.tsx).
    Boilerplate padrão do Google pra fonte de ícone via ligature: sem
    isso o navegador tenta quebrar linha/kernear o nome do símbolo como
@@ -67,11 +75,3 @@ h1, h2, h3 {
   display: none;
 }
 
-@theme {
-  /* Cor categórica pro método de pagamento "Dinheiro" no Histórico
-     (lib/metodoPagamento.ts) — não é sinal operacional de kanban (esse
-     é --color-mesa-kanban-green, reservado e inviolável). Mesmo tom de
-     esmeralda do redesign, só que sem namespace "kanban" pra não
-     confundir os dois usos. */
-  --color-sinal-verde: #10B981;
-}

@@ -14,17 +14,20 @@ export function humanizarMetodo(chave: string | null): string {
   return METODOS_DISPONIVEIS.find((m) => m.chave === chave)?.label ?? 'Método não informado'
 }
 
+// Cores por método vêm de tokens dedicados (mesa-payment-*, ver
+// tokens.css) — categóricas, não confundir com as semânticas
+// (sucesso/erro/aviso) nem com o semáforo operacional do kanban.
 export function corMetodo(chave: string | null): string {
   switch (chave) {
     case 'dinheiro':
-      return 'bg-sinal-verde/15 text-sinal-verde'
+      return 'bg-[var(--color-mesa-payment-cash-bg)] text-[var(--color-mesa-payment-cash-fg)]'
     case 'debito':
-      return 'bg-blue-500/15 text-blue-700 dark:text-blue-400'
+      return 'bg-[var(--color-mesa-payment-debit-bg)] text-[var(--color-mesa-payment-debit-fg)]'
     case 'credito':
-      return 'bg-purple-500/15 text-purple-700 dark:text-purple-400'
+      return 'bg-[var(--color-mesa-payment-credit-bg)] text-[var(--color-mesa-payment-credit-fg)]'
     case 'pix':
-      return 'bg-teal-500/15 text-teal-700 dark:text-teal-400'
+      return 'bg-[var(--color-mesa-payment-pix-bg)] text-[var(--color-mesa-payment-pix-fg)]'
     default:
-      return 'bg-neutral-100 text-neutral-500 dark:bg-neutral-800 dark:text-neutral-400'
+      return 'bg-[var(--color-mesa-payment-unknown-bg)] text-[var(--color-mesa-payment-unknown-fg)]'
   }
 }

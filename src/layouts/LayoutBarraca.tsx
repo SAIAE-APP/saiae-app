@@ -101,7 +101,7 @@ export function LayoutBarraca() {
           <div
             className={clsx(
               'min-h-dvh',
-              semGradiente ? 'bg-mesa-bg-kanban' : '[background:var(--mesa-gradient-atmosphere)]',
+              semGradiente ? 'bg-mesa-bg-kanban' : 'bg-mesa-bg-base',
               mostrarSidebar && !acessoBloqueado && 'md:pl-64',
             )}
           >

@@ -109,7 +109,7 @@ function CardItemPublico({
   onAdicionar: () => void
 }) {
   return (
-    <div className="relative flex gap-3 rounded-mesa-lg border border-mesa-border-subtle bg-mesa-surface p-3 shadow-mesa-1">
+    <div className="relative flex gap-3 rounded-mesa-xl border border-mesa-border-subtle bg-mesa-surface p-3 shadow-mesa-1">
       <span className="relative flex size-16 shrink-0 items-center justify-center overflow-hidden rounded-mesa-md bg-mesa-neutral-100 text-mesa-text-tertiary dark:bg-mesa-neutral-700">
         {item.item_foto_url ? (
           <img src={item.item_foto_url} alt="" className="size-full object-cover" />
@@ -162,7 +162,7 @@ function CardDestaque({
   onAdicionar: () => void
 }) {
   return (
-    <div className="overflow-hidden rounded-mesa-lg border border-mesa-border-subtle bg-mesa-surface shadow-mesa-2">
+    <div className="overflow-hidden rounded-mesa-xl border border-mesa-border-subtle bg-mesa-surface shadow-mesa-2">
       <div className="relative aspect-[16/10] w-full bg-mesa-neutral-100 dark:bg-mesa-neutral-700">
         {item.item_foto_url ? (
           <img src={item.item_foto_url} alt="" className="size-full object-cover" />

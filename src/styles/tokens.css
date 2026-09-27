@@ -145,6 +145,10 @@
   --radius-mesa-xl:   20px;
   --radius-mesa-2xl:  24px;
   --radius-mesa-full: 9999px;
+  /* "Canto balão" — assinatura de marca da IDV Sai aê (DESIGN.md) pra
+     toast, senha, tooltip, etiquetas: 3 cantos arredondados + 1 quase
+     reto, não um radius uniforme. */
+  --radius-mesa-balao: 20px 20px 20px 4px;
 
   /* ---------- Sombras (LIGHT — default) ----------
      Valores do redesign "Speed Bento POS" (elevação tonal + sombra
@@ -269,12 +273,6 @@
   --mesa-focus-ring-confirm: 0 0 0 3px rgba(24, 23, 28, 0.30);
   --mesa-focus-ring-danger:  0 0 0 3px rgba(239, 68, 68, 0.30);
 
-  /* Gradiente atmosférico (LIGHT) — camada 0 das telas de gestão */
-  --mesa-gradient-atmosphere:
-    radial-gradient(1200px 800px at 100% 0%,   rgba(255, 219, 179, 0.60), transparent 60%),
-    radial-gradient(900px  700px at 0%   100%, rgba(255, 243, 229, 0.50), transparent 55%),
-    var(--color-mesa-neutral-50);
-
   /* Overlay (modal, bottom sheet) */
   --mesa-color-overlay: rgba(0, 0, 0, 0.40);
   --mesa-overlay-blur:  8px;
@@ -318,18 +316,13 @@
   --mesa-state-active-bg: rgba(255, 255, 255, 0.10);
   --mesa-state-selected-bg: rgba(255, 255, 255, 0.10);
 
-  --mesa-gradient-atmosphere:
-    radial-gradient(1200px 800px at 100% 0%,   rgba(58, 36, 16, 0.40), transparent 60%),
-    radial-gradient(900px  700px at 0%   100%, rgba(42, 24, 16, 0.20), transparent 55%),
-    var(--color-mesa-neutral-900);
-
   --mesa-color-overlay: rgba(0, 0, 0, 0.60);
   --mesa-color-surface-blur: rgba(26, 26, 30, 0.75);
 
   --shadow-mesa-1:       0 1px 2px rgba(0, 0, 0, 0.40), 0 4px 12px rgba(0, 0, 0, 0.30);
   --shadow-mesa-2:       0 4px 8px rgba(0, 0, 0, 0.45), 0 12px 24px rgba(0, 0, 0, 0.35);
   --shadow-mesa-3:       0 12px 24px rgba(0, 0, 0, 0.50), 0 32px 64px rgba(0, 0, 0, 0.40);
-  --shadow-mesa-glow:    0 0 16px rgba(16, 185, 129, 0.35);
+  --shadow-mesa-glow:    0 0 16px rgba(255, 194, 26, 0.35);
   --shadow-mesa-nav-top: 0 -1px 0 rgba(255, 255, 255, 0.05);
 }
 

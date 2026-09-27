@@ -136,7 +136,7 @@ export function GateSenhaAdmin({
   if (estado === 'liberado') return <>{children}</>
 
   return (
-    <div className="flex min-h-dvh flex-col items-center justify-center p-6 [background:var(--mesa-gradient-atmosphere)]">
+    <div className="flex min-h-dvh flex-col items-center justify-center bg-mesa-bg-base p-6">
       <Link
         to={`/${slug}`}
         aria-label="Voltar para o início"

@@ -60,7 +60,7 @@ export function Cadastro() {
 
   if (precisaConfirmarEmail) {
     return (
-      <div className="flex min-h-dvh flex-col items-center justify-center p-6 text-center [background:var(--mesa-gradient-atmosphere)]">
+      <div className="flex min-h-dvh flex-col items-center justify-center bg-mesa-bg-base p-6 text-center">
         <div className="w-full max-w-[380px]">
           <div className="mx-auto flex size-16 items-center justify-center rounded-mesa-full bg-white shadow-mesa-1 dark:bg-mesa-neutral-800">
             <Icone nome="mail" size={24} className="text-mesa-orange-500" />
@@ -81,7 +81,7 @@ export function Cadastro() {
   }
 
   return (
-    <div className="flex min-h-dvh flex-col items-center justify-center p-6 [background:var(--mesa-gradient-atmosphere)]">
+    <div className="flex min-h-dvh flex-col items-center justify-center bg-mesa-bg-base p-6">
       <div className="w-full max-w-[420px]">
         <div className="flex flex-col items-center text-center">
           <div className="flex size-16 items-center justify-center rounded-mesa-full bg-white shadow-mesa-1 dark:bg-mesa-neutral-800">

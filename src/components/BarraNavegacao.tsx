@@ -26,7 +26,7 @@ export function BarraNavegacao() {
     <nav
       className={clsx(
         'fixed inset-x-0 bottom-0 z-[var(--mesa-z-nav)] flex h-16 pb-[env(safe-area-inset-bottom)]',
-        'bg-white/85 backdrop-blur-md dark:bg-mesa-neutral-800/85 shadow-mesa-nav-top',
+        'bg-white/85 dark:bg-mesa-neutral-800/85 shadow-mesa-nav-top',
       )}
     >
       {ITENS.map((item) => {

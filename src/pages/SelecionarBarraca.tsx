@@ -358,7 +358,7 @@ export function SelecionarBarraca() {
   }
 
   return (
-    <div className="flex min-h-dvh flex-col p-6 [background:var(--mesa-gradient-atmosphere)]">
+    <div className="flex min-h-dvh flex-col bg-mesa-bg-base p-6">
       <div>
         <h1 className="text-2xl font-bold text-mesa-text-primary">Qual barraca?</h1>
         <p className="mt-1 text-sm text-mesa-text-secondary">Escolha a barraca que você vai operar agora.</p>
