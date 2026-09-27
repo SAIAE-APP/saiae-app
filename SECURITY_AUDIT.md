@@ -9,18 +9,18 @@ infraestrutura, dependências) do app Sai aê (React/Vite + Supabase + Cloudflar
 Achado principal: uma falha de RLS permitia que qualquer usuário autenticado injetasse
 pedidos falsos na cozinha de **outras** barracas (bypass de multi-tenant), e a Edge
 Function de emissão fiscal (`emitir-nfce`) não verificava autorização, permitindo forçar
-emissão de notas fiscais reais de qualquer barraca. Ambos corrigidos em código/migration
-nesta branch — a migration do RLS e o deploy da Edge Function **ainda precisam ser
-aplicados em produção** (ver "Ações manuais"). Não foram encontrados segredos expostos,
-XSS ou SQL injection. Dependências de produção sem CVEs conhecidas.
+emissão de notas fiscais reais de qualquer barraca. **Ambos corrigidos e já aplicados em
+produção** (migration via `supabase db push`, função via `supabase functions deploy`,
+verificado após o deploy). Não foram encontrados segredos expostos, XSS ou SQL injection.
+Dependências de produção sem CVEs conhecidas.
 
 ## Achados
 
 | Severidade | Local | Descrição | Status |
 |---|---|---|---|
-| **CRÍTICO** | `pedidos`/`itens_do_pedido`, policies RLS de INSERT | Duas policies PERMISSIVE por tabela se combinavam com OR — bastava a barraca alvo ter assinatura ativa (comum) pra qualquer usuário autenticado inserir pedidos/itens em barraca de outro dono. `barraca_id` alvo é descobrível via `cardapio_publico(slug)` (pública por design) | **Corrigido** — migration `20260927150000_fix_rls_or_bypass_pedidos.sql` (commit `8d45d4e`). **Precisa `supabase db push` em produção — não aplicado ainda** |
-| **CRÍTICO** | `supabase/functions/emitir-nfce/index.ts` | Edge Function com service role, sem checagem de que o chamador pertence à barraca do pedido. `verify_jwt=true` só exige *algum* JWT (a anon key pública já basta) — qualquer pessoa com um `pedido_id` forçava emissão de NFC-e real | **Corrigido em código** (commit `54051d2`). **Precisa `supabase functions deploy emitir-nfce` — não deployado ainda** |
-| MÉDIO | Funções `usuario_tem_acesso_barraca`, `assinatura_tem_acesso`, `minha_assinatura`, `criar_pedido`, `set_senha_pedido` | `search_path` mutável (achado do linter de segurança do Supabase) — a primeira é `SECURITY DEFINER` e é a checagem de acesso usada em quase toda policy do projeto | **Corrigido** — migration `20260927150100_fix_function_search_path.sql` (commit `7778f01`). **Precisa `supabase db push` — não aplicado ainda** |
+| **CRÍTICO** | `pedidos`/`itens_do_pedido`, policies RLS de INSERT | Duas policies PERMISSIVE por tabela se combinavam com OR — bastava a barraca alvo ter assinatura ativa (comum) pra qualquer usuário autenticado inserir pedidos/itens em barraca de outro dono. `barraca_id` alvo é descobrível via `cardapio_publico(slug)` (pública por design) | **Corrigido e aplicado em produção** — migration `20260927150000_fix_rls_or_bypass_pedidos.sql` (commit `8d45d4e`), verificado via `pg_policies` após o push |
+| **CRÍTICO** | `supabase/functions/emitir-nfce/index.ts` | Edge Function com service role, sem checagem de que o chamador pertence à barraca do pedido. `verify_jwt=true` só exige *algum* JWT (a anon key pública já basta) — qualquer pessoa com um `pedido_id` forçava emissão de NFC-e real | **Corrigido e deployado em produção** (commit `54051d2`, versão 3 ativa) |
+| MÉDIO | Funções `usuario_tem_acesso_barraca`, `assinatura_tem_acesso`, `minha_assinatura`, `criar_pedido`, `set_senha_pedido` | `search_path` mutável (achado do linter de segurança do Supabase) — a primeira é `SECURITY DEFINER` e é a checagem de acesso usada em quase toda policy do projeto | **Corrigido e aplicado em produção** — migration `20260927150100_fix_function_search_path.sql` (commit `7778f01`) |
 | MÉDIO | Deploy Cloudflare Pages | Nenhum header de segurança (CSP, X-Frame-Options, Referrer-Policy, Permissions-Policy) | **Corrigido** — `public/_headers` (commit `fbad011`) |
 | MÉDIO | Supabase Auth → Settings → Auth | Proteção contra senha vazada (HaveIBeenPwned) desabilitada | **Pendente — ação manual** |
 | BAIXO | `criar-pagamento-pix`, `webhook-mercadopago`, `emitir-nfce` | Sem rate limiting próprio em endpoints públicos que chamam APIs de terceiros (custo/DoS) | **Pendente — recomendação** |
@@ -51,22 +51,14 @@ tanto em `emitir-nfce` quanto `criar-pagamento-pix` — mas a função nunca ins
 
 ## Ações manuais necessárias
 
-1. **Aplicar as duas migrations em produção** — bloqueado pelo modo automático desta
-   sessão (classificado como "Production Deploy", exige aprovação explícita):
-   ```
-   npx supabase db push --linked
-   ```
-   Aplica `20260927150000_fix_rls_or_bypass_pedidos.sql` e
-   `20260927150100_fix_function_search_path.sql`. **Enquanto isso não for feito, a
-   falha crítica de RLS continua ativa em produção.**
-2. **Deployar a correção do `emitir-nfce`**:
-   ```
-   npx supabase functions deploy emitir-nfce --project-ref dzlxjftfbtdgyllgztfp
-   ```
-3. **Habilitar "Leaked Password Protection"** no painel Supabase (Authentication →
-   Policies/Settings) — checagem contra HaveIBeenPwned, hoje desabilitada.
-4. **Configurar rate limiting** (regra no painel Cloudflare, ou equivalente) nas rotas
+1. **Habilitar "Leaked Password Protection"** no painel Supabase (Authentication →
+   Policies/Settings) — checagem contra HaveIBeenPwned, hoje desabilitada. Não aplicado
+   nesta rodada por ser uma configuração de painel, fora do fluxo de migrations/código.
+2. **Configurar rate limiting** (regra no painel Cloudflare, ou equivalente) nas rotas
    `criar-pagamento-pix`, `webhook-mercadopago` e `emitir-nfce` — hoje sem limite próprio.
+
+As duas correções críticas (migrations de RLS/search_path e deploy do `emitir-nfce`)
+já foram aplicadas em produção nesta sessão, com aprovação explícita do usuário.
 
 ## Fora do escopo desta rodada
 
