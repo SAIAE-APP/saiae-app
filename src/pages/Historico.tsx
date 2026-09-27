@@ -21,6 +21,7 @@ import { Chip } from '../components/ui/Chip'
 import { Icone } from '../components/ui/Icone'
 import { Input } from '../components/ui/Input'
 import { SegmentedControl } from '../components/ui/SegmentedControl'
+import { useToast } from '../components/ui/Toast'
 import type { Item, PedidoComItens } from '../types/database'
 
 function motivoHumanizado(motivo: string | null): string {
@@ -142,6 +143,7 @@ function BotaoEmitirNota({ pedido }: { pedido: PedidoComItens }) {
   const [mensagem, setMensagem] = useState(pedido.nfce_mensagem)
   const [chave, setChave] = useState(pedido.nfce_chave)
   const [emitindo, setEmitindo] = useState(false)
+  const { mostrarToast } = useToast()
 
   async function emitir() {
     setEmitindo(true)
@@ -155,14 +157,23 @@ function BotaoEmitirNota({ pedido }: { pedido: PedidoComItens }) {
 
     if (error) {
       const corpo = await error.context?.json?.().catch(() => null)
+      const erroMsg = corpo?.erro ?? 'Não foi possível emitir. Tente novamente.'
       setStatus('erro')
-      setMensagem(corpo?.erro ?? 'Não foi possível emitir. Tente novamente.')
+      setMensagem(erroMsg)
+      mostrarToast(erroMsg, { variante: 'erro' })
       return
     }
 
-    setStatus(data?.status ?? 'erro')
+    const statusRecebido = data?.status ?? 'erro'
+    setStatus(statusRecebido)
     setMensagem(data?.mensagem ?? data?.erro ?? null)
     setChave(data?.chave ?? null)
+
+    if (statusRecebido === 'autorizado') {
+      mostrarToast('Nota fiscal emitida.', { variante: 'sucesso' })
+    } else {
+      mostrarToast(data?.mensagem ?? data?.erro ?? 'Não foi possível emitir a nota.', { variante: 'erro' })
+    }
   }
 
   if (status === 'autorizado') {
