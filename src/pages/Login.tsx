@@ -71,15 +71,14 @@ export function Login() {
         <div className="relative w-full max-w-[400px] md:mx-auto">
           <div className="flex flex-col items-center text-center">
             <div className="flex size-16 items-center justify-center">
+              {/* Ícone colorido (retângulo mostarda + símbolo tinta) em
+                  qualquer tema — pedido do dono do produto, 2026-09-27: a
+                  versão branca (contorno, sem fundo) lia como "sumida" no
+                  escuro, sem o mesmo peso visual de marca do claro. */}
               <img
                 src="/brand/saiae-icone-cor.svg"
                 alt=""
-                className="max-h-full max-w-full object-contain dark:hidden"
-              />
-              <img
-                src="/brand/saiae-icone-branco.svg"
-                alt=""
-                className="hidden max-h-full max-w-full object-contain dark:block"
+                className="max-h-full max-w-full object-contain"
               />
             </div>
             <img
