@@ -53,7 +53,7 @@ export function BarraNavegacao() {
               {mostrarBadge && (
                 <span
                   aria-hidden
-                  className="absolute -right-1.5 -top-1.5 flex h-4 min-w-4 items-center justify-center rounded-mesa-full bg-mesa-orange-500 px-0.5 text-[10px] font-bold leading-none text-mesa-neutral-900"
+                  className="absolute -right-1.5 -top-1.5 flex h-4 min-w-4 items-center justify-center rounded-mesa-balao bg-mesa-orange-500 px-0.5 text-[10px] font-bold leading-none text-mesa-neutral-900"
                 >
                   {contagemAFazer > 9 ? '9+' : contagemAFazer}
                 </span>

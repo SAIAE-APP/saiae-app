@@ -40,7 +40,7 @@ const variantClasses: Record<ButtonVariant, string> = {
     // neutral-900 fixo em vez de text-white aqui. Hover CLAREIA
     // (mostarda 400) em vez de escurecer — pressionado não troca de
     // cor, só o scale(.97) do baseClasses.
-    `rounded-mesa-lg bg-mesa-orange-500 text-mesa-neutral-900 ${realceTatil} hover:bg-mesa-orange-400 ` +
+    `rounded-mesa-btn bg-mesa-orange-500 text-mesa-neutral-900 ${realceTatil} hover:bg-mesa-orange-400 ` +
     'focus-visible:[box-shadow:var(--mesa-focus-ring-primary)]',
   // "Chamar senha" na IDV Sai aê: sólido em tinta (preto), não mais
   // teal/esmeralda — a marca só tem duas cores (mostarda + tinta), o
@@ -51,20 +51,20 @@ const variantClasses: Record<ButtonVariant, string> = {
   // sobre `neutral-800/900` perde contraste e não é mais mostarda pra
   // não colidir com o variant primary.
   confirm:
-    `rounded-mesa-lg bg-mesa-neutral-900 text-white ${realceTatil} hover:bg-mesa-neutral-800 ` +
+    `rounded-mesa-btn bg-mesa-neutral-900 text-white ${realceTatil} hover:bg-mesa-neutral-800 ` +
     'dark:bg-mesa-neutral-50 dark:text-mesa-neutral-900 dark:hover:bg-mesa-neutral-200 ' +
     'focus-visible:[box-shadow:var(--mesa-focus-ring-confirm)]',
   destructive:
-    `rounded-mesa-lg bg-mesa-error-500 text-white ${realceTatil} hover:bg-mesa-error-700 active:bg-mesa-error-700 ` +
+    `rounded-mesa-btn bg-mesa-error-500 text-white ${realceTatil} hover:bg-mesa-error-700 active:bg-mesa-error-700 ` +
     'focus-visible:[box-shadow:var(--mesa-focus-ring-danger)]',
   // "Ver cardápio" na IDV Sai aê: contorno em tinta, não mais teal.
   outline:
-    'rounded-mesa-lg border-[1.5px] border-mesa-neutral-900 bg-transparent text-mesa-neutral-900 ' +
+    'rounded-mesa-btn border-[1.5px] border-mesa-neutral-900 bg-transparent text-mesa-neutral-900 ' +
     'dark:border-mesa-neutral-50 dark:text-mesa-neutral-50 ' +
     'hover:bg-[var(--mesa-state-hover-bg)] active:bg-[var(--mesa-state-active-bg)] ' +
     'focus-visible:[box-shadow:var(--mesa-focus-ring-confirm)]',
   outlineAmber:
-    'rounded-mesa-lg border-[1.5px] border-mesa-orange-500 bg-transparent text-mesa-orange-500 ' +
+    'rounded-mesa-btn border-[1.5px] border-mesa-orange-500 bg-transparent text-mesa-orange-500 ' +
     'hover:bg-[var(--mesa-state-hover-bg)] active:bg-[var(--mesa-state-active-bg)] ' +
     'focus-visible:[box-shadow:var(--mesa-focus-ring-primary)]',
   ghost:

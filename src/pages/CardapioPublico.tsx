@@ -117,7 +117,7 @@ function CardItemPublico({
           <Icone nome="image" size={20} />
         )}
         {posicaoPopular !== null && !item.item_esgotado && (
-          <span className="absolute left-0.5 top-0.5 flex items-center gap-0.5 whitespace-nowrap rounded-mesa-full bg-mesa-orange-500 px-1.5 py-0.5 text-[9px] font-bold text-mesa-neutral-900 shadow-mesa-1">
+          <span className="absolute left-0.5 top-0.5 flex items-center gap-0.5 whitespace-nowrap rounded-mesa-balao bg-mesa-orange-500 px-1.5 py-0.5 text-[9px] font-bold text-mesa-neutral-900 shadow-mesa-1">
             <Icone nome="star" size={8} preenchido />
             {posicaoPopular === 0 ? 'Top 1' : 'Popular'}
           </span>
@@ -171,7 +171,7 @@ function CardDestaque({
             <Icone nome="image" size={32} />
           </span>
         )}
-        <span className="absolute left-3 top-3 flex items-center gap-1 whitespace-nowrap rounded-mesa-full bg-mesa-orange-500 px-2.5 py-1 text-xs font-bold text-mesa-neutral-900 shadow-mesa-1">
+        <span className="absolute left-3 top-3 flex items-center gap-1 whitespace-nowrap rounded-mesa-balao bg-mesa-orange-500 px-2.5 py-1 text-xs font-bold text-mesa-neutral-900 shadow-mesa-1">
           <Icone nome="trophy" size={14} preenchido />
           Mais pedido do cardápio
         </span>
