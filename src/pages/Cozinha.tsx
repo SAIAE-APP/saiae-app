@@ -97,7 +97,7 @@ function BotaoChecklist({
         <Icone nome="checklist" size={18} />
       </span>
       {contador > 0 && (
-        <span className="absolute -right-1 -top-1 flex h-4 min-w-4 items-center justify-center rounded-mesa-full bg-mesa-neutral-900 px-0.5 text-[10px] font-bold leading-none text-white">
+        <span className="absolute -right-1 -top-1 flex h-4 min-w-4 items-center justify-center rounded-mesa-balao bg-mesa-neutral-900 px-0.5 text-[10px] font-bold leading-none text-white">
           {contador}/{total}
         </span>
       )}

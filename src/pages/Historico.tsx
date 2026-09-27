@@ -250,7 +250,7 @@ function CardHistorico({
             variant do próprio primitivo (mesma race de especificidade que já
             corrigimos no Input). Mesmo formato visual (pill, texto pequeno). */}
         <span
-          className={`inline-flex items-center rounded-mesa-full px-3 py-1 text-xs font-medium ${corMetodo(pedido.metodo_pagamento)}`}
+          className={`inline-flex items-center rounded-mesa-balao px-3 py-1 text-xs font-medium ${corMetodo(pedido.metodo_pagamento)}`}
         >
           <RotuloMetodo chave={pedido.metodo_pagamento} />
         </span>

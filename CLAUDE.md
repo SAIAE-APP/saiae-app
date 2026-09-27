@@ -121,11 +121,24 @@ relevantes no Brasil, 58mm e 80mm, já cobertos.
   cabeçalho do card) continuam não-personalizáveis, sinal
   operacional, nunca mostarda
 - Canto balão (`--radius-mesa-balao`, `20px 20px 20px 4px`) é a
-  assinatura da marca — 3 cantos arredondados + 1 quase reto, usado
-  em toasts, senha, tooltip e etiquetas, nunca num radius uniforme
+  assinatura da marca — 3 cantos arredondados + 1 quase reto, nunca
+  um radius uniforme. Escopo alargado em 2026-09-27 (antes só
+  toast/senha/tooltip/etiqueta): todo `Badge` e toda etiqueta/selo/
+  contador estático do app usa canto balão agora — "Top 1"/"Popular"
+  no cardápio e no Lançar Pedido, contador de itens (Cozinha,
+  Confirmar Pedido, barra inferior, Dashboard), tag de método de
+  pagamento (Histórico), "×N" de quantidade (detalhe da comanda),
+  selo de plano ("Mais completo"), pill de status ("Enviado pra
+  cozinha", "Gerando a senha..."). Fica de fora — continua pílula
+  uniforme (`rounded-mesa-full`) — tudo que é controle interativo ou
+  avatar: `Chip` (filtro/segmentado), toggle, radio, barra de
+  progresso, avatar/ícone circular, botão de CTA (mesmo quando
+  redondo, ex. "Ver pedido"/"Ver nota"/link de navegação) — mesma
+  distinção que o site faz (`.chip`/`.cyc button`/`.btn--pill`
+  continuam pílula, só badge/tag/selo vira balão).
 - Cartões (`Card.tsx` e cartões de produto) usam cantos 20–24px
-  (`rounded-mesa-xl`/`2xl`); botões continuam 16px
-  (`rounded-mesa-lg`, `Button.tsx`) — escalas diferentes de
+  (`rounded-mesa-xl`/`2xl`); botões usam `--radius-mesa-btn` (14px,
+  `Button.tsx`) — escalas diferentes de
   propósito, não confundir as duas
 - Números (preço, senha, contadores) sempre em `font-mesa-display`
   (Outfit) com tabular-nums — a regra tabular entra uma vez em

@@ -66,7 +66,7 @@ function LinhaItemConfirmar({
           {marcado && ' · Entregar direto sem passar na cozinha'}
         </p>
         {observacao && (
-          <span className="mt-1 inline-block rounded-mesa-full bg-mesa-warning-50 px-2 py-0.5 text-[11px] font-medium text-mesa-warning-700">
+          <span className="mt-1 inline-block rounded-mesa-balao bg-mesa-warning-50 px-2 py-0.5 text-[11px] font-medium text-mesa-warning-700">
             {observacao}
           </span>
         )}
@@ -254,7 +254,7 @@ export function ConfirmarPedido() {
         <h2 className="mb-3 flex items-center gap-1.5 font-mesa-sans text-xs font-semibold uppercase tracking-wider text-mesa-text-secondary">
           <Icone nome="receipt_long" size={14} />
           Itens do pedido
-          <span className="flex h-5 min-w-5 items-center justify-center rounded-mesa-full bg-mesa-neutral-100 px-1.5 text-[11px] font-bold normal-case tracking-normal text-mesa-text-secondary dark:bg-mesa-neutral-700">
+          <span className="flex h-5 min-w-5 items-center justify-center rounded-mesa-balao bg-mesa-neutral-100 px-1.5 text-[11px] font-bold normal-case tracking-normal text-mesa-text-secondary dark:bg-mesa-neutral-700">
             {linhas.length}
           </span>
         </h2>

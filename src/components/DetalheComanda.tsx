@@ -152,7 +152,7 @@ function LinhaItemDetalhe({
         )}
       </span>
 
-      <span className="shrink-0 rounded-mesa-full bg-mesa-neutral-100 px-2.5 py-1 text-xs font-semibold text-mesa-text-secondary dark:bg-mesa-neutral-700">
+      <span className="shrink-0 rounded-mesa-balao bg-mesa-neutral-100 px-2.5 py-1 text-xs font-semibold text-mesa-text-secondary dark:bg-mesa-neutral-700">
         ×{item.quantidade}
       </span>
 
