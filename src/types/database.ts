@@ -22,6 +22,7 @@ export type Barraca = {
   impressora_endereco: string | null
   impressora_nome: string | null
   impressora_largura_papel: LarguraPapel
+  pagamento_online_habilitado: boolean
 }
 
 export type Item = {
