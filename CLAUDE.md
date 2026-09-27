@@ -90,19 +90,27 @@ relevantes no Brasil, 58mm e 80mm, já cobertos.
   ele
 
 ## Regras de tema
-- Cor de marca é fixa do MesaAgil — desde o redesign "Speed Bento
-  POS" (2026-09-18) é âmbar para comando (`mesa-orange-*`, antes
-  laranja) e esmeralda para confirmação (`mesa-teal-*`, antes teal).
-  Mesmos papéis semânticos de sempre, só a cor mudou — os nomes de
-  token (`mesa-orange-*`/`mesa-teal-*`) ficaram os mesmos de
-  propósito, pra não precisar tocar em cada componente. Cada barraca
-  define apenas logo, nome e modo claro/escuro — cor primária por
-  barraca continua eliminada, não sugerir customização de cor.
+- Identidade visual atual é a IDV "Sai aê" (rebrand fechado em
+  2026-09-26, substitui o redesign anterior "Speed Bento POS" de
+  2026-09-18 por completo — âmbar/esmeralda saíram). Fonte da
+  verdade: `redesign_ux_ui_app/saiae/DESIGN.md`, aplicada em
+  `src/styles/tokens.css` (cabeçalho do arquivo aponta pro mesmo
+  documento). Paleta: mostarda `#FFC21A` (hover `#FFCA33`, token
+  `mesa-orange-*`, nome mantido de propósito pra não precisar tocar
+  em cada componente) + tinta `#18171C` (`mesa-neutral-900`) — só
+  duas cores de marca, teal/esmeralda saiu do app inteiro. Texto
+  sobre mostarda é SEMPRE tinta, nunca branco (mostarda não sustenta
+  contraste com branco). "Um primário por tela": só a ação principal
+  de cada tela é mostarda, o resto usa tinta/outline/ghost. Cada
+  barraca define apenas logo, nome e modo claro/escuro — cor
+  primária por barraca continua eliminada, não sugerir customização
+  de cor.
 - Tema aplicado por CSS custom properties em runtime
   (src/styles/tokens.css) — nenhuma cor escrita direto no componente
 - As cores do kanban (verde/amarelo/vermelho) NUNCA são
-  personalizáveis — são sinal operacional. Realinhadas no redesign
-  pras mesmas cores de emerald/amber/red usadas no resto do app
+  personalizáveis — são sinal operacional, realinhadas na IDV Sai aê
+  pro mesmo verde/laranja/vermelho das cores operacionais (No
+  prazo/Atenção/Atrasado)
 - Regra revista no redesign do card de pedido da Cozinha (IDV "Sai
   aê", 2026-09-26): mostarda agora aparece de propósito ali — botão
   de ação principal do card (Pronto/Entregue) e número de quantidade
@@ -112,8 +120,44 @@ relevantes no Brasil, 58mm e 80mm, já cobertos.
   cores operacionais do cronômetro (verde/laranja/vermelho do
   cabeçalho do card) continuam não-personalizáveis, sinal
   operacional, nunca mostarda
-- Tipografia (redesign 2026-09-18): Hanken Grotesk no corpo, Space
-  Grotesk em h1/h2/h3, carregadas via Google Fonts (index.html) com
+- Canto balão (`--radius-mesa-balao`, `20px 20px 20px 4px`) é a
+  assinatura da marca — 3 cantos arredondados + 1 quase reto, usado
+  em toasts, senha, tooltip e etiquetas, nunca num radius uniforme
+- Cartões (`Card.tsx` e cartões de produto) usam cantos 20–24px
+  (`rounded-mesa-xl`/`2xl`); botões continuam 16px
+  (`rounded-mesa-lg`, `Button.tsx`) — escalas diferentes de
+  propósito, não confundir as duas
+- Números (preço, senha, contadores) sempre em `font-mesa-display`
+  (Outfit) com tabular-nums — a regra tabular entra uma vez em
+  `src/index.css` na classe `.font-mesa-display`, não repetida por
+  call site
+- Ícones: Material Symbols Rounded, peso 500, preenchido = estado
+  ativo (ver `src/components/ui/Icone.tsx`)
+- Onboarding (`src/pages/Onboarding.tsx`): carrossel de 4 telas
+  mostrado só no primeiro acesso do aparelho (antes do login,
+  `Dispatcher.tsx` decide via `onboardingJaVisto()`/localStorage,
+  nunca usado pra decidir acesso de verdade). Destaque de
+  palavra-chave em títulos = fundo mostarda atrás da palavra
+  (componente `Destaque`), mesmo padrão do site saiae.com.br.
+- Login (2026-09-27): foto real de uma dona de barraca (feira, banca
+  de fruta/verdura, celular na mão) humaniza a tela — acima do
+  formulário no mobile, ao lado (não acima) no desktop, mesmo espírito
+  do onboarding (foto real em vez de ilustração). Arquivo em
+  `public/login/feirante.webp`, comprimido com sharp (1400px de
+  largura, qualidade 76 — 213KB, mais leve que o da tela de
+  onboarding).
+- Sem glow/gradiente atmosférico de fundo (decisão revertida em
+  2026-09-27, mesmo dia em que foi documentado como "pronto" aqui):
+  o `--mesa-gradient-atmosphere` (glow mostarda/pêssego no canto
+  superior direito das telas de entrada/gestão, claro e escuro) e o
+  brilho extra do Login foram removidos por completo a pedido do
+  dono do produto — via print, ficou claro em uso real que o efeito
+  lia como "blur" indesejado no fundo, não como brilho de marca.
+  Fundo dessas telas agora é sólido (`bg-mesa-bg-base`). Não
+  reintroduzir glow/gradiente atmosférico sem confirmar de novo.
+- Tipografia (rebrand "Sai aê", 2026-09-26): Figtree no corpo
+  (`font-mesa-sans`), Outfit em h1/h2/h3 e números
+  (`font-mesa-display`), carregadas via Google Fonts (index.html) com
   runtimeCaching no service worker pra funcionar offline. Isso
   substitui a referência antiga de "fonte do sistema" — ver Estilo
   abaixo
@@ -264,9 +308,10 @@ block no CSS, não há tailwind.config.js), Supabase (Postgres, Auth,
 Realtime), deploy em Cloudflare Pages.
 
 ## Estilo
-Desde o redesign "Speed Bento POS" (2026-09-18): âmbar/esmeralda/
-slate, Hanken Grotesk + Space Grotesk (ver Regras de tema), sombras
-tonais rasas (não mais "quase imperceptíveis" — cards têm borda
+Desde o rebrand "Sai aê" (2026-09-26, substitui "Speed Bento POS" de
+2026-09-18 por completo): mostarda/tinta/papel + neutros (ver Regras
+de tema), Outfit + Figtree, sombras tonais rasas (cards têm borda
 nítida de 1px + sombra leve, botões sólidos têm um realce tátil sutil
-no topo). Cantos ~16px continuam. Mobile-first — o uso real é em
-celular, em pé, com uma mão só — isso não mudou.
+no topo). Cantos 20–24px em cards, 16px em botões, canto balão em
+toasts/etiquetas. Mobile-first — o uso real é em celular, em pé, com
+uma mão só — isso não mudou.
