@@ -45,21 +45,30 @@ export function Login() {
   }
 
   return (
-    <div className="flex min-h-dvh flex-col md:flex-row">
-      {/* Foto humaniza a marca — acima do formulário no mobile, ao lado no
-          desktop (não em cima), mesmo tratamento visual do onboarding
-          (foto real + fade pro fundo em vez de ilustração/ícone). */}
-      <div className="relative h-[34vh] min-h-[240px] w-full shrink-0 overflow-hidden rounded-[28px_28px_28px_8px] md:h-auto md:min-h-dvh md:w-1/2 md:rounded-none">
+    <div className="relative flex min-h-dvh flex-col md:flex-row">
+      {/* Foto humaniza a marca. Mobile: fundo cheio atrás do card (não
+          mais fade em gradiente) — desktop: painel ao lado, sem mudança
+          nenhuma aqui (já ficou bom). */}
+      <div className="absolute inset-0 overflow-hidden md:relative md:h-auto md:min-h-dvh md:w-1/2">
         <img
           src="/login/feirante.webp"
           alt="Dona de barraca sorrindo, segurando o celular, com banca de frutas e verduras ao fundo"
           className="size-full object-cover object-[60%_20%]"
         />
-        <div className="absolute inset-0 bg-gradient-to-t from-mesa-bg-base via-transparent to-transparent md:hidden" />
       </div>
 
-      <div className="flex flex-1 flex-col items-center justify-center bg-mesa-bg-base p-6 md:w-1/2">
-        <div className="relative w-full max-w-[400px]">
+      {/* Card do login. Mobile: ancorado embaixo, canto superior
+          arredondado, sobrepõe a foto (referência: caixa sólida, não
+          blur) — desktop: volta a ser painel normal ao lado da foto. */}
+      <div
+        className={[
+          'relative z-10 mt-auto flex max-h-[76dvh] flex-col overflow-y-auto',
+          'rounded-t-mesa-2xl bg-mesa-surface p-6 pb-[calc(env(safe-area-inset-bottom)+24px)] shadow-mesa-3',
+          'md:mt-0 md:max-h-none md:flex-1 md:items-center md:justify-center md:overflow-visible',
+          'md:rounded-none md:bg-mesa-bg-base md:p-6 md:shadow-none',
+        ].join(' ')}
+      >
+        <div className="relative w-full max-w-[400px] md:mx-auto">
           <div className="flex flex-col items-center text-center">
             <div className="flex size-16 items-center justify-center">
               <img
