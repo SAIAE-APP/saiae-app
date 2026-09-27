@@ -1,4 +1,4 @@
-import { useMemo, useState } from 'react'
+import { useEffect, useMemo, useRef, useState } from 'react'
 import { Link, useNavigate } from 'react-router'
 import { useBarracaAtual, useSincronizacaoAtual } from '../layouts/contextoBarraca'
 import { usePedidosAtual } from '../layouts/contextoPedidos'
@@ -14,6 +14,7 @@ import { Button } from '../components/ui/Button'
 import { Card } from '../components/ui/Card'
 import { Icone } from '../components/ui/Icone'
 import { BottomSheet } from '../components/ui/BottomSheet'
+import { TourGuiado, marcarTourVisto, tourJaVisto, type PassoTour } from '../components/TourGuiado'
 
 function formatarSenha(senha: number): string {
   return String(senha).padStart(3, '0')
@@ -80,6 +81,41 @@ export function Dashboard() {
   const escuro = tema === 'escuro'
   const [confirmandoSaida, setConfirmandoSaida] = useState(false)
   const [mostrarMenuConta, setMostrarMenuConta] = useState(false)
+
+  // Tour guiado: só na primeira vez que alguém chega no Hub, pra mostrar o
+  // caminho certo antes do operador leigo cair de cara num Lançar Pedido
+  // sem nenhum item cadastrado — pedido real de produto, 2026-09-27.
+  const ajustesRef = useRef<HTMLAnchorElement>(null)
+  const caixaRef = useRef<HTMLDivElement>(null)
+  const cozinhaRef = useRef<HTMLDivElement>(null)
+  const [mostrarTour, setMostrarTour] = useState(false)
+
+  useEffect(() => {
+    if (!tourJaVisto('hub')) setMostrarTour(true)
+  }, [])
+
+  function fecharTour() {
+    marcarTourVisto('hub')
+    setMostrarTour(false)
+  }
+
+  const passosTour: PassoTour[] = [
+    {
+      alvo: ajustesRef,
+      titulo: 'Comece por aqui: cadastre seu cardápio',
+      texto: 'Antes de lançar o primeiro pedido, adicione os itens que sua barraca vende em Ajustes → Cardápio.',
+    },
+    {
+      alvo: caixaRef,
+      titulo: 'Depois, lance os pedidos aqui',
+      texto: 'Escolha os itens do cardápio, marque mesa, balcão ou viagem e envie pra cozinha.',
+    },
+    {
+      alvo: cozinhaRef,
+      titulo: 'Acompanhe o preparo',
+      texto: 'Os pedidos aparecem aqui em tempo real, organizados por tempo de espera — o cronômetro avisa quando algo está atrasando.',
+    },
+  ]
 
   // Mesmas fontes já assinadas em tempo real por LayoutBarraca (nenhuma
   // busca nova): contagemAFazer já vem pronta do contexto, a última senha
@@ -151,6 +187,7 @@ export function Dashboard() {
             {escuro ? <Icone nome="light_mode" size={20} /> : <Icone nome="dark_mode" size={20} />}
           </button>
           <Link
+            ref={ajustesRef}
             to={`/${barraca.slug}/ajustes`}
             aria-label="Ajustes"
             className={classesBotaoIcone()}
@@ -176,19 +213,23 @@ export function Dashboard() {
       </div>
 
       <div className="grid grid-cols-2 gap-3 px-6 pb-4 pt-4 md:grid-cols-4">
-        <CardDashboard
-          icone="receipt_long"
-          titulo="Caixa"
-          subtitulo="Lançar pedidos"
-          onClick={() => navigate(`/${barraca.slug}/lancar`)}
-        />
-        <CardDashboard
-          icone="skillet"
-          titulo="Cozinha"
-          subtitulo={`${contagemAFazer} pedido${contagemAFazer === 1 ? '' : 's'} em preparo`}
-          badge={contagemAFazer}
-          onClick={() => navigate(`/${barraca.slug}/cozinha`)}
-        />
+        <div ref={caixaRef}>
+          <CardDashboard
+            icone="receipt_long"
+            titulo="Caixa"
+            subtitulo="Lançar pedidos"
+            onClick={() => navigate(`/${barraca.slug}/lancar`)}
+          />
+        </div>
+        <div ref={cozinhaRef}>
+          <CardDashboard
+            icone="skillet"
+            titulo="Cozinha"
+            subtitulo={`${contagemAFazer} pedido${contagemAFazer === 1 ? '' : 's'} em preparo`}
+            badge={contagemAFazer}
+            onClick={() => navigate(`/${barraca.slug}/cozinha`)}
+          />
+        </div>
         <CardDashboard
           icone="campaign"
           titulo="Chamada"
@@ -299,6 +340,8 @@ export function Dashboard() {
           </Button>
         </div>
       </BottomSheet>
+
+      {mostrarTour && <TourGuiado passos={passosTour} onFechar={fecharTour} />}
     </div>
   )
 }

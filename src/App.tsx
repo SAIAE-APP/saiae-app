@@ -22,6 +22,7 @@ import { SelecionarBarraca } from './pages/SelecionarBarraca'
 import { EsqueciSenha } from './pages/EsqueciSenha'
 import { RedefinirSenha } from './pages/RedefinirSenha'
 import { Dispatcher } from './pages/Dispatcher'
+import { Onboarding } from './pages/Onboarding'
 import { Assinar } from './pages/Assinar'
 import { Assinatura } from './pages/Assinatura'
 import { Planos } from './pages/Planos'
@@ -48,6 +49,7 @@ function App() {
           estado de quem usou o aparelho antes. */}
       <GateFaceId key={usuario?.id ?? 'anon'}>
         <Routes>
+          <Route path="/onboarding" element={<Onboarding />} />
           <Route path="/login" element={<Login />} />
           <Route path="/cadastro" element={<Cadastro />} />
           <Route path="/esqueci-senha" element={<EsqueciSenha />} />
