@@ -7,6 +7,16 @@
 // direto, sem passar pelas funções SECURITY DEFINER pensadas pro client
 // autenticado (definir_token_fiscal/token_fiscal_configurado) — a service
 // role já ignora RLS.
+//
+// SEGURANÇA (correção 2026-09-27, achado CRÍTICO da auditoria): como a
+// função roda com service role, ela ignora RLS por completo — sem a
+// checagem de acesso abaixo, qualquer pessoa que soubesse/adivinhasse um
+// pedido_id (só precisa de `verify_jwt`, que aceita até a anon key
+// pública) conseguia forçar a emissão de uma NFC-e de verdade pra
+// qualquer barraca com fiscal habilitado, inclusive em ambiente de
+// produção. Agora exige um JWT de usuário válido E que esse usuário
+// pertença à barraca do pedido (mesma checagem de `usuario_tem_acesso_barraca`
+// usada em todo o resto do app).
 import { createClient } from 'jsr:@supabase/supabase-js@2'
 
 const FOCUSNFE_URL_HOMOLOGACAO = 'https://homologacao.focusnfe.com.br/v2'
@@ -74,6 +84,16 @@ Deno.serve(async (req: Request) => {
     return jsonResponse({ erro: 'pedido_id é obrigatório' }, 400)
   }
 
+  const jwt = (req.headers.get('Authorization') ?? '').replace(/^Bearer\s+/i, '')
+  const supabaseAuth = createClient(
+    Deno.env.get('SUPABASE_URL') ?? '',
+    Deno.env.get('SUPABASE_ANON_KEY') ?? '',
+  )
+  const { data: userData, error: erroUser } = await supabaseAuth.auth.getUser(jwt)
+  if (erroUser || !userData?.user) {
+    return jsonResponse({ erro: 'Não autenticado' }, 401)
+  }
+
   const supabase = createClient(
     Deno.env.get('SUPABASE_URL') ?? '',
     Deno.env.get('SUPABASE_SERVICE_ROLE_KEY') ?? '',
@@ -90,6 +110,17 @@ Deno.serve(async (req: Request) => {
 
   if (erroPedido || !pedido) {
     return jsonResponse({ erro: 'Pedido não encontrado' }, 404)
+  }
+
+  const { data: acesso } = await supabase
+    .from('usuarios_barracas')
+    .select('usuario_id')
+    .eq('usuario_id', userData.user.id)
+    .eq('barraca_id', pedido.barraca_id)
+    .maybeSingle()
+
+  if (!acesso) {
+    return jsonResponse({ erro: 'Sem acesso a esta barraca' }, 403)
   }
 
   if (pedido.nfce_status === 'autorizado') {
