@@ -11,10 +11,16 @@ const DURACAO_LONGO_TOQUE_MS = 1000
 // Mesmo cabeçalho colorido do card em Cozinha.tsx (redesign IDV "Sai aê") —
 // cronômetro mm:ss + sinal de status, sempre em tema escuro. Duplica os
 // pequenos helpers de tempo em vez de importar de Cozinha.tsx, mesmo
-// padrão já usado por ModalCancelamento.tsx neste componente.
+// padrão já usado por ModalCancelamento.tsx neste componente. Precisa
+// duplicar também a regra de congelar ao entrar em Pronto (mesmo texto
+// "congela" mostrado logo abaixo da coluna Pronto em Cozinha.tsx) — sem
+// isso o cronômetro deste header continuava contando depois de pronto_em.
 function segundosDecorridos(pedido: PedidoComItens): number {
   const inicio = new Date(pedido.criado_em).getTime()
-  return Math.max(0, Math.floor((Date.now() - inicio) / 1000))
+  const fim = pedido.status === 'pronto' && pedido.pronto_em
+    ? new Date(pedido.pronto_em).getTime()
+    : Date.now()
+  return Math.max(0, Math.floor((fim - inicio) / 1000))
 }
 
 function corSemaforo(minutos: number, barraca: Barraca): 'verde' | 'amarelo' | 'vermelho' {
