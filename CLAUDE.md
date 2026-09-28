@@ -208,18 +208,22 @@ nenhum item daqui sozinho, só quando for pedido explicitamente.
   com o painel de Faturamento/Relatório (`PainelRelatorio`) movido de
   dentro do Histórico pra lá; a lista de comandas continua em
   `/:slug/historico` no mobile. Item "Faturamento" na
-  `BarraNavegacao` some em telas estreitas (`apenasDesktop`). Caixa já
-  implementado nesse hub também (abrir/fechar com conferência
-  automática e sangria/suprimento, `src/components/SecaoCaixa.tsx`).
+  `BarraNavegacao` some em telas estreitas (`apenasDesktop`). Caixa
+  (abrir/fechar com conferência automática e sangria/suprimento,
+  `src/components/SecaoCaixa.tsx`) nasceu embutido em `Desktop.tsx`
+  junto de Faturamento, mas em 2026-09-27 virou rota própria
+  (`/:slug/caixa`, `src/pages/Caixa.tsx`) — pedido de produto inspirado
+  num print de concorrente onde "Caixa" é item de nav separado de
+  "Faturamento". `Desktop.tsx` agora só tem Faturamento/Relatório.
   Navegação do hub desktop é `src/components/SidebarDesktop.tsx` (painel
   lateral fixo, só `md:` pra cima, substitui a `BarraNavegacao` inferior
   nessas rotas — Lançar Pedido/Cozinha/Chamada continuam só com
   `BarraNavegacao` em qualquer largura). Reorganizado em grupos com
   rótulo em 2026-09-27 (pedido de produto, inspirado num print de
-  concorrente): "Operação" (Dashboard), "Gestão" (Histórico,
-  Faturamento), "Conta" (Ajustes) — só reagrupou os 4 itens que já
-  existiam, sem copiar item novo do concorrente (Mesas/Entregadores/
-  Estoque não existem aqui).
+  concorrente): "Operação" (Dashboard, Caixa), "Gestão" (Histórico,
+  Faturamento), "Conta" (Ajustes) — só reagrupou os itens que já
+  existiam (Caixa incluído, pela mudança acima), sem copiar item novo
+  do concorrente (Mesas/Entregadores/Estoque não existem aqui).
   - Exceção pontual em 2026-09-27 (pedido explícito do dono do
     produto, via print de preview quebrado em tela larga): Lançar
     Pedido (`src/pages/LancarPedido.tsx`) ganhou tratamento de
