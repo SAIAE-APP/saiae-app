@@ -211,6 +211,15 @@ nenhum item daqui sozinho, só quando for pedido explicitamente.
   `BarraNavegacao` some em telas estreitas (`apenasDesktop`). Caixa já
   implementado nesse hub também (abrir/fechar com conferência
   automática e sangria/suprimento, `src/components/SecaoCaixa.tsx`).
+  Navegação do hub desktop é `src/components/SidebarDesktop.tsx` (painel
+  lateral fixo, só `md:` pra cima, substitui a `BarraNavegacao` inferior
+  nessas rotas — Lançar Pedido/Cozinha/Chamada continuam só com
+  `BarraNavegacao` em qualquer largura). Reorganizado em grupos com
+  rótulo em 2026-09-27 (pedido de produto, inspirado num print de
+  concorrente): "Operação" (Dashboard), "Gestão" (Histórico,
+  Faturamento), "Conta" (Ajustes) — só reagrupou os 4 itens que já
+  existiam, sem copiar item novo do concorrente (Mesas/Entregadores/
+  Estoque não existem aqui).
   - Fiscal / NFC-e: em vez de integração direta com a SEFAZ (que foi
     o motivo original de tirar isso de escopo), usar um provedor
     fiscal-as-a-service (ex.: FocusNFe, como o concorrente fez) — o
