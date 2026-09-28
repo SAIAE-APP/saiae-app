@@ -672,12 +672,12 @@ export function Cozinha() {
         </p>
       )}
 
-      <div className="flex items-center justify-between gap-3 px-4 pt-[calc(env(safe-area-inset-top)+16px)] pb-4">
+      <div className="flex flex-col gap-2 px-4 pt-[calc(env(safe-area-inset-top)+16px)] pb-4 sm:flex-row sm:items-center sm:justify-between sm:gap-3">
         <div className="flex items-center gap-1">
           <BotaoHome className="-ml-2" />
           <h1 className="text-2xl font-bold text-mesa-text-primary">Cozinha</h1>
         </div>
-        <div className="flex shrink-0 items-center gap-2">
+        <div className="flex flex-wrap items-center gap-2 sm:flex-nowrap">
           {pendentes > 0 && (
             <Badge variant="neutral">
               {pendentes} pendente{pendentes === 1 ? '' : 's'}
