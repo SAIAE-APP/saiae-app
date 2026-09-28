@@ -303,7 +303,34 @@ nenhum item daqui sozinho, só quando for pedido explicitamente.
   - Fase 1 (implementada em 2026-09-21): só navegação/visualização
     do cardápio. O botão de adicionar item mostra um aviso "Em
     breve" e não tem função de verdade ainda — de propósito, não é
-    bug esquecido.
+    bug esquecido. **Nota (2026-09-27): esta descrição está
+    desatualizada** — Fase 2 (montar pedido) e Fase 3 (pagamento
+    Pix via `criar-pagamento-pix`/`webhook-mercadopago`) já foram
+    implementadas depois desta entrada e estão em produção quando
+    `barracas.pagamento_online_habilitado` está ligado (ver
+    `SecaoPagamentoOnline` em Ajustes); o aviso "Em breve" só
+    aparece quando esse toggle está desligado. Entrada mantida como
+    está por ora — não reescrita retroativamente — só para não
+    confundir leitura futura.
+  - Topo do cardápio (2026-09-27, referência visual: app de delivery
+    estilo KFC, adaptado ao design system Sai aê — mostarda/tinta,
+    nunca a paleta vermelho/preto da referência): carrossel de
+    banners configurável pelo dono em Ajustes (`SecaoBanners`,
+    tabela `banners_cardapio`, imagem sobe pro bucket
+    `cardapio-fotos` já existente em `{barraca_id}/banners/...`,
+    dados públicos via `banners_publicos(slug)` SECURITY DEFINER,
+    mesmo padrão de `cardapio_publico`) — não é conteúdo fixo do
+    app. Fileira de categorias com fotinhas circulares da referência
+    foi explicitamente descartada — categorias continuam só chips de
+    texto (`Chip`), sem foto. Duas seções horizontais acima do
+    cardápio filtrável: "Populares" (curadoria manual do dono —
+    `itens.popular`, toggle em Ajustes ao lado de "Esgotado" —
+    diferente de "Mais pedido", que é algorítmico) e "Mais pedido"
+    (já existia como card de destaque único + chip de filtro;
+    virou seção de cards horizontais, o chip "Mais Pedidos" saiu da
+    lista de filtros por virar redundante com a seção). Filtro de
+    categoria por chip default voltou a ser "Todos" (antes priorizava
+    "Mais Pedidos" quando havia histórico).
   - Fase 2 (futura): cliente monta pedido e ele cai direto na
     Cozinha, mas o pagamento continua fora do app (maquininha/Pix na
     mesa, como já funciona hoje) — só tira a fila de atendimento,
