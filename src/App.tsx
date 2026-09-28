@@ -90,7 +90,8 @@ function App() {
               <Route path="desktop" element={<Desktop />} />
               <Route path="caixa" element={<Caixa />} />
               <Route path="chamada" element={<TelaChamada />} />
-              <Route path="ajustes" element={<Ajustes />} />
+              <Route path="ajustes" element={<Ajustes categoria="conta" />} />
+              <Route path="ajustes/cardapio" element={<Ajustes categoria="cardapio" />} />
               <Route path="planos" element={<Planos />} />
               <Route path="assinatura" element={<Assinatura />} />
             </Route>

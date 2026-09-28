@@ -50,7 +50,9 @@ export function LayoutBarraca() {
   const emDashboard = location.pathname === `/${slug}` || location.pathname === `/${slug}/`
   const emPlanos = location.pathname.endsWith('/planos')
   const emHistorico = location.pathname.endsWith('/historico')
-  const emAjustes = location.pathname.endsWith('/ajustes')
+  // /ajustes/cardapio é a 2ª categoria em que Ajustes.tsx se separa só no
+  // desktop (ver Ajustes.tsx) — mesma tela de gestão, mesma sidebar.
+  const emAjustes = location.pathname.endsWith('/ajustes') || location.pathname.endsWith('/ajustes/cardapio')
   const emFaturamento = location.pathname.endsWith('/desktop')
   const emCaixa = location.pathname.endsWith('/caixa')
   // Telas de gestão (dono da barraca) ganham sidebar no desktop em vez da

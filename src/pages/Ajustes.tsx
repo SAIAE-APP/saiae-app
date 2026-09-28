@@ -2376,7 +2376,37 @@ function SecaoAssinatura({ slug }: { slug: string }) {
   )
 }
 
-export function Ajustes() {
+type CategoriaAjustes = 'conta' | 'cardapio'
+
+const ABAS_CATEGORIA: { valor: CategoriaAjustes; rotulo: string; rota: string }[] = [
+  { valor: 'conta', rotulo: 'Conta', rota: 'ajustes' },
+  { valor: 'cardapio', rotulo: 'Cardápio & Operação', rota: 'ajustes/cardapio' },
+]
+
+/**
+ * Só no desktop (`md:` pra cima) as 11 seções de Ajustes se separam em duas
+ * categorias/rotas (pedido do dono do produto, 2026-09-27: a página tinha
+ * crescido demais numa rolagem só) — no mobile continua tudo numa página só,
+ * na MESMA ordem de sempre, padrão normal de configuração em app mobile.
+ * Em vez de duas rotas com conteúdo totalmente separado, as 11 seções
+ * continuam todas montadas (mesmo componente, mesma ordem no DOM) — cada uma
+ * entra num wrapper `contents` (não afeta layout/ordem) que só ganha
+ * `md:hidden` quando não pertence à categoria da rota atual. Isso preserva a
+ * ordem exata do mobile sem duplicar nenhuma seção.
+ */
+function SecaoDaCategoria({
+  categoria,
+  atual,
+  children,
+}: {
+  categoria: CategoriaAjustes
+  atual: CategoriaAjustes
+  children: ReactNode
+}) {
+  return <div className={clsx('contents', categoria !== atual && 'md:hidden')}>{children}</div>
+}
+
+export function Ajustes({ categoria = 'conta' }: { categoria?: CategoriaAjustes }) {
   const barraca = useBarracaAtual()
 
   return (
@@ -2392,22 +2422,63 @@ export function Ajustes() {
               <Icone nome="chevron_left" size={28} />
               <h1 className="text-[32px] font-bold leading-[40px]">Ajustes</h1>
             </Link>
+
+            <div className="mt-3 hidden gap-1.5 md:flex">
+              {ABAS_CATEGORIA.map((aba) => (
+                <Link
+                  key={aba.valor}
+                  to={`/${barraca.slug}/${aba.rota}`}
+                  className={clsx(
+                    'inline-flex min-h-9 items-center rounded-mesa-full px-3.5 text-sm font-semibold transition-colors',
+                    aba.valor === categoria
+                      ? 'bg-mesa-neutral-900 text-white dark:bg-mesa-neutral-50 dark:text-mesa-neutral-900'
+                      : 'bg-mesa-neutral-100 text-mesa-text-secondary hover:text-mesa-text-primary dark:bg-mesa-neutral-800',
+                  )}
+                >
+                  {aba.rotulo}
+                </Link>
+              ))}
+            </div>
           </div>
         </div>
 
         <div className="flex flex-col gap-8 px-6 pb-28 pt-2 md:mx-auto md:max-w-3xl">
-          <SecaoAssinatura slug={barraca.slug} />
-          <SecaoIdentidade barraca={barraca} />
-          <SecaoCardapio barracaId={barraca.id} />
-          <SecaoBanners barracaId={barraca.id} />
-          <SecaoHorarioFuncionamento barracaId={barraca.id} />
-          <SecaoFaixas barraca={barraca} />
-          <SecaoPagamento barraca={barraca} />
-          <SecaoFiscal barraca={barraca} />
-          <SecaoPagamentoOnline barraca={barraca} />
-          <SecaoImpressora barraca={barraca} />
-          <SecaoAparencia />
-          <Rodape barracaId={barraca.id} />
+          <SecaoDaCategoria categoria="conta" atual={categoria}>
+            <SecaoAssinatura slug={barraca.slug} />
+          </SecaoDaCategoria>
+          <SecaoDaCategoria categoria="conta" atual={categoria}>
+            <SecaoIdentidade barraca={barraca} />
+          </SecaoDaCategoria>
+          <SecaoDaCategoria categoria="cardapio" atual={categoria}>
+            <SecaoCardapio barracaId={barraca.id} />
+          </SecaoDaCategoria>
+          <SecaoDaCategoria categoria="cardapio" atual={categoria}>
+            <SecaoBanners barracaId={barraca.id} />
+          </SecaoDaCategoria>
+          <SecaoDaCategoria categoria="cardapio" atual={categoria}>
+            <SecaoHorarioFuncionamento barracaId={barraca.id} />
+          </SecaoDaCategoria>
+          <SecaoDaCategoria categoria="cardapio" atual={categoria}>
+            <SecaoFaixas barraca={barraca} />
+          </SecaoDaCategoria>
+          <SecaoDaCategoria categoria="conta" atual={categoria}>
+            <SecaoPagamento barraca={barraca} />
+          </SecaoDaCategoria>
+          <SecaoDaCategoria categoria="conta" atual={categoria}>
+            <SecaoFiscal barraca={barraca} />
+          </SecaoDaCategoria>
+          <SecaoDaCategoria categoria="conta" atual={categoria}>
+            <SecaoPagamentoOnline barraca={barraca} />
+          </SecaoDaCategoria>
+          <SecaoDaCategoria categoria="cardapio" atual={categoria}>
+            <SecaoImpressora barraca={barraca} />
+          </SecaoDaCategoria>
+          <SecaoDaCategoria categoria="cardapio" atual={categoria}>
+            <SecaoAparencia />
+          </SecaoDaCategoria>
+          <SecaoDaCategoria categoria="conta" atual={categoria}>
+            <Rodape barracaId={barraca.id} />
+          </SecaoDaCategoria>
         </div>
       </div>
     </GateSenhaAdmin>

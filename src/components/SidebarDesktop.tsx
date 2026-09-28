@@ -23,9 +23,10 @@ const GRUPOS: { rotulo: string; itens: ItemNav[] }[] = [
     itens: [
       { rotulo: 'Histórico', rota: 'historico', icone: 'bar_chart' },
       { rotulo: 'Faturamento', rota: 'desktop', icone: 'payments' },
+      { rotulo: 'Cardápio', rota: 'ajustes/cardapio', icone: 'restaurant_menu' },
     ],
   },
-  { rotulo: 'Conta', itens: [{ rotulo: 'Ajustes', rota: 'ajustes', icone: 'settings' }] },
+  { rotulo: 'Conta', itens: [{ rotulo: 'Conta', rota: 'ajustes', icone: 'settings' }] },
 ]
 
 const CLASSE_ITEM =
@@ -33,10 +34,12 @@ const CLASSE_ITEM =
 
 /**
  * Navegação lateral só pras telas de gestão (Dashboard/Histórico/
- * Faturamento/Ajustes) em telas ≥md — substitui a BarraNavegacao
+ * Faturamento/Cardápio/Conta) em telas ≥md — substitui a BarraNavegacao
  * inferior nessas rotas quando há espaço de sobra. Lançar Pedido,
  * Cozinha e Chamada continuam só com a BarraNavegacao em qualquer
- * largura (ver LayoutBarraca.tsx).
+ * largura (ver LayoutBarraca.tsx). "Cardápio" e "Conta" são as duas
+ * categorias em que Ajustes.tsx se separa só no desktop (ver
+ * Ajustes.tsx) — no mobile as duas rotas mostram a mesma página cheia.
  */
 export function SidebarDesktop() {
   const barraca = useBarracaAtual()
@@ -72,7 +75,7 @@ export function SidebarDesktop() {
               <NavLink
                 key={item.rota}
                 to={`/${barraca.slug}${item.rota ? `/${item.rota}` : ''}`}
-                end={item.rota === ''}
+                end={item.rota === '' || item.rota === 'ajustes'}
                 className={({ isActive }) =>
                   clsx(
                     CLASSE_ITEM,
