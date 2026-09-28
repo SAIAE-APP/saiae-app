@@ -81,28 +81,69 @@ function BottomSheetFinalizarBalcao({
   )
 }
 
+/** Mesmo padrão de stepper de Lançar Pedido (BotaoStepper): vira +/- assim
+ * que tem quantidade no carrinho, em vez de só "N no carrinho" sem jeito de
+ * tirar item — precisava dar pra ajustar direto no card, não só dentro do
+ * checkout. */
 function BotaoAdicionar({
   variant,
   podeAdicionar,
   esgotado,
   quantidadeNoCarrinho,
   onAdicionar,
+  onRemover,
 }: {
   variant: 'sm' | 'md'
   podeAdicionar: boolean
   esgotado: boolean
   quantidadeNoCarrinho: number
   onAdicionar: () => void
+  onRemover: () => void
 }) {
+  if (esgotado) {
+    return (
+      <Button variant="outline" size={variant} disabled>
+        Esgotado
+      </Button>
+    )
+  }
+
+  if (quantidadeNoCarrinho > 0) {
+    return (
+      <div className="flex items-center gap-1 rounded-mesa-full bg-mesa-neutral-100 p-1 dark:bg-mesa-neutral-800">
+        <button
+          type="button"
+          onClick={onRemover}
+          aria-label="Diminuir quantidade"
+          className="flex size-7 items-center justify-center rounded-mesa-full bg-mesa-neutral-900 text-white transition-transform active:scale-90 dark:bg-mesa-neutral-50 dark:text-mesa-neutral-900"
+        >
+          <Icone nome="remove" size={14} />
+        </button>
+        <span className="min-w-[1.5ch] text-center font-mesa-display text-sm font-bold text-mesa-text-primary">
+          {quantidadeNoCarrinho}
+        </span>
+        <button
+          type="button"
+          onClick={onAdicionar}
+          disabled={!podeAdicionar}
+          aria-label="Aumentar quantidade"
+          className="flex size-7 items-center justify-center rounded-mesa-full bg-mesa-neutral-900 text-white transition-transform active:scale-90 disabled:opacity-40 dark:bg-mesa-neutral-50 dark:text-mesa-neutral-900"
+        >
+          <Icone nome="add" size={14} />
+        </button>
+      </div>
+    )
+  }
+
   return (
     <Button
-      variant={quantidadeNoCarrinho > 0 ? 'confirm' : 'outline'}
+      variant="outline"
       size={variant}
       icon={<Icone nome="add" size={16} />}
-      disabled={esgotado || !podeAdicionar}
+      disabled={!podeAdicionar}
       onClick={onAdicionar}
     >
-      {esgotado ? 'Esgotado' : quantidadeNoCarrinho > 0 ? `${quantidadeNoCarrinho} no carrinho` : 'Adicionar'}
+      Adicionar
     </Button>
   )
 }
@@ -113,12 +154,14 @@ function CardItemPublico({
   podeComprar,
   quantidadeNoCarrinho,
   onAdicionar,
+  onRemover,
 }: {
   item: LinhaCardapioPublico
   posicaoPopular: number | null
   podeComprar: boolean
   quantidadeNoCarrinho: number
   onAdicionar: () => void
+  onRemover: () => void
 }) {
   return (
     <div className="relative flex gap-3 rounded-mesa-xl border border-mesa-border-subtle bg-mesa-surface p-3 shadow-mesa-1">
@@ -155,6 +198,7 @@ function CardItemPublico({
             esgotado={item.item_esgotado}
             quantidadeNoCarrinho={quantidadeNoCarrinho}
             onAdicionar={onAdicionar}
+            onRemover={onRemover}
           />
         </div>
       </div>
@@ -188,41 +232,57 @@ function CarrosselBanners({ banners }: { banners: BannerPublico[] }) {
   )
 }
 
-/** Botão de adicionar compacto (só ícone + badge de quantidade) — a versão
- * com texto de BotaoAdicionar não cabe no card estreito das seções
- * horizontais (Populares/Mais pedido). Sempre adiciona ao carrinho — o
- * aviso de "sem pagamento online" agora aparece só na hora de finalizar
+/** Versão compacta do stepper — a versão com texto de BotaoAdicionar não
+ * cabe no card estreito das seções horizontais (Populares/Mais pedido). O
+ * aviso de "sem pagamento online" aparece só na hora de finalizar
  * (BottomSheetFinalizarBalcao), não mais no clique de cada item. */
 function BotaoAdicionarCompacto({
   podeAdicionar,
   esgotado,
   quantidadeNoCarrinho,
   onAdicionar,
+  onRemover,
 }: {
   podeAdicionar: boolean
   esgotado: boolean
   quantidadeNoCarrinho: number
   onAdicionar: () => void
+  onRemover: () => void
 }) {
+  if (quantidadeNoCarrinho > 0) {
+    return (
+      <div className="flex items-center gap-0.5 rounded-mesa-full bg-mesa-neutral-900 px-1 py-1 text-white dark:bg-mesa-neutral-50 dark:text-mesa-neutral-900">
+        <button
+          type="button"
+          onClick={onRemover}
+          aria-label="Diminuir quantidade"
+          className="flex size-5 items-center justify-center"
+        >
+          <Icone nome="remove" size={12} />
+        </button>
+        <span className="min-w-[1ch] text-center font-mesa-display text-xs font-bold">{quantidadeNoCarrinho}</span>
+        <button
+          type="button"
+          onClick={onAdicionar}
+          disabled={!podeAdicionar}
+          aria-label="Aumentar quantidade"
+          className="flex size-5 items-center justify-center disabled:opacity-40"
+        >
+          <Icone nome="add" size={12} />
+        </button>
+      </div>
+    )
+  }
+
   return (
     <button
       type="button"
       disabled={esgotado || !podeAdicionar}
       onClick={onAdicionar}
       aria-label="Adicionar ao carrinho"
-      className={clsx(
-        'relative flex size-8 shrink-0 items-center justify-center rounded-mesa-full disabled:opacity-40',
-        quantidadeNoCarrinho > 0
-          ? 'bg-mesa-neutral-900 text-white dark:bg-mesa-neutral-50 dark:text-mesa-neutral-900'
-          : 'border border-mesa-border-strong text-mesa-text-primary',
-      )}
+      className="flex size-8 shrink-0 items-center justify-center rounded-mesa-full border border-mesa-border-strong text-mesa-text-primary disabled:opacity-40"
     >
       <Icone nome="add" size={16} />
-      {quantidadeNoCarrinho > 0 && (
-        <span className="absolute -right-1 -top-1 flex size-4 items-center justify-center rounded-mesa-balao bg-mesa-orange-500 text-[9px] font-bold text-mesa-neutral-900">
-          {quantidadeNoCarrinho}
-        </span>
-      )}
     </button>
   )
 }
@@ -237,12 +297,14 @@ function CardItemHorizontal({
   podeComprar,
   quantidadeNoCarrinho,
   onAdicionar,
+  onRemover,
 }: {
   item: LinhaCardapioPublico
   destaque: 'top1' | 'popular' | null
   podeComprar: boolean
   quantidadeNoCarrinho: number
   onAdicionar: () => void
+  onRemover: () => void
 }) {
   return (
     <div className="w-36 shrink-0 overflow-hidden rounded-mesa-xl border border-mesa-border-subtle bg-mesa-surface shadow-mesa-1">
@@ -277,6 +339,7 @@ function CardItemHorizontal({
             esgotado={item.item_esgotado}
             quantidadeNoCarrinho={quantidadeNoCarrinho}
             onAdicionar={onAdicionar}
+            onRemover={onRemover}
           />
         </div>
       </div>
@@ -555,6 +618,7 @@ export function CardapioPublico() {
                 podeComprar={podeComprar}
                 quantidadeNoCarrinho={carrinho[item.item_id] ?? 0}
                 onAdicionar={() => adicionarAoCarrinho(item.item_id)}
+                onRemover={() => alterarQuantidade(item.item_id, -1)}
               />
             ))}
           </div>
@@ -573,6 +637,7 @@ export function CardapioPublico() {
                 podeComprar={podeComprar}
                 quantidadeNoCarrinho={carrinho[item.item_id] ?? 0}
                 onAdicionar={() => adicionarAoCarrinho(item.item_id)}
+                onRemover={() => alterarQuantidade(item.item_id, -1)}
               />
             ))}
           </div>
@@ -630,6 +695,7 @@ export function CardapioPublico() {
                 podeComprar={podeComprar}
                 quantidadeNoCarrinho={carrinho[item.item_id] ?? 0}
                 onAdicionar={() => adicionarAoCarrinho(item.item_id)}
+                onRemover={() => alterarQuantidade(item.item_id, -1)}
               />
             )
           })
