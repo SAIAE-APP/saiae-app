@@ -1,7 +1,7 @@
 import { useMemo, useState } from 'react'
 import type { ReactNode } from 'react'
-import { useRelatorio } from '../hooks/useRelatorio'
-import type { FiltroRelatorio } from '../hooks/useRelatorio'
+import clsx from 'clsx'
+import type { FiltroRelatorio, ResultadoRelatorio } from '../hooks/useRelatorio'
 import { useEvolucao14Dias } from '../hooks/useEvolucao14Dias'
 import { calcularIntervalosRelatorio, METODOS_OU_NAO_INFORMADO } from '../lib/relatorio'
 import type { DetalhamentoLiquido, IntervaloData, MetodoOuNaoInformado } from '../lib/relatorio'
@@ -12,6 +12,9 @@ import { MOTIVOS_CANCELAMENTO } from '../lib/cancelamento'
 import { GraficoBarras } from './charts/GraficoBarras'
 import { ListaBarras } from './charts/ListaBarras'
 import { SecaoCustoLucro } from './SecaoCustoLucro'
+import { SecaoRelatorio } from './SecaoRelatorio'
+import { Card } from './ui/Card'
+import { Icone } from './ui/Icone'
 import { SegmentedControl } from './ui/SegmentedControl'
 import type { Barraca } from '../types/database'
 
@@ -138,17 +141,6 @@ function CartaoKpi({
   )
 }
 
-function Secao({ titulo, children }: { titulo: string; children: ReactNode }) {
-  return (
-    <div className="mt-5 border-t border-mesa-border-subtle pt-4">
-      <h3 className="font-mesa-sans text-xs font-bold uppercase tracking-wide text-mesa-text-secondary">
-        {titulo}
-      </h3>
-      {children}
-    </div>
-  )
-}
-
 function CartaoRelatorio({ children }: { children: ReactNode }) {
   return (
     <div className="rounded-mesa-2xl border border-mesa-border-subtle bg-mesa-neutral-50 p-4 dark:bg-mesa-neutral-900/60">
@@ -176,15 +168,14 @@ function Erro() {
 export function PainelRelatorio({
   barraca,
   filtro,
-  itemFiltradoId = null,
+  resultado,
   nomeItemFiltrado = null,
 }: {
   barraca: Barraca
   filtro: FiltroRelatorio
-  itemFiltradoId?: string | null
+  resultado: ResultadoRelatorio
   nomeItemFiltrado?: string | null
 }) {
-  const resultado = useRelatorio(barraca, filtro, itemFiltradoId)
   const evolucao14Dias = useEvolucao14Dias(barraca.id)
   const [metricaItem, setMetricaItem] = useState<'valor' | 'quantidade'>('valor')
 
@@ -327,57 +318,61 @@ export function PainelRelatorio({
     })
   }
 
+  const temAtencao = linhasAtencao.length > 0
+
   return (
-    <CartaoRelatorio>
-      <h2 className="text-lg font-bold text-mesa-text-primary">{tituloRelatorio(filtro, intervalos)}</h2>
+    <div className="flex flex-col gap-4">
+      <Card className="flex flex-col gap-3">
+        <h2 className="text-lg font-bold text-mesa-text-primary">{tituloRelatorio(filtro, intervalos)}</h2>
 
-      <div className="mt-3 grid grid-cols-2 gap-3 sm:grid-cols-4">
-        <CartaoKpi
-          rotulo="Faturamento"
-          valor={formatarPrecoBR(atual.totalBruto)}
-          {...deltaPercentual(atual.totalBruto, comparacao?.totalBruto ?? 0, labelComparacao)}
-        />
-        <CartaoKpi
-          rotulo="Pedidos"
-          valor={String(atual.quantidadePedidos)}
-          {...deltaPercentual(atual.quantidadePedidos, comparacao?.quantidadePedidos ?? 0, labelComparacao)}
-        />
-        <CartaoKpi
-          rotulo="Ticket médio"
-          valor={formatarPrecoBR(ticketMedioAtual)}
-          {...deltaPercentual(ticketMedioAtual, ticketMedioComparacao, labelComparacao)}
-        />
-        <CartaoKpi
-          rotulo="Itens vendidos"
-          valor={String(atual.itensVendidos)}
-          {...deltaPercentual(atual.itensVendidos, comparacao?.itensVendidos ?? 0, labelComparacao)}
-        />
-      </div>
+        <div className="grid grid-cols-2 gap-3 sm:grid-cols-4">
+          <CartaoKpi
+            rotulo="Faturamento"
+            valor={formatarPrecoBR(atual.totalBruto)}
+            {...deltaPercentual(atual.totalBruto, comparacao?.totalBruto ?? 0, labelComparacao)}
+          />
+          <CartaoKpi
+            rotulo="Pedidos"
+            valor={String(atual.quantidadePedidos)}
+            {...deltaPercentual(atual.quantidadePedidos, comparacao?.quantidadePedidos ?? 0, labelComparacao)}
+          />
+          <CartaoKpi
+            rotulo="Ticket médio"
+            valor={formatarPrecoBR(ticketMedioAtual)}
+            {...deltaPercentual(ticketMedioAtual, ticketMedioComparacao, labelComparacao)}
+          />
+          <CartaoKpi
+            rotulo="Itens vendidos"
+            valor={String(atual.itensVendidos)}
+            {...deltaPercentual(atual.itensVendidos, comparacao?.itensVendidos ?? 0, labelComparacao)}
+          />
+        </div>
 
-      {atual.serieTemporal.pontos.length > 0 && (
-        <GraficoBarras
-          pontos={atual.serieTemporal.pontos}
-          formatarValor={formatarPrecoBR}
-          rotuloAcessivel={
-            atual.serieTemporal.granularidade === 'dia'
-              ? 'Faturamento por dia no período'
-              : 'Faturamento por hora no período'
-          }
-        />
-      )}
+        {atual.serieTemporal.pontos.length > 0 && (
+          <GraficoBarras
+            pontos={atual.serieTemporal.pontos}
+            formatarValor={formatarPrecoBR}
+            rotuloAcessivel={
+              atual.serieTemporal.granularidade === 'dia'
+                ? 'Faturamento por dia no período'
+                : 'Faturamento por hora no período'
+            }
+          />
+        )}
+      </Card>
 
       {evolucao14Dias.pontos.length > 0 && (
-        <Secao titulo="Evolução do faturamento (14 dias)">
+        <SecaoRelatorio titulo="Evolução do faturamento (14 dias)" icone="show_chart">
           <GraficoBarras
             pontos={evolucao14Dias.pontos}
             formatarValor={formatarPrecoBR}
             rotuloAcessivel="Faturamento por dia nos últimos 14 dias"
           />
-        </Secao>
+        </SecaoRelatorio>
       )}
 
       {atual.quantidadePedidos > 0 && (
-        <Secao titulo="Por método de pagamento">
+        <SecaoRelatorio titulo="Por método de pagamento" icone="payments">
           <ListaBarras
             itens={metodosComValor.map((chave) => {
               const d = atual.divisaoPorMetodo[chave]
@@ -389,11 +384,11 @@ export function PainelRelatorio({
               }
             })}
           />
-        </Secao>
+        </SecaoRelatorio>
       )}
 
       {temDadosDeConsumo && (
-        <Secao titulo="Mesa vs Viagem">
+        <SecaoRelatorio titulo="Mesa vs Viagem" icone="table_restaurant">
           <ListaBarras
             itens={[
               {
@@ -416,21 +411,23 @@ export function PainelRelatorio({
               },
             ]}
           />
-        </Secao>
+        </SecaoRelatorio>
       )}
 
       {atual.estimativaLiquida && (
-        <Secao titulo="Estimativa recebida">
-          <p className="mt-1 font-mesa-display text-3xl font-black text-mesa-text-primary">
-            {formatarPrecoBR(atual.estimativaLiquida.totalLiquido)}
-          </p>
-          <p className="mt-1 text-sm text-mesa-text-secondary">
-            {textoDetalhamentoLiquido(atual.estimativaLiquida.detalhamento)}
-          </p>
-          <p className="mt-2 text-xs text-mesa-text-tertiary">
-            Estimativa. Pode divergir do extrato por descontos, cortesias, fiado etc.
-          </p>
-        </Secao>
+        <SecaoRelatorio titulo="Estimativa recebida" icone="account_balance_wallet">
+          <div>
+            <p className="font-mesa-display text-3xl font-black text-mesa-text-primary">
+              {formatarPrecoBR(atual.estimativaLiquida.totalLiquido)}
+            </p>
+            <p className="mt-1 text-sm text-mesa-text-secondary">
+              {textoDetalhamentoLiquido(atual.estimativaLiquida.detalhamento)}
+            </p>
+            <p className="mt-2 text-xs text-mesa-text-tertiary">
+              Estimativa. Pode divergir do extrato por descontos, cortesias, fiado etc.
+            </p>
+          </div>
+        </SecaoRelatorio>
       )}
 
       <SecaoCustoLucro
@@ -439,9 +436,9 @@ export function PainelRelatorio({
         receitaLiquidaCentavos={atual.estimativaLiquida?.totalLiquido ?? atual.totalBruto}
       />
 
-      <Secao titulo="Mais vendidos">
+      <SecaoRelatorio titulo="Mais vendidos" icone="local_fire_department">
         {atual.maisVendidos.length === 0 ? (
-          <p className="mt-2 text-sm text-mesa-text-secondary">Sem dados no período</p>
+          <p className="text-sm text-mesa-text-secondary">Sem dados no período</p>
         ) : (
           <ListaBarras
             itens={atual.maisVendidos.map((item) => ({
@@ -454,48 +451,82 @@ export function PainelRelatorio({
             }))}
           />
         )}
-      </Secao>
+      </SecaoRelatorio>
 
       {mostraRitmo && (
-        <Secao titulo="Ritmo">
+        <SecaoRelatorio titulo="Ritmo" icone="schedule">
           {atual.ritmoDoDia.horarioPico === null ? (
-            <p className="mt-2 text-sm text-mesa-text-secondary">Ainda sem dados suficientes</p>
+            <p className="text-sm text-mesa-text-secondary">Ainda sem dados suficientes</p>
           ) : (
-            <div className="mt-2 flex flex-col gap-1 text-sm text-mesa-text-primary">
-              {atual.ritmoDoDia.tempoMedioPreparoMin !== null && (
-                <p>Tempo médio de preparo: {atual.ritmoDoDia.tempoMedioPreparoMin} min</p>
-              )}
-              <p>
-                Horário mais movimentado: {atual.ritmoDoDia.horarioPico.hora}h–
-                {atual.ritmoDoDia.horarioPico.hora + 1}h ({atual.ritmoDoDia.horarioPico.quantidade}{' '}
-                comandas)
-              </p>
+            <div className="grid grid-cols-2 gap-3">
+              <div className="rounded-mesa-md bg-mesa-surface-alt p-3">
+                <p className="flex items-center gap-1 text-[11px] font-semibold uppercase tracking-[0.06em] text-mesa-text-tertiary">
+                  <Icone nome="timer" size={12} />
+                  Preparo médio
+                </p>
+                <p className="mt-1 font-mesa-display text-lg font-bold text-mesa-text-primary">
+                  {atual.ritmoDoDia.tempoMedioPreparoMin === null
+                    ? '—'
+                    : `${atual.ritmoDoDia.tempoMedioPreparoMin} min`}
+                </p>
+              </div>
+              <div className="rounded-mesa-md bg-mesa-surface-alt p-3">
+                <p className="flex items-center gap-1 text-[11px] font-semibold uppercase tracking-[0.06em] text-mesa-text-tertiary">
+                  <Icone nome="trending_up" size={12} />
+                  Horário de pico
+                </p>
+                <p className="mt-1 font-mesa-display text-lg font-bold text-mesa-text-primary">
+                  {atual.ritmoDoDia.horarioPico.hora}h–{atual.ritmoDoDia.horarioPico.hora + 1}h
+                </p>
+                <p className="text-xs text-mesa-text-secondary">
+                  {atual.ritmoDoDia.horarioPico.quantidade} comanda
+                  {atual.ritmoDoDia.horarioPico.quantidade === 1 ? '' : 's'}
+                </p>
+              </div>
             </div>
           )}
-        </Secao>
+        </SecaoRelatorio>
       )}
 
-      <Secao titulo="Pontos de atenção">
-        {linhasAtencao.length === 0 ? (
-          <p className="mt-2 text-sm font-medium text-mesa-success-700 dark:text-mesa-success-500">Nenhum ponto de atenção 👍</p>
-        ) : (
-          <ul className="mt-2 flex flex-col gap-2">
+      <div
+        className={clsx(
+          'rounded-mesa-2xl border p-4',
+          temAtencao
+            ? 'border-transparent bg-mesa-warning-50 dark:bg-mesa-warning-500/10'
+            : 'border-transparent bg-mesa-success-50 dark:bg-mesa-success-500/10',
+        )}
+      >
+        <div className="flex items-center gap-2">
+          <span
+            className={clsx(
+              'flex size-7 shrink-0 items-center justify-center rounded-mesa-md',
+              temAtencao
+                ? 'bg-mesa-warning-500/20 text-mesa-warning-700 dark:text-mesa-warning-500'
+                : 'bg-mesa-success-500/20 text-mesa-success-700 dark:text-mesa-success-500',
+            )}
+          >
+            <Icone nome={temAtencao ? 'warning' : 'check_circle'} size={16} />
+          </span>
+          <h3 className="text-sm font-bold text-mesa-text-primary">Pontos de atenção</h3>
+        </div>
+
+        {temAtencao ? (
+          <ul className="mt-3 flex flex-col gap-2.5">
             {linhasAtencao.map((linha, indice) => (
-              <li key={indice} className="flex items-start gap-2">
-                <span aria-hidden className="leading-tight">
-                  ⚠️
-                </span>
-                <div>
-                  <p className="text-sm font-medium text-mesa-text-primary">{linha.texto}</p>
-                  {linha.subtitulo && (
-                    <p className="text-xs text-mesa-text-secondary">{linha.subtitulo}</p>
-                  )}
-                </div>
+              <li key={indice} className="border-t border-mesa-warning-500/20 pt-2.5 first:border-t-0 first:pt-0">
+                <p className="text-sm font-medium text-mesa-text-primary">{linha.texto}</p>
+                {linha.subtitulo && (
+                  <p className="text-xs text-mesa-text-secondary">{linha.subtitulo}</p>
+                )}
               </li>
             ))}
           </ul>
+        ) : (
+          <p className="mt-2 text-sm font-medium text-mesa-success-700 dark:text-mesa-success-500">
+            Nenhum ponto de atenção no período
+          </p>
         )}
-      </Secao>
-    </CartaoRelatorio>
+      </div>
+    </div>
   )
 }

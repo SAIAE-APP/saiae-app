@@ -1,20 +1,11 @@
 import { useEffect, useState } from 'react'
-import type { ReactNode } from 'react'
 import { supabase } from '../lib/supabase'
 import { centavosParaReais, formatarPrecoBR, reaisParaCentavos } from '../lib/preco'
 import type { IntervaloData } from '../lib/relatorio'
+import { SecaoRelatorio } from './SecaoRelatorio'
 import { Button } from './ui/Button'
 import { Input } from './ui/Input'
 import type { Barraca, CustoDiario } from '../types/database'
-
-function Secao({ titulo, children }: { titulo: string; children: ReactNode }) {
-  return (
-    <div className="mt-5 border-t border-mesa-border-subtle pt-4">
-      <h3 className="text-xs font-bold uppercase tracking-wide text-mesa-text-secondary">{titulo}</h3>
-      {children}
-    </div>
-  )
-}
 
 function textoPrecoInicial(centavos: number): string {
   return centavos > 0 ? centavosParaReais(centavos).toFixed(2).replace('.', ',') : ''
@@ -159,11 +150,11 @@ export function SecaoCustoLucro({
   }
 
   return (
-    <Secao titulo="Custo e lucro">
+    <SecaoRelatorio titulo="Custo e lucro" icone="paid">
       {periodoDeUmDiaSo ? (
         <CampoCustoDoDia key={intervalo.inicio} valorInicial={custoTotalCentavos} onSalvar={salvarCustoDoDia} />
       ) : (
-        <p className="mt-2 text-sm text-mesa-text-secondary">
+        <p className="text-sm text-mesa-text-secondary">
           Custo registrado no período: {formatarPrecoBR(custoTotalCentavos)} ({diasComRegistro} de{' '}
           {diasNoIntervalo(intervalo)} dia{diasNoIntervalo(intervalo) === 1 ? '' : 's'} lançados)
         </p>
@@ -172,7 +163,7 @@ export function SecaoCustoLucro({
       {custoTotalCentavos > 0 && (
         <p className="mt-2">
           <span
-            className={`text-2xl font-black ${
+            className={`font-mesa-display text-2xl font-black ${
               lucroLiquidoCentavos >= 0 ? 'text-mesa-success-700 dark:text-mesa-success-500' : 'text-mesa-error-500'
             }`}
           >
@@ -181,6 +172,6 @@ export function SecaoCustoLucro({
           <span className="text-sm font-medium text-mesa-text-secondary">lucro líquido</span>
         </p>
       )}
-    </Secao>
+    </SecaoRelatorio>
   )
 }
