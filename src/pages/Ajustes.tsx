@@ -21,6 +21,7 @@ import { BPS_MAX, bpsParaPercentual, percentualParaBps } from '../lib/taxas'
 import { ModalTrocarSenha } from '../components/ModalTrocarSenha'
 import { GateSenhaAdmin } from '../components/GateSenhaAdmin'
 import { SecaoImpressora } from '../components/SecaoImpressora'
+import { SecaoBanners } from '../components/SecaoBanners'
 import { Button } from '../components/ui/Button'
 import { Card } from '../components/ui/Card'
 import { Chip } from '../components/ui/Chip'
@@ -620,6 +621,19 @@ function SecaoCardapio({ barracaId }: { barracaId: string }) {
     }
   }
 
+  // "Populares" no cardápio digital é curadoria manual do dono (decisão de
+  // produto 2026-09-27) — diferente de "Mais pedido", que é algorítmico
+  // (pedidos_30d). Mesmo padrão de toggle que esgotado/ativo.
+  async function alternarPopular(item: Item) {
+    const novoPopular = !item.popular
+    setItens((atual) => atual.map((i) => (i.id === item.id ? { ...i, popular: novoPopular } : i)))
+    const { error } = await supabase.from('itens').update({ popular: novoPopular }).eq('id', item.id)
+
+    if (error) {
+      setItens((atual) => atual.map((i) => (i.id === item.id ? { ...i, popular: item.popular } : i)))
+    }
+  }
+
   function pedirExclusao(item: Item) {
     setItemParaExcluir(item)
     setNomeExclusao(item.nome)
@@ -787,6 +801,12 @@ function SecaoCardapio({ barracaId }: { barracaId: string }) {
                       >
                         ⠿
                       </span>
+                      <span className="text-xs text-mesa-text-secondary">Popular</span>
+                      <Toggle
+                        checked={item.popular}
+                        onChange={() => alternarPopular(item)}
+                        aria-label={`${item.nome} em Populares no cardápio digital`}
+                      />
                       <span className="text-xs text-mesa-text-secondary">Esgotado</span>
                       <Toggle
                         checked={item.esgotado}
@@ -2311,6 +2331,7 @@ export function Ajustes() {
           <SecaoAssinatura slug={barraca.slug} />
           <SecaoIdentidade barraca={barraca} />
           <SecaoCardapio barracaId={barraca.id} />
+          <SecaoBanners barracaId={barraca.id} />
           <SecaoFaixas barraca={barraca} />
           <SecaoPagamento barraca={barraca} />
           <SecaoFiscal barraca={barraca} />

@@ -39,6 +39,18 @@ export type Item = {
   cfop: string | null
   unidade_comercial: string | null
   esgotado: boolean
+  popular: boolean
+}
+
+export type BannerCardapio = {
+  id: string
+  barraca_id: string
+  imagem_url: string
+  titulo: string | null
+  cta_texto: string | null
+  ordem: number
+  ativo: boolean
+  criado_em: string
 }
 
 export type Categoria = {
