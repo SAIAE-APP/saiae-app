@@ -82,14 +82,30 @@ export function ouvirMudancaFila(ouvinte: () => void): () => void {
  * 'criar_pedido' correspondente sincronizar e o servidor atribuir a
  * senha real (LancarPedido mostra um spinner até isso acontecer, nunca
  * um número local/provisório — ver EstadoPedidoEnviado em carrinho.ts).
- * Se a tela já não existir mais quando isso acontecer, ninguém escuta e
- * o resultado é simplesmente descartado — o pedido já foi criado no
- * banco de qualquer forma.
+ *
+ * Em rede rápida a fila pode terminar ANTES de LancarPedido montar e
+ * registrar o ouvinte (enfileirar → navigate → efeito). Por isso o
+ * resultado fica guardado num cache limitado: quem registra depois recebe
+ * o resultado pronto na hora em vez de esperar um aviso que já passou.
  */
-type OuvinteCriacao = (resultado: { pedidoId: string; senha: number }) => void
+type ResultadoCriacao = { pedidoId: string; senha: number }
+type OuvinteCriacao = (resultado: ResultadoCriacao) => void
 const ouvintesCriacao = new Map<string, OuvinteCriacao[]>()
+const resultadosProntos = new Map<string, ResultadoCriacao>()
+const LIMITE_RESULTADOS_PRONTOS = 50
 
 export function aoConcluirCriacaoPedido(idOperacao: string, ouvinte: OuvinteCriacao): () => void {
+  const pronto = resultadosProntos.get(idOperacao)
+  if (pronto) {
+    let cancelado = false
+    queueMicrotask(() => {
+      if (!cancelado) ouvinte(pronto)
+    })
+    return () => {
+      cancelado = true
+    }
+  }
+
   const lista = ouvintesCriacao.get(idOperacao) ?? []
   lista.push(ouvinte)
   ouvintesCriacao.set(idOperacao, lista)
@@ -103,10 +119,13 @@ export function aoConcluirCriacaoPedido(idOperacao: string, ouvinte: OuvinteCria
   }
 }
 
-export function notificarCriacaoPedido(
-  idOperacao: string,
-  resultado: { pedidoId: string; senha: number },
-): void {
+export function notificarCriacaoPedido(idOperacao: string, resultado: ResultadoCriacao): void {
+  resultadosProntos.set(idOperacao, resultado)
+  if (resultadosProntos.size > LIMITE_RESULTADOS_PRONTOS) {
+    const maisAntigo = resultadosProntos.keys().next().value
+    if (maisAntigo !== undefined) resultadosProntos.delete(maisAntigo)
+  }
+
   const lista = ouvintesCriacao.get(idOperacao)
   if (!lista) return
   lista.forEach((ouvinte) => ouvinte(resultado))
