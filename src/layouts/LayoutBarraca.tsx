@@ -52,11 +52,12 @@ export function LayoutBarraca() {
   const emHistorico = location.pathname.endsWith('/historico')
   const emAjustes = location.pathname.endsWith('/ajustes')
   const emFaturamento = location.pathname.endsWith('/desktop')
+  const emCaixa = location.pathname.endsWith('/caixa')
   // Telas de gestão (dono da barraca) ganham sidebar no desktop em vez da
   // BarraNavegacao inferior; Lançar/Cozinha/Chamada continuam mobile-only
   // em qualquer largura — separação decidida com o dono do produto em
   // 2026-09-26 (ver CLAUDE.md).
-  const mostrarSidebar = emDashboard || emHistorico || emAjustes || emFaturamento
+  const mostrarSidebar = emDashboard || emHistorico || emAjustes || emFaturamento || emCaixa
   // Regra inviolável do design system (seção 2.2): o glow atmosférico nunca
   // aparece na Cozinha (atrapalha a leitura do semáforo) nem na Chamada
   // (que já tem fundo escuro absoluto próprio, com layout fora daqui).

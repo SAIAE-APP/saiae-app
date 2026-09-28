@@ -11,7 +11,13 @@ type ItemNav = { rotulo: string; rota: string; icone: string }
 // concorrente) — só reorganiza os 4 itens que já existem, não inventa item
 // novo (Mesas/Entregadores/Estoque do concorrente não existem aqui).
 const GRUPOS: { rotulo: string; itens: ItemNav[] }[] = [
-  { rotulo: 'Operação', itens: [{ rotulo: 'Dashboard', rota: '', icone: 'home' }] },
+  {
+    rotulo: 'Operação',
+    itens: [
+      { rotulo: 'Dashboard', rota: '', icone: 'home' },
+      { rotulo: 'Caixa', rota: 'caixa', icone: 'point_of_sale' },
+    ],
+  },
   {
     rotulo: 'Gestão',
     itens: [

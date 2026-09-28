@@ -6,7 +6,6 @@ import { useTheme } from '../hooks/useTheme'
 import { hojeISO } from '../lib/datas'
 import type { TipoFiltroRelatorio } from '../lib/relatorio'
 import { PainelRelatorio } from '../components/PainelRelatorio'
-import { SecaoCaixa } from '../components/SecaoCaixa'
 import { GateSenhaAdmin } from '../components/GateSenhaAdmin'
 import { BotaoHome } from '../components/ui/BotaoHome'
 import { Icone } from '../components/ui/Icone'
@@ -23,9 +22,10 @@ const PERIODOS: { valor: TipoFiltroRelatorio; rotulo: string }[] = [
 
 /**
  * Hub desktop-only do Sai aê (ver "Roadmap de produto" no CLAUDE.md,
- * decisão de 2026-09-26): reúne Faturamento/Relatório hoje, e vai
- * ganhar Caixa/Estoque/Fiscal como novas seções aqui mesmo mais
- * adiante. Mesmo app/rota pra todo tamanho de tela — em telas
+ * decisão de 2026-09-26): Faturamento/Relatório. Caixa saiu daqui em
+ * 2026-09-27 e virou rota própria (`/:slug/caixa`, `src/pages/Caixa.tsx`)
+ * — item de nav separado na sidebar, mesmo padrão do concorrente que
+ * inspirou o pedido. Mesmo app/rota pra todo tamanho de tela — em telas
  * estreitas mostra só um aviso, porque o conteúdo (tabelas, gráficos)
  * não foi desenhado pra caber em mobile.
  */
@@ -149,8 +149,6 @@ export function Desktop() {
               nomeItemFiltrado={nomeItemFiltrado}
             />
           </div>
-
-          <SecaoCaixa barraca={barraca} />
         </div>
       </div>
     </GateSenhaAdmin>
