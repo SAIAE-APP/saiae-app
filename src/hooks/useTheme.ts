@@ -1,4 +1,5 @@
 import { useEffect, useState } from 'react'
+import { Capacitor, SystemBars, SystemBarsStyle } from '@capacitor/core'
 
 export type Tema = 'claro' | 'escuro'
 
@@ -23,6 +24,21 @@ function aplicarClasseDark(tema: Tema): void {
 }
 
 /**
+ * SystemBars.setStyle() por padrão segue o modo escuro/claro do SISTEMA
+ * (Android), não o tema que o app define aqui (que pode divergir — ex.:
+ * celular no claro do sistema, app no escuro). Sem essa sincronização os
+ * ícones da status bar (hora, bateria, sinal) podem ficar com contraste
+ * errado sobre o fundo do app. Só roda em app nativo — no PWA/navegador
+ * não existe status bar pra controlar.
+ */
+function sincronizarStatusBarNativa(tema: Tema): void {
+  if (!Capacitor.isNativePlatform()) return
+  void SystemBars.setStyle({
+    style: tema === 'escuro' ? SystemBarsStyle.Dark : SystemBarsStyle.Light,
+  })
+}
+
+/**
  * Preferência de tema do dispositivo (não confundir com o campo `modo`
  * da barraca, que é o padrão definido por nós via Supabase). Ainda não
  * é consumido por nenhum componente — ver anotação de pendência da
@@ -35,6 +51,7 @@ export function useTheme() {
 
   useEffect(() => {
     aplicarClasseDark(tema)
+    sincronizarStatusBarNativa(tema)
   }, [tema])
 
   function definirTema(novoTema: Tema): void {
