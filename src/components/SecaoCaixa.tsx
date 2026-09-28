@@ -289,11 +289,17 @@ export function SecaoCaixa({ barraca }: { barraca: Barraca }) {
   async function fecharCaixa(valorContadoCentavos: number, observacao: string): Promise<boolean> {
     if (!caixa) return false
 
+    // O dinheiro entra na hora que o pedido é confirmado e vai pra cozinha,
+    // não na entrega (confirmado com o dono do produto 2026-09-28) — conta
+    // todo pedido em dinheiro que não foi cancelado (a_fazer, pronto ou
+    // entregue), não só 'entregue'. calcularTotalPedido já desconta itens
+    // removidos individualmente (cancelamento parcial) mesmo com o pedido
+    // ainda ativo.
     const { data: pedidos, error: erroPedidos } = await supabase
       .from('pedidos')
       .select('*, itens_do_pedido(*)')
       .eq('barraca_id', barraca.id)
-      .eq('status', 'entregue')
+      .neq('status', 'cancelado')
       .eq('metodo_pagamento', 'dinheiro')
       .gte('criado_em', caixa.aberto_em)
 
