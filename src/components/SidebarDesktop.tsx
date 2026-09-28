@@ -51,8 +51,9 @@ export function SidebarDesktop() {
   return (
     <aside className="fixed inset-y-0 left-0 z-[var(--mesa-z-nav)] hidden w-64 flex-col border-r border-mesa-border-subtle bg-mesa-surface md:flex">
       <div className="flex items-center gap-2.5 px-5 pt-[calc(env(safe-area-inset-top)+20px)] pb-6">
-        <img src="/brand/saiae-icone-cor.svg" alt="" className="size-8 shrink-0 dark:hidden" />
-        <img src="/brand/saiae-icone-branco.svg" alt="" className="hidden size-8 shrink-0 dark:block" />
+        {/* Ícone colorido em qualquer tema (mesma decisão do Login,
+            2026-09-27) — a versão branca lia como "sumida" no escuro. */}
+        <img src="/brand/saiae-icone-cor.svg" alt="" className="size-8 shrink-0" />
         <img
           src="/brand/saiae-wordmark-horizontal-preto.svg"
           alt="Sai aê"
