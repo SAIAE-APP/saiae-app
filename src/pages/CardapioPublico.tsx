@@ -14,6 +14,7 @@ type LinhaCardapioPublico = {
   barraca_id: string
   barraca_nome: string
   barraca_logo_url: string | null
+  barraca_imagem_capa_url: string | null
   pagamento_online_habilitado: boolean
   item_id: string
   item_nome: string
@@ -31,6 +32,54 @@ type BannerPublico = {
   imagem_url: string
   titulo: string | null
   cta_texto: string | null
+}
+
+type HorarioPublico = {
+  dia_semana: number
+  aberto: boolean
+  hora_abertura: string | null
+  hora_fechamento: string | null
+}
+
+const DIAS_ABREV = ['domingo', 'segunda', 'terça', 'quarta', 'quinta', 'sexta', 'sábado']
+
+function paraMinutos(hora: string): number {
+  const [h, m] = hora.split(':').map(Number)
+  return h * 60 + m
+}
+
+/** "Aberto agora"/"Fechado — abre às Xh" calculado no client, a partir da
+ * data/hora do visitante — não trata horário que atravessa a meia-noite
+ * (ex.: 18h–02h), fora de escopo por ora (feira/food service normalmente
+ * fecha antes disso). */
+function statusFuncionamento(horarios: HorarioPublico[]): { aberto: boolean; texto: string } | null {
+  if (horarios.length === 0 || horarios.every((h) => !h.aberto)) return null
+
+  const agora = new Date()
+  const diaAtual = agora.getDay()
+  const minutosAgora = agora.getHours() * 60 + agora.getMinutes()
+
+  const hoje = horarios.find((h) => h.dia_semana === diaAtual)
+  if (hoje?.aberto && hoje.hora_abertura && hoje.hora_fechamento) {
+    const inicio = paraMinutos(hoje.hora_abertura)
+    const fim = paraMinutos(hoje.hora_fechamento)
+    if (minutosAgora >= inicio && minutosAgora < fim) {
+      return { aberto: true, texto: `Aberto agora · fecha às ${hoje.hora_fechamento.slice(0, 5)}` }
+    }
+    if (minutosAgora < inicio) {
+      return { aberto: false, texto: `Fechado · abre hoje às ${hoje.hora_abertura.slice(0, 5)}` }
+    }
+  }
+
+  for (let i = 1; i <= 7; i++) {
+    const dia = (diaAtual + i) % 7
+    const h = horarios.find((x) => x.dia_semana === dia)
+    if (!h?.aberto || !h.hora_abertura) continue
+    const rotuloDia = i === 1 ? 'amanhã' : DIAS_ABREV[dia]
+    return { aberto: false, texto: `Fechado · abre ${rotuloDia} às ${h.hora_abertura.slice(0, 5)}` }
+  }
+
+  return { aberto: false, texto: 'Fechado' }
 }
 
 type Estado =
@@ -352,6 +401,7 @@ export function CardapioPublico() {
     slug ? { status: 'carregando' } : { status: 'erro' },
   )
   const [banners, setBanners] = useState<BannerPublico[]>([])
+  const [horarios, setHorarios] = useState<HorarioPublico[]>([])
   const [busca, setBusca] = useState('')
   const [filtroAtivo, setFiltroAtivo] = useState<string | null>(null)
 
@@ -401,6 +451,22 @@ export function CardapioPublico() {
     }
   }, [slug])
 
+  useEffect(() => {
+    if (!slug) return
+
+    let cancelado = false
+    supabase
+      .rpc('horarios_publicos', { p_slug: slug })
+      .then(({ data, error }) => {
+        if (cancelado || error || !data) return
+        setHorarios(data as HorarioPublico[])
+      })
+
+    return () => {
+      cancelado = true
+    }
+  }, [slug])
+
   // Polling do status do pagamento — mesmo espírito do polling de
   // fallback que useRealtimePedidos usa quando o Realtime cai, só que
   // aqui é sempre polling (o cliente é anônimo, sem sessão pra abrir uma
@@ -431,6 +497,8 @@ export function CardapioPublico() {
   }, [pagamento])
 
   const linhas = useMemo(() => (estado.status === 'pronto' ? estado.linhas : []), [estado])
+
+  const status = useMemo(() => statusFuncionamento(horarios), [horarios])
 
   const itemPorId = useMemo(() => new Map(linhas.map((l) => [l.item_id, l])), [linhas])
 
@@ -581,12 +649,25 @@ export function CardapioPublico() {
 
   const nomeBarraca = linhas[0].barraca_nome
   const logoUrl = linhas[0].barraca_logo_url
+  const capaUrl = linhas[0].barraca_imagem_capa_url
   const podeComprar = linhas[0].pagamento_online_habilitado
 
   return (
-    <div className="min-h-dvh bg-mesa-bg-base pb-12 md:mx-auto md:max-w-4xl">
-      <div className="flex flex-col items-center gap-3 px-6 pb-5 pt-[calc(env(safe-area-inset-top)+32px)] text-center">
-        <span className="flex size-16 items-center justify-center overflow-hidden rounded-mesa-full bg-mesa-surface shadow-mesa-1">
+    <div className="min-h-dvh bg-mesa-bg-base pb-12 pt-[env(safe-area-inset-top)] md:mx-auto md:max-w-4xl">
+      {capaUrl && (
+        <div className="aspect-[3/1] w-full overflow-hidden bg-mesa-neutral-100 dark:bg-mesa-neutral-700 md:aspect-[4/1] md:rounded-b-mesa-xl">
+          <img src={capaUrl} alt="" className="size-full object-cover" />
+        </div>
+      )}
+
+      <div
+        className={
+          capaUrl
+            ? 'relative -mt-9 flex flex-col items-center gap-3 px-6 pb-5 text-center'
+            : 'flex flex-col items-center gap-3 px-6 pb-5 pt-8 text-center'
+        }
+      >
+        <span className="flex size-16 items-center justify-center overflow-hidden rounded-mesa-full bg-mesa-surface shadow-mesa-1 ring-4 ring-mesa-bg-base">
           {logoUrl ? (
             <img src={logoUrl} alt="" className="size-full object-cover" />
           ) : (
@@ -600,6 +681,18 @@ export function CardapioPublico() {
               ? 'Monte seu pedido e pague com Pix direto por aqui'
               : 'Monte sua lista aqui e finalize no caixa'}
           </p>
+          {status && (
+            <span
+              className={`mt-2 inline-flex items-center gap-1 rounded-mesa-balao px-2 py-0.5 text-xs font-bold ${
+                status.aberto
+                  ? 'bg-mesa-success-50 text-mesa-success-700 dark:bg-mesa-success-500/15'
+                  : 'bg-mesa-neutral-100 text-mesa-text-secondary dark:bg-mesa-neutral-700'
+              }`}
+            >
+              <Icone nome={status.aberto ? 'check_circle' : 'schedule'} size={12} preenchido={status.aberto} />
+              {status.texto}
+            </span>
+          )}
         </div>
       </div>
 
