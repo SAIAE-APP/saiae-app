@@ -710,7 +710,7 @@ export function LancarPedido() {
         </p>
       )}
 
-      <div className="flex-1 overflow-y-auto px-6 pb-40 pt-5">
+      <div className="flex-1 overflow-y-auto px-6 pb-40 pt-5 md:mx-auto md:w-full md:max-w-5xl">
         <Input
           type="search"
           value={buscaItem}
@@ -874,7 +874,7 @@ export function LancarPedido() {
           )}
 
           {!carregandoItens && !erroItens && itensFiltrados.length > 0 && modoVisualizacao === 'grade' && (
-            <div className="grid grid-cols-2 gap-3">
+            <div className="grid grid-cols-2 gap-3 md:grid-cols-3 md:gap-4 xl:grid-cols-4">
               {itensFiltrados.map((item) => {
                 const indicePopular = idsMaisPedidos.indexOf(item.id)
                 return (
@@ -894,7 +894,7 @@ export function LancarPedido() {
       </div>
 
       {totalItens > 0 && (
-        <div className="fixed inset-x-0 bottom-16 flex flex-col gap-2 px-4 pb-3">
+        <div className="fixed inset-x-0 bottom-16 flex flex-col gap-2 px-4 pb-3 md:inset-x-auto md:left-1/2 md:w-full md:max-w-5xl md:-translate-x-1/2 md:px-6">
           {itensSemPreco > 0 && (
             <p className="text-center text-xs font-medium text-mesa-text-secondary">
               {itensSemPreco === 1 ? '1 item sem preço' : `${itensSemPreco} itens sem preço`}
