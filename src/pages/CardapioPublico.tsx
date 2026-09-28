@@ -164,9 +164,11 @@ function BotaoAdicionar({
           type="button"
           onClick={onRemover}
           aria-label="Diminuir quantidade"
-          className="flex size-7 items-center justify-center rounded-mesa-full bg-mesa-neutral-900 text-white transition-transform active:scale-90 dark:bg-mesa-neutral-50 dark:text-mesa-neutral-900"
+          className="flex size-11 -m-2 items-center justify-center"
         >
-          <Icone nome="remove" size={14} />
+          <span className="flex size-7 items-center justify-center rounded-mesa-full bg-mesa-neutral-900 text-white transition-transform active:scale-90 dark:bg-mesa-neutral-50 dark:text-mesa-neutral-900">
+            <Icone nome="remove" size={14} />
+          </span>
         </button>
         <span className="min-w-[1.5ch] text-center font-mesa-display text-sm font-bold text-mesa-text-primary">
           {quantidadeNoCarrinho}
@@ -176,9 +178,11 @@ function BotaoAdicionar({
           onClick={onAdicionar}
           disabled={!podeAdicionar}
           aria-label="Aumentar quantidade"
-          className="flex size-7 items-center justify-center rounded-mesa-full bg-mesa-neutral-900 text-white transition-transform active:scale-90 disabled:opacity-40 dark:bg-mesa-neutral-50 dark:text-mesa-neutral-900"
+          className="flex size-11 -m-2 items-center justify-center disabled:opacity-40"
         >
-          <Icone nome="add" size={14} />
+          <span className="flex size-7 items-center justify-center rounded-mesa-full bg-mesa-neutral-900 text-white transition-transform active:scale-90 dark:bg-mesa-neutral-50 dark:text-mesa-neutral-900">
+            <Icone nome="add" size={14} />
+          </span>
         </button>
       </div>
     )
@@ -942,9 +946,11 @@ export function CardapioPublico() {
                       type="button"
                       aria-label={`Diminuir ${item.item_nome}`}
                       onClick={() => alterarQuantidade(item.item_id, -1)}
-                      className="flex size-8 items-center justify-center rounded-mesa-full bg-mesa-neutral-100 text-mesa-text-primary dark:bg-mesa-neutral-700"
+                      className="flex size-11 -m-1.5 items-center justify-center"
                     >
-                      <Icone nome="remove" size={14} />
+                      <span className="flex size-8 items-center justify-center rounded-mesa-full bg-mesa-neutral-100 text-mesa-text-primary dark:bg-mesa-neutral-700">
+                        <Icone nome="remove" size={14} />
+                      </span>
                     </button>
                     <span className="w-4 text-center text-sm font-semibold text-mesa-text-primary">
                       {quantidade}
@@ -953,9 +959,11 @@ export function CardapioPublico() {
                       type="button"
                       aria-label={`Aumentar ${item.item_nome}`}
                       onClick={() => alterarQuantidade(item.item_id, 1)}
-                      className="flex size-8 items-center justify-center rounded-mesa-full bg-mesa-neutral-900 text-white dark:bg-mesa-neutral-50 dark:text-mesa-neutral-900"
+                      className="flex size-11 -m-1.5 items-center justify-center"
                     >
-                      <Icone nome="add" size={14} />
+                      <span className="flex size-8 items-center justify-center rounded-mesa-full bg-mesa-neutral-900 text-white dark:bg-mesa-neutral-50 dark:text-mesa-neutral-900">
+                        <Icone nome="add" size={14} />
+                      </span>
                     </button>
                   </div>
                 </div>

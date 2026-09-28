@@ -326,7 +326,7 @@ export function Onboarding() {
               aria-label={`Tela ${indice + 1}`}
               aria-current={indice === atual}
               onClick={() => irPara(indice)}
-              className="flex size-7 items-center justify-center outline-none"
+              className="flex size-11 items-center justify-center outline-none"
             >
               <span
                 className={clsx(

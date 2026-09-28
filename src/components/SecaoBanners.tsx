@@ -293,7 +293,7 @@ export function SecaoBanners({ barracaId }: { barracaId: string }) {
                         type="button"
                         onClick={() => apagarBanner(banner)}
                         aria-label="Apagar banner"
-                        className="ml-auto flex size-8 items-center justify-center rounded-mesa-md text-mesa-error-500"
+                        className="ml-auto flex size-11 items-center justify-center rounded-mesa-md text-mesa-error-500"
                       >
                         <Icone nome="delete" size={18} />
                       </button>
