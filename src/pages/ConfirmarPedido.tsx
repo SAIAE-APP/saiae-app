@@ -189,6 +189,10 @@ export function ConfirmarPedido() {
     enviandoRef.current = true
     setEnviando(true)
 
+    const todosEntregaDireta =
+      forcarEntregaDiretaEmTudo ||
+      linhas.every(({ itemId }) => entregaDireta[itemId] ?? false)
+
     const itensPedido = linhas.map(({ item, itemId, quantidade }) => ({
       item_id: itemId,
       nome_item: item.nome,
@@ -214,7 +218,7 @@ export function ConfirmarPedido() {
         senhaEnviada: {
           valor: null,
           idFila: operacao.id,
-          entregaDireta: forcarEntregaDiretaEmTudo,
+          entregaDireta: todosEntregaDireta,
         },
       } satisfies EstadoPedidoEnviado,
     })
