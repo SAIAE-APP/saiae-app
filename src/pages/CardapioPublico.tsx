@@ -254,21 +254,49 @@ function CardItemPublico({
   )
 }
 
+// Fallback quando a barraca não cadastrou banner próprio (2026-09-27,
+// pedido de produto) — promocional da própria marca Sai aê, imagens com
+// texto já embutido (design), por isso sem overlay de título/CTA como os
+// banners reais têm. `titulo` aqui só vira `alt`, nunca aparece na tela.
+const BANNERS_PADRAO_SAIAE: BannerPublico[] = [
+  {
+    id: 'padrao-pastel-sem-fila',
+    imagem_url: '/banners-padrao/pastel-sem-fila.webp',
+    titulo: 'Sai aê um pastel? Pede pelo celular, sem fila',
+    cta_texto: null,
+  },
+  {
+    id: 'padrao-pix-direto-cozinha',
+    imagem_url: '/banners-padrao/pix-direto-cozinha.webp',
+    titulo: 'Pagou no Pix? Já foi pra cozinha! Seu pedido chega lá na hora, sem passar pelo caixa',
+    cta_texto: null,
+  },
+  {
+    id: 'padrao-fique-de-olho-senha',
+    imagem_url: '/banners-padrao/fique-de-olho-senha.webp',
+    titulo: 'Fique de olho na sua senha! Quando ficar pronto, a gente chama. Pode relaxar.',
+    cta_texto: null,
+  },
+]
+
 /** Carrossel de banners do topo — conteúdo configurável pelo dono da
- * barraca em Ajustes (SecaoBanners), não fixo do app. Só aparece fora de
- * busca, mesmo espírito das seções Populares/Mais pedido abaixo. */
+ * barraca em Ajustes (SecaoBanners), não fixo do app. Sem banner próprio
+ * cadastrado, mostra os padrão da marca Sai aê (BANNERS_PADRAO_SAIAE) em
+ * vez de ficar vazio. Só aparece fora de busca, mesmo espírito das seções
+ * Populares/Mais pedido abaixo. */
 function CarrosselBanners({ banners }: { banners: BannerPublico[] }) {
-  if (banners.length === 0) return null
+  const usandoPadrao = banners.length === 0
+  const exibidos = usandoPadrao ? BANNERS_PADRAO_SAIAE : banners
 
   return (
     <div className="mb-5 flex snap-x snap-mandatory gap-3 overflow-x-auto px-6 pb-1">
-      {banners.map((banner) => (
+      {exibidos.map((banner) => (
         <div
           key={banner.id}
           className="relative aspect-[16/7] w-[85vw] shrink-0 snap-start overflow-hidden rounded-mesa-xl bg-mesa-neutral-100 shadow-mesa-1 dark:bg-mesa-neutral-700 sm:w-96"
         >
           <img src={banner.imagem_url} alt={banner.titulo ?? ''} className="size-full object-cover" />
-          {(banner.titulo || banner.cta_texto) && (
+          {!usandoPadrao && (banner.titulo || banner.cta_texto) && (
             <div className="absolute inset-x-0 bottom-0 bg-gradient-to-t from-mesa-neutral-900/85 to-transparent p-4 pt-8">
               {banner.titulo && <p className="text-base font-bold text-white">{banner.titulo}</p>}
               {banner.cta_texto && <p className="text-xs text-white/85">{banner.cta_texto}</p>}
