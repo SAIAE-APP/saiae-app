@@ -259,6 +259,25 @@ nenhum item daqui sozinho, só quando for pedido explicitamente.
     item. Um par de abas (`Conta`/`Cardápio & Operação`) aparece só no
     desktop logo abaixo do título "Ajustes", pra trocar de categoria
     sem precisar voltar pra sidebar.
+  - Tour guiado do Hub (`TourGuiado.tsx`, usado em `Dashboard.tsx`)
+    ganhou uma versão desktop em 2026-09-27: a sidebar (Operação/
+    Gestão/Conta) mudou o caminho de verdade no desktop, então os
+    passos do mobile (apontam pro ícone de Ajustes e pros cards de
+    Caixa/Cozinha do Hub mobile) não faziam mais sentido lá. Passos
+    desktop apontam pros 3 grupos da `SidebarDesktop` em vez de
+    elementos do Hub. Chave de "já visto" separada por breakpoint
+    (`hub-desktop` vs `hub`, `tourJaVisto`/`marcarTourVisto` em
+    `TourGuiado.tsx`) — são experiências diferentes, cada uma aparece
+    uma vez, independente da outra. Detecção de breakpoint via novo
+    `useEhDesktop()` (`src/hooks/useEhDesktop.ts`, `window.matchMedia`
+    no mesmo `md` de 768px do Tailwind) — necessário porque
+    `SidebarDesktop` é só CSS (`hidden md:flex`), então uma ref pra ela
+    continua "existindo" mesmo com a sidebar escondida; sem essa
+    checagem o tour desktop apontaria um spotlight pro nada em telas
+    estreitas. Como `SidebarDesktop` é componente irmão (não filho) de
+    `Dashboard.tsx`, os alvos dos passos desktop são achados por
+    `id` (`sidebar-grupo-operacao`/`-gestao`/`-conta`) via
+    `document.getElementById` em vez de `ref={}` direto.
   - Fiscal / NFC-e: em vez de integração direta com a SEFAZ (que foi
     o motivo original de tirar isso de escopo), usar um provedor
     fiscal-as-a-service (ex.: FocusNFe, como o concorrente fez) — o
