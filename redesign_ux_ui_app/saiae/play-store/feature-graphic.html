@@ -1,0 +1,126 @@
+<!doctype html>
+<html lang="pt-BR">
+<head>
+<meta charset="UTF-8" />
+<link rel="preconnect" href="https://fonts.googleapis.com" />
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+<link
+  rel="stylesheet"
+  href="https://fonts.googleapis.com/css2?family=Outfit:wght@600;700;800&family=Figtree:wght@400;500;600;700&display=swap"
+/>
+<style>
+  * { margin: 0; padding: 0; box-sizing: border-box; }
+  html, body {
+    width: 1024px;
+    height: 500px;
+    overflow: hidden;
+    background: #18171C;
+    font-family: 'Figtree', system-ui, sans-serif;
+  }
+  .stage {
+    position: relative;
+    width: 1024px;
+    height: 500px;
+    background: #18171C;
+  }
+  /* Acento de marca — retângulo mostarda com canto balão (assinatura da
+     IDV), parcialmente fora do canvas no canto inferior direito. Sem
+     glow/gradiente, só forma sólida, conforme a regra de tema. */
+  .acento {
+    position: absolute;
+    right: -90px;
+    bottom: -110px;
+    width: 460px;
+    height: 460px;
+    background: #FFC21A;
+    border-radius: 120px 120px 120px 40px;
+    opacity: 0.12;
+  }
+
+  .conteudo {
+    position: absolute;
+    inset: 0;
+    display: flex;
+    align-items: center;
+    padding: 0 96px;
+  }
+
+  .marca {
+    display: flex;
+    flex-direction: column;
+    gap: 28px;
+    max-width: 560px;
+  }
+
+  .lockup {
+    display: flex;
+    align-items: center;
+    gap: 20px;
+  }
+  .lockup img.icone { width: 84px; height: 84px; display: block; }
+  .lockup img.wordmark { height: 56px; width: auto; display: block; }
+
+  .tagline {
+    font-size: 30px;
+    line-height: 1.35;
+    font-weight: 500;
+    color: #ECEAE6;
+  }
+
+  /* Card mockup — mesma "assinatura de marca" do app: canto balão,
+     número em Outfit tabular, simula a tela de chamada de senha. */
+  .card {
+    position: absolute;
+    right: 96px;
+    top: 50%;
+    transform: translateY(-50%);
+    width: 260px;
+    background: #232229;
+    border: 1px solid #37363D;
+    border-radius: 20px 20px 20px 4px;
+    padding: 28px 32px;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    gap: 8px;
+    box-shadow: 0 20px 48px rgba(0,0,0,0.35);
+  }
+  .card .rotulo {
+    font-family: 'Figtree', sans-serif;
+    font-size: 13px;
+    font-weight: 700;
+    letter-spacing: 0.08em;
+    text-transform: uppercase;
+    color: #8A8893;
+  }
+  .card .senha {
+    font-family: 'Outfit', sans-serif;
+    font-weight: 800;
+    font-size: 96px;
+    line-height: 1;
+    color: #FFC21A;
+    font-variant-numeric: tabular-nums;
+  }
+</style>
+</head>
+<body>
+  <div class="stage">
+    <div class="acento"></div>
+    <div class="conteudo">
+      <div class="marca">
+        <div class="lockup">
+          <img class="icone" src="/brand/saiae-icone-cor.svg" alt="" />
+          <img class="wordmark" src="/brand/saiae-wordmark-horizontal.svg" alt="Sai aê" />
+        </div>
+        <div class="tagline">
+          Comanda digital pra feira,<br />food truck e lanchonete
+        </div>
+      </div>
+    </div>
+    <div class="card">
+      <div class="rotulo">Senha</div>
+      <div class="senha">42</div>
+    </div>
+  </div>
+</body>
+</html>
