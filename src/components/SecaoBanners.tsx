@@ -226,9 +226,13 @@ export function SecaoBanners({ barracaId }: { barracaId: string }) {
     <section>
       <RotuloSecao icone="view_carousel">Banners do cardápio digital</RotuloSecao>
       <Card>
-        <p className="mb-3 text-sm text-mesa-text-secondary">
+        <p className="mb-1 text-sm text-mesa-text-secondary">
           Aparecem em carrossel no topo do cardápio público do cliente. Foto obrigatória; título e
           texto de destaque são opcionais.
+        </p>
+        <p className="mb-3 text-xs text-mesa-text-tertiary">
+          Tamanho ideal: 1200×525px (proporção 16:7) — fotos fora dessa proporção são cortadas
+          pra preencher o espaço.
         </p>
 
         {carregando && <p className="text-sm text-mesa-text-secondary">Carregando...</p>}
