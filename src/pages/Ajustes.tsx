@@ -24,6 +24,7 @@ import { GateSenhaAdmin } from '../components/GateSenhaAdmin'
 import { SecaoImpressora } from '../components/SecaoImpressora'
 import { SecaoBanners } from '../components/SecaoBanners'
 import { SecaoHorarioFuncionamento } from '../components/SecaoHorarioFuncionamento'
+import { SecaoAjudaSuporte } from '../components/SecaoAjudaSuporte'
 import { Button } from '../components/ui/Button'
 import { Card } from '../components/ui/Card'
 import { Chip } from '../components/ui/Chip'
@@ -2488,6 +2489,9 @@ export function Ajustes({ categoria = 'conta' }: { categoria?: CategoriaAjustes 
           </SecaoDaCategoria>
           <SecaoDaCategoria categoria="cardapio" atual={categoria}>
             <SecaoAparencia />
+          </SecaoDaCategoria>
+          <SecaoDaCategoria categoria="conta" atual={categoria}>
+            <SecaoAjudaSuporte barracaNome={barraca.nome} barracaSlug={barraca.slug} />
           </SecaoDaCategoria>
           <SecaoDaCategoria categoria="conta" atual={categoria}>
             <Rodape barracaId={barraca.id} />
