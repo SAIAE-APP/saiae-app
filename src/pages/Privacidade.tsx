@@ -3,16 +3,17 @@ import { Icone } from '../components/ui/Icone'
 
 // Página pública de Política de Privacidade (app.saiae.com.br/privacidade),
 // exigida pela Play Store — hoje a ficha aponta pra política do iFood, o
-// que viola a regra do Google. RASCUNHO jurídico: escrito a partir do que o
-// código realmente faz (ver comentários de cada seção), não é texto
-// genérico de template. Precisa de revisão/aprovação do dono do produto
-// antes de publicar — ver campos marcados [PREENCHER].
+// que viola a regra do Google. Escrita a partir do que o código realmente
+// faz (ver comentários de cada seção), não é texto genérico de template.
+// Aprovada pelo dono do produto em 2026-09-28 pra publicação — não é
+// revisão jurídica formal (nenhum advogado revisou), decisão consciente
+// dele mesmo assim.
 //
 // Sem tabela própria de "consentimento de cookies" ou analytics: o app não
 // usa nenhum rastreador de terceiro (confirmado por busca no código,
 // 2026-09-28) — não há seção de cookies além da nota informativa abaixo.
 
-const DATA_VIGENCIA_RASCUNHO = '[PREENCHER: data de publicação desta versão]'
+const DATA_VIGENCIA = '28 de setembro de 2026'
 
 function Secao({ titulo, children }: { titulo: string; children: React.ReactNode }) {
   return (
@@ -62,24 +63,11 @@ export function Privacidade() {
       </header>
 
       <main className="mx-auto flex max-w-[720px] flex-col gap-10 px-6 py-10 pb-20">
-        {/* Aviso de rascunho — remover só depois do João revisar e aprovar o
-            texto. Canto balão de propósito: mesmo componente visual de
-            etiqueta/aviso usado no resto do app. */}
-        <div className="flex items-start gap-3 rounded-mesa-balao border border-mesa-orange-300 bg-mesa-orange-50 p-4 dark:border-mesa-orange-700 dark:bg-mesa-orange-900/20">
-          <Icone nome="warning" size={20} className="mt-0.5 shrink-0 text-mesa-orange-700 dark:text-mesa-orange-400" />
-          <p className="text-sm leading-5 text-mesa-orange-800 dark:text-mesa-orange-200">
-            <strong className="font-semibold">Rascunho para revisão.</strong> Este texto foi montado a
-            partir do que o app coleta de verdade, mas ainda não foi revisado por um advogado nem
-            aprovado pra publicação. Campos entre colchetes (ex.: CNPJ/razão social) precisam ser
-            preenchidos antes de publicar.
-          </p>
-        </div>
-
         <div>
           <h1 className="text-[32px] font-bold leading-10 text-mesa-text-primary font-mesa-display">
             Política de Privacidade
           </h1>
-          <p className="mt-2 text-sm text-mesa-text-tertiary">Última atualização: {DATA_VIGENCIA_RASCUNHO}</p>
+          <p className="mt-2 text-sm text-mesa-text-tertiary">Última atualização: {DATA_VIGENCIA}</p>
         </div>
 
         <Secao titulo="1. Quem somos">
