@@ -220,6 +220,18 @@ nenhum item daqui sozinho, só quando for pedido explicitamente.
   Faturamento), "Conta" (Ajustes) — só reagrupou os 4 itens que já
   existiam, sem copiar item novo do concorrente (Mesas/Entregadores/
   Estoque não existem aqui).
+  - Exceção pontual em 2026-09-27 (pedido explícito do dono do
+    produto, via print de preview quebrado em tela larga): Lançar
+    Pedido (`src/pages/LancarPedido.tsx`) ganhou tratamento de
+    desktop na visualização em grade do cardápio — mais colunas
+    (`md:grid-cols-3`/`xl:grid-cols-4`, eram só 2 fixas) e o conteúdo
+    da tela (busca, chips, grid) mais a barra fixa do carrinho passam
+    a caber num container de largura máxima (`max-w-5xl`)
+    centralizado em vez de esticar borda a borda. Continua usando
+    `BarraNavegacao` normalmente, sem virar rota tipo `Desktop.tsx`
+    nem ganhar `SidebarDesktop`. Cozinha/Chamada/Confirmar **não**
+    entram nessa exceção — continuam mobile-only sem nenhum
+    tratamento de tela larga, regra de cima inalterada pra elas.
   - Fiscal / NFC-e: em vez de integração direta com a SEFAZ (que foi
     o motivo original de tirar isso de escopo), usar um provedor
     fiscal-as-a-service (ex.: FocusNFe, como o concorrente fez) — o
