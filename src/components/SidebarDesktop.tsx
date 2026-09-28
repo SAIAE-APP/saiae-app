@@ -5,11 +5,21 @@ import { useAuth } from '../hooks/useAuth'
 import { useTheme } from '../hooks/useTheme'
 import { Icone } from './ui/Icone'
 
-const ITENS: { rotulo: string; rota: string; icone: string }[] = [
-  { rotulo: 'Dashboard', rota: '', icone: 'home' },
-  { rotulo: 'Histórico', rota: 'historico', icone: 'bar_chart' },
-  { rotulo: 'Faturamento', rota: 'desktop', icone: 'payments' },
-  { rotulo: 'Ajustes', rota: 'ajustes', icone: 'settings' },
+type ItemNav = { rotulo: string; rota: string; icone: string }
+
+// Agrupamento visual (pedido de produto 2026-09-27, inspirado num print de
+// concorrente) — só reorganiza os 4 itens que já existem, não inventa item
+// novo (Mesas/Entregadores/Estoque do concorrente não existem aqui).
+const GRUPOS: { rotulo: string; itens: ItemNav[] }[] = [
+  { rotulo: 'Operação', itens: [{ rotulo: 'Dashboard', rota: '', icone: 'home' }] },
+  {
+    rotulo: 'Gestão',
+    itens: [
+      { rotulo: 'Histórico', rota: 'historico', icone: 'bar_chart' },
+      { rotulo: 'Faturamento', rota: 'desktop', icone: 'payments' },
+    ],
+  },
+  { rotulo: 'Conta', itens: [{ rotulo: 'Ajustes', rota: 'ajustes', icone: 'settings' }] },
 ]
 
 const CLASSE_ITEM =
@@ -46,24 +56,31 @@ export function SidebarDesktop() {
         />
       </div>
 
-      <nav className="flex flex-col gap-1 px-3">
-        {ITENS.map((item) => (
-          <NavLink
-            key={item.rota}
-            to={`/${barraca.slug}${item.rota ? `/${item.rota}` : ''}`}
-            end={item.rota === ''}
-            className={({ isActive }) =>
-              clsx(
-                CLASSE_ITEM,
-                isActive
-                  ? 'bg-[var(--mesa-state-selected-bg)] text-mesa-text-primary'
-                  : 'text-mesa-text-secondary hover:bg-[var(--mesa-state-hover-bg)]',
-              )
-            }
-          >
-            <Icone nome={item.icone} size={20} />
-            {item.rotulo}
-          </NavLink>
+      <nav className="flex flex-col gap-4 px-3">
+        {GRUPOS.map((grupo) => (
+          <div key={grupo.rotulo} className="flex flex-col gap-1">
+            <p className="mb-1 px-3 font-mesa-sans text-xs font-semibold uppercase tracking-wider text-mesa-text-secondary">
+              {grupo.rotulo}
+            </p>
+            {grupo.itens.map((item) => (
+              <NavLink
+                key={item.rota}
+                to={`/${barraca.slug}${item.rota ? `/${item.rota}` : ''}`}
+                end={item.rota === ''}
+                className={({ isActive }) =>
+                  clsx(
+                    CLASSE_ITEM,
+                    isActive
+                      ? 'bg-[var(--mesa-state-selected-bg)] text-mesa-text-primary'
+                      : 'text-mesa-text-secondary hover:bg-[var(--mesa-state-hover-bg)]',
+                  )
+                }
+              >
+                <Icone nome={item.icone} size={20} />
+                {item.rotulo}
+              </NavLink>
+            ))}
+          </div>
         ))}
       </nav>
 
