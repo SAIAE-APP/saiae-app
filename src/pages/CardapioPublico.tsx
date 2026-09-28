@@ -336,20 +336,24 @@ function CarrosselBanners({ banners }: { banners: BannerPublico[] }) {
         ref={containerRef}
         onPointerDown={pausarPorInteracao}
         onTouchStart={pausarPorInteracao}
-        className="flex snap-x snap-mandatory overflow-x-auto px-6"
+        className="rolagem-sem-barra flex snap-x snap-mandatory overflow-x-auto"
       >
+        {/* Padding mora dentro de cada slide (não no container) — cada slide
+            já ocupa a largura cheia da tela, então o card fica sempre
+            centralizado com a mesma margem dos dois lados, sem nenhum
+            vizinho espiando na borda (que acontecia quando o padding era só
+            nas pontas da fileira toda). */}
         {exibidos.map((banner) => (
-          <div
-            key={banner.id}
-            className="relative aspect-[16/7] w-full shrink-0 snap-start overflow-hidden rounded-mesa-xl bg-mesa-neutral-100 shadow-mesa-1 dark:bg-mesa-neutral-700"
-          >
-            <img src={banner.imagem_url} alt={banner.titulo ?? ''} className="size-full object-cover" />
-            {!usandoPadrao && (banner.titulo || banner.cta_texto) && (
-              <div className="absolute inset-x-0 bottom-0 bg-gradient-to-t from-mesa-neutral-900/85 to-transparent p-4 pt-8">
-                {banner.titulo && <p className="text-base font-bold text-white">{banner.titulo}</p>}
-                {banner.cta_texto && <p className="text-xs text-white/85">{banner.cta_texto}</p>}
-              </div>
-            )}
+          <div key={banner.id} className="w-full shrink-0 snap-start px-6">
+            <div className="relative aspect-[16/7] w-full overflow-hidden rounded-mesa-xl bg-mesa-neutral-100 shadow-mesa-1 dark:bg-mesa-neutral-700">
+              <img src={banner.imagem_url} alt={banner.titulo ?? ''} className="size-full object-cover" />
+              {!usandoPadrao && (banner.titulo || banner.cta_texto) && (
+                <div className="absolute inset-x-0 bottom-0 bg-gradient-to-t from-mesa-neutral-900/85 to-transparent p-4 pt-8">
+                  {banner.titulo && <p className="text-base font-bold text-white">{banner.titulo}</p>}
+                  {banner.cta_texto && <p className="text-xs text-white/85">{banner.cta_texto}</p>}
+                </div>
+              )}
+            </div>
           </div>
         ))}
       </div>
