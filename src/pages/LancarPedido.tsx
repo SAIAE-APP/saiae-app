@@ -43,6 +43,8 @@ function lerModoVisualizacaoSalvo(): ModoVisualizacaoCardapio {
   }
 }
 
+const TEMPO_LIMITE_SENHA_MS = 15000
+
 // valor null = pedido enfileirado, aguardando o servidor atribuir a senha
 // real (nunca mostramos um número provisório que pode não bater com o
 // definitivo — bug reportado em operação ao vivo, 2026-09-27). Exceção:
@@ -381,6 +383,7 @@ export function LancarPedido() {
     () => edicaoRecebida?.entregaDireta ?? {},
   )
 
+  const [senhaDemorando, setSenhaDemorando] = useState(false)
   const [senha, setSenha] = useState<SenhaConfirmada | null>(
     () => envioRecebido?.senhaEnviada ?? null,
   )
@@ -523,6 +526,16 @@ export function LancarPedido() {
     return aoConcluirCriacaoPedido(senha.idFila, (resultado) => {
       setSenha((atual) => (atual ? { ...atual, valor: resultado.senha } : atual))
     })
+  }, [senha])
+
+  useEffect(() => {
+    if (!senha || senha.valor !== null || senha.entregaDireta) return
+
+    const timer = window.setTimeout(() => setSenhaDemorando(true), TEMPO_LIMITE_SENHA_MS)
+    return () => {
+      window.clearTimeout(timer)
+      setSenhaDemorando(false)
+    }
   }, [senha])
 
   const totalItens = useMemo(
@@ -669,7 +682,9 @@ export function LancarPedido() {
               aria-hidden
             />
             <span className="text-sm font-medium text-mesa-text-secondary">
-              Gerando a senha...
+              {senhaDemorando
+                ? 'Demorando mais que o normal — o pedido segue na fila e será enviado assim que a conexão permitir.'
+                : 'Gerando a senha...'}
             </span>
           </span>
         ) : (

@@ -100,7 +100,8 @@ export function useSincronizacao() {
         try {
           await executarOperacao(op)
           await marcarConcluida(op.id)
-        } catch {
+        } catch (erro) {
+          console.error(`[sincronizacao] falha em ${op.tipo} (tentativa ${op.tentativas + 1})`, erro)
           await incrementarTentativa(op.id)
           falhou = true
           break
