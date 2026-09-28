@@ -3,12 +3,12 @@ import { Icone } from '../components/ui/Icone'
 import { Card } from '../components/ui/Card'
 
 // Página pública de Exclusão de conta (app.saiae.com.br/excluir-conta) —
-// exigida pelo Google pra apps que permitem criar conta. Hoje o Sai aê NÃO
-// tem uma RPC de "excluir minha conta de usuário", só "apagar barraca"
-// (apagar_barraca.sql, aciona pela lixeira em SelecionarBarraca). Por isso
-// o processo aqui é manual, via e-mail, até um botão in-app existir (ver
-// proposta em Ajustes > Segurança no CLAUDE.md/roadmap — não implementado
-// ainda, aguardando decisão do dono do produto).
+// exigida pelo Google pra apps que permitem criar conta. Desde
+// 2026-09-28 existe exclusão self-service in-app de verdade (Ajustes >
+// Conta > "Excluir minha conta", edge function `excluir-conta` +
+// RPC `excluir_dados_conta`) — essa página lidera com esse caminho, e
+// mantém o e-mail como alternativa pra quem não consegue acessar o app
+// (perdeu a senha, não tem mais o aparelho, etc.).
 
 const ASSUNTO_EMAIL = 'Excluir minha conta Sai aê'
 const LINK_EMAIL = `mailto:contatosaiae@gmail.com?subject=${encodeURIComponent(ASSUNTO_EMAIL)}`
@@ -61,9 +61,23 @@ export function ExcluirConta() {
         </div>
 
         <Card className="flex flex-col gap-4">
-          <h2 className="text-lg font-bold text-mesa-text-primary font-mesa-display">Como pedir</h2>
+          <h2 className="text-lg font-bold text-mesa-text-primary font-mesa-display">
+            Direto pelo app (mais rápido)
+          </h2>
           <p className="text-[15px] leading-[1.6] text-mesa-text-secondary">
-            Envie um e-mail para{' '}
+            Abra o Sai aê, vá em <strong className="font-semibold text-mesa-text-primary">Ajustes → Conta</strong>,
+            role até <strong className="font-semibold text-mesa-text-primary">Excluir minha conta</strong> e
+            confirme digitando <strong className="font-semibold text-mesa-text-primary">EXCLUIR</strong>. A
+            exclusão acontece na hora — login e dados apagados imediatamente, sem espera.
+          </p>
+        </Card>
+
+        <Card className="flex flex-col gap-4">
+          <h2 className="text-lg font-bold text-mesa-text-primary font-mesa-display">
+            Sem acesso ao app? Peça por e-mail
+          </h2>
+          <p className="text-[15px] leading-[1.6] text-mesa-text-secondary">
+            Se você perdeu a senha ou não tem mais o aparelho, envie um e-mail para{' '}
             <a href={LINK_EMAIL} className="font-medium text-mesa-text-primary underline">
               contatosaiae@gmail.com
             </a>{' '}
@@ -98,8 +112,10 @@ export function ExcluirConta() {
           <ul className="flex flex-col gap-2 text-[15px] leading-[1.6] text-mesa-text-secondary">
             <ItemLista>
               Se você é <strong className="font-semibold text-mesa-text-primary">funcionário</strong> de
-              uma barraca (não dono), sua conta pode ser excluída, mas a barraca continua existindo —
-              gerida pelo dono dela.
+              uma barraca (não dono), ou <strong className="font-semibold text-mesa-text-primary">dono
+              junto com outra pessoa</strong>, sua conta é excluída, mas a barraca continua existindo —
+              gerida por quem mais tem acesso a ela. Só apagamos uma barraca inteira quando você é o
+              único dono dela.
             </ItemLista>
             <ItemLista>
               Se você tem uma assinatura ativa via Kirvano, cancele-a separadamente pelo link de gestão
