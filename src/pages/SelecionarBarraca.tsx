@@ -358,41 +358,43 @@ export function SelecionarBarraca() {
   }
 
   return (
-    <div className="flex min-h-dvh flex-col bg-mesa-bg-base p-6">
+    <div className="flex min-h-dvh flex-col bg-mesa-bg-base p-6 md:mx-auto md:w-full md:max-w-4xl">
       <div>
         <h1 className="text-2xl font-bold text-mesa-text-primary">Qual barraca?</h1>
         <p className="mt-1 text-sm text-mesa-text-secondary">Escolha a barraca que você vai operar agora.</p>
       </div>
 
       <div className="mt-6 flex flex-col gap-3">
-        {barracas.map(({ barraca, papel }) => (
-          <CartaoBarraca
-            key={barraca.id}
-            nome={barraca.nome}
-            logoUrl={barraca.logo_url}
-            emFila={filaPorBarraca[barraca.id] ?? 0}
-            onAcessar={() => navigate(`/${barraca.slug}`)}
-            onExcluir={
-              papel === 'dono' ? () => setBarracaParaApagar({ id: barraca.id, nome: barraca.nome }) : undefined
-            }
-          />
-        ))}
+        <div className="flex flex-col gap-3 md:grid md:grid-cols-2 md:items-start md:gap-4 xl:grid-cols-3">
+          {barracas.map(({ barraca, papel }) => (
+            <CartaoBarraca
+              key={barraca.id}
+              nome={barraca.nome}
+              logoUrl={barraca.logo_url}
+              emFila={filaPorBarraca[barraca.id] ?? 0}
+              onAcessar={() => navigate(`/${barraca.slug}`)}
+              onExcluir={
+                papel === 'dono' ? () => setBarracaParaApagar({ id: barraca.id, nome: barraca.nome }) : undefined
+              }
+            />
+          ))}
 
-        <button
-          type="button"
-          onClick={() => setCriandoBarraca(true)}
-          className="flex items-center gap-3 rounded-mesa-lg border-2 border-dashed border-mesa-border-default p-4 text-left outline-none hover:bg-[var(--mesa-state-hover-bg)]"
-        >
-          <span className="flex size-11 shrink-0 items-center justify-center rounded-mesa-full bg-mesa-neutral-100 text-mesa-text-secondary dark:bg-mesa-neutral-700">
-            <Icone nome="add" size={20} />
-          </span>
-          <span>
-            <span className="block text-base font-semibold text-mesa-text-primary">Nova barraca</span>
-            <span className="block text-sm text-mesa-text-secondary">
-              Criar mais uma barraca pra você operar
+          <button
+            type="button"
+            onClick={() => setCriandoBarraca(true)}
+            className="flex items-center gap-3 rounded-mesa-lg border-2 border-dashed border-mesa-border-default p-4 text-left outline-none hover:bg-[var(--mesa-state-hover-bg)] md:h-full"
+          >
+            <span className="flex size-11 shrink-0 items-center justify-center rounded-mesa-full bg-mesa-neutral-100 text-mesa-text-secondary dark:bg-mesa-neutral-700">
+              <Icone nome="add" size={20} />
             </span>
-          </span>
-        </button>
+            <span>
+              <span className="block text-base font-semibold text-mesa-text-primary">Nova barraca</span>
+              <span className="block text-sm text-mesa-text-secondary">
+                Criar mais uma barraca pra você operar
+              </span>
+            </span>
+          </button>
+        </div>
 
         <div className="flex items-start gap-2.5 rounded-mesa-lg bg-mesa-neutral-100 p-4 text-sm text-mesa-text-secondary dark:bg-mesa-neutral-800">
           <Icone nome="info" size={16} className="mt-0.5 text-mesa-text-tertiary" />
