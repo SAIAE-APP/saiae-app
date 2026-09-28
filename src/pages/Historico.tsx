@@ -107,7 +107,7 @@ async function gerarPlanilha(pedidos: PedidoComItens[]): Promise<ArrayBuffer> {
       senha: pedido.senha,
       mesa: pedido.mesa ?? '',
       viagem: pedido.viagem ? 'Sim' : 'Não',
-      status: cancelado ? 'Cancelado' : 'Entregue',
+      status: rotuloStatus(pedido.status),
       observacao: pedido.observacao ?? '',
       itens: itensTexto,
       entrada: formatarHora(pedido.criado_em),
@@ -128,10 +128,17 @@ async function gerarPlanilha(pedidos: PedidoComItens[]): Promise<ArrayBuffer> {
   return workbook.xlsx.writeBuffer()
 }
 
+function rotuloStatus(status: PedidoComItens['status']): string {
+  if (status === 'cancelado') return 'Cancelado'
+  if (status === 'entregue') return 'Entregue'
+  if (status === 'pronto') return 'Pronto'
+  return 'Em preparo'
+}
+
 function ordenarPorEntregueEmDesc(lista: PedidoComItens[]): PedidoComItens[] {
   return [...lista].sort((a, b) => {
-    const finalizacaoA = a.entregue_em ?? a.cancelado_em
-    const finalizacaoB = b.entregue_em ?? b.cancelado_em
+    const finalizacaoA = a.entregue_em ?? a.cancelado_em ?? a.criado_em
+    const finalizacaoB = b.entregue_em ?? b.cancelado_em ?? b.criado_em
     const tempoA = finalizacaoA ? new Date(finalizacaoA).getTime() : 0
     const tempoB = finalizacaoB ? new Date(finalizacaoB).getTime() : 0
     return tempoB - tempoA
@@ -242,7 +249,7 @@ function CardHistorico({
         {cancelado ? (
           <Badge variant="danger">CANCELADO</Badge>
         ) : (
-          <Badge variant="neutral">ENTREGUE</Badge>
+          <Badge variant="neutral">{rotuloStatus(pedido.status).toUpperCase()}</Badge>
         )}
         {!cancelado && ehEntregaDireta(pedido) && <Badge variant="neutral">Entrega direta</Badge>}
         {/* corMetodo() já devolve um par bg/texto completo (cor dinâmica por
@@ -281,7 +288,7 @@ function CardHistorico({
 
       {!cancelado && <BotaoEmitirNota pedido={pedido} />}
 
-      {!cancelado && (
+      {pedido.status === 'entregue' && (
         <Button
           variant="outline"
           size="md"
@@ -347,7 +354,6 @@ export function Historico() {
       .from('pedidos')
       .select('*, itens_do_pedido(*)')
       .eq('barraca_id', barraca.id)
-      .in('status', ['entregue', 'cancelado'])
       .gte('data_operacao', intervalo.inicio)
       .lte('data_operacao', intervalo.fim)
       .order('criado_em', { ascending: false })
