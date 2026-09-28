@@ -90,7 +90,7 @@ export function Privacidade() {
             cardápio digital público (usado por clientes finais).
           </p>
           <p>
-            Controlador dos dados: <strong>[PREENCHER: seu nome completo]</strong>, pessoa física
+            Controlador dos dados: <strong>João Marcos</strong>, pessoa física
             responsável pelo Sai aê — CNPJ ainda em processo de abertura, este trecho será atualizado
             pra razão social/CNPJ assim que a empresa for formalizada. Contato para qualquer assunto de
             privacidade:{' '}
