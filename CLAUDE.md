@@ -236,6 +236,29 @@ nenhum item daqui sozinho, só quando for pedido explicitamente.
     nem ganhar `SidebarDesktop`. Cozinha/Chamada/Confirmar **não**
     entram nessa exceção — continuam mobile-only sem nenhum
     tratamento de tela larga, regra de cima inalterada pra elas.
+  - Ajustes (`src/pages/Ajustes.tsx`) split em duas categorias, só no
+    desktop (pedido do dono do produto, 2026-09-27: a página tinha
+    crescido demais — 11 seções empilhadas numa rolagem só). **Conta**
+    (`/:slug/ajustes`): Assinatura, Identidade, Pagamento (taxas de
+    maquininha), Fiscal, Pagamento online. **Cardápio & Operação**
+    (`/:slug/ajustes/cardapio`): Cardápio, Banners, Horário de
+    funcionamento, Faixas (kanban), Impressora, Aparência. "Segurança
+    e operador" (trocar senha/Face ID/sair) ficou em Conta. As duas
+    rotas renderizam o MESMO componente `Ajustes` (prop `categoria`) —
+    as 11 seções continuam todas montadas na mesma ordem de sempre,
+    cada uma dentro de um wrapper `display: contents` que só ganha
+    `md:hidden` quando não é da categoria da rota atual. Isso existe
+    pra preservar a ordem exata do mobile (que continua numa página só
+    com tudo, igual sempre foi) sem duplicar nenhuma seção — não é
+    duas páginas de verdade, é uma view filtrada por CSS a partir de
+    md. `LayoutBarraca.tsx` trata as duas rotas como "em Ajustes" pra
+    decidir sidebar (`endsWith('/ajustes') || endsWith('/ajustes/
+    cardapio')`). `SidebarDesktop.tsx`: item "Conta" continua no grupo
+    "Conta"; item novo "Cardápio" entrou no grupo "Gestão" (ao lado de
+    Histórico/Faturamento) em vez de virar grupo próprio só com 1
+    item. Um par de abas (`Conta`/`Cardápio & Operação`) aparece só no
+    desktop logo abaixo do título "Ajustes", pra trocar de categoria
+    sem precisar voltar pra sidebar.
   - Fiscal / NFC-e: em vez de integração direta com a SEFAZ (que foi
     o motivo original de tirar isso de escopo), usar um provedor
     fiscal-as-a-service (ex.: FocusNFe, como o concorrente fez) — o
