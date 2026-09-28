@@ -81,87 +81,105 @@ export function Cadastro() {
   }
 
   return (
-    <div className="flex min-h-dvh flex-col items-center justify-center bg-mesa-bg-base p-6">
-      <div className="w-full max-w-[420px]">
-        <div className="flex flex-col items-center text-center">
-          <div className="flex size-16 items-center justify-center rounded-mesa-full bg-white shadow-mesa-1 dark:bg-mesa-neutral-800">
-            <img src="/brand/saiae-icone-cor.svg" alt="" className="size-8" />
+    <div className="relative flex min-h-dvh flex-col md:flex-row">
+      {/* Mesmo painel de foto do Login — par da mesma tela de entrada. */}
+      <div className="absolute inset-0 overflow-hidden md:relative md:h-auto md:min-h-dvh md:w-1/2">
+        <img
+          src="/login/feirante.webp"
+          alt="Dona de barraca sorrindo, segurando o celular, com banca de frutas e verduras ao fundo"
+          className="size-full object-cover object-[60%_20%]"
+        />
+      </div>
+
+      <div
+        className={[
+          'relative z-10 mt-auto flex max-h-[76dvh] flex-col overflow-y-auto',
+          'rounded-t-mesa-2xl bg-mesa-surface p-6 pb-[calc(env(safe-area-inset-bottom)+24px)] shadow-mesa-3',
+          'md:mt-0 md:max-h-none md:flex-1 md:items-center md:justify-center md:overflow-visible',
+          'md:rounded-none md:bg-mesa-bg-base md:p-6 md:shadow-none',
+        ].join(' ')}
+      >
+        <div className="relative w-full max-w-[420px] md:mx-auto">
+          <div className="flex flex-col items-center text-center">
+            <div className="flex size-16 items-center justify-center rounded-mesa-full bg-white shadow-mesa-1 dark:bg-mesa-neutral-800">
+              <img src="/brand/saiae-icone-cor.svg" alt="" className="size-8" />
+            </div>
+            <h1 className="mt-4 text-[32px] font-bold leading-[40px] text-mesa-text-primary">
+              Criar conta
+            </h1>
+            <p className="mt-1 text-sm text-mesa-text-secondary">
+              Comece a usar o Sai aê na sua barraca
+            </p>
           </div>
-          <h1 className="mt-4 text-[32px] font-bold leading-[40px] text-mesa-text-primary">
-            Criar conta
-          </h1>
-          <p className="mt-1 text-sm text-mesa-text-secondary">
-            Comece a usar o Sai aê na sua barraca
+
+          <form onSubmit={aoSubmeter} className="mt-8 flex flex-col gap-4">
+            <Input
+              label="E-mail"
+              type="email"
+              autoComplete="email"
+              autoFocus
+              required
+              value={email}
+              onChange={(e) => setEmail(e.target.value)}
+            />
+
+            <div>
+              <Input
+                label="Senha"
+                type="password"
+                autoComplete="new-password"
+                required
+                value={senha}
+                onChange={(e) => setSenha(e.target.value)}
+              />
+              <ul className="mt-2 flex flex-col gap-1">
+                {REQUISITOS_SENHA.map((requisito) => {
+                  const atendido = requisito.testar(senha)
+                  return (
+                    <li
+                      key={requisito.chave}
+                      className={`flex items-center gap-1.5 text-xs ${
+                        atendido ? 'text-mesa-success-700 dark:text-mesa-success-500' : 'text-mesa-text-tertiary'
+                      }`}
+                    >
+                      <span aria-hidden>{atendido ? '✓' : '✗'}</span>
+                      {requisito.label}
+                    </li>
+                  )
+                })}
+              </ul>
+            </div>
+
+            <div>
+              <Input
+                label="Confirmar senha"
+                type="password"
+                autoComplete="new-password"
+                required
+                value={confirmarSenha}
+                onChange={(e) => setConfirmarSenha(e.target.value)}
+              />
+              {mostraDivergencia && (
+                <p className="mt-1 text-xs font-medium text-mesa-error-500">
+                  As senhas não conferem
+                </p>
+              )}
+            </div>
+
+            {erro && <p className="text-sm font-medium text-mesa-error-500">{erro}</p>}
+
+            <Button type="submit" size="xl" loading={cadastrando} disabled={!podeEnviar} className="w-full">
+              Criar conta
+            </Button>
+          </form>
+
+          <p className="mt-6 text-center text-sm text-mesa-text-secondary">
+            Já tem conta?{' '}
+            <Link to="/login" className="font-medium text-mesa-text-primary">
+              Entrar
+            </Link>
           </p>
         </div>
-
-        <form onSubmit={aoSubmeter} className="mt-8 flex flex-col gap-4">
-          <Input
-            label="E-mail"
-            type="email"
-            autoComplete="email"
-            autoFocus
-            required
-            value={email}
-            onChange={(e) => setEmail(e.target.value)}
-          />
-
-          <div>
-            <Input
-              label="Senha"
-              type="password"
-              autoComplete="new-password"
-              required
-              value={senha}
-              onChange={(e) => setSenha(e.target.value)}
-            />
-            <ul className="mt-2 flex flex-col gap-1">
-              {REQUISITOS_SENHA.map((requisito) => {
-                const atendido = requisito.testar(senha)
-                return (
-                  <li
-                    key={requisito.chave}
-                    className={`flex items-center gap-1.5 text-xs ${
-                      atendido ? 'text-mesa-success-700 dark:text-mesa-success-500' : 'text-mesa-text-tertiary'
-                    }`}
-                  >
-                    <span aria-hidden>{atendido ? '✓' : '✗'}</span>
-                    {requisito.label}
-                  </li>
-                )
-              })}
-            </ul>
-          </div>
-
-          <div>
-            <Input
-              label="Confirmar senha"
-              type="password"
-              autoComplete="new-password"
-              required
-              value={confirmarSenha}
-              onChange={(e) => setConfirmarSenha(e.target.value)}
-            />
-            {mostraDivergencia && (
-              <p className="mt-1 text-xs font-medium text-mesa-error-500">
-                As senhas não conferem
-              </p>
-            )}
-          </div>
-
-          {erro && <p className="text-sm font-medium text-mesa-error-500">{erro}</p>}
-
-          <Button type="submit" size="xl" loading={cadastrando} disabled={!podeEnviar} className="w-full">
-            Criar conta
-          </Button>
-        </form>
-
-        <p className="mt-6 text-center text-sm text-mesa-text-secondary">
-          Já tem conta?{' '}
-          <Link to="/login" className="font-medium text-mesa-text-primary">
-            Entrar
-          </Link>
-        </p>
       </div>
     </div>
   )
