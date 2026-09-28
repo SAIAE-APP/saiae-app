@@ -279,17 +279,63 @@ const BANNERS_PADRAO_SAIAE: BannerPublico[] = [
   },
 ]
 
+const INTERVALO_CARROSSEL_MS = 3000
+const PAUSA_APOS_INTERACAO_MS = 4000
+
 /** Carrossel de banners do topo — conteúdo configurável pelo dono da
  * barraca em Ajustes (SecaoBanners), não fixo do app. Sem banner próprio
  * cadastrado, mostra os padrão da marca Sai aê (BANNERS_PADRAO_SAIAE) em
  * vez de ficar vazio. Só aparece fora de busca, mesmo espírito das seções
- * Populares/Mais pedido abaixo. */
+ * Populares/Mais pedido abaixo.
+ *
+ * Avança sozinho a cada 3s (pedido de produto, 2026-09-27) — pausa quando o
+ * cliente interage manualmente (toque/arrasto) por alguns segundos, pra não
+ * brigar com o gesto dele, e retoma sozinho depois. `pausadoRef` em vez de
+ * estado porque pausar não deve re-renderizar nem reiniciar o interval, só
+ * fazer o próximo tick ser ignorado. */
 function CarrosselBanners({ banners }: { banners: BannerPublico[] }) {
   const usandoPadrao = banners.length === 0
   const exibidos = usandoPadrao ? BANNERS_PADRAO_SAIAE : banners
 
+  const containerRef = useRef<HTMLDivElement>(null)
+  const [indiceAtivo, setIndiceAtivo] = useState(0)
+  const pausadoRef = useRef(false)
+  const timeoutRetomadaRef = useRef<number | null>(null)
+
+  useEffect(() => {
+    if (exibidos.length <= 1) return
+    const intervalo = window.setInterval(() => {
+      if (!pausadoRef.current) setIndiceAtivo((atual) => (atual + 1) % exibidos.length)
+    }, INTERVALO_CARROSSEL_MS)
+    return () => window.clearInterval(intervalo)
+  }, [exibidos.length])
+
+  useEffect(() => {
+    const filho = containerRef.current?.children[indiceAtivo]
+    filho?.scrollIntoView({ behavior: 'smooth', inline: 'start', block: 'nearest' })
+  }, [indiceAtivo])
+
+  useEffect(() => {
+    return () => {
+      if (timeoutRetomadaRef.current) window.clearTimeout(timeoutRetomadaRef.current)
+    }
+  }, [])
+
+  function pausarPorInteracao() {
+    pausadoRef.current = true
+    if (timeoutRetomadaRef.current) window.clearTimeout(timeoutRetomadaRef.current)
+    timeoutRetomadaRef.current = window.setTimeout(() => {
+      pausadoRef.current = false
+    }, PAUSA_APOS_INTERACAO_MS)
+  }
+
   return (
-    <div className="mb-5 flex snap-x snap-mandatory gap-3 overflow-x-auto px-6 pb-1">
+    <div
+      ref={containerRef}
+      onPointerDown={pausarPorInteracao}
+      onTouchStart={pausarPorInteracao}
+      className="mb-5 flex snap-x snap-mandatory gap-3 overflow-x-auto px-6 pb-1"
+    >
       {exibidos.map((banner) => (
         <div
           key={banner.id}
