@@ -6,6 +6,7 @@ import { classesBotaoIcone } from '../lib/estiloBotaoIcone'
 import { useAuth } from '../hooks/useAuth'
 import { useBarracasDoUsuario } from '../hooks/useBarracasDoUsuario'
 import { useTheme } from '../hooks/useTheme'
+import { useEhDesktop } from '../hooks/useEhDesktop'
 import { formatarDataExtenso, turnoAtual } from '../lib/datas'
 import { formatarPrecoBR } from '../lib/preco'
 import { calcularTotalBruto } from '../lib/relatorio'
@@ -85,21 +86,55 @@ export function Dashboard() {
   // Tour guiado: só na primeira vez que alguém chega no Hub, pra mostrar o
   // caminho certo antes do operador leigo cair de cara num Lançar Pedido
   // sem nenhum item cadastrado — pedido real de produto, 2026-09-27.
+  // Desktop ganhou tour próprio em 2026-09-27: a sidebar (Operação/Gestão/
+  // Conta) mudou o caminho de verdade, os passos do mobile (que apontam pra
+  // cards do Hub mobile) não fazem mais sentido lá. Chave de "já visto"
+  // separada (hub-desktop vs hub) — são experiências diferentes, cada uma
+  // aparece uma vez, independente da outra (alguém pode ver o mobile no
+  // celular e o desktop no computador, ou vice-versa).
+  const ehDesktop = useEhDesktop()
   const ajustesRef = useRef<HTMLAnchorElement>(null)
   const caixaRef = useRef<HTMLDivElement>(null)
   const cozinhaRef = useRef<HTMLDivElement>(null)
+  // Alvos da SidebarDesktop (componente irmão, não filho, daqui) — achados
+  // por id via document.getElementById em vez de ref={} direto.
+  const sidebarOperacaoRef = useRef<HTMLElement | null>(null)
+  const sidebarGestaoRef = useRef<HTMLElement | null>(null)
+  const sidebarContaRef = useRef<HTMLElement | null>(null)
   const [mostrarTour, setMostrarTour] = useState(false)
+  const chaveTourAtivoRef = useRef<'hub' | 'hub-desktop'>('hub')
 
   useEffect(() => {
-    if (!tourJaVisto('hub')) setMostrarTour(true)
+    const chave = ehDesktop ? 'hub-desktop' : 'hub'
+    if (tourJaVisto(chave)) return
+
+    if (ehDesktop) {
+      // SidebarDesktop só existe visível em telas md+, mas o elemento
+      // continua no DOM (display:none) abaixo disso — sem achar os 3
+      // grupos, não mostra o tour com um spotlight apontando pro nada.
+      const operacao = document.getElementById('sidebar-grupo-operacao')
+      const gestao = document.getElementById('sidebar-grupo-gestao')
+      const conta = document.getElementById('sidebar-grupo-conta')
+      if (!operacao || !gestao || !conta) return
+      sidebarOperacaoRef.current = operacao
+      sidebarGestaoRef.current = gestao
+      sidebarContaRef.current = conta
+    }
+
+    chaveTourAtivoRef.current = chave
+    setMostrarTour(true)
+    // Decide 1x, no mount, olhando o ehDesktop desse primeiro render —
+    // virar a tela durante a sessão não deve trocar o tour no meio da
+    // interação, por isso closure intencional sem reagir a mudança depois.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [])
 
   function fecharTour() {
-    marcarTourVisto('hub')
+    marcarTourVisto(chaveTourAtivoRef.current)
     setMostrarTour(false)
   }
 
-  const passosTour: PassoTour[] = [
+  const passosTourMobile: PassoTour[] = [
     {
       alvo: ajustesRef,
       titulo: 'Comece por aqui: cadastre seu cardápio',
@@ -116,6 +151,26 @@ export function Dashboard() {
       texto: 'Os pedidos aparecem aqui em tempo real, organizados por tempo de espera — o cronômetro avisa quando algo está atrasando.',
     },
   ]
+
+  const passosTourDesktop: PassoTour[] = [
+    {
+      alvo: sidebarOperacaoRef,
+      titulo: 'Operação: o dia a dia da barraca',
+      texto: 'Dashboard te traz de volta aqui, e Caixa é onde você lança os pedidos e controla a abertura/fechamento do caixa.',
+    },
+    {
+      alvo: sidebarGestaoRef,
+      titulo: 'Gestão: histórico e faturamento',
+      texto: 'Veja o histórico completo de comandas e o relatório de vendas, custo e lucro — inclusive por produto.',
+    },
+    {
+      alvo: sidebarContaRef,
+      titulo: 'Conta: dados da barraca e cardápio',
+      texto: 'Assinatura, identidade e pagamento ficam aqui — o cardápio, banners e aparência têm sua própria aba "Cardápio" dentro de Conta.',
+    },
+  ]
+
+  const passosTour = ehDesktop ? passosTourDesktop : passosTourMobile
 
   // Mesmas fontes já assinadas em tempo real por LayoutBarraca (nenhuma
   // busca nova): contagemAFazer já vem pronta do contexto, a última senha

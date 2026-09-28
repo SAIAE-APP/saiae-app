@@ -9,9 +9,13 @@ type ItemNav = { rotulo: string; rota: string; icone: string }
 
 // Agrupamento visual (pedido de produto 2026-09-27, inspirado num print de
 // concorrente) — só reorganiza os 4 itens que já existem, não inventa item
-// novo (Mesas/Entregadores/Estoque do concorrente não existem aqui).
-const GRUPOS: { rotulo: string; itens: ItemNav[] }[] = [
+// novo (Mesas/Entregadores/Estoque do concorrente não existem aqui). `id`
+// dá um alvo estável (document.getElementById) pro tour guiado desktop do
+// Hub (Dashboard.tsx) apontar pro grupo — não dá pra usar ref={} direto de
+// lá porque SidebarDesktop é irmã de Dashboard na árvore, não filha.
+const GRUPOS: { id: string; rotulo: string; itens: ItemNav[] }[] = [
   {
+    id: 'sidebar-grupo-operacao',
     rotulo: 'Operação',
     itens: [
       { rotulo: 'Dashboard', rota: '', icone: 'home' },
@@ -19,6 +23,7 @@ const GRUPOS: { rotulo: string; itens: ItemNav[] }[] = [
     ],
   },
   {
+    id: 'sidebar-grupo-gestao',
     rotulo: 'Gestão',
     itens: [
       { rotulo: 'Histórico', rota: 'historico', icone: 'bar_chart' },
@@ -26,7 +31,11 @@ const GRUPOS: { rotulo: string; itens: ItemNav[] }[] = [
       { rotulo: 'Cardápio', rota: 'ajustes/cardapio', icone: 'restaurant_menu' },
     ],
   },
-  { rotulo: 'Conta', itens: [{ rotulo: 'Conta', rota: 'ajustes', icone: 'settings' }] },
+  {
+    id: 'sidebar-grupo-conta',
+    rotulo: 'Conta',
+    itens: [{ rotulo: 'Conta', rota: 'ajustes', icone: 'settings' }],
+  },
 ]
 
 const CLASSE_ITEM =
@@ -68,7 +77,7 @@ export function SidebarDesktop() {
 
       <nav className="flex flex-col gap-4 px-3">
         {GRUPOS.map((grupo) => (
-          <div key={grupo.rotulo} className="flex flex-col gap-1">
+          <div key={grupo.rotulo} id={grupo.id} className="flex flex-col gap-1">
             <p className="mb-1 px-3 font-mesa-sans text-xs font-semibold uppercase tracking-wider text-mesa-text-secondary">
               {grupo.rotulo}
             </p>
