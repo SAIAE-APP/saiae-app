@@ -717,7 +717,7 @@ function SecaoCardapio({ barracaId }: { barracaId: string }) {
 
                     <div className="min-w-0 flex-1">
                       <div className="flex items-start justify-between gap-2">
-                        <div className="flex min-w-0 flex-wrap items-center gap-1.5">
+                        <div className="flex min-w-0 flex-col gap-1 sm:flex-row sm:flex-wrap sm:items-center sm:gap-1.5">
                           {editandoId === item.id ? (
                             <Input
                               autoFocus
@@ -784,17 +784,17 @@ function SecaoCardapio({ barracaId }: { barracaId: string }) {
                     </div>
                   </div>
 
-                  <div className="flex items-center justify-between gap-2">
+                  <div className="flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
                     <button
                       type="button"
                       onClick={() => setItemDetalhes(item)}
-                      className="flex min-h-11 items-center gap-1 text-xs font-medium text-mesa-text-primary"
+                      className="flex min-h-11 items-center gap-1 whitespace-nowrap text-xs font-medium text-mesa-text-primary"
                     >
                       <Icone nome="edit" size={14} />
                       Editar Foto & Info
                     </button>
 
-                    <span className="flex shrink-0 items-center gap-2">
+                    <span className="flex shrink-0 flex-wrap items-center gap-2 sm:flex-nowrap">
                       <span
                         draggable
                         onDragStart={() => {
