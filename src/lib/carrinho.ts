@@ -43,5 +43,6 @@ export type EstadoPedidoEnviado = {
   senhaEnviada: {
     valor: number | null
     idFila: string
+    entregaDireta: boolean
   }
 }

@@ -45,10 +45,15 @@ function lerModoVisualizacaoSalvo(): ModoVisualizacaoCardapio {
 
 // valor null = pedido enfileirado, aguardando o servidor atribuir a senha
 // real (nunca mostramos um número provisório que pode não bater com o
-// definitivo — bug reportado em operação ao vivo, 2026-09-27).
+// definitivo — bug reportado em operação ao vivo, 2026-09-27). Exceção:
+// entregaDireta=true nunca recebe senha (set_senha_pedido.sql pula a
+// geração de propósito) — valor fica null pra sempre, não é "ainda
+// aguardando" (bug corrigido em 2026-09-28: a tela ficava travada em
+// "Gerando a senha..." pra sempre nesse caso).
 type SenhaConfirmada = {
   valor: number | null
   idFila: string
+  entregaDireta: boolean
 }
 
 /**
@@ -619,7 +624,10 @@ export function LancarPedido() {
   // da marca, número herói), mas com o glow atmosférico normal — essa tela é
   // pro operador, não pro balcão, não precisa do contraste absoluto da Chamada.
   if (senha !== null) {
-    const aguardandoSenha = senha.valor === null
+    // entregaDireta nunca recebe senha (set_senha_pedido.sql pula a geração
+    // de propósito) — precisa do próprio estado visual, senão fica preso em
+    // "aguardando" pra sempre (valor null nunca deixa de ser null aqui).
+    const aguardandoSenha = !senha.entregaDireta && senha.valor === null
 
     return (
       <div className="flex min-h-dvh flex-col items-center justify-center gap-3 px-6 text-center">
@@ -630,7 +638,14 @@ export function LancarPedido() {
           Pedido enviado
         </span>
 
-        {aguardandoSenha ? (
+        {senha.entregaDireta ? (
+          <Icone
+            nome="check_circle"
+            size={80}
+            preenchido
+            className="text-mesa-success-700 dark:text-mesa-success-500"
+          />
+        ) : aguardandoSenha ? (
           <Icone
             nome="progress_activity"
             size={64}
@@ -642,7 +657,12 @@ export function LancarPedido() {
           </span>
         )}
 
-        {aguardandoSenha ? (
+        {senha.entregaDireta ? (
+          <span className="inline-flex items-center gap-2 rounded-mesa-balao bg-mesa-success-50 px-4 py-2 text-sm font-semibold text-mesa-success-700 dark:bg-mesa-success-500/15 dark:text-mesa-success-500">
+            <Icone nome="local_shipping" size={16} />
+            Entregue direto — sem senha, não passou pela cozinha
+          </span>
+        ) : aguardandoSenha ? (
           <span className="inline-flex items-center gap-2 rounded-mesa-balao bg-mesa-neutral-100 px-4 py-2 dark:bg-mesa-neutral-800">
             <span
               className="size-2 animate-pulse rounded-mesa-full bg-mesa-neutral-400"

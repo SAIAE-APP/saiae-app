@@ -214,6 +214,7 @@ export function ConfirmarPedido() {
         senhaEnviada: {
           valor: null,
           idFila: operacao.id,
+          entregaDireta: forcarEntregaDiretaEmTudo,
         },
       } satisfies EstadoPedidoEnviado,
     })
