@@ -11,8 +11,19 @@ type Ciclo = 'mensal' | 'anual'
 /** Conteúdo persuasivo compartilhado pelo popup (PaywallModal, aberto por
  * cima da tela) e pela tela cheia (/:slug/planos, quando o acesso já
  * caiu). Mesma cópia/estrutura da landing page (MA_PLANS), redesenhada
- * com os tokens visuais do próprio app. */
-export function PaywallConteudo({ assinatura }: { assinatura: AssinaturaBarraca | null }) {
+ * com os tokens visuais do próprio app.
+ *
+ * `layout="page"` só é usado por /:slug/planos, pra virar pricing table
+ * lado a lado em telas largas — o popup (`layout="sheet"`, default)
+ * continua empilhado do jeito que já era, largura de bottom sheet nunca
+ * pede grid. */
+export function PaywallConteudo({
+  assinatura,
+  layout = 'sheet',
+}: {
+  assinatura: AssinaturaBarraca | null
+  layout?: 'sheet' | 'page'
+}) {
   const [ciclo, setCiclo] = useState<Ciclo>('mensal')
 
   const emTrial = assinatura?.status === 'trialing'
@@ -20,7 +31,7 @@ export function PaywallConteudo({ assinatura }: { assinatura: AssinaturaBarraca 
 
   return (
     <div className="flex flex-col gap-6">
-      <div className="text-center">
+      <div className={clsx('text-center', layout === 'page' && 'md:mx-auto md:max-w-lg')}>
         {emTrial && tempoRestante ? (
           <p className="text-sm font-semibold text-mesa-orange-600">{tempoRestante} · Assinar agora</p>
         ) : (
@@ -62,7 +73,7 @@ export function PaywallConteudo({ assinatura }: { assinatura: AssinaturaBarraca 
         ))}
       </div>
 
-      <div className="flex flex-col gap-4">
+      <div className={clsx('flex flex-col gap-4', layout === 'page' && 'md:grid md:grid-cols-2 md:items-start')}>
         {Object.values(PLANOS).map((info) => {
           const preco = ciclo === 'anual' ? info.anual.mes : info.mensal
           const destaque = info.plano === 'pro'

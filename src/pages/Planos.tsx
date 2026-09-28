@@ -21,10 +21,10 @@ export function Planos() {
         </div>
       )}
 
-      <div className="mx-auto w-full max-w-[420px]">
-        <PaywallConteudo assinatura={assinatura} />
+      <div className="mx-auto w-full max-w-[420px] md:max-w-3xl">
+        <PaywallConteudo assinatura={assinatura} layout="page" />
         {assinatura?.eh_dono && (
-          <Button variant="ghost" size="md" className="mt-4 w-full" onClick={() => navigate('/')}>
+          <Button variant="ghost" size="md" className="mx-auto mt-4 w-full md:max-w-[420px]" onClick={() => navigate('/')}>
             Ver minhas barracas
           </Button>
         )}
