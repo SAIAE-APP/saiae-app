@@ -53,6 +53,20 @@ function formatarHora(iso: string): string {
   return `${String(data.getHours()).padStart(2, '0')}:${String(data.getMinutes()).padStart(2, '0')}`
 }
 
+/** Config de exibição do cabeçalho do card (Ajustes > Faixas de tempo,
+ * `mostrar_horario_pedido`) — só troca o TEXTO entre cronômetro (tempo
+ * decorrido) e horário de envio pra cozinha. Nunca afeta `corPorTempo`: o
+ * semáforo continua sempre por tempo decorrido, não é personalizável. */
+function textoTempoCabecalho(pedido: PedidoComItens, barraca: Barraca): string {
+  return barraca.mostrar_horario_pedido
+    ? formatarHora(pedido.criado_em)
+    : formatarDuracao(segundosDecorridos(pedido))
+}
+
+function iconeTempoCabecalho(barraca: Barraca): string {
+  return barraca.mostrar_horario_pedido ? 'schedule' : 'timer'
+}
+
 function formatarDuracao(segundosTotais: number): string {
   const minutos = Math.floor(segundosTotais / 60)
   const segundos = segundosTotais % 60
@@ -169,8 +183,8 @@ function CardPedido({
     <div className="dark overflow-hidden rounded-mesa-lg shadow-mesa-1">
       <div className={clsx('flex items-center justify-between gap-2 px-4 py-2.5', CORES_CABECALHO[cor])}>
         <span className="flex items-center gap-1.5 font-mesa-mono text-xs font-semibold text-white">
-          <Icone nome="timer" size={16} className="text-white" />
-          {formatarDuracao(segundosDecorridos(pedido))}
+          <Icone nome={iconeTempoCabecalho(barraca)} size={16} className="text-white" />
+          {textoTempoCabecalho(pedido, barraca)}
         </span>
         <span className="text-sm font-bold text-white">{TEXTO_SEMAFORO[cor]}</span>
       </div>

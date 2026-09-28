@@ -24,6 +24,7 @@ export type Barraca = {
   impressora_largura_papel: LarguraPapel
   pagamento_online_habilitado: boolean
   imagem_capa_url: string | null
+  mostrar_horario_pedido: boolean
 }
 
 export type HorarioFuncionamento = {

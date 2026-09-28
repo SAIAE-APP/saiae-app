@@ -1318,6 +1318,12 @@ function SecaoFaixas({ barraca }: { barraca: Barraca }) {
   const [salvando, setSalvando] = useState(false)
   const [salvo, setSalvo] = useState(false)
   const [erro, setErro] = useState<string | null>(null)
+  const [mostrarHorario, setMostrarHorario] = useState(barraca.mostrar_horario_pedido)
+
+  async function escolherExibicao(valor: boolean) {
+    setMostrarHorario(valor)
+    await supabase.from('barracas').update({ mostrar_horario_pedido: valor }).eq('id', barraca.id)
+  }
 
   const verdeNum = Number(verdeAte)
   const amareloNum = Number(amareloAte)
@@ -1414,6 +1420,23 @@ function SecaoFaixas({ barraca }: { barraca: Barraca }) {
           <Button size="sm" onClick={salvar} disabled={!valido} loading={salvando}>
             {salvo ? 'Salvo!' : 'Salvar faixas'}
           </Button>
+        </div>
+
+        <div className="mt-4 border-t border-mesa-border-subtle pt-4">
+          <p className="mb-2 text-sm font-medium text-mesa-text-primary">
+            Cabeçalho do card na Cozinha
+          </p>
+          <div className="flex flex-wrap gap-1.5">
+            <Chip checked={!mostrarHorario} onClick={() => escolherExibicao(false)}>
+              Cronômetro
+            </Chip>
+            <Chip checked={mostrarHorario} onClick={() => escolherExibicao(true)}>
+              Horário de envio
+            </Chip>
+          </div>
+          <p className="mt-2 text-xs text-mesa-text-secondary">
+            Só muda o texto mostrado — a cor continua sempre pelo tempo decorrido
+          </p>
         </div>
       </Card>
       <p className="mt-2 text-xs text-mesa-text-secondary">

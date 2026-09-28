@@ -29,6 +29,21 @@ function corSemaforo(minutos: number, barraca: Barraca): 'verde' | 'amarelo' | '
   return 'vermelho'
 }
 
+function formatarHoraEnvio(iso: string): string {
+  const data = new Date(iso)
+  return `${String(data.getHours()).padStart(2, '0')}:${String(data.getMinutes()).padStart(2, '0')}`
+}
+
+/** Mesmo critério de Cozinha.tsx (textoTempoCabecalho/iconeTempoCabecalho) —
+ * `mostrar_horario_pedido` só troca o texto, nunca a cor do semáforo. */
+function textoTempoCabecalho(pedido: PedidoComItens, barraca: Barraca, segundos: number): string {
+  return barraca.mostrar_horario_pedido ? formatarHoraEnvio(pedido.criado_em) : formatarDuracao(segundos)
+}
+
+function iconeTempoCabecalho(barraca: Barraca): string {
+  return barraca.mostrar_horario_pedido ? 'schedule' : 'timer'
+}
+
 const CORES_CABECALHO: Record<'verde' | 'amarelo' | 'vermelho', string> = {
   verde: 'bg-mesa-kanban-green',
   amarelo: 'bg-mesa-kanban-yellow',
@@ -226,8 +241,8 @@ export function DetalheComanda({
         <>
           <div className={clsx('-mx-6 -mt-3 flex items-center justify-between gap-2 rounded-t-mesa-2xl px-4 py-2.5', CORES_CABECALHO[cor])}>
             <span className="flex items-center gap-1.5 font-mesa-mono text-xs font-semibold text-white">
-              <Icone nome="timer" size={16} className="text-white" />
-              {formatarDuracao(segundos)}
+              <Icone nome={iconeTempoCabecalho(barraca)} size={16} className="text-white" />
+              {textoTempoCabecalho(pedido, barraca, segundos)}
             </span>
             <span className="text-sm font-bold text-white">{TEXTO_SEMAFORO[cor]}</span>
           </div>

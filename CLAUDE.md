@@ -74,6 +74,13 @@ relevantes no Brasil, 58mm e 80mm, já cobertos.
   pra leitura, redimensionada/comprimida no navegador antes do
   upload). Mesmos campos previstos pra reaproveitar no cardápio
   digital do roadmap
+- Cabeçalho do card de pedido (Cozinha/Detalhe da Comanda) mostra
+  cronômetro (tempo decorrido) por padrão, ou horário de envio pra
+  cozinha (`criado_em`) se a barraca configurar isso em Ajustes >
+  Faixas de tempo (`barracas.mostrar_horario_pedido`, pedido de
+  produto 2026-09-28). Só troca o TEXTO — a cor do semáforo
+  (`corPorTempo`) continua sempre calculada por tempo decorrido, nunca
+  personalizável, mesmo com essa config ligada.
 - Kanban com 2 colunas: A Fazer e Pronto
 - Ordem FIFO: pedido mais antigo no topo
 - Cor por tempo desde a entrada do pedido. Congela ao entrar em
