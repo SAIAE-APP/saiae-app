@@ -1,5 +1,6 @@
 import { useEffect, useMemo, useRef, useState } from 'react'
 import { useParams } from 'react-router'
+import clsx from 'clsx'
 import { supabase } from '../lib/supabase'
 import { formatarPrecoBR } from '../lib/preco'
 import { Button } from '../components/ui/Button'
@@ -21,8 +22,16 @@ type LinhaCardapioPublico = {
   item_foto_url: string | null
   item_preco_centavos: number
   item_esgotado: boolean
+  item_popular: boolean
   categoria_nome: string | null
   pedidos_30d: number
+}
+
+type BannerPublico = {
+  id: string
+  imagem_url: string
+  titulo: string | null
+  cta_texto: string | null
 }
 
 type Estado =
@@ -48,13 +57,22 @@ type EstadoPagamento =
 const MAXIMO_MAIS_PEDIDOS = 8
 const INTERVALO_POLLING_MS = 3000
 
-function BottomSheetEmBreve({ open, onClose }: { open: boolean; onClose: () => void }) {
+function BottomSheetFinalizarBalcao({
+  open,
+  onClose,
+  totalItens,
+}: {
+  open: boolean
+  onClose: () => void
+  totalItens: number
+}) {
   return (
-    <BottomSheet open={open} onClose={onClose} aria-label="Pedido pelo cardápio em breve">
-      <h2 className="text-lg font-semibold text-mesa-text-primary">Em breve</h2>
+    <BottomSheet open={open} onClose={onClose} aria-label="Finalizar no caixa">
+      <h2 className="text-lg font-semibold text-mesa-text-primary">Finalize no caixa</h2>
       <p className="mt-1 text-sm text-mesa-text-secondary">
-        Por enquanto este cardápio é só pra você dar uma olhada. Fale seu pedido com quem está no
-        balcão — logo, logo você vai poder montar o pedido direto por aqui.
+        Esse cardápio ainda não tem pagamento online por aqui — não feche essa tela e mostre pra
+        quem está no caixa pra fechar seu pedido: {totalItens}{' '}
+        {totalItens === 1 ? 'item selecionado' : 'itens selecionados'}.
       </p>
       <Button variant="ghost" size="md" onClick={onClose} className="mt-6 w-full">
         Entendi
@@ -65,33 +83,27 @@ function BottomSheetEmBreve({ open, onClose }: { open: boolean; onClose: () => v
 
 function BotaoAdicionar({
   variant,
-  podeComprar,
+  podeAdicionar,
   esgotado,
   quantidadeNoCarrinho,
   onAdicionar,
 }: {
   variant: 'sm' | 'md'
-  podeComprar: boolean
+  podeAdicionar: boolean
   esgotado: boolean
   quantidadeNoCarrinho: number
   onAdicionar: () => void
 }) {
-  const [mostrarEmBreve, setMostrarEmBreve] = useState(false)
-  const podeAdicionar = podeComprar && !esgotado
-
   return (
-    <>
-      <Button
-        variant={quantidadeNoCarrinho > 0 ? 'confirm' : 'outline'}
-        size={variant}
-        icon={<Icone nome="add" size={16} />}
-        disabled={esgotado}
-        onClick={() => (podeAdicionar ? onAdicionar() : setMostrarEmBreve(true))}
-      >
-        {esgotado ? 'Esgotado' : quantidadeNoCarrinho > 0 ? `${quantidadeNoCarrinho} no carrinho` : 'Adicionar'}
-      </Button>
-      <BottomSheetEmBreve open={mostrarEmBreve} onClose={() => setMostrarEmBreve(false)} />
-    </>
+    <Button
+      variant={quantidadeNoCarrinho > 0 ? 'confirm' : 'outline'}
+      size={variant}
+      icon={<Icone nome="add" size={16} />}
+      disabled={esgotado || !podeAdicionar}
+      onClick={onAdicionar}
+    >
+      {esgotado ? 'Esgotado' : quantidadeNoCarrinho > 0 ? `${quantidadeNoCarrinho} no carrinho` : 'Adicionar'}
+    </Button>
   )
 }
 
@@ -139,7 +151,7 @@ function CardItemPublico({
           </span>
           <BotaoAdicionar
             variant="sm"
-            podeComprar={podeComprar && item.item_preco_centavos > 0}
+            podeAdicionar={!podeComprar || item.item_preco_centavos > 0}
             esgotado={item.item_esgotado}
             quantidadeNoCarrinho={quantidadeNoCarrinho}
             onAdicionar={onAdicionar}
@@ -150,49 +162,118 @@ function CardItemPublico({
   )
 }
 
-function CardDestaque({
+/** Carrossel de banners do topo — conteúdo configurável pelo dono da
+ * barraca em Ajustes (SecaoBanners), não fixo do app. Só aparece fora de
+ * busca, mesmo espírito das seções Populares/Mais pedido abaixo. */
+function CarrosselBanners({ banners }: { banners: BannerPublico[] }) {
+  if (banners.length === 0) return null
+
+  return (
+    <div className="mb-5 flex snap-x snap-mandatory gap-3 overflow-x-auto px-6 pb-1">
+      {banners.map((banner) => (
+        <div
+          key={banner.id}
+          className="relative aspect-[16/7] w-[85vw] shrink-0 snap-start overflow-hidden rounded-mesa-xl bg-mesa-neutral-100 shadow-mesa-1 dark:bg-mesa-neutral-700 sm:w-96"
+        >
+          <img src={banner.imagem_url} alt={banner.titulo ?? ''} className="size-full object-cover" />
+          {(banner.titulo || banner.cta_texto) && (
+            <div className="absolute inset-x-0 bottom-0 bg-gradient-to-t from-mesa-neutral-900/85 to-transparent p-4 pt-8">
+              {banner.titulo && <p className="text-base font-bold text-white">{banner.titulo}</p>}
+              {banner.cta_texto && <p className="text-xs text-white/85">{banner.cta_texto}</p>}
+            </div>
+          )}
+        </div>
+      ))}
+    </div>
+  )
+}
+
+/** Botão de adicionar compacto (só ícone + badge de quantidade) — a versão
+ * com texto de BotaoAdicionar não cabe no card estreito das seções
+ * horizontais (Populares/Mais pedido). Sempre adiciona ao carrinho — o
+ * aviso de "sem pagamento online" agora aparece só na hora de finalizar
+ * (BottomSheetFinalizarBalcao), não mais no clique de cada item. */
+function BotaoAdicionarCompacto({
+  podeAdicionar,
+  esgotado,
+  quantidadeNoCarrinho,
+  onAdicionar,
+}: {
+  podeAdicionar: boolean
+  esgotado: boolean
+  quantidadeNoCarrinho: number
+  onAdicionar: () => void
+}) {
+  return (
+    <button
+      type="button"
+      disabled={esgotado || !podeAdicionar}
+      onClick={onAdicionar}
+      aria-label="Adicionar ao carrinho"
+      className={clsx(
+        'relative flex size-8 shrink-0 items-center justify-center rounded-mesa-full disabled:opacity-40',
+        quantidadeNoCarrinho > 0
+          ? 'bg-mesa-neutral-900 text-white dark:bg-mesa-neutral-50 dark:text-mesa-neutral-900'
+          : 'border border-mesa-border-strong text-mesa-text-primary',
+      )}
+    >
+      <Icone nome="add" size={16} />
+      {quantidadeNoCarrinho > 0 && (
+        <span className="absolute -right-1 -top-1 flex size-4 items-center justify-center rounded-mesa-balao bg-mesa-orange-500 text-[9px] font-bold text-mesa-neutral-900">
+          {quantidadeNoCarrinho}
+        </span>
+      )}
+    </button>
+  )
+}
+
+/** Card compacto usado nas seções horizontais Populares/Mais pedido —
+ * mais estreito que CardItemPublico (que é a linha da lista completa
+ * abaixo). `destaque` reaproveita o mesmo selo Top1/Popular do card do
+ * meio da lista. */
+function CardItemHorizontal({
   item,
+  destaque,
   podeComprar,
   quantidadeNoCarrinho,
   onAdicionar,
 }: {
   item: LinhaCardapioPublico
+  destaque: 'top1' | 'popular' | null
   podeComprar: boolean
   quantidadeNoCarrinho: number
   onAdicionar: () => void
 }) {
   return (
-    <div className="overflow-hidden rounded-mesa-xl border border-mesa-border-subtle bg-mesa-surface shadow-mesa-2">
-      <div className="relative aspect-[16/10] w-full bg-mesa-neutral-100 dark:bg-mesa-neutral-700">
+    <div className="w-36 shrink-0 overflow-hidden rounded-mesa-xl border border-mesa-border-subtle bg-mesa-surface shadow-mesa-1">
+      <div className="relative aspect-square w-full bg-mesa-neutral-100 dark:bg-mesa-neutral-700">
         {item.item_foto_url ? (
           <img src={item.item_foto_url} alt="" className="size-full object-cover" />
         ) : (
           <span className="flex size-full items-center justify-center text-mesa-text-tertiary">
-            <Icone nome="image" size={32} />
+            <Icone nome="image" size={20} />
           </span>
         )}
-        <span className="absolute left-3 top-3 flex items-center gap-1 whitespace-nowrap rounded-mesa-balao bg-mesa-orange-500 px-2.5 py-1 text-xs font-bold text-mesa-neutral-900 shadow-mesa-1">
-          <Icone nome="trophy" size={14} preenchido />
-          Mais pedido do cardápio
-        </span>
+        {destaque && !item.item_esgotado && (
+          <span className="absolute left-1 top-1 flex items-center gap-0.5 whitespace-nowrap rounded-mesa-balao bg-mesa-orange-500 px-1.5 py-0.5 text-[9px] font-bold text-mesa-neutral-900 shadow-mesa-1">
+            <Icone nome="star" size={8} preenchido />
+            {destaque === 'top1' ? 'Top 1' : 'Popular'}
+          </span>
+        )}
         {item.item_esgotado && (
-          <span className="absolute inset-0 flex items-center justify-center bg-mesa-neutral-900/60 text-sm font-bold uppercase text-white">
+          <span className="absolute inset-0 flex items-center justify-center bg-mesa-neutral-900/60 text-[9px] font-bold uppercase text-white">
             Esgotado
           </span>
         )}
       </div>
-      <div className="p-4">
-        <p className="text-lg font-bold text-mesa-text-primary">{item.item_nome}</p>
-        {item.item_descricao && (
-          <p className="mt-1 text-sm text-mesa-text-secondary">{item.item_descricao}</p>
-        )}
-        <div className="mt-3 flex items-center justify-between gap-2">
-          <span className="font-mesa-display text-xl font-bold text-mesa-text-primary">
-            {item.item_preco_centavos > 0 ? formatarPrecoBR(item.item_preco_centavos) : 'Sob consulta'}
+      <div className="p-2.5">
+        <p className="line-clamp-1 text-sm font-semibold text-mesa-text-primary">{item.item_nome}</p>
+        <div className="mt-1.5 flex items-center justify-between gap-1">
+          <span className="font-mesa-display text-xs font-semibold text-mesa-text-primary">
+            {item.item_preco_centavos > 0 ? formatarPrecoBR(item.item_preco_centavos) : 'Consulta'}
           </span>
-          <BotaoAdicionar
-            variant="md"
-            podeComprar={podeComprar && item.item_preco_centavos > 0}
+          <BotaoAdicionarCompacto
+            podeAdicionar={!podeComprar || item.item_preco_centavos > 0}
             esgotado={item.item_esgotado}
             quantidadeNoCarrinho={quantidadeNoCarrinho}
             onAdicionar={onAdicionar}
@@ -208,6 +289,7 @@ export function CardapioPublico() {
   const [estado, setEstado] = useState<Estado>(() =>
     slug ? { status: 'carregando' } : { status: 'erro' },
   )
+  const [banners, setBanners] = useState<BannerPublico[]>([])
   const [busca, setBusca] = useState('')
   const [filtroAtivo, setFiltroAtivo] = useState<string | null>(null)
 
@@ -218,6 +300,7 @@ export function CardapioPublico() {
   const [observacao, setObservacao] = useState('')
   const [pagamento, setPagamento] = useState<EstadoPagamento>({ fase: 'formulario' })
   const [copiado, setCopiado] = useState(false)
+  const [mostrarAvisoBalcao, setMostrarAvisoBalcao] = useState(false)
   const clientUuidRef = useRef(crypto.randomUUID())
 
   useEffect(() => {
@@ -233,6 +316,22 @@ export function CardapioPublico() {
           return
         }
         setEstado({ status: 'pronto', linhas: data as LinhaCardapioPublico[] })
+      })
+
+    return () => {
+      cancelado = true
+    }
+  }, [slug])
+
+  useEffect(() => {
+    if (!slug) return
+
+    let cancelado = false
+    supabase
+      .rpc('banners_publicos', { p_slug: slug })
+      .then(({ data, error }) => {
+        if (cancelado || error || !data) return
+        setBanners(data as BannerPublico[])
       })
 
     return () => {
@@ -293,20 +392,18 @@ export function CardapioPublico() {
     [linhas],
   )
 
-  // Mesmo padrão de Lançar Pedido: prioriza "Mais Pedidos" quando existe
-  // histórico, senão cai na primeira categoria — computado direto do dado,
-  // sem sincronizar em efeito.
-  const filtroEfetivo =
-    filtroAtivo ?? (itensMaisPedidos.length > 0 ? 'mais-pedidos' : (categorias[0]?.nome ?? null))
+  // Curadoria manual do dono (itens.popular, Ajustes) — diferente de "Mais
+  // pedido" acima, que é algorítmico (pedidos_30d).
+  const itensPopulares = useMemo(() => linhas.filter((l) => l.item_popular), [linhas])
+
+  // "Mais Pedidos" virou seção própria (abaixo), não é mais filtro de chip —
+  // sobra só "Todos" + categorias, então o padrão passa a ser "Todos".
+  const filtroEfetivo = filtroAtivo ?? 'todos'
 
   const itensDoFiltro =
     filtroEfetivo === 'todos'
       ? linhas
-      : filtroEfetivo === 'mais-pedidos'
-        ? itensMaisPedidos
-        : (categorias.find((c) => c.nome === filtroEfetivo)?.itens ?? [])
-
-  const itemDestaque = itensMaisPedidos[0] ?? null
+      : (categorias.find((c) => c.nome === filtroEfetivo)?.itens ?? [])
 
   const buscaNormalizada = busca.trim().toLowerCase()
   const itensExibidos = buscaNormalizada
@@ -315,9 +412,7 @@ export function CardapioPublico() {
           i.item_nome.toLowerCase().includes(buscaNormalizada) ||
           (i.item_descricao ?? '').toLowerCase().includes(buscaNormalizada),
       )
-    : // O item destaque já aparece no card grande acima — tira ele da lista
-      // pra não repetir o mesmo prato duas vezes na tela.
-      itensDoFiltro.filter((i) => i.item_id !== itemDestaque?.item_id)
+    : itensDoFiltro
 
   const itensCarrinho = useMemo(
     () =>
@@ -441,19 +536,46 @@ export function CardapioPublico() {
           <p className="mt-0.5 text-sm text-mesa-text-secondary">
             {podeComprar
               ? 'Monte seu pedido e pague com Pix direto por aqui'
-              : 'Dá uma olhada no cardápio antes de pedir no balcão'}
+              : 'Monte sua lista aqui e finalize no caixa'}
           </p>
         </div>
       </div>
 
-      {itemDestaque && !busca.trim() && (
-        <div className="mb-5 px-6">
-          <CardDestaque
-            item={itemDestaque}
-            podeComprar={podeComprar}
-            quantidadeNoCarrinho={carrinho[itemDestaque.item_id] ?? 0}
-            onAdicionar={() => adicionarAoCarrinho(itemDestaque.item_id)}
-          />
+      {!busca.trim() && <CarrosselBanners banners={banners} />}
+
+      {!busca.trim() && itensPopulares.length > 0 && (
+        <div className="mb-5">
+          <h2 className="mb-2 px-6 text-base font-bold text-mesa-text-primary">Populares</h2>
+          <div className="flex gap-3 overflow-x-auto px-6 pb-1">
+            {itensPopulares.map((item) => (
+              <CardItemHorizontal
+                key={item.item_id}
+                item={item}
+                destaque={null}
+                podeComprar={podeComprar}
+                quantidadeNoCarrinho={carrinho[item.item_id] ?? 0}
+                onAdicionar={() => adicionarAoCarrinho(item.item_id)}
+              />
+            ))}
+          </div>
+        </div>
+      )}
+
+      {!busca.trim() && itensMaisPedidos.length > 0 && (
+        <div className="mb-5">
+          <h2 className="mb-2 px-6 text-base font-bold text-mesa-text-primary">Mais pedido</h2>
+          <div className="flex gap-3 overflow-x-auto px-6 pb-1">
+            {itensMaisPedidos.map((item, indice) => (
+              <CardItemHorizontal
+                key={item.item_id}
+                item={item}
+                destaque={indice === 0 ? 'top1' : 'popular'}
+                podeComprar={podeComprar}
+                quantidadeNoCarrinho={carrinho[item.item_id] ?? 0}
+                onAdicionar={() => adicionarAoCarrinho(item.item_id)}
+              />
+            ))}
+          </div>
         </div>
       )}
 
@@ -477,15 +599,6 @@ export function CardapioPublico() {
         >
           Todos
         </Chip>
-        {itensMaisPedidos.length > 0 && (
-          <Chip
-            variant={filtroEfetivo === 'mais-pedidos' ? 'teal' : 'plain'}
-            checked={filtroEfetivo === 'mais-pedidos'}
-            onClick={() => setFiltroAtivo('mais-pedidos')}
-          >
-            <Icone nome="star" size={14} /> Mais Pedidos
-          </Chip>
-        )}
         {categorias.map((categoria) => (
           <Chip
             key={categoria.nome}
@@ -527,7 +640,7 @@ export function CardapioPublico() {
         Feito com Sai aê
       </p>
 
-      {podeComprar && totalItensCarrinho > 0 && !mostrarCheckout && (
+      {totalItensCarrinho > 0 && !mostrarCheckout && (
         <div className="fixed inset-x-0 bottom-4 px-4">
           <button
             type="button"
@@ -617,15 +730,27 @@ export function CardapioPublico() {
               </span>
             </div>
 
-            <Button
-              size="xl"
-              icon={<Icone nome="qr_code" size={20} />}
-              className="w-full"
-              disabled={itensCarrinho.length === 0}
-              onClick={pagar}
-            >
-              Pagar com Pix
-            </Button>
+            {podeComprar ? (
+              <Button
+                size="xl"
+                icon={<Icone nome="qr_code" size={20} />}
+                className="w-full"
+                disabled={itensCarrinho.length === 0}
+                onClick={pagar}
+              >
+                Pagar com Pix
+              </Button>
+            ) : (
+              <Button
+                size="xl"
+                icon={<Icone nome="point_of_sale" size={20} />}
+                className="w-full"
+                disabled={itensCarrinho.length === 0}
+                onClick={() => setMostrarAvisoBalcao(true)}
+              >
+                Finalizar no caixa
+              </Button>
+            )}
           </div>
         )}
 
@@ -695,6 +820,12 @@ export function CardapioPublico() {
           </div>
         )}
       </BottomSheet>
+
+      <BottomSheetFinalizarBalcao
+        open={mostrarAvisoBalcao}
+        onClose={() => setMostrarAvisoBalcao(false)}
+        totalItens={totalItensCarrinho}
+      />
     </div>
   )
 }
