@@ -17,6 +17,8 @@ import { Caixa } from './pages/Caixa'
 import { TelaChamada } from './pages/TelaChamada'
 import { Ajustes } from './pages/Ajustes'
 import { CardapioPublico } from './pages/CardapioPublico'
+import { Privacidade } from './pages/Privacidade'
+import { ExcluirConta } from './pages/ExcluirConta'
 import { NaoEncontrado } from './pages/NaoEncontrado'
 import { Login } from './pages/Login'
 import { Cadastro } from './pages/Cadastro'
@@ -58,6 +60,14 @@ function App() {
             <Route path="/esqueci-senha" element={<EsqueciSenha />} />
             <Route path="/redefinir-senha" element={<RedefinirSenha />} />
             <Route path="/assinar" element={<Assinar />} />
+
+            {/* Páginas públicas exigidas pela Play Store (política de
+                privacidade e exclusão de conta) — segmento estático, ganha
+                de /:slug (dinâmico) na prioridade de rota do React Router
+                mesmo assim, mas fica perto das outras rotas públicas por
+                clareza. */}
+            <Route path="/privacidade" element={<Privacidade />} />
+            <Route path="/excluir-conta" element={<ExcluirConta />} />
 
             <Route path="/" element={<Dispatcher />} />
 
