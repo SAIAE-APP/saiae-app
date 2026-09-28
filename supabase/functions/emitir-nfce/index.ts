@@ -293,6 +293,12 @@ Deno.serve(async (req: Request) => {
       nfce_numero: resultado?.numero ?? null,
       nfce_mensagem: resultado?.mensagem_sefaz ?? null,
       nfce_emitida_em: autorizado ? new Date().toISOString() : null,
+      // Nomes de campo conforme documentação da FocusNFe — ainda não
+      // confirmados numa emissão real (nenhuma nota emitida de verdade até
+      // agora), por isso aceita variantes prováveis em vez de travar num só.
+      nfce_serie: resultado?.serie ?? null,
+      nfce_protocolo: resultado?.protocolo_autorizacao ?? resultado?.protocolo ?? null,
+      nfce_qrcode_url: resultado?.qrcode_url ?? resultado?.qrcode ?? resultado?.url_qrcode ?? null,
     })
     .eq('id', pedidoId)
 

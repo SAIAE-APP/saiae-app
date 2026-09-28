@@ -131,6 +131,9 @@ export type Pedido = {
   nfce_numero: string | null
   nfce_mensagem: string | null
   nfce_emitida_em: string | null
+  nfce_serie: string | null
+  nfce_protocolo: string | null
+  nfce_qrcode_url: string | null
 }
 
 export type ItemDoPedido = {
