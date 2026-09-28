@@ -1,7 +1,8 @@
-import { useMemo } from 'react'
+import { useMemo, useState } from 'react'
 import type { ReactNode } from 'react'
 import { useRelatorio } from '../hooks/useRelatorio'
 import type { FiltroRelatorio } from '../hooks/useRelatorio'
+import { useEvolucao14Dias } from '../hooks/useEvolucao14Dias'
 import { calcularIntervalosRelatorio, METODOS_OU_NAO_INFORMADO } from '../lib/relatorio'
 import type { DetalhamentoLiquido, IntervaloData, MetodoOuNaoInformado } from '../lib/relatorio'
 import { formatarPrecoBR } from '../lib/preco'
@@ -11,6 +12,7 @@ import { MOTIVOS_CANCELAMENTO } from '../lib/cancelamento'
 import { GraficoBarras } from './charts/GraficoBarras'
 import { ListaBarras } from './charts/ListaBarras'
 import { SecaoCustoLucro } from './SecaoCustoLucro'
+import { SegmentedControl } from './ui/SegmentedControl'
 import type { Barraca } from '../types/database'
 
 function formatarDataCurta(iso: string): string {
@@ -80,6 +82,7 @@ function textoEcorComparacao(
   atualValor: number,
   comparacaoValor: number,
   labelComparacao: string,
+  formatarValor: (valor: number) => string = formatarPrecoBR,
 ): { texto: string; cor: string } {
   const diferenca = atualValor - comparacaoValor
   const percentual = comparacaoValor > 0 ? (diferenca / comparacaoValor) * 100 : null
@@ -88,12 +91,51 @@ function textoEcorComparacao(
   const texto =
     comparacaoValor === 0
       ? 'sem comparação'
-      : `vs ${labelComparacao}: ${sinal}${formatarPrecoBR(Math.abs(diferenca))} (${sinal}${Math.round(
+      : `vs ${labelComparacao}: ${sinal}${formatarValor(Math.abs(diferenca))} (${sinal}${Math.round(
           Math.abs(percentual ?? 0),
         )}%)`
   const cor = comparacaoValor > 0 && diferenca > 0 ? 'text-mesa-success-700 dark:text-mesa-success-500' : 'text-mesa-text-secondary'
 
   return { texto, cor }
+}
+
+/** Delta compacto (só percentual) pra caber nos cards de KPI — a versão
+ * completa com valor absoluto é textoEcorComparacao acima, usada onde tem
+ * mais espaço (produto isolado). */
+function deltaPercentual(
+  atualValor: number,
+  comparacaoValor: number,
+  labelComparacao: string,
+): { texto: string; cor: string } {
+  if (comparacaoValor === 0) {
+    return { texto: 'sem comparação', cor: 'text-mesa-text-tertiary' }
+  }
+  const diferenca = atualValor - comparacaoValor
+  const percentual = Math.round(Math.abs((diferenca / comparacaoValor) * 100))
+  const sinal = diferenca >= 0 ? '+' : '-'
+  const cor =
+    diferenca > 0 ? 'text-mesa-success-700 dark:text-mesa-success-500' : 'text-mesa-text-secondary'
+  return { texto: `${sinal}${percentual}% vs ${labelComparacao}`, cor }
+}
+
+function CartaoKpi({
+  rotulo,
+  valor,
+  texto,
+  cor,
+}: {
+  rotulo: string
+  valor: string
+  texto: string
+  cor: string
+}) {
+  return (
+    <div className="rounded-mesa-xl border border-mesa-border-subtle bg-mesa-surface p-3">
+      <p className="text-xs font-medium text-mesa-text-secondary">{rotulo}</p>
+      <p className="mt-1 font-mesa-display text-2xl font-bold text-mesa-text-primary">{valor}</p>
+      <p className={`mt-0.5 text-xs font-medium ${cor}`}>{texto}</p>
+    </div>
+  )
 }
 
 function Secao({ titulo, children }: { titulo: string; children: ReactNode }) {
@@ -143,6 +185,8 @@ export function PainelRelatorio({
   nomeItemFiltrado?: string | null
 }) {
   const resultado = useRelatorio(barraca, filtro, itemFiltradoId)
+  const evolucao14Dias = useEvolucao14Dias(barraca.id)
+  const [metricaItem, setMetricaItem] = useState<'valor' | 'quantidade'>('valor')
 
   // mesmo motivo do useRelatorio: depende dos campos primitivos, não do
   // objeto filtro (que o Historico passa como literal inline)
@@ -160,11 +204,19 @@ export function PainelRelatorio({
   // ---- modo produto isolado: painel simplificado, uma unica secao ----
   if (resultado.modo === 'produto_isolado') {
     const { atual, comparacao } = resultado
-    const totalComparacao = comparacao?.totalIsolado ?? 0
+    const semVendas = atual.unidadesVendidas === 0
+
+    const formatarUnidades = (valor: number) => `${valor} un.`
+    const valorPrincipal = metricaItem === 'valor' ? atual.totalIsolado : atual.unidadesVendidas
+    const valorComparacao =
+      metricaItem === 'valor' ? (comparacao?.totalIsolado ?? 0) : (comparacao?.unidadesVendidas ?? 0)
+    const formatarPrincipal = metricaItem === 'valor' ? formatarPrecoBR : formatarUnidades
+
     const { texto: textoComparacao, cor: corComparacao } = textoEcorComparacao(
-      atual.totalIsolado,
-      totalComparacao,
+      valorPrincipal,
+      valorComparacao,
       labelComparacao,
+      formatarPrincipal,
     )
 
     return (
@@ -173,30 +225,54 @@ export function PainelRelatorio({
           Relatório de {nomeItemFiltrado ?? 'produto'} {fraseDoPeriodo(filtro, intervalos)}
         </h2>
 
-        <div className="mt-3">
-          <h3 className="font-mesa-sans text-xs font-bold uppercase tracking-wide text-mesa-text-secondary">
-            O que passou pelo sistema
-          </h3>
-          <p className="mt-1 font-mesa-display text-4xl font-black text-mesa-text-primary">
-            {formatarPrecoBR(atual.totalIsolado)}
+        {semVendas ? (
+          <p className="mt-4 text-center text-sm text-mesa-text-secondary">
+            Ainda não há vendas para analisar
           </p>
-          <p className="text-sm text-mesa-text-secondary">
-            {atual.unidadesVendidas} unidade{atual.unidadesVendidas === 1 ? '' : 's'} vendida
-            {atual.unidadesVendidas === 1 ? '' : 's'}
-          </p>
-          <p className={`mt-1 text-sm font-medium ${corComparacao}`}>{textoComparacao}</p>
-        </div>
+        ) : (
+          <div className="mt-3">
+            <SegmentedControl
+              aria-label="Ver em reais ou em unidades"
+              items={[{ label: 'R$' }, { label: 'Unidades' }]}
+              activeIndex={metricaItem === 'valor' ? 0 : 1}
+              onChange={(indice) => setMetricaItem(indice === 0 ? 'valor' : 'quantidade')}
+              className="max-w-56"
+            />
+
+            <p className="mt-3 font-mesa-display text-4xl font-black text-mesa-text-primary">
+              {formatarPrincipal(valorPrincipal)}
+            </p>
+            <p className="text-sm text-mesa-text-secondary">
+              {atual.unidadesVendidas} unidade{atual.unidadesVendidas === 1 ? '' : 's'} vendida
+              {atual.unidadesVendidas === 1 ? '' : 's'}
+            </p>
+            <p className={`mt-1 text-sm font-medium ${corComparacao}`}>{textoComparacao}</p>
+
+            {atual.serieTemporal.pontos.length > 0 && (
+              <GraficoBarras
+                pontos={atual.serieTemporal.pontos.map((p) => ({
+                  chave: p.chave,
+                  rotulo: p.rotulo,
+                  valor: metricaItem === 'valor' ? p.valor : p.quantidade,
+                }))}
+                formatarValor={formatarPrincipal}
+                rotuloAcessivel={`Evolução de ${nomeItemFiltrado ?? 'produto'} no período`}
+              />
+            )}
+          </div>
+        )}
       </CartaoRelatorio>
     )
   }
 
   // ---- modo completo ----
   const { atual, comparacao } = resultado
-  const { texto: textoComparacao, cor: corComparacao } = textoEcorComparacao(
-    atual.totalBruto,
-    comparacao?.totalBruto ?? 0,
-    labelComparacao,
-  )
+
+  const ticketMedioAtual = atual.quantidadePedidos > 0 ? Math.round(atual.totalBruto / atual.quantidadePedidos) : 0
+  const ticketMedioComparacao =
+    comparacao && comparacao.quantidadePedidos > 0
+      ? Math.round(comparacao.totalBruto / comparacao.quantidadePedidos)
+      : 0
 
   const metodosComValor = METODOS_OU_NAO_INFORMADO.filter(
     (chave) => atual.divisaoPorMetodo[chave].quantidade > 0,
@@ -255,17 +331,27 @@ export function PainelRelatorio({
     <CartaoRelatorio>
       <h2 className="text-lg font-bold text-mesa-text-primary">{tituloRelatorio(filtro, intervalos)}</h2>
 
-      <div className="mt-3">
-        <h3 className="font-mesa-sans text-xs font-bold uppercase tracking-wide text-mesa-text-secondary">
-          O que passou pelo sistema
-        </h3>
-        <p className="mt-1 font-mesa-display text-4xl font-black text-mesa-text-primary">
-          {formatarPrecoBR(atual.totalBruto)}
-        </p>
-        <p className="text-sm text-mesa-text-secondary">
-          {atual.quantidadePedidos} comanda{atual.quantidadePedidos === 1 ? '' : 's'}
-        </p>
-        <p className={`mt-1 text-sm font-medium ${corComparacao}`}>{textoComparacao}</p>
+      <div className="mt-3 grid grid-cols-2 gap-3 sm:grid-cols-4">
+        <CartaoKpi
+          rotulo="Faturamento"
+          valor={formatarPrecoBR(atual.totalBruto)}
+          {...deltaPercentual(atual.totalBruto, comparacao?.totalBruto ?? 0, labelComparacao)}
+        />
+        <CartaoKpi
+          rotulo="Pedidos"
+          valor={String(atual.quantidadePedidos)}
+          {...deltaPercentual(atual.quantidadePedidos, comparacao?.quantidadePedidos ?? 0, labelComparacao)}
+        />
+        <CartaoKpi
+          rotulo="Ticket médio"
+          valor={formatarPrecoBR(ticketMedioAtual)}
+          {...deltaPercentual(ticketMedioAtual, ticketMedioComparacao, labelComparacao)}
+        />
+        <CartaoKpi
+          rotulo="Itens vendidos"
+          valor={String(atual.itensVendidos)}
+          {...deltaPercentual(atual.itensVendidos, comparacao?.itensVendidos ?? 0, labelComparacao)}
+        />
       </div>
 
       {atual.serieTemporal.pontos.length > 0 && (
@@ -278,6 +364,16 @@ export function PainelRelatorio({
               : 'Faturamento por hora no período'
           }
         />
+      )}
+
+      {evolucao14Dias.pontos.length > 0 && (
+        <Secao titulo="Evolução do faturamento (14 dias)">
+          <GraficoBarras
+            pontos={evolucao14Dias.pontos}
+            formatarValor={formatarPrecoBR}
+            rotuloAcessivel="Faturamento por dia nos últimos 14 dias"
+          />
+        </Secao>
       )}
 
       {atual.quantidadePedidos > 0 && (

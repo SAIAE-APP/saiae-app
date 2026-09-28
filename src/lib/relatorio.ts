@@ -149,6 +149,14 @@ export function calcularPontosAtencao(
   }
 }
 
+export function calcularTotalItensVendidos(pedidos: PedidoComItens[]): number {
+  return naoCancelados(pedidos).reduce(
+    (soma, p) =>
+      soma + p.itens_do_pedido.filter((item) => !item.removido).reduce((s, item) => s + item.quantidade, 0),
+    0,
+  )
+}
+
 export type ItemMaisVendido = {
   item_id: string | null
   nome_item: string
@@ -211,24 +219,16 @@ export function calcularDivisaoPorConsumo(pedidos: PedidoComItens[]): DivisaoPor
 
 export type PontoSerie = { chave: string; rotulo: string; valor: number; quantidade: number }
 
-export function calcularSeriePorDia(
-  pedidos: PedidoComItens[],
+type AcumuladorSerie = { valor: number; quantidade: number }
+
+function pontosDeMapaPorDia(
+  mapa: Map<string, AcumuladorSerie>,
   inicio: string,
   fim: string,
 ): PontoSerie[] {
-  const validos = naoCancelados(pedidos)
-  const porDia = new Map<string, { valor: number; quantidade: number }>()
-
-  for (const pedido of validos) {
-    const atual = porDia.get(pedido.data_operacao) ?? { valor: 0, quantidade: 0 }
-    atual.valor += calcularTotalPedido(pedido)
-    atual.quantidade += 1
-    porDia.set(pedido.data_operacao, atual)
-  }
-
   const pontos: PontoSerie[] = []
   for (let cursor = inicio; cursor <= fim; cursor = deslocarDias(cursor, 1)) {
-    const dado = porDia.get(cursor) ?? { valor: 0, quantidade: 0 }
+    const dado = mapa.get(cursor) ?? { valor: 0, quantidade: 0 }
     const [, mes, dia] = cursor.split('-')
     pontos.push({ chave: cursor, rotulo: `${dia}/${mes}`, valor: dado.valor, quantidade: dado.quantidade })
   }
@@ -237,11 +237,42 @@ export function calcularSeriePorDia(
 
 /** Recorta pras horas com movimento de verdade — mostrar as 24h de um dia
  * inclui várias madrugadas vazias que só poluem o gráfico. */
-export function calcularSeriePorHora(pedidos: PedidoComItens[]): PontoSerie[] {
-  const validos = naoCancelados(pedidos)
-  const porHora = new Map<number, { valor: number; quantidade: number }>()
+function pontosDeMapaPorHora(mapa: Map<number, AcumuladorSerie>): PontoSerie[] {
+  if (mapa.size === 0) return []
 
-  for (const pedido of validos) {
+  const horasComMovimento = [...mapa.keys()].sort((a, b) => a - b)
+  const primeira = horasComMovimento[0]
+  const ultima = horasComMovimento[horasComMovimento.length - 1]
+
+  const pontos: PontoSerie[] = []
+  for (let hora = primeira; hora <= ultima; hora++) {
+    const dado = mapa.get(hora) ?? { valor: 0, quantidade: 0 }
+    pontos.push({ chave: String(hora), rotulo: `${hora}h`, valor: dado.valor, quantidade: dado.quantidade })
+  }
+  return pontos
+}
+
+export function calcularSeriePorDia(
+  pedidos: PedidoComItens[],
+  inicio: string,
+  fim: string,
+): PontoSerie[] {
+  const porDia = new Map<string, AcumuladorSerie>()
+
+  for (const pedido of naoCancelados(pedidos)) {
+    const atual = porDia.get(pedido.data_operacao) ?? { valor: 0, quantidade: 0 }
+    atual.valor += calcularTotalPedido(pedido)
+    atual.quantidade += 1
+    porDia.set(pedido.data_operacao, atual)
+  }
+
+  return pontosDeMapaPorDia(porDia, inicio, fim)
+}
+
+export function calcularSeriePorHora(pedidos: PedidoComItens[]): PontoSerie[] {
+  const porHora = new Map<number, AcumuladorSerie>()
+
+  for (const pedido of naoCancelados(pedidos)) {
     const hora = new Date(pedido.criado_em).getHours()
     const atual = porHora.get(hora) ?? { valor: 0, quantidade: 0 }
     atual.valor += calcularTotalPedido(pedido)
@@ -249,18 +280,48 @@ export function calcularSeriePorHora(pedidos: PedidoComItens[]): PontoSerie[] {
     porHora.set(hora, atual)
   }
 
-  if (porHora.size === 0) return []
+  return pontosDeMapaPorHora(porHora)
+}
 
-  const horasComMovimento = [...porHora.keys()].sort((a, b) => a - b)
-  const primeira = horasComMovimento[0]
-  const ultima = horasComMovimento[horasComMovimento.length - 1]
+/** Mesma lógica de calcularSeriePorDia/Hora, mas isolando um item — usada
+ * pelo painel "Desempenho de um item" (produto isolado). `quantidade` aqui
+ * é unidades vendidas do item, não número de pedidos. */
+export function calcularSerieItemPorDia(
+  pedidos: PedidoComItens[],
+  itemId: string,
+  inicio: string,
+  fim: string,
+): PontoSerie[] {
+  const porDia = new Map<string, AcumuladorSerie>()
 
-  const pontos: PontoSerie[] = []
-  for (let hora = primeira; hora <= ultima; hora++) {
-    const dado = porHora.get(hora) ?? { valor: 0, quantidade: 0 }
-    pontos.push({ chave: String(hora), rotulo: `${hora}h`, valor: dado.valor, quantidade: dado.quantidade })
+  for (const pedido of naoCancelados(pedidos)) {
+    for (const item of pedido.itens_do_pedido) {
+      if (item.removido || item.item_id !== itemId) continue
+      const atual = porDia.get(pedido.data_operacao) ?? { valor: 0, quantidade: 0 }
+      atual.valor += item.preco_centavos_unitario * item.quantidade
+      atual.quantidade += item.quantidade
+      porDia.set(pedido.data_operacao, atual)
+    }
   }
-  return pontos
+
+  return pontosDeMapaPorDia(porDia, inicio, fim)
+}
+
+export function calcularSerieItemPorHora(pedidos: PedidoComItens[], itemId: string): PontoSerie[] {
+  const porHora = new Map<number, AcumuladorSerie>()
+
+  for (const pedido of naoCancelados(pedidos)) {
+    for (const item of pedido.itens_do_pedido) {
+      if (item.removido || item.item_id !== itemId) continue
+      const hora = new Date(pedido.criado_em).getHours()
+      const atual = porHora.get(hora) ?? { valor: 0, quantidade: 0 }
+      atual.valor += item.preco_centavos_unitario * item.quantidade
+      atual.quantidade += item.quantidade
+      porHora.set(hora, atual)
+    }
+  }
+
+  return pontosDeMapaPorHora(porHora)
 }
 
 export type RitmoDoDia = {

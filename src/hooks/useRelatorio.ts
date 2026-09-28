@@ -8,9 +8,12 @@ import {
   calcularMaisVendidos,
   calcularPontosAtencao,
   calcularRitmoDoDia,
+  calcularSerieItemPorDia,
+  calcularSerieItemPorHora,
   calcularSeriePorDia,
   calcularSeriePorHora,
   calcularTotalBruto,
+  calcularTotalItensVendidos,
 } from '../lib/relatorio'
 import type {
   DivisaoMetodo,
@@ -39,14 +42,16 @@ export type AgregadosRelatorio = {
   maisVendidos: ItemMaisVendido[]
   ritmoDoDia: RitmoDoDia
   serieTemporal: { granularidade: 'dia' | 'hora'; pontos: PontoSerie[] }
+  itensVendidos: number
 }
 
 export type AgregadoProdutoIsolado = {
   totalIsolado: number
   unidadesVendidas: number
+  serieTemporal: { granularidade: 'dia' | 'hora'; pontos: PontoSerie[] }
 }
 
-async function buscarPedidosDoPeriodo(
+export async function buscarPedidosDoPeriodo(
   barracaId: string,
   inicio: string,
   fim: string,
@@ -122,10 +127,15 @@ function agregar(
     maisVendidos: calcularMaisVendidos(pedidos),
     ritmoDoDia: calcularRitmoDoDia(pedidos),
     serieTemporal,
+    itensVendidos: calcularTotalItensVendidos(pedidos),
   }
 }
 
-function agregarProdutoIsolado(pedidos: PedidoComItens[], itemId: string): AgregadoProdutoIsolado {
+function agregarProdutoIsolado(
+  pedidos: PedidoComItens[],
+  itemId: string,
+  intervalo: IntervaloData,
+): AgregadoProdutoIsolado {
   let totalIsolado = 0
   let unidadesVendidas = 0
 
@@ -138,7 +148,15 @@ function agregarProdutoIsolado(pedidos: PedidoComItens[], itemId: string): Agreg
     }
   }
 
-  return { totalIsolado, unidadesVendidas }
+  const serieTemporal: AgregadoProdutoIsolado['serieTemporal'] =
+    intervalo.inicio === intervalo.fim
+      ? { granularidade: 'hora', pontos: calcularSerieItemPorHora(pedidos, itemId) }
+      : {
+          granularidade: 'dia',
+          pontos: calcularSerieItemPorDia(pedidos, itemId, intervalo.inicio, intervalo.fim),
+        }
+
+  return { totalIsolado, unidadesVendidas, serieTemporal }
 }
 
 export type ResultadoRelatorio =
@@ -264,13 +282,13 @@ export function useRelatorio(
 
   const atualIsolado = useMemo(() => {
     if (!itemFiltradoId || !pedidosAtuais) return null
-    return agregarProdutoIsolado(pedidosAtuais, itemFiltradoId)
-  }, [itemFiltradoId, pedidosAtuais])
+    return agregarProdutoIsolado(pedidosAtuais, itemFiltradoId, intervalos.atual)
+  }, [itemFiltradoId, pedidosAtuais, intervalos.atual])
 
   const comparacaoIsolado = useMemo(() => {
     if (!itemFiltradoId || !pedidosComparacao) return null
-    return agregarProdutoIsolado(pedidosComparacao, itemFiltradoId)
-  }, [itemFiltradoId, pedidosComparacao])
+    return agregarProdutoIsolado(pedidosComparacao, itemFiltradoId, intervalos.comparacao)
+  }, [itemFiltradoId, pedidosComparacao, intervalos.comparacao])
 
   if (itemFiltradoId) {
     return {
