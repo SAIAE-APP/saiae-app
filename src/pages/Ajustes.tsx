@@ -31,6 +31,7 @@ import { Card } from '../components/ui/Card'
 import { Chip } from '../components/ui/Chip'
 import { Icone } from '../components/ui/Icone'
 import { Input } from '../components/ui/Input'
+import { useToast } from '../components/ui/Toast'
 import { Textarea } from '../components/ui/Textarea'
 import { Toggle } from '../components/ui/Toggle'
 import { BottomSheet } from '../components/ui/BottomSheet'
@@ -2208,12 +2209,87 @@ function BottomSheetSenhaAdmin({
   )
 }
 
+/** Exclusão de conta irreversível: só habilita o botão depois de digitar
+ * EXCLUIR. A edge function apaga dados + login; aqui só limpa o aparelho
+ * (biometria) e volta pro Login. */
+function BottomSheetExcluirConta({ open, onClose }: { open: boolean; onClose: () => void }) {
+  const navigate = useNavigate()
+  const { sair } = useAuth()
+  const { mostrarToast } = useToast()
+  const [texto, setTexto] = useState('')
+  const [excluindo, setExcluindo] = useState(false)
+  const [erro, setErro] = useState<string | null>(null)
+
+  function fechar() {
+    if (excluindo) return
+    setTexto('')
+    setErro(null)
+    onClose()
+  }
+
+  async function excluir() {
+    setExcluindo(true)
+    setErro(null)
+    const { data, error } = await supabase.functions.invoke('excluir-conta', {
+      body: { confirmacao: 'EXCLUIR' },
+    })
+    if (error || !data || data.erro) {
+      setErro(data?.erro ?? 'Não foi possível excluir a conta. Tente novamente.')
+      setExcluindo(false)
+      return
+    }
+
+    desativarFaceId()
+    await sair()
+    mostrarToast('Sua conta foi excluída.', { variante: 'sucesso' })
+    navigate('/login', { replace: true })
+  }
+
+  return (
+    <BottomSheet open={open} onClose={fechar} aria-label="Excluir minha conta">
+      <h2 className="text-lg font-semibold text-mesa-text-primary">Excluir minha conta</h2>
+      <p className="mt-1 text-sm text-mesa-text-secondary">
+        Isso apaga seu login e todas as barracas em que você é o único dono, com pedidos, cardápio e
+        configurações. Não dá pra desfazer. Se você tem assinatura, cancele-a à parte.
+      </p>
+      <p className="mt-3 text-sm text-mesa-text-secondary">
+        Para confirmar, digite <strong>EXCLUIR</strong>:
+      </p>
+      <Input
+        value={texto}
+        onChange={(e) => setTexto(e.target.value)}
+        autoCapitalize="characters"
+        autoComplete="off"
+        aria-label="Digite EXCLUIR para confirmar"
+        className="mt-2"
+      />
+      {erro && <p className="mt-3 text-sm font-medium text-mesa-error-500">{erro}</p>}
+      <div className="mt-6 flex flex-col gap-2">
+        <Button
+          variant="destructive"
+          size="xl"
+          loading={excluindo}
+          disabled={texto.trim().toUpperCase() !== 'EXCLUIR'}
+          className="w-full"
+          onClick={excluir}
+        >
+          Excluir minha conta
+        </Button>
+        <Button variant="ghost" size="md" className="w-full" onClick={fechar} disabled={excluindo}>
+          Cancelar
+        </Button>
+      </div>
+    </BottomSheet>
+  )
+}
+
 function Rodape({ barracaId }: { barracaId: string }) {
   const navigate = useNavigate()
   const { usuario, sair } = useAuth()
   const [mostrarModal, setMostrarModal] = useState(false)
   const [sucesso, setSucesso] = useState(false)
   const [confirmandoSaida, setConfirmandoSaida] = useState(false)
+  const [excluindoConta, setExcluindoConta] = useState(false)
 
   const [suportaFaceId, setSuportaFaceId] = useState(false)
   const [faceIdLigado, setFaceIdLigado] = useState(() => faceIdAtivado())
@@ -2320,6 +2396,12 @@ function Rodape({ barracaId }: { barracaId: string }) {
       >
         Sair da conta
       </Button>
+
+      <Button variant="ghost" size="md" onClick={() => setExcluindoConta(true)} className="w-full">
+        Excluir minha conta
+      </Button>
+
+      <BottomSheetExcluirConta open={excluindoConta} onClose={() => setExcluindoConta(false)} />
 
       {mostrarModal && email && (
         <ModalTrocarSenha
