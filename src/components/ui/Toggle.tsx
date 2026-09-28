@@ -36,7 +36,7 @@ export function Toggle({ checked, onChange, label, disabled, id, className, ...r
           'duration-[var(--mesa-duration-micro)] ease-mesa-standard',
           'group-focus-visible:[box-shadow:var(--mesa-focus-ring-confirm)]',
           disabled && 'opacity-40',
-          checked ? 'bg-mesa-neutral-900 dark:bg-mesa-neutral-50' : 'bg-mesa-neutral-300 dark:bg-mesa-neutral-700',
+          checked ? 'bg-mesa-orange-500' : 'bg-mesa-neutral-300 dark:bg-mesa-neutral-700',
         )}
       >
         <span
