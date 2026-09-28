@@ -187,6 +187,18 @@ relevantes no Brasil, 58mm e 80mm, já cobertos.
   runtimeCaching no service worker pra funcionar offline. Isso
   substitui a referência antiga de "fonte do sistema" — ver Estilo
   abaixo
+- Texto visível pro usuário sobre desbloqueio biométrico usa o termo
+  genérico "biometria" (2026-09-28, pedido de produto — dono reparou
+  que "Face ID" soava só-de-iPhone pra quem usa Android). A
+  funcionalidade (`src/lib/faceId.ts`, `src/components/GateFaceId.tsx`)
+  usa WebAuthn de verdade multiplataforma (Face ID/Touch ID no iPhone,
+  impressão digital/reconhecimento facial no Android, Windows Hello no
+  Windows) — só o texto do toggle em Ajustes e da tela de bloqueio
+  mudou pra "biometria"; nomes de arquivo/componente/variável
+  (`faceId`, `GateFaceId`) continuam como estão, de propósito, não
+  vale o risco de renomear sem necessidade. A política de privacidade
+  (`Privacidade.tsx`, seção "Biometria") já listava os termos das três
+  plataformas lado a lado, não precisou mudar.
 - Redesign fonte: pasta `redesign_ux_ui_app/` na raiz do projeto tem
   os mockups (.svg) e specs de design (DESIGN.md) que guiam o v3.
   Controle de estoque e atalho de Suprimento/Sangria de caixa

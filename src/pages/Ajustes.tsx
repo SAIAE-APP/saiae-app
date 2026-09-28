@@ -2257,7 +2257,7 @@ function Rodape({ barracaId }: { barracaId: string }) {
       await ativarFaceId({ id: usuario.id, email: usuario.email })
       setFaceIdLigado(true)
     } catch {
-      setErroFaceId('Não foi possível ativar o Face ID neste aparelho. Tente de novo.')
+      setErroFaceId('Não foi possível ativar a biometria neste aparelho. Tente de novo.')
     }
     setProcessandoFaceId(false)
   }
@@ -2275,7 +2275,7 @@ function Rodape({ barracaId }: { barracaId: string }) {
             loading={processandoFaceId}
             className="w-full"
           >
-            {faceIdLigado ? 'Desativar Face ID neste aparelho' : 'Ativar Face ID neste aparelho'}
+            {faceIdLigado ? 'Desativar biometria neste aparelho' : 'Ativar biometria neste aparelho'}
           </Button>
           {erroFaceId && (
             <p className="text-center text-sm font-medium text-mesa-error-500">{erroFaceId}</p>

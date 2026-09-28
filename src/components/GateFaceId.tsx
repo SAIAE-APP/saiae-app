@@ -81,11 +81,11 @@ export function GateFaceId({ children }: { children: ReactNode }) {
           Sai aê travado
         </h1>
         <p className="mt-1 text-sm text-mesa-text-secondary">
-          {emailFaceId() ? `Desbloqueie como ${emailFaceId()}` : 'Use Face ID pra continuar'}
+          {emailFaceId() ? `Desbloqueie como ${emailFaceId()}` : 'Use a biometria pra continuar'}
         </p>
 
         <Button size="xl" loading={verificando} onClick={tentarDesbloquear} className="mt-8 w-full">
-          Desbloquear com Face ID
+          Desbloquear com biometria
         </Button>
 
         <Button
