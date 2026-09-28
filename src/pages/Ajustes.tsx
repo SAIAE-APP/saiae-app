@@ -673,13 +673,14 @@ function SecaoCardapio({ barracaId }: { barracaId: string }) {
     <section>
       <div className="mb-3 flex items-center justify-between">
         <RotuloSecao icone="restaurant">Cardápio</RotuloSecao>
-        <button
-          type="button"
+        <Button
+          variant="outline"
+          size="sm"
+          icon={<Icone nome="category" size={16} />}
           onClick={() => setGerenciandoCategorias(true)}
-          className="min-h-11 text-sm font-medium text-mesa-text-primary"
         >
           Categorias
-        </button>
+        </Button>
       </div>
       <Card>
         {carregando && <p className="text-sm text-mesa-text-secondary">Carregando...</p>}
