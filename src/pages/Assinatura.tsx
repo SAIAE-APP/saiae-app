@@ -62,7 +62,7 @@ export function Assinatura() {
   const aindaProcessando = processando && assinatura?.status !== 'active'
 
   return (
-    <div className="flex min-h-dvh flex-col gap-6 p-6">
+    <div className="flex min-h-dvh flex-col gap-6 p-6 md:mx-auto md:max-w-2xl">
       <div className="flex items-center gap-3">
         <button
           type="button"
