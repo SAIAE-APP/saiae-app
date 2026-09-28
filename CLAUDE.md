@@ -408,6 +408,17 @@ nenhum item daqui sozinho, só quando for pedido explicitamente.
     processa pagamento" acima — intencional, decisão consciente do
     dono do produto, não um erro a corrigir de volta quando chegar a
     vez de implementar.
+- Reportar bug (2026-09-27, pedido de produto): botão em Ajustes >
+  Conta > "Ajuda e suporte" (`SecaoAjudaSuporte`, antes do Rodape)
+  abre um formulário (descrição obrigatória + "o que esperava que
+  acontecesse" opcional) e chama a edge function `reportar-bug`, que
+  manda e-mail pro time via Resend API (`reply_to` = e-mail de quem
+  reportou, contexto de barraca/user agent no corpo). Exige os
+  secrets `RESEND_API_KEY` e `BUG_REPORT_EMAIL_DESTINO` na function —
+  sem eles, responde erro em vez de falhar quieto. `EMAIL_DE` (from)
+  fica hardcoded no código (`bugs@saiae.com.br`, mesmo domínio já
+  verificado no Resend pelo SMTP do Supabase Auth), não é secret por
+  não ser sensível.
 
 ## Regras técnicas invioláveis
 - Telas de lançar pedido e cozinha funcionam offline
