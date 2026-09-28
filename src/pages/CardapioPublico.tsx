@@ -584,7 +584,7 @@ export function CardapioPublico() {
   const podeComprar = linhas[0].pagamento_online_habilitado
 
   return (
-    <div className="min-h-dvh bg-mesa-bg-base pb-12">
+    <div className="min-h-dvh bg-mesa-bg-base pb-12 md:mx-auto md:max-w-4xl">
       <div className="flex flex-col items-center gap-3 px-6 pb-5 pt-[calc(env(safe-area-inset-top)+32px)] text-center">
         <span className="flex size-16 items-center justify-center overflow-hidden rounded-mesa-full bg-mesa-surface shadow-mesa-1">
           {logoUrl ? (
@@ -675,7 +675,7 @@ export function CardapioPublico() {
         ))}
       </div>
 
-      <div className="mt-4 flex flex-col gap-3 px-6 pb-24">
+      <div className="mt-4 flex flex-col gap-3 px-6 pb-24 md:grid md:grid-cols-2 md:items-start md:gap-4 xl:grid-cols-3">
         {itensExibidos.length === 0 ? (
           <p className="py-8 text-center text-sm text-mesa-text-secondary">
             Nenhum item encontrado.
@@ -706,7 +706,7 @@ export function CardapioPublico() {
       </p>
 
       {totalItensCarrinho > 0 && !mostrarCheckout && (
-        <div className="fixed inset-x-0 bottom-4 px-4">
+        <div className="fixed inset-x-0 bottom-4 px-4 md:inset-x-auto md:left-1/2 md:w-full md:max-w-4xl md:-translate-x-1/2 md:px-6">
           <button
             type="button"
             onClick={() => setMostrarCheckout(true)}
