@@ -15,6 +15,7 @@ import { useAssinaturaBarraca } from '../hooks/useAssinaturaBarraca'
 import { centavosParaReais, reaisParaCentavos } from '../lib/preco'
 import { apagarFotoItem, enviarFotoItem } from '../lib/fotoItem'
 import { apagarLogoBarraca, enviarLogoBarraca } from '../lib/logoBarraca'
+import { apagarCapaBarraca, enviarCapaBarraca } from '../lib/capaBarraca'
 import { ativarFaceId, desativarFaceId, faceIdAtivado, faceIdSuportado } from '../lib/faceId'
 import { METODOS_DISPONIVEIS } from '../lib/metodoPagamento'
 import { BPS_MAX, bpsParaPercentual, percentualParaBps } from '../lib/taxas'
@@ -22,6 +23,7 @@ import { ModalTrocarSenha } from '../components/ModalTrocarSenha'
 import { GateSenhaAdmin } from '../components/GateSenhaAdmin'
 import { SecaoImpressora } from '../components/SecaoImpressora'
 import { SecaoBanners } from '../components/SecaoBanners'
+import { SecaoHorarioFuncionamento } from '../components/SecaoHorarioFuncionamento'
 import { Button } from '../components/ui/Button'
 import { Card } from '../components/ui/Card'
 import { Chip } from '../components/ui/Chip'
@@ -1093,12 +1095,15 @@ function SecaoCardapio({ barracaId }: { barracaId: string }) {
 function SecaoIdentidade({ barraca }: { barraca: Barraca }) {
   const [nome, setNome] = useState(barraca.nome)
   const [logoUrl, setLogoUrl] = useState(barraca.logo_url)
+  const [capaUrl, setCapaUrl] = useState(barraca.imagem_capa_url)
   const [enviandoLogo, setEnviandoLogo] = useState(false)
+  const [enviandoCapa, setEnviandoCapa] = useState(false)
   const [salvando, setSalvando] = useState(false)
   const [salvo, setSalvo] = useState(false)
   const [erro, setErro] = useState<string | null>(null)
   const [linkCopiado, setLinkCopiado] = useState(false)
   const inputArquivoRef = useRef<HTMLInputElement>(null)
+  const inputCapaRef = useRef<HTMLInputElement>(null)
 
   async function aoEscolherArquivo(e: ChangeEvent<HTMLInputElement>) {
     const arquivo = e.target.files?.[0]
@@ -1120,6 +1125,31 @@ function SecaoIdentidade({ barraca }: { barraca: Barraca }) {
     setEnviandoLogo(false)
   }
 
+  async function aoEscolherCapa(e: ChangeEvent<HTMLInputElement>) {
+    const arquivo = e.target.files?.[0]
+    e.target.value = ''
+    if (!arquivo) return
+
+    setEnviandoCapa(true)
+    setErro(null)
+
+    try {
+      const urlAntiga = capaUrl
+      const novaUrl = await enviarCapaBarraca(barraca.id, arquivo)
+      setCapaUrl(novaUrl)
+      if (urlAntiga) apagarCapaBarraca(urlAntiga)
+    } catch {
+      setErro('Não foi possível enviar a capa. Tente novamente.')
+    }
+
+    setEnviandoCapa(false)
+  }
+
+  function removerCapa() {
+    if (capaUrl) apagarCapaBarraca(capaUrl)
+    setCapaUrl(null)
+  }
+
   async function salvar() {
     if (!nome.trim()) return
     setSalvando(true)
@@ -1127,7 +1157,7 @@ function SecaoIdentidade({ barraca }: { barraca: Barraca }) {
 
     const { error } = await supabase
       .from('barracas')
-      .update({ nome: nome.trim(), logo_url: logoUrl })
+      .update({ nome: nome.trim(), logo_url: logoUrl, imagem_capa_url: capaUrl })
       .eq('id', barraca.id)
 
     setSalvando(false)
@@ -1190,6 +1220,43 @@ function SecaoIdentidade({ barraca }: { barraca: Barraca }) {
             onChange={aoEscolherArquivo}
             className="hidden"
           />
+        </div>
+
+        <div className="mt-4">
+          <p className="mb-2 text-sm font-medium text-mesa-text-primary">Imagem de capa</p>
+          <div className="relative flex aspect-[16/6] w-full items-center justify-center overflow-hidden rounded-mesa-md bg-mesa-neutral-100 text-mesa-text-tertiary dark:bg-mesa-neutral-700">
+            {capaUrl ? (
+              <img src={capaUrl} alt="" className="size-full object-cover" />
+            ) : (
+              <Icone nome="image" size={24} />
+            )}
+          </div>
+          <div className="mt-2 flex gap-2">
+            <Button
+              variant="outline"
+              size="sm"
+              icon={<Icone nome="photo_camera" size={16} />}
+              loading={enviandoCapa}
+              onClick={() => inputCapaRef.current?.click()}
+            >
+              {capaUrl ? 'Trocar capa' : 'Adicionar capa'}
+            </Button>
+            {capaUrl && (
+              <Button variant="textDanger" size="sm" icon={<Icone nome="delete" size={16} />} onClick={removerCapa}>
+                Remover
+              </Button>
+            )}
+          </div>
+          <input
+            ref={inputCapaRef}
+            type="file"
+            accept="image/*"
+            onChange={aoEscolherCapa}
+            className="hidden"
+          />
+          <p className="mt-1.5 text-xs text-mesa-text-secondary">
+            Aparece no topo do cardápio público, atrás do logo e do nome.
+          </p>
         </div>
 
         <Input
@@ -2333,6 +2400,7 @@ export function Ajustes() {
           <SecaoIdentidade barraca={barraca} />
           <SecaoCardapio barracaId={barraca.id} />
           <SecaoBanners barracaId={barraca.id} />
+          <SecaoHorarioFuncionamento barracaId={barraca.id} />
           <SecaoFaixas barraca={barraca} />
           <SecaoPagamento barraca={barraca} />
           <SecaoFiscal barraca={barraca} />

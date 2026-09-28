@@ -23,6 +23,16 @@ export type Barraca = {
   impressora_nome: string | null
   impressora_largura_papel: LarguraPapel
   pagamento_online_habilitado: boolean
+  imagem_capa_url: string | null
+}
+
+export type HorarioFuncionamento = {
+  id: string
+  barraca_id: string
+  dia_semana: number
+  aberto: boolean
+  hora_abertura: string | null
+  hora_fechamento: string | null
 }
 
 export type Item = {
