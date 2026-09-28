@@ -17,6 +17,7 @@ import { apagarFotoItem, enviarFotoItem } from '../lib/fotoItem'
 import { apagarLogoBarraca, enviarLogoBarraca } from '../lib/logoBarraca'
 import { apagarCapaBarraca, enviarCapaBarraca } from '../lib/capaBarraca'
 import { ativarFaceId, desativarFaceId, faceIdAtivado, faceIdSuportado } from '../lib/faceId'
+import { urlPublica } from '../lib/urlPublica'
 import { METODOS_DISPONIVEIS } from '../lib/metodoPagamento'
 import { BPS_MAX, bpsParaPercentual, percentualParaBps } from '../lib/taxas'
 import { ModalTrocarSenha } from '../components/ModalTrocarSenha'
@@ -1267,7 +1268,7 @@ function SecaoIdentidade({ barraca }: { barraca: Barraca }) {
  * não em "Conta" junto do resto de SecaoIdentidade. */
 function SecaoCardapioDigital({ barraca }: { barraca: Barraca }) {
   const [linkCopiado, setLinkCopiado] = useState(false)
-  const linkCardapio = `${window.location.origin}/${barraca.slug}/cardapio`
+  const linkCardapio = urlPublica(`/${barraca.slug}/cardapio`)
 
   async function compartilharCardapio() {
     if (navigator.share) {

@@ -1,6 +1,7 @@
 import { useEffect, useState } from 'react'
 import type { Session, User } from '@supabase/supabase-js'
 import { supabase } from '../lib/supabase'
+import { urlPublica } from '../lib/urlPublica'
 
 const MENSAGENS_ERRO_LOGIN: Record<string, string> = {
   'Invalid login credentials': 'Email ou senha incorretos',
@@ -67,7 +68,7 @@ export function useAuth() {
 
   async function resetarSenha(email: string): Promise<void> {
     await supabase.auth.resetPasswordForEmail(email, {
-      redirectTo: `${window.location.origin}/redefinir-senha`,
+      redirectTo: urlPublica('/redefinir-senha'),
     })
   }
 
