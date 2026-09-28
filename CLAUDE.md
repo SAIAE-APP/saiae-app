@@ -356,6 +356,25 @@ nenhum item daqui sozinho, só quando for pedido explicitamente.
     lista de filtros por virar redundante com a seção). Filtro de
     categoria por chip default voltou a ser "Todos" (antes priorizava
     "Mais Pedidos" quando havia histórico).
+  - Imagem de capa e horário de funcionamento (2026-09-27, pedido de
+    produto inspirado num print de Configurações de concorrente,
+    feature nova do zero — nada disso existia antes). Capa:
+    `barracas.imagem_capa_url`, upload em Ajustes (dentro de
+    `SecaoIdentidade`, junto do logo), mesmo bucket `cardapio-fotos`
+    dos banners (`src/lib/capaBarraca.ts`, 1200px). Aparece no topo do
+    cardápio público como hero, com o logo sobrepondo a borda de baixo
+    (efeito capa de perfil) — sem capa cadastrada, layout volta a ser
+    só o header centralizado de antes. Horário: tabela nova
+    `horarios_funcionamento` (uma linha por dia 0-6, `aberto` +
+    `hora_abertura`/`hora_fechamento`), gerida em Ajustes por
+    `SecaoHorarioFuncionamento` (sempre mostra as 7 linhas Domingo–
+    Sábado via upsert, dia sem registro = fechado). Exposto no
+    cardápio público via `horarios_publicos(slug)` SECURITY DEFINER
+    (mesmo padrão de `banners_publicos`); "Aberto agora"/"Fechado —
+    abre às Xh" é calculado no client a partir da hora do visitante
+    (`statusFuncionamento` em `CardapioPublico.tsx`) — não trata
+    horário que atravessa a meia-noite (ex.: 18h–02h), fora de escopo
+    por ora.
   - Fase 2 (futura): cliente monta pedido e ele cai direto na
     Cozinha, mas o pagamento continua fora do app (maquininha/Pix na
     mesa, como já funciona hoje) — só tira a fila de atendimento,
