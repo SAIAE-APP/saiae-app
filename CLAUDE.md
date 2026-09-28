@@ -309,6 +309,26 @@ nenhum item daqui sozinho, só quando for pedido explicitamente.
     chamada de smoke test (pedido inexistente, retornou erro
     esperado) — **nenhuma nota foi emitida de verdade ainda**, uso
     real por uma barraca ainda não validado ponta a ponta.
+
+    **Modelo de impressão do cupom fiscal implementado** (2026-09-27,
+    `montarCupomFiscal`/`imprimirCupomFiscal` em `impressoraTermica.ts`,
+    mesmo padrão de bytes ESC/POS de `imprimirTeste`) — layout baseado num
+    cupom real de NFC-e (referência: McDonald's), sem NCM/CFOP por item
+    (fica em `itens`, não em `itens_do_pedido`, e cupom de consumidor
+    normalmente não precisa) nem valor estimado de tributos (não
+    calculamos isso). **De propósito sem gatilho de UI ainda** — decisão
+    de qual tela dispara a impressão continua em aberto, mesmo caso do
+    resto da impressora (ver acima). Pré-requisito resolvido nessa
+    implementação: `emitir-nfce` só salvava `nfce_status/chave/numero/
+    mensagem`, descartando o resto da resposta da FocusNFe — agora também
+    salva `nfce_serie`, `nfce_protocolo` e `nfce_qrcode_url` (novas
+    colunas em `pedidos`), usados pra imprimir o QR code de consulta no
+    cupom. **Ressalva**: os nomes desses 3 campos na resposta da FocusNFe
+    vieram de pesquisa na documentação (não dá pra montar essa URL de QR
+    sozinhos — o padrão nacional de NFC-e exige o CSC da SEFAZ, que fica
+    só com a FocusNFe, nunca com o Sai aê), não de uma emissão real
+    inspecionada — confirmar contra o `resultado` bruto na primeira
+    emissão de verdade, já que isso ainda não aconteceu.
   - Estoque: item mais delicado por reverter a regra mais antiga do
     projeto. **Implementado** o mais simples definido em 2026-09-26 —
     toggle "esgotado" por item (`itens.esgotado`, editável em Ajustes,
