@@ -3,11 +3,12 @@ import clsx from 'clsx'
 
 export type PontoGrafico = { chave: string; rotulo: string; valor: number }
 
-/** Gráfico de colunas de série única (um hue só, mesa-success) — sem paleta
- * categórica porque não há identidade a distinguir, só magnitude ao longo
- * do tempo. Rótulo abaixo do gráfico troca ao tocar/passar o mouse numa
- * barra, em vez de um tooltip flutuante posicionado em cima do SVG
- * (simples e robusto em telas estreitas). */
+/** Gráfico de colunas de série única — barras neutras (tinta), a
+ * selecionada/mais recente em mostarda (mesmo "um acento por card" do
+ * resto do app, não é sinal operacional pra usar mesa-success). Rótulo
+ * abaixo do gráfico troca ao tocar/passar o mouse numa barra, em vez de um
+ * tooltip flutuante posicionado em cima do SVG (simples e robusto em
+ * telas estreitas). */
 export function GraficoBarras({
   pontos,
   formatarValor,
@@ -69,8 +70,8 @@ export function GraficoBarras({
               className={clsx(
                 'cursor-pointer transition-colors',
                 indiceExibido === indice
-                  ? 'fill-mesa-success-700 dark:fill-mesa-success-500'
-                  : 'fill-mesa-success-500/30 dark:fill-mesa-success-500/20',
+                  ? 'fill-mesa-orange-500'
+                  : 'fill-mesa-neutral-300 dark:fill-mesa-neutral-700',
               )}
               onMouseEnter={() => setAtivo(indice)}
               onMouseLeave={() => setAtivo(null)}
