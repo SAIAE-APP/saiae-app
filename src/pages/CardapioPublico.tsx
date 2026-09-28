@@ -889,9 +889,12 @@ export function CardapioPublico() {
         )}
       </div>
 
-      <p className="mt-8 text-center text-xs text-mesa-text-tertiary">
-        Feito com Sai aê
-      </p>
+      <div className="mt-8 flex flex-col items-center gap-1 text-center">
+        <p className="font-mesa-sans text-sm font-semibold text-mesa-text-secondary">
+          Sai aê um pastel, um açaí... o que você quiser
+        </p>
+        <p className="text-xs text-mesa-text-tertiary">Feito com Sai aê</p>
+      </div>
 
       {totalItensCarrinho > 0 && !mostrarCheckout && (
         <div className="fixed inset-x-0 bottom-4 px-4 md:inset-x-auto md:left-1/2 md:w-full md:max-w-4xl md:-translate-x-1/2 md:px-6">
