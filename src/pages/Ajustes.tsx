@@ -1101,7 +1101,6 @@ function SecaoIdentidade({ barraca }: { barraca: Barraca }) {
   const [salvando, setSalvando] = useState(false)
   const [salvo, setSalvo] = useState(false)
   const [erro, setErro] = useState<string | null>(null)
-  const [linkCopiado, setLinkCopiado] = useState(false)
   const inputArquivoRef = useRef<HTMLInputElement>(null)
   const inputCapaRef = useRef<HTMLInputElement>(null)
 
@@ -1169,27 +1168,6 @@ function SecaoIdentidade({ barraca }: { barraca: Barraca }) {
 
     setSalvo(true)
     window.setTimeout(() => setSalvo(false), 3000)
-  }
-
-  const linkCardapio = `${window.location.origin}/${barraca.slug}/cardapio`
-
-  async function compartilharCardapio() {
-    if (navigator.share) {
-      try {
-        await navigator.share({ title: `Cardápio ${barraca.nome}`, url: linkCardapio })
-      } catch {
-        // usuário cancelou o share nativo — não é erro
-      }
-      return
-    }
-
-    try {
-      await navigator.clipboard.writeText(linkCardapio)
-      setLinkCopiado(true)
-      window.setTimeout(() => setLinkCopiado(false), 2500)
-    } catch {
-      // clipboard indisponível — sem fallback melhor por ora
-    }
   }
 
   return (
@@ -1278,8 +1256,40 @@ function SecaoIdentidade({ barraca }: { barraca: Barraca }) {
           {salvo ? 'Salvo!' : 'Salvar'}
         </Button>
       </Card>
+    </section>
+  )
+}
 
-      <Card className="mt-3">
+/** Extraída de dentro de SecaoIdentidade em 2026-09-27 (pedido do dono do
+ * produto): é sobre o cardápio digital, não sobre identidade/conta da
+ * barraca — precisava cair na categoria "Cardápio & Operação" do desktop,
+ * não em "Conta" junto do resto de SecaoIdentidade. */
+function SecaoCardapioDigital({ barraca }: { barraca: Barraca }) {
+  const [linkCopiado, setLinkCopiado] = useState(false)
+  const linkCardapio = `${window.location.origin}/${barraca.slug}/cardapio`
+
+  async function compartilharCardapio() {
+    if (navigator.share) {
+      try {
+        await navigator.share({ title: `Cardápio ${barraca.nome}`, url: linkCardapio })
+      } catch {
+        // usuário cancelou o share nativo — não é erro
+      }
+      return
+    }
+
+    try {
+      await navigator.clipboard.writeText(linkCardapio)
+      setLinkCopiado(true)
+      window.setTimeout(() => setLinkCopiado(false), 2500)
+    } catch {
+      // clipboard indisponível — sem fallback melhor por ora
+    }
+  }
+
+  return (
+    <section>
+      <Card>
         <p className="text-sm font-semibold text-mesa-text-primary">Cardápio digital</p>
         <p className="mt-0.5 text-xs text-mesa-text-secondary">
           Um link público, sem login, pro seu cliente ver o cardápio com foto e preço direto do
@@ -2448,6 +2458,9 @@ export function Ajustes({ categoria = 'conta' }: { categoria?: CategoriaAjustes 
           </SecaoDaCategoria>
           <SecaoDaCategoria categoria="conta" atual={categoria}>
             <SecaoIdentidade barraca={barraca} />
+          </SecaoDaCategoria>
+          <SecaoDaCategoria categoria="cardapio" atual={categoria}>
+            <SecaoCardapioDigital barraca={barraca} />
           </SecaoDaCategoria>
           <SecaoDaCategoria categoria="cardapio" atual={categoria}>
             <SecaoCardapio barracaId={barraca.id} />
