@@ -311,9 +311,15 @@ function CarrosselBanners({ banners }: { banners: BannerPublico[] }) {
     return () => window.clearInterval(intervalo)
   }, [exibidos.length])
 
+  // scrollIntoView rola qualquer ancestral rolável até o elemento ficar
+  // visível — se a página já tinha rolado pra baixo (carrossel fora da
+  // viewport), o auto-play jogava a página inteira de volta pro topo.
+  // scrollTo no container mexe só no scroll horizontal do carrossel.
   useEffect(() => {
-    const filho = containerRef.current?.children[indiceAtivo]
-    filho?.scrollIntoView({ behavior: 'smooth', inline: 'start', block: 'nearest' })
+    const filho = containerRef.current?.children[indiceAtivo] as HTMLElement | undefined
+    if (containerRef.current && filho) {
+      containerRef.current.scrollTo({ left: filho.offsetLeft, behavior: 'smooth' })
+    }
   }, [indiceAtivo])
 
   useEffect(() => {
