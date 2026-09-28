@@ -90,10 +90,8 @@ export function Privacidade() {
             cardápio digital público (usado por clientes finais).
           </p>
           <p>
-            Controlador dos dados: <strong>João Marcos</strong>, pessoa física
-            responsável pelo Sai aê — CNPJ ainda em processo de abertura, este trecho será atualizado
-            pra razão social/CNPJ assim que a empresa for formalizada. Contato para qualquer assunto de
-            privacidade:{' '}
+            Controlador dos dados: <strong>João Marcos</strong>, responsável pelo Sai aê. Contato para
+            qualquer assunto de privacidade:{' '}
             <a href="mailto:contatosaiae@gmail.com" className="font-medium text-mesa-text-primary underline">
               contatosaiae@gmail.com
             </a>
