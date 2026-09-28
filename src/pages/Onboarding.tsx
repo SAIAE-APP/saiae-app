@@ -272,8 +272,8 @@ export function Onboarding() {
   }
 
   return (
-    <div className="flex min-h-dvh flex-col bg-mesa-neutral-900 text-mesa-neutral-50">
-      <div className="relative z-10 flex items-center justify-between px-5 pt-[calc(env(safe-area-inset-top)+14px)]">
+    <div className="flex min-h-dvh flex-col overflow-y-auto bg-mesa-neutral-900 text-mesa-neutral-50 md:items-center md:justify-center md:py-8">
+      <div className="relative z-10 flex items-center justify-between px-5 pt-[calc(env(safe-area-inset-top)+14px)] md:mx-auto md:w-full md:max-w-[420px] md:px-0 md:pt-0">
         <img src="/brand/saiae-wordmark-horizontal.svg" alt="Sai aê" className="h-[30px] w-auto" />
         <button
           type="button"
@@ -290,7 +290,7 @@ export function Onboarding() {
       <div
         ref={trackRef}
         onScroll={aoRolar}
-        className="rolagem-sem-barra relative z-[1] flex flex-1 snap-x snap-mandatory overflow-x-auto overscroll-x-contain"
+        className="rolagem-sem-barra relative z-[1] flex flex-1 snap-x snap-mandatory overflow-x-auto overscroll-x-contain md:mx-auto md:w-full md:max-w-[420px] md:flex-none"
         role="group"
         aria-roledescription="carrossel"
         aria-label="Apresentação do Sai aê"
@@ -316,7 +316,7 @@ export function Onboarding() {
         ))}
       </div>
 
-      <div className="relative z-10 flex flex-col gap-3.5 px-6 pb-[calc(env(safe-area-inset-bottom)+20px)] pt-4.5">
+      <div className="relative z-10 flex flex-col gap-3.5 px-6 pb-[calc(env(safe-area-inset-bottom)+20px)] pt-4.5 md:mx-auto md:w-full md:max-w-[420px] md:px-0 md:pb-0 md:pt-6">
         <div className="flex justify-center gap-1" role="tablist" aria-label="Telas">
           {SLIDES.map((_, indice) => (
             <button
