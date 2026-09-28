@@ -1,5 +1,6 @@
 import { useEffect, useMemo, useRef, useState } from 'react'
 import { useParams } from 'react-router'
+import clsx from 'clsx'
 import { supabase } from '../lib/supabase'
 import { formatarPrecoBR } from '../lib/preco'
 import { Button } from '../components/ui/Button'
@@ -330,26 +331,42 @@ function CarrosselBanners({ banners }: { banners: BannerPublico[] }) {
   }
 
   return (
-    <div
-      ref={containerRef}
-      onPointerDown={pausarPorInteracao}
-      onTouchStart={pausarPorInteracao}
-      className="mb-5 flex snap-x snap-mandatory gap-3 overflow-x-auto px-6 pb-1"
-    >
-      {exibidos.map((banner) => (
-        <div
-          key={banner.id}
-          className="relative aspect-[16/7] w-[85vw] shrink-0 snap-start overflow-hidden rounded-mesa-xl bg-mesa-neutral-100 shadow-mesa-1 dark:bg-mesa-neutral-700 sm:w-96"
-        >
-          <img src={banner.imagem_url} alt={banner.titulo ?? ''} className="size-full object-cover" />
-          {!usandoPadrao && (banner.titulo || banner.cta_texto) && (
-            <div className="absolute inset-x-0 bottom-0 bg-gradient-to-t from-mesa-neutral-900/85 to-transparent p-4 pt-8">
-              {banner.titulo && <p className="text-base font-bold text-white">{banner.titulo}</p>}
-              {banner.cta_texto && <p className="text-xs text-white/85">{banner.cta_texto}</p>}
-            </div>
-          )}
+    <div className="mb-5">
+      <div
+        ref={containerRef}
+        onPointerDown={pausarPorInteracao}
+        onTouchStart={pausarPorInteracao}
+        className="flex snap-x snap-mandatory overflow-x-auto px-6"
+      >
+        {exibidos.map((banner) => (
+          <div
+            key={banner.id}
+            className="relative aspect-[16/7] w-full shrink-0 snap-start overflow-hidden rounded-mesa-xl bg-mesa-neutral-100 shadow-mesa-1 dark:bg-mesa-neutral-700"
+          >
+            <img src={banner.imagem_url} alt={banner.titulo ?? ''} className="size-full object-cover" />
+            {!usandoPadrao && (banner.titulo || banner.cta_texto) && (
+              <div className="absolute inset-x-0 bottom-0 bg-gradient-to-t from-mesa-neutral-900/85 to-transparent p-4 pt-8">
+                {banner.titulo && <p className="text-base font-bold text-white">{banner.titulo}</p>}
+                {banner.cta_texto && <p className="text-xs text-white/85">{banner.cta_texto}</p>}
+              </div>
+            )}
+          </div>
+        ))}
+      </div>
+
+      {exibidos.length > 1 && (
+        <div className="mt-2 flex justify-center gap-1" aria-hidden>
+          {exibidos.map((banner, indice) => (
+            <span
+              key={banner.id}
+              className={clsx(
+                'h-1.5 rounded-full transition-[width,background-color] duration-[var(--mesa-duration-short)]',
+                indice === indiceAtivo ? 'w-5 bg-mesa-orange-500' : 'w-1.5 bg-mesa-neutral-200 dark:bg-mesa-neutral-700',
+              )}
+            />
+          ))}
         </div>
-      ))}
+      )}
     </div>
   )
 }
