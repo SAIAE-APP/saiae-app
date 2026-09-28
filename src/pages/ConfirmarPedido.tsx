@@ -362,24 +362,22 @@ export function ConfirmarPedido() {
           >
             Confirmar e enviar
           </Button>
-          <Button
-            variant="outlineAmber"
-            size="xl"
-            icon={<Icone nome="local_shipping" size={20} />}
-            disabled={!podeEnviar}
-            loading={enviando}
-            onClick={() => setConfirmandoEntregaDireta(true)}
-            className="w-full"
-          >
-            Entregar
-          </Button>
-
           <button
             type="button"
             onClick={voltarEEditar}
             className="min-h-11 text-center text-sm font-semibold text-mesa-text-secondary"
           >
             Voltar e editar
+          </button>
+
+          <button
+            type="button"
+            onClick={() => setConfirmandoEntregaDireta(true)}
+            disabled={!podeEnviar}
+            className="mt-2 flex min-h-11 items-center justify-center gap-1.5 text-center text-xs font-medium text-mesa-text-tertiary outline-none disabled:opacity-40"
+          >
+            <Icone nome="local_shipping" size={14} />
+            Entregar direto no balcão (não vai pra cozinha)
           </button>
         </div>
       </div>
@@ -411,12 +409,14 @@ export function ConfirmarPedido() {
         onClose={() => setConfirmandoEntregaDireta(false)}
         aria-label="Confirmar entrega direta"
       >
-        <h2 className="text-lg font-semibold text-mesa-text-primary">
-          Você está mesmo entregando o pedido direto e não precisa passar pela cozinha?
-        </h2>
+        <h2 className="text-lg font-semibold text-mesa-text-primary">Isso pula a cozinha</h2>
+        <p className="mt-1 text-sm text-mesa-text-secondary">
+          O pedido não gera senha de chamada e não aparece na Cozinha — vai direto pro Histórico
+          como entregue.
+        </p>
         <div className="mt-6 flex flex-col gap-2">
           <Button
-            variant="outlineAmber"
+            variant="outline"
             size="xl"
             icon={<Icone nome="local_shipping" size={20} />}
             loading={enviando}
