@@ -1,10 +1,11 @@
 import { useNavigate } from 'react-router'
 import clsx from 'clsx'
 import { useBarracaAtual } from '../../layouts/contextoBarraca'
+import { classesBotaoIcone } from '../../lib/estiloBotaoIcone'
 import { Icone } from './Icone'
 
 /**
- * Ícone de 20px, área de toque 44×44 (regra do CLAUDE.md). Por padrão
+ * Mesmo shape do botão de tema (`classesBotaoIcone`, 44×44). Por padrão
  * navega direto pro Dashboard (`/:slug`); telas com estado que seria
  * perdido no caminho (ex.: ConfirmarPedido) passam `onClick` pra
  * interceptar e confirmar antes.
@@ -18,10 +19,7 @@ export function BotaoHome({ onClick, className }: { onClick?: () => void; classN
       type="button"
       onClick={onClick ?? (() => navigate(`/${barraca.slug}`))}
       aria-label="Ir para o início"
-      className={clsx(
-        'flex size-11 shrink-0 items-center justify-center text-mesa-text-secondary outline-none',
-        className,
-      )}
+      className={clsx(classesBotaoIcone(), className)}
     >
       <Icone nome="home" size={20} />
     </button>

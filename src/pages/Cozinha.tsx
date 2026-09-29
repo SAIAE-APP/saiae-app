@@ -688,7 +688,7 @@ export function Cozinha() {
 
       <div className="flex flex-col gap-2 px-4 pt-[calc(env(safe-area-inset-top)+16px)] pb-4 sm:flex-row sm:items-center sm:justify-between sm:gap-3">
         <div className="flex items-center gap-1">
-          <BotaoHome className="-ml-2" />
+          <BotaoHome />
           <h1 className="text-2xl font-bold text-mesa-text-primary">Cozinha</h1>
         </div>
         <div className="flex flex-wrap items-center gap-2 sm:flex-nowrap">

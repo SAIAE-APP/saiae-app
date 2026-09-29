@@ -231,7 +231,7 @@ export function ConfirmarPedido() {
       <div className="flex items-start justify-between gap-3 px-6 pt-[calc(env(safe-area-inset-top)+20px)]">
         <div className="min-w-0">
           <div className="flex items-center gap-1">
-            <BotaoHome onClick={() => setConfirmandoDescarte(true)} className="-ml-2" />
+            <BotaoHome onClick={() => setConfirmandoDescarte(true)} />
             <button
               type="button"
               onClick={voltarEEditar}

@@ -516,7 +516,7 @@ export function Historico() {
       >
         <div className="flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between sm:gap-3">
           <div className="flex items-center gap-2">
-            <BotaoHome className="-ml-2" />
+            <BotaoHome />
             <h1 className="text-2xl font-bold leading-tight text-mesa-text-primary">Histórico</h1>
           </div>
           <div className="flex flex-wrap items-center gap-2 sm:flex-nowrap">

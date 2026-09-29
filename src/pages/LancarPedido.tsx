@@ -712,7 +712,7 @@ export function LancarPedido() {
     <div className="flex min-h-dvh flex-col">
       <div className="flex items-start justify-between gap-3 px-6 pt-[calc(env(safe-area-inset-top)+20px)]">
         <div className="flex items-center gap-1">
-          <BotaoHome className="-ml-2" />
+          <BotaoHome />
           <h1 className="text-[32px] font-bold leading-[40px] text-mesa-text-primary">
             Lançar Pedido
           </h1>

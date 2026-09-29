@@ -241,7 +241,7 @@ export function Desktop() {
         <div className="mx-auto max-w-4xl">
           <div className="flex items-center justify-between gap-3">
             <div className="flex items-center gap-2">
-              <BotaoHome className="-ml-2" />
+              <BotaoHome />
               <h1 className="text-2xl font-bold leading-tight text-mesa-text-primary">Faturamento</h1>
             </div>
             <button
