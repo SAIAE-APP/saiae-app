@@ -58,6 +58,23 @@ formata nada. Colunas novas em `barracas`: `impressora_habilitada`,
 Sem raspagem de mercado necessária: só existem dois tamanhos de papel
 relevantes no Brasil, 58mm e 80mm, já cobertos.
 
+**Gatilho da comanda decidido** (pedido do João, 2026-09-29): com a
+impressora habilitada e um dispositivo configurado, a **comanda de
+cozinha é impressa automaticamente** quando o pedido enviado no aparelho
+recebe a senha do servidor (`useImpressaoAutomatica`, em LayoutBarraca,
+ouve `aoCriarPedidoLocal` emitido por `useSincronizacao`). Imprime na
+sincronização, não no toque, porque a senha só existe depois do sync —
+offline imprime quando a fila sobe, nunca com senha provisória. Roda em
+segundo plano (não bloqueia o envio); falha vira toast tocável
+"Reimprimir" com a causa técnica do plugin; idempotente por
+`client_uuid` (localStorage + Set em memória). Pedido 100% entrega
+direta não imprime (não passa pela cozinha). Texto sai sem acento
+(`semAcento`): térmicas genéricas não têm a codepage e imprimiam "?".
+**Próximo passo:** pedidos do cardápio digital (Pix) são criados no
+servidor e não passam por esse gatilho — imprimir quando aparecerem na
+Cozinha de um aparelho com impressora. Plugin só fala SPP clássico;
+impressoras só-BLE não são suportadas.
+
 ## Regras de produto
 - Senha sequencial por pedido, reinicia todo dia
 - Mesa é campo opcional; toggle "Viagem" desabilita a mesa

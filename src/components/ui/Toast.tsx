@@ -22,6 +22,8 @@ export interface ToastOpcoes {
   variante?: ToastVariante
   icone?: string
   duracaoMs?: number | null
+  /** Toque no toast executa isso (e fecha) — ex.: "Reimprimir". */
+  aoClicar?: () => void
 }
 
 interface ToastItem {
@@ -30,6 +32,7 @@ interface ToastItem {
   variante: ToastVariante
   icone: string
   saindo: boolean
+  aoClicar?: () => void
 }
 
 interface ToastContextValue {
@@ -86,7 +89,7 @@ export function ToastProvider({ children }: { children: ReactNode }) {
       const id = proximoId++
       setItens((atual) => [
         ...atual,
-        { id, texto, variante, icone: opcoes?.icone ?? ICONE_PADRAO[variante], saindo: false },
+        { id, texto, variante, icone: opcoes?.icone ?? ICONE_PADRAO[variante], saindo: false, aoClicar: opcoes?.aoClicar },
       ])
 
       const duracaoMs = opcoes?.duracaoMs === undefined ? DURACAO_PADRAO_MS : opcoes.duracaoMs
@@ -128,7 +131,10 @@ function ToastCard({ item, onFechar }: { item: ToastItem; onFechar: () => void }
     <button
       type="button"
       role="status"
-      onClick={onFechar}
+      onClick={() => {
+        item.aoClicar?.()
+        onFechar()
+      }}
       className={clsx(
         'pointer-events-auto flex w-full max-w-[420px] items-center gap-2.5 rounded-mesa-balao border border-mesa-border-subtle bg-mesa-surface px-4 py-3 text-left shadow-mesa-3',
         'transition-[transform,opacity] duration-[var(--mesa-duration-short)] ease-mesa-decelerate',

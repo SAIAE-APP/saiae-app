@@ -2,6 +2,7 @@ import { useEffect, useRef, useState } from 'react'
 import { supabase } from '../lib/supabase'
 import {
   incrementarTentativa,
+  emitirPedidoCriadoLocal,
   listarPendentes,
   marcarConcluida,
   notificarCriacaoPedido,
@@ -19,6 +20,12 @@ async function executarOperacao(op: OperacaoPendente): Promise<void> {
       if (error) throw error
       const resultado = data as { pedido_id: string; senha: number }
       notificarCriacaoPedido(op.id, { pedidoId: resultado.pedido_id, senha: resultado.senha })
+      emitirPedidoCriadoLocal({
+        idOperacao: op.id,
+        pedidoId: resultado.pedido_id,
+        senha: resultado.senha,
+        payload: op.payload,
+      })
       return
     }
 

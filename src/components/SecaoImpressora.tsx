@@ -3,6 +3,7 @@ import { useRascunho, useSalvarBarraca } from '../hooks/useSalvarBarraca'
 import { ErroSalvar } from './BotaoSalvarCampo'
 import {
   dispositivosPareados,
+  descreverErroImpressao,
   impressoraSuportada,
   imprimirTeste,
 } from '../lib/impressoraTermica'
@@ -188,8 +189,8 @@ export function SecaoImpressora({ barraca }: { barraca: Barraca }) {
     try {
       await imprimirTeste({ endereco, largura, nomeBarraca: barraca.nome })
       setSucessoTeste(true)
-    } catch {
-      setErroTeste('Não foi possível imprimir. Confirme que a impressora está ligada, pareada e com papel.')
+    } catch (erro) {
+      setErroTeste(descreverErroImpressao(erro))
     }
     setTestando(false)
   }

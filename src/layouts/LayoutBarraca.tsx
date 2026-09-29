@@ -3,6 +3,7 @@ import { Outlet, useLocation, useParams } from 'react-router'
 import clsx from 'clsx'
 import { useBarraca } from '../hooks/useBarraca'
 import { useSincronizacao } from '../hooks/useSincronizacao'
+import { useImpressaoAutomatica } from '../hooks/useImpressaoAutomatica'
 import { useRealtimePedidos } from '../hooks/useRealtimePedidos'
 import { useAssinaturaBarraca } from '../hooks/useAssinaturaBarraca'
 import { NaoEncontrado } from '../pages/NaoEncontrado'
@@ -18,6 +19,7 @@ export function LayoutBarraca() {
   const { slug } = useParams<{ slug: string }>()
   const { barraca, carregando, erro } = useBarraca(slug ?? '')
   const sincronizacao = useSincronizacao()
+  useImpressaoAutomatica(barraca)
   const { mostrarToast } = useToast()
   // undefined = ainda não sabemos (primeiro render) — só avisa depois de
   // já ter visto o app online uma vez, senão dispara um toast de "voltou"

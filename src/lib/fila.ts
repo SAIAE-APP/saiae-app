@@ -131,3 +131,22 @@ export function notificarCriacaoPedido(idOperacao: string, resultado: ResultadoC
   lista.forEach((ouvinte) => ouvinte(resultado))
   ouvintesCriacao.delete(idOperacao)
 }
+
+/**
+ * Broadcast de TODO pedido criado neste aparelho (com o payload original e a
+ * senha real do servidor) — usado pela impressão automática da comanda, que
+ * precisa da senha e dos itens e não pode depender de tela montada.
+ */
+export type PedidoCriadoLocal = { idOperacao: string; pedidoId: string; senha: number; payload: Record<string, unknown> }
+const ouvintesPedidoCriado = new Set<(pedido: PedidoCriadoLocal) => void>()
+
+export function aoCriarPedidoLocal(ouvinte: (pedido: PedidoCriadoLocal) => void): () => void {
+  ouvintesPedidoCriado.add(ouvinte)
+  return () => {
+    ouvintesPedidoCriado.delete(ouvinte)
+  }
+}
+
+export function emitirPedidoCriadoLocal(pedido: PedidoCriadoLocal): void {
+  ouvintesPedidoCriado.forEach((ouvinte) => ouvinte(pedido))
+}
