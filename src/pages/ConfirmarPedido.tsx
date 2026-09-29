@@ -227,7 +227,7 @@ export function ConfirmarPedido() {
   const podeEnviar = metodoSelecionado !== null && !enviando
 
   return (
-    <div className="flex min-h-dvh flex-col">
+    <div className="mx-auto flex min-h-dvh w-full max-w-5xl flex-col">
       <div className="flex items-start justify-between gap-3 px-6 pt-[calc(env(safe-area-inset-top)+20px)]">
         <div className="min-w-0">
           <div className="flex items-center gap-1">
@@ -255,7 +255,8 @@ export function ConfirmarPedido() {
         </button>
       </div>
 
-      <div className="flex-1 px-6 pb-10 pt-5">
+      <div className="flex-1 px-6 pb-10 pt-5 md:grid md:grid-cols-2 md:items-start md:gap-8">
+        <div>
         <h2 className="mb-3 flex items-center gap-1.5 font-mesa-sans text-xs font-semibold uppercase tracking-wider text-mesa-text-secondary">
           <Icone nome="receipt_long" size={14} />
           Itens do pedido
@@ -301,8 +302,10 @@ export function ConfirmarPedido() {
             {formatarPrecoBR(totalCentavos)}
           </span>
         </div>
+        </div>
 
-        <h2 className="mb-3 mt-6 flex items-center gap-1.5 font-mesa-sans text-xs font-semibold uppercase tracking-wider text-mesa-text-secondary">
+        <div>
+        <h2 className="mb-3 mt-6 flex items-center gap-1.5 font-mesa-sans text-xs font-semibold uppercase tracking-wider text-mesa-text-secondary md:mt-0">
           <Icone nome="credit_card" size={14} />
           Forma de pagamento
         </h2>
@@ -383,6 +386,7 @@ export function ConfirmarPedido() {
             <Icone nome="local_shipping" size={14} />
             Entregar direto no balcão (não vai pra cozinha)
           </button>
+        </div>
         </div>
       </div>
 
