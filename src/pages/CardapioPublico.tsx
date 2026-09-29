@@ -705,9 +705,24 @@ export function CardapioPublico() {
     })
 
     if (error || !data || data.erro) {
+      // Com status não-2xx o supabase-js devolve `data` nulo e o corpo da
+      // resposta fica em error.context — é de lá que sai o erro real.
+      let corpo: { erro?: string; detalhe?: unknown } | null = data ?? null
+      const contexto = (error as { context?: unknown } | null)?.context
+      if (!corpo && contexto instanceof Response) {
+        corpo = await contexto.json().catch(() => null)
+      }
+      console.error('Falha ao gerar pagamento Pix:', error, corpo?.erro, corpo?.detalhe)
+      // 4xx são recusas nossas com texto pensado pro cliente (ex.: item
+      // esgotado); 5xx/502 carregam erro cru do Mercado Pago — esse não vai
+      // pra tela.
+      const recusaNossa = contexto instanceof Response && contexto.status < 500
       setPagamento({
         fase: 'erro',
-        mensagem: data?.erro ?? 'Não foi possível gerar o pagamento. Tente novamente.',
+        mensagem:
+          recusaNossa && corpo?.erro
+            ? corpo.erro
+            : 'Não foi possível gerar o Pix agora. Tente novamente em instantes ou chame o atendente.',
       })
       return
     }
