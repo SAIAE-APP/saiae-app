@@ -95,6 +95,19 @@ relevantes no Brasil, 58mm e 80mm, já cobertos.
   produto em 2026-09-17.
 - Multi-tenant: toda tabela tem barraca_id, toda query filtra por
   ele
+- Campos de texto/número de Ajustes salvam por botão "Salvar"
+  explícito (`BotaoSalvarCampo`, outline, habilitado só com alteração),
+  nunca no onBlur (2026-09-29, pedido do dono do produto, depois do CNPJ
+  "sumir" ao reabrir o app). Estado do campo vem de `useRascunho`
+  (`src/hooks/useSalvarBarraca.ts`): sem edição mostra sempre o valor
+  mais fresco da barraca, nada é gravado sem o usuário editar. Save via
+  `useSalvarBarraca`: erro real na tela, offline avisa "Sem internet.
+  Não foi salvo.", update que não afeta linha (RLS) conta como erro, e
+  o cache local da barraca (`atualizarBarracaCache` em `useBarraca.ts`)
+  só atualiza depois da confirmação do banco. Toggles/chips continuam
+  salvando na hora, mas revertem e mostram erro se falhar. Exceção
+  deliberada: listas densas (nome de item/categoria, título de banner)
+  ainda salvam ao sair do campo, com toast de erro.
 
 ## Regras de tema
 - Identidade visual atual é a IDV "Sai aê" (rebrand fechado em
@@ -143,6 +156,11 @@ relevantes no Brasil, 58mm e 80mm, já cobertos.
   redondo, ex. "Ver pedido"/"Ver nota"/link de navegação) — mesma
   distinção que o site faz (`.chip`/`.cyc button`/`.btn--pill`
   continuam pílula, só badge/tag/selo vira balão).
+  Exceção no `Chip` (2026-09-29, pedido do dono do produto): o chip
+  SELECIONADO é mostarda com canto balão (mesma assinatura do selo
+  "Popular"); o não selecionado é cinza neutro em pílula uniforme. Sem
+  `variant` explícito, a cor vem de `checked` (`src/components/ui/
+  Chip.tsx`) — nunca deixar todos os chips de um seletor em mostarda.
 - Cartões (`Card.tsx` e cartões de produto) usam cantos 20–24px
   (`rounded-mesa-xl`/`2xl`); botões usam `--radius-mesa-btn` (14px,
   `Button.tsx`) — escalas diferentes de
@@ -252,9 +270,14 @@ nenhum item daqui sozinho, só quando for pedido explicitamente.
     a caber num container de largura máxima (`max-w-5xl`)
     centralizado em vez de esticar borda a borda. Continua usando
     `BarraNavegacao` normalmente, sem virar rota tipo `Desktop.tsx`
-    nem ganhar `SidebarDesktop`. Cozinha/Chamada/Confirmar **não**
-    entram nessa exceção — continuam mobile-only sem nenhum
-    tratamento de tela larga, regra de cima inalterada pra elas.
+    nem ganhar `SidebarDesktop`. Confirmar Pedido
+    (`src/pages/ConfirmarPedido.tsx`) entrou na mesma exceção em
+    2026-09-29 (pedido do dono do produto): container `max-w-5xl`
+    centralizado e duas colunas a partir de `md:` (itens/observação/
+    total à esquerda, pagamento/botões à direita); mobile inalterado.
+    Cozinha/Chamada **não** entram nessa exceção — continuam
+    mobile-only sem nenhum tratamento de tela larga, regra de cima
+    inalterada pra elas.
   - Ajustes (`src/pages/Ajustes.tsx`) split em duas categorias, só no
     desktop (pedido do dono do produto, 2026-09-27: a página tinha
     crescido demais — 11 seções empilhadas numa rolagem só). **Conta**
