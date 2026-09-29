@@ -12,6 +12,7 @@ import { useBarracaAtual } from '../layouts/contextoBarraca'
 import { useAuth } from '../hooks/useAuth'
 import { useTheme } from '../hooks/useTheme'
 import { useAssinaturaBarraca } from '../hooks/useAssinaturaBarraca'
+import { MSG_SEM_INTERNET, mensagemErroSalvar, useRascunho, useSalvarBarraca } from '../hooks/useSalvarBarraca'
 import { centavosParaReais, reaisParaCentavos } from '../lib/preco'
 import { apagarFotoItem, enviarFotoItem } from '../lib/fotoItem'
 import { apagarLogoBarraca, enviarLogoBarraca } from '../lib/logoBarraca'
@@ -26,6 +27,7 @@ import { SecaoImpressora } from '../components/SecaoImpressora'
 import { SecaoBanners } from '../components/SecaoBanners'
 import { SecaoHorarioFuncionamento } from '../components/SecaoHorarioFuncionamento'
 import { SecaoAjudaSuporte } from '../components/SecaoAjudaSuporte'
+import { BotaoSalvarCampo, ErroSalvar } from '../components/BotaoSalvarCampo'
 import { Button } from '../components/ui/Button'
 import { Card } from '../components/ui/Card'
 import { Chip } from '../components/ui/Chip'
@@ -78,50 +80,55 @@ function BotaoApagar({ onClick, rotulo }: { onClick: () => void; rotulo: string 
   )
 }
 
-function IndicadorSalvo({ salvo }: { salvo: boolean }) {
-  return (
-    <span className="flex h-4 items-center gap-1 text-xs font-medium text-mesa-success-700 dark:text-mesa-success-500">
-      {salvo && (
-        <>
-          <Icone nome="check" size={14} />
-          Salvo
-        </>
-      )}
-    </span>
-  )
-}
-
 function InputPreco({ item }: { item: Item }) {
+  const { mostrarToast } = useToast()
   const [texto, setTexto] = useState(() => textoPrecoInicial(item.preco_centavos))
+  const [textoSalvo, setTextoSalvo] = useState(texto)
+  const [salvando, setSalvando] = useState(false)
   const [salvo, setSalvo] = useState(false)
-  const debounceRef = useRef<number | null>(null)
   const salvoTimerRef = useRef<number | null>(null)
+  const alterado = texto !== textoSalvo
 
   useEffect(() => {
     return () => {
-      if (debounceRef.current !== null) window.clearTimeout(debounceRef.current)
       if (salvoTimerRef.current !== null) window.clearTimeout(salvoTimerRef.current)
     }
   }, [])
 
-  function aoMudar(valor: string) {
-    const limpo = valor.replace(/[^\d.,]/g, '')
-    setTexto(limpo)
+  // Preço só é gravado quando o dono confirma (botão ✓ ou Enter) — antes era
+  // auto-salvar com debounce e uma falha passava em silêncio.
+  async function salvar() {
+    if (!alterado || salvando) return
+    if (navigator.onLine === false) {
+      mostrarToast(MSG_SEM_INTERNET, { variante: 'aviso' })
+      return
+    }
 
-    if (debounceRef.current !== null) window.clearTimeout(debounceRef.current)
-    debounceRef.current = window.setTimeout(async () => {
-      const centavos = reaisParaCentavos(limpo)
-      const { error } = await supabase
+    setSalvando(true)
+    setSalvo(false)
+    let mensagem: string | null = null
+    try {
+      const { data, error } = await supabase
         .from('itens')
-        .update({ preco_centavos: centavos })
+        .update({ preco_centavos: reaisParaCentavos(texto) })
         .eq('id', item.id)
+        .select('id')
+      if (error) mensagem = mensagemErroSalvar(error)
+      else if (!data || data.length === 0) mensagem = 'Não foi possível salvar: sem permissão para alterar este item.'
+    } catch (e) {
+      mensagem = mensagemErroSalvar(e instanceof Error ? e : null)
+    }
+    setSalvando(false)
 
-      if (!error) {
-        setSalvo(true)
-        if (salvoTimerRef.current !== null) window.clearTimeout(salvoTimerRef.current)
-        salvoTimerRef.current = window.setTimeout(() => setSalvo(false), 1000)
-      }
-    }, 500)
+    if (mensagem) {
+      mostrarToast(mensagem, { variante: 'erro' })
+      return
+    }
+
+    setTextoSalvo(texto)
+    setSalvo(true)
+    if (salvoTimerRef.current !== null) window.clearTimeout(salvoTimerRef.current)
+    salvoTimerRef.current = window.setTimeout(() => setSalvo(false), 1500)
   }
 
   return (
@@ -131,14 +138,32 @@ function InputPreco({ item }: { item: Item }) {
         size="sm"
         inputMode="decimal"
         value={texto}
-        onChange={(e) => aoMudar(e.target.value)}
+        onChange={(e) => {
+          setTexto(e.target.value.replace(/[^d.,]/g, ''))
+          setSalvo(false)
+        }}
+        onKeyDown={(e) => {
+          if (e.key === 'Enter') salvar()
+        }}
         placeholder="0,00"
         aria-label={`Preço de ${item.nome}`}
         className="w-28"
       />
-      <span className="flex w-4 shrink-0 items-center justify-center">
-        {salvo && <Icone nome="check" size={16} className="text-mesa-success-700 dark:text-mesa-success-500" aria-label="Salvo" />}
-      </span>
+      {alterado || salvando ? (
+        <button
+          type="button"
+          onClick={salvar}
+          disabled={salvando}
+          aria-label={`Salvar preço de ${item.nome}`}
+          className="flex size-11 shrink-0 items-center justify-center rounded-mesa-md border-[1.5px] border-mesa-neutral-900 text-mesa-neutral-900 outline-none transition-colors hover:bg-[var(--mesa-state-hover-bg)] disabled:opacity-40 dark:border-mesa-neutral-50 dark:text-mesa-neutral-50"
+        >
+          <Icone nome={salvando ? 'progress_activity' : 'check'} size={18} />
+        </button>
+      ) : (
+        <span className="flex size-11 shrink-0 items-center justify-center">
+          {salvo && <Icone nome="check" size={16} className="text-mesa-success-700 dark:text-mesa-success-500" aria-label="Salvo" />}
+        </span>
+      )}
     </div>
   )
 }
@@ -369,6 +394,7 @@ function SecaoCardapio({ barracaId }: { barracaId: string }) {
   const [excluindo, setExcluindo] = useState(false)
   const [aviso, setAviso] = useState<string | null>(null)
 
+  const { mostrarToast } = useToast()
   const [categorias, setCategorias] = useState<Categoria[]>([])
   const [novaCategoriaId, setNovaCategoriaId] = useState<string | null>(null)
   const [gerenciandoCategorias, setGerenciandoCategorias] = useState(false)
@@ -447,6 +473,13 @@ function SecaoCardapio({ barracaId }: { barracaId: string }) {
     }
   }
 
+  // Quando um update otimista falha e o estado volta atrás, o dono precisa
+  // saber — antes voltava em silêncio e parecia que nada tinha acontecido.
+  function avisarFalha(error: { message?: string }) {
+    const mensagem = mensagemErroSalvar(error)
+    mostrarToast(mensagem, { variante: mensagem === MSG_SEM_INTERNET ? 'aviso' : 'erro' })
+  }
+
   function iniciarEdicaoCategoria(categoria: Categoria) {
     setEditandoCategoriaId(categoria.id)
     setNomeEdicaoCategoria(categoria.nome)
@@ -461,6 +494,7 @@ function SecaoCardapio({ barracaId }: { barracaId: string }) {
     const { error } = await supabase.from('categorias').update({ nome }).eq('id', categoria.id)
 
     if (error) {
+      avisarFalha(error)
       setCategorias((atual) =>
         atual.map((c) => (c.id === categoria.id ? { ...c, nome: categoria.nome } : c)),
       )
@@ -510,6 +544,7 @@ function SecaoCardapio({ barracaId }: { barracaId: string }) {
       .eq('id', alvo.id)
 
     if (error) {
+      avisarFalha(error)
       setItens((atual) =>
         atual.map((i) => (i.id === alvo.id ? { ...i, categoria_id: alvo.categoria_id } : i)),
       )
@@ -602,6 +637,7 @@ function SecaoCardapio({ barracaId }: { barracaId: string }) {
     const { error } = await supabase.from('itens').update({ nome }).eq('id', item.id)
 
     if (error) {
+      avisarFalha(error)
       setItens((atual) => atual.map((i) => (i.id === item.id ? { ...i, nome: item.nome } : i)))
     }
   }
@@ -612,6 +648,7 @@ function SecaoCardapio({ barracaId }: { barracaId: string }) {
     const { error } = await supabase.from('itens').update({ ativo: novoAtivo }).eq('id', item.id)
 
     if (error) {
+      avisarFalha(error)
       setItens((atual) => atual.map((i) => (i.id === item.id ? { ...i, ativo: item.ativo } : i)))
     }
   }
@@ -622,6 +659,7 @@ function SecaoCardapio({ barracaId }: { barracaId: string }) {
     const { error } = await supabase.from('itens').update({ esgotado: novoEsgotado }).eq('id', item.id)
 
     if (error) {
+      avisarFalha(error)
       setItens((atual) => atual.map((i) => (i.id === item.id ? { ...i, esgotado: item.esgotado } : i)))
     }
   }
@@ -635,6 +673,7 @@ function SecaoCardapio({ barracaId }: { barracaId: string }) {
     const { error } = await supabase.from('itens').update({ popular: novoPopular }).eq('id', item.id)
 
     if (error) {
+      avisarFalha(error)
       setItens((atual) => atual.map((i) => (i.id === item.id ? { ...i, popular: item.popular } : i)))
     }
   }
@@ -1096,16 +1135,18 @@ function SecaoCardapio({ barracaId }: { barracaId: string }) {
  * padrão de foto+resize do cardápio (lib/fotoItem.ts), bucket próprio
  * (lib/logoBarraca.ts) porque o dono do upload é a barraca, não um item. */
 function SecaoIdentidade({ barraca }: { barraca: Barraca }) {
-  const [nome, setNome] = useState(barraca.nome)
-  const [logoUrl, setLogoUrl] = useState(barraca.logo_url)
-  const [capaUrl, setCapaUrl] = useState(barraca.imagem_capa_url)
+  const nomeR = useRascunho(barraca.nome)
+  const logoR = useRascunho<string | null>(barraca.logo_url)
+  const capaR = useRascunho<string | null>(barraca.imagem_capa_url)
+  const logoUrl = logoR.valor
+  const capaUrl = capaR.valor
   const [enviandoLogo, setEnviandoLogo] = useState(false)
   const [enviandoCapa, setEnviandoCapa] = useState(false)
-  const [salvando, setSalvando] = useState(false)
-  const [salvo, setSalvo] = useState(false)
-  const [erro, setErro] = useState<string | null>(null)
+  const [erroUpload, setErroUpload] = useState<string | null>(null)
+  const { salvar: salvarBarraca, salvando, salvo, erro } = useSalvarBarraca(barraca)
   const inputArquivoRef = useRef<HTMLInputElement>(null)
   const inputCapaRef = useRef<HTMLInputElement>(null)
+  const alterado = nomeR.alterado || logoR.alterado || capaR.alterado
 
   async function aoEscolherArquivo(e: ChangeEvent<HTMLInputElement>) {
     const arquivo = e.target.files?.[0]
@@ -1113,15 +1154,12 @@ function SecaoIdentidade({ barraca }: { barraca: Barraca }) {
     if (!arquivo) return
 
     setEnviandoLogo(true)
-    setErro(null)
+    setErroUpload(null)
 
     try {
-      const urlAntiga = logoUrl
-      const novaUrl = await enviarLogoBarraca(barraca.id, arquivo)
-      setLogoUrl(novaUrl)
-      if (urlAntiga) apagarLogoBarraca(urlAntiga)
+      logoR.definir(await enviarLogoBarraca(barraca.id, arquivo))
     } catch {
-      setErro('Não foi possível enviar o logo. Tente novamente.')
+      setErroUpload('Não foi possível enviar o logo. Tente novamente.')
     }
 
     setEnviandoLogo(false)
@@ -1133,44 +1171,39 @@ function SecaoIdentidade({ barraca }: { barraca: Barraca }) {
     if (!arquivo) return
 
     setEnviandoCapa(true)
-    setErro(null)
+    setErroUpload(null)
 
     try {
-      const urlAntiga = capaUrl
-      const novaUrl = await enviarCapaBarraca(barraca.id, arquivo)
-      setCapaUrl(novaUrl)
-      if (urlAntiga) apagarCapaBarraca(urlAntiga)
+      capaR.definir(await enviarCapaBarraca(barraca.id, arquivo))
     } catch {
-      setErro('Não foi possível enviar a capa. Tente novamente.')
+      setErroUpload('Não foi possível enviar a capa. Tente novamente.')
     }
 
     setEnviandoCapa(false)
   }
 
   function removerCapa() {
-    if (capaUrl) apagarCapaBarraca(capaUrl)
-    setCapaUrl(null)
+    capaR.definir(null)
   }
 
   async function salvar() {
-    if (!nome.trim()) return
-    setSalvando(true)
-    setErro(null)
+    const nome = nomeR.valor.trim()
+    if (!nome) return
 
-    const { error } = await supabase
-      .from('barracas')
-      .update({ nome: nome.trim(), logo_url: logoUrl, imagem_capa_url: capaUrl })
-      .eq('id', barraca.id)
+    const alteracoes = { nome, logo_url: logoR.valor, imagem_capa_url: capaR.valor }
+    const ok = await salvarBarraca(alteracoes)
+    if (!ok) return
 
-    setSalvando(false)
-
-    if (error) {
-      setErro('Não foi possível salvar. Tente novamente.')
-      return
+    // Só apaga o arquivo antigo do Storage depois de o banco confirmar que
+    // aponta pro novo — antes, trocar o logo e não salvar deixava a barraca
+    // apontando pra um arquivo já apagado.
+    if (barraca.logo_url && barraca.logo_url !== alteracoes.logo_url) apagarLogoBarraca(barraca.logo_url)
+    if (barraca.imagem_capa_url && barraca.imagem_capa_url !== alteracoes.imagem_capa_url) {
+      apagarCapaBarraca(barraca.imagem_capa_url)
     }
-
-    setSalvo(true)
-    window.setTimeout(() => setSalvo(false), 3000)
+    nomeR.descartar()
+    logoR.descartar()
+    capaR.descartar()
   }
 
   return (
@@ -1242,22 +1275,22 @@ function SecaoIdentidade({ barraca }: { barraca: Barraca }) {
 
         <Input
           label="Nome da barraca"
-          value={nome}
-          onChange={(e) => setNome(e.target.value)}
+          value={nomeR.valor}
+          onChange={(e) => nomeR.definir(e.target.value)}
           className="mt-4"
         />
 
-        {erro && <p className="mt-2 text-sm font-medium text-mesa-error-500">{erro}</p>}
+        <ErroSalvar erro={erroUpload} className="mt-2" />
 
-        <Button
-          size="md"
-          loading={salvando}
-          disabled={!nome.trim()}
-          onClick={salvar}
-          className="mt-4 w-full"
-        >
-          {salvo ? 'Salvo!' : 'Salvar'}
-        </Button>
+        <BotaoSalvarCampo
+          alterado={alterado}
+          salvando={salvando}
+          salvo={salvo}
+          erro={erro}
+          desabilitado={!nomeR.valor.trim()}
+          onSalvar={salvar}
+          className="mt-4"
+        />
       </Card>
     </section>
   )
@@ -1314,20 +1347,22 @@ function SecaoCardapioDigital({ barraca }: { barraca: Barraca }) {
 }
 
 function SecaoFaixas({ barraca }: { barraca: Barraca }) {
-  const [verdeAte, setVerdeAte] = useState(String(barraca.verde_ate))
-  const [amareloAte, setAmareloAte] = useState(String(barraca.amarelo_ate))
-  const [salvando, setSalvando] = useState(false)
-  const [salvo, setSalvo] = useState(false)
-  const [erro, setErro] = useState<string | null>(null)
-  const [mostrarHorario, setMostrarHorario] = useState(barraca.mostrar_horario_pedido)
+  const verdeR = useRascunho(String(barraca.verde_ate))
+  const amareloR = useRascunho(String(barraca.amarelo_ate))
+  const faixas = useSalvarBarraca(barraca)
+  const exibicao = useSalvarBarraca(barraca)
+  const horarioR = useRascunho(barraca.mostrar_horario_pedido)
+  const mostrarHorario = horarioR.valor
 
   async function escolherExibicao(valor: boolean) {
-    setMostrarHorario(valor)
-    await supabase.from('barracas').update({ mostrar_horario_pedido: valor }).eq('id', barraca.id)
+    horarioR.definir(valor)
+    await exibicao.salvar({ mostrar_horario_pedido: valor })
+    // sucesso: o cache já traz o valor novo; falha: volta pro que está no banco
+    horarioR.descartar()
   }
 
-  const verdeNum = Number(verdeAte)
-  const amareloNum = Number(amareloAte)
+  const verdeNum = Number(verdeR.valor)
+  const amareloNum = Number(amareloR.valor)
   const valido =
     Number.isFinite(verdeNum) &&
     Number.isFinite(amareloNum) &&
@@ -1336,23 +1371,11 @@ function SecaoFaixas({ barraca }: { barraca: Barraca }) {
 
   async function salvar() {
     if (!valido) return
-    setSalvando(true)
-    setErro(null)
-
-    const { error } = await supabase
-      .from('barracas')
-      .update({ verde_ate: verdeNum, amarelo_ate: amareloNum })
-      .eq('id', barraca.id)
-
-    setSalvando(false)
-
-    if (error) {
-      setErro('Não foi possível salvar. Tente novamente.')
-      return
+    const ok = await faixas.salvar({ verde_ate: verdeNum, amarelo_ate: amareloNum })
+    if (ok) {
+      verdeR.descartar()
+      amareloR.descartar()
     }
-
-    setSalvo(true)
-    window.setTimeout(() => setSalvo(false), 3000)
   }
 
   return (
@@ -1370,8 +1393,8 @@ function SecaoFaixas({ barraca }: { barraca: Barraca }) {
                 type="number"
                 size="sm"
                 min={1}
-                value={verdeAte}
-                onChange={(e) => setVerdeAte(e.target.value)}
+                value={verdeR.valor}
+                onChange={(e) => verdeR.definir(e.target.value)}
                 aria-label="Verde até (minutos)"
                 className="w-20"
               />
@@ -1392,8 +1415,8 @@ function SecaoFaixas({ barraca }: { barraca: Barraca }) {
                 type="number"
                 size="sm"
                 min={1}
-                value={amareloAte}
-                onChange={(e) => setAmareloAte(e.target.value)}
+                value={amareloR.valor}
+                onChange={(e) => amareloR.definir(e.target.value)}
                 aria-label="Amarelo até (minutos)"
                 className="w-20"
               />
@@ -1415,13 +1438,17 @@ function SecaoFaixas({ barraca }: { barraca: Barraca }) {
             O tempo do amarelo precisa ser maior que o do verde.
           </p>
         )}
-        {erro && <p className="mt-3 text-sm text-mesa-error-500">{erro}</p>}
 
-        <div className="mt-3 flex items-center gap-3">
-          <Button size="sm" onClick={salvar} disabled={!valido} loading={salvando}>
-            {salvo ? 'Salvo!' : 'Salvar faixas'}
-          </Button>
-        </div>
+        <BotaoSalvarCampo
+          alterado={verdeR.alterado || amareloR.alterado}
+          salvando={faixas.salvando}
+          salvo={faixas.salvo}
+          erro={faixas.erro}
+          desabilitado={!valido}
+          onSalvar={salvar}
+          rotulo="Salvar faixas"
+          className="mt-3"
+        />
 
         <div className="mt-4 border-t border-mesa-border-subtle pt-4">
           <p className="mb-2 text-sm font-medium text-mesa-text-primary">
@@ -1438,6 +1465,7 @@ function SecaoFaixas({ barraca }: { barraca: Barraca }) {
           <p className="mt-2 text-xs text-mesa-text-secondary">
             Só muda o texto mostrado — a cor continua sempre pelo tempo decorrido
           </p>
+          <ErroSalvar erro={exibicao.erro} className="mt-2" />
         </div>
       </Card>
       <p className="mt-2 text-xs text-mesa-text-secondary">
@@ -1447,86 +1475,27 @@ function SecaoFaixas({ barraca }: { barraca: Barraca }) {
   )
 }
 
+function textoTaxaInvalido(valor: string): boolean {
+  const temCaracterInvalido = /[^d.,s-]/.test(valor)
+  const bps = percentualParaBps(valor)
+  const foraDoIntervalo = bps !== null && (bps < 0 || bps > BPS_MAX)
+  return temCaracterInvalido || foraDoIntervalo
+}
+
 function SecaoPagamento({ barraca }: { barraca: Barraca }) {
-  const [ativos, setAtivos] = useState<string[]>(
-    barraca.metodos_pagamento_ativos ?? ['dinheiro', 'debito', 'credito', 'pix'],
-  )
+  const metodosServidor = barraca.metodos_pagamento_ativos ?? ['dinheiro', 'debito', 'credito', 'pix']
+  const metodosR = useRascunho<string[]>(metodosServidor, (a, b) => a.join() === b.join())
+  const ativos = metodosR.valor
   const [aviso, setAviso] = useState<string | null>(null)
-  const [salvoMetodos, setSalvoMetodos] = useState(false)
-  const debounceRef = useRef<number | null>(null)
-  const salvoTimerRef = useRef<number | null>(null)
+  const metodos = useSalvarBarraca(barraca)
 
-  const [textoDebito, setTextoDebito] = useState(() =>
-    bpsParaPercentual(barraca.taxa_debito_bps ?? null),
-  )
-  const [textoCredito, setTextoCredito] = useState(() =>
-    bpsParaPercentual(barraca.taxa_credito_bps ?? null),
-  )
-  const [invalidoDebito, setInvalidoDebito] = useState(false)
-  const [invalidoCredito, setInvalidoCredito] = useState(false)
-  const [salvoDebito, setSalvoDebito] = useState(false)
-  const [salvoCredito, setSalvoCredito] = useState(false)
+  const debitoR = useRascunho(bpsParaPercentual(barraca.taxa_debito_bps ?? null))
+  const creditoR = useRascunho(bpsParaPercentual(barraca.taxa_credito_bps ?? null))
+  const taxas = useSalvarBarraca(barraca)
+  const invalidoDebito = debitoR.alterado && textoTaxaInvalido(debitoR.valor)
+  const invalidoCredito = creditoR.alterado && textoTaxaInvalido(creditoR.valor)
 
-  const debounceDebitoRef = useRef<number | null>(null)
-  const debounceCreditoRef = useRef<number | null>(null)
-  const salvoDebitoTimerRef = useRef<number | null>(null)
-  const salvoCreditoTimerRef = useRef<number | null>(null)
-
-  useEffect(() => {
-    return () => {
-      if (debounceRef.current !== null) window.clearTimeout(debounceRef.current)
-      if (salvoTimerRef.current !== null) window.clearTimeout(salvoTimerRef.current)
-      if (debounceDebitoRef.current !== null) window.clearTimeout(debounceDebitoRef.current)
-      if (debounceCreditoRef.current !== null) window.clearTimeout(debounceCreditoRef.current)
-      if (salvoDebitoTimerRef.current !== null) window.clearTimeout(salvoDebitoTimerRef.current)
-      if (salvoCreditoTimerRef.current !== null) window.clearTimeout(salvoCreditoTimerRef.current)
-    }
-  }, [])
-
-  // useBarraca mostra a barraca em cache (localStorage) na hora e só troca
-  // pela versão de verdade quando a busca de rede volta — sem isso, um
-  // metodos_pagamento_ativos desatualizado do cache fica preso na tela até
-  // um segundo reload. Só resincroniza se não há edição pendente (debounce
-  // em voo), pra não sobrescrever um toque recém-feito pelo dono.
-  useEffect(() => {
-    if (debounceRef.current === null && barraca.metodos_pagamento_ativos) {
-      setAtivos(barraca.metodos_pagamento_ativos)
-    }
-  }, [barraca.metodos_pagamento_ativos])
-
-  // mesmo problema de cache desatualizado: resincroniza quando o valor de
-  // verdade chega, mas nunca durante uma edição em voo (debounce pendente).
-  useEffect(() => {
-    if (debounceDebitoRef.current === null) {
-      setTextoDebito(bpsParaPercentual(barraca.taxa_debito_bps ?? null))
-      setInvalidoDebito(false)
-    }
-  }, [barraca.taxa_debito_bps])
-
-  useEffect(() => {
-    if (debounceCreditoRef.current === null) {
-      setTextoCredito(bpsParaPercentual(barraca.taxa_credito_bps ?? null))
-      setInvalidoCredito(false)
-    }
-  }, [barraca.taxa_credito_bps])
-
-  function persistir(lista: string[]) {
-    if (debounceRef.current !== null) window.clearTimeout(debounceRef.current)
-    debounceRef.current = window.setTimeout(async () => {
-      const { error } = await supabase
-        .from('barracas')
-        .update({ metodos_pagamento_ativos: lista })
-        .eq('id', barraca.id)
-
-      if (!error) {
-        setSalvoMetodos(true)
-        if (salvoTimerRef.current !== null) window.clearTimeout(salvoTimerRef.current)
-        salvoTimerRef.current = window.setTimeout(() => setSalvoMetodos(false), 1000)
-      }
-    }, 500)
-  }
-
-  function alternar(chave: string) {
+  async function alternar(chave: string) {
     const estaAtivo = ativos.includes(chave)
 
     if (estaAtivo && ativos.length === 1) {
@@ -1536,68 +1505,22 @@ function SecaoPagamento({ barraca }: { barraca: Barraca }) {
 
     setAviso(null)
     const novaLista = estaAtivo ? ativos.filter((m) => m !== chave) : [...ativos, chave]
-    setAtivos(novaLista)
-    persistir(novaLista)
+    metodosR.definir(novaLista)
+    await metodos.salvar({ metodos_pagamento_ativos: novaLista })
+    // sucesso: cache já tem a lista nova; falha: volta pra lista do banco
+    metodosR.descartar()
   }
 
-  function aoMudarDebito(valor: string) {
-    setTextoDebito(valor)
-
-    const temCaracterInvalido = /[^\d.,\s-]/.test(valor)
-    const bps = percentualParaBps(valor)
-    const foraDoIntervalo = bps !== null && (bps < 0 || bps > BPS_MAX)
-    const invalido = temCaracterInvalido || foraDoIntervalo
-    setInvalidoDebito(invalido)
-
-    if (debounceDebitoRef.current !== null) {
-      window.clearTimeout(debounceDebitoRef.current)
-      debounceDebitoRef.current = null
+  async function salvarTaxas() {
+    if (invalidoDebito || invalidoCredito) return
+    const alteracoes: Partial<Barraca> = {}
+    if (debitoR.alterado) alteracoes.taxa_debito_bps = percentualParaBps(debitoR.valor)
+    if (creditoR.alterado) alteracoes.taxa_credito_bps = percentualParaBps(creditoR.valor)
+    const ok = await taxas.salvar(alteracoes)
+    if (ok) {
+      debitoR.descartar()
+      creditoR.descartar()
     }
-    if (invalido) return
-
-    debounceDebitoRef.current = window.setTimeout(async () => {
-      debounceDebitoRef.current = null
-      const { error } = await supabase
-        .from('barracas')
-        .update({ taxa_debito_bps: bps })
-        .eq('id', barraca.id)
-
-      if (!error) {
-        setSalvoDebito(true)
-        if (salvoDebitoTimerRef.current !== null) window.clearTimeout(salvoDebitoTimerRef.current)
-        salvoDebitoTimerRef.current = window.setTimeout(() => setSalvoDebito(false), 1000)
-      }
-    }, 500)
-  }
-
-  function aoMudarCredito(valor: string) {
-    setTextoCredito(valor)
-
-    const temCaracterInvalido = /[^\d.,\s-]/.test(valor)
-    const bps = percentualParaBps(valor)
-    const foraDoIntervalo = bps !== null && (bps < 0 || bps > BPS_MAX)
-    const invalido = temCaracterInvalido || foraDoIntervalo
-    setInvalidoCredito(invalido)
-
-    if (debounceCreditoRef.current !== null) {
-      window.clearTimeout(debounceCreditoRef.current)
-      debounceCreditoRef.current = null
-    }
-    if (invalido) return
-
-    debounceCreditoRef.current = window.setTimeout(async () => {
-      debounceCreditoRef.current = null
-      const { error } = await supabase
-        .from('barracas')
-        .update({ taxa_credito_bps: bps })
-        .eq('id', barraca.id)
-
-      if (!error) {
-        setSalvoCredito(true)
-        if (salvoCreditoTimerRef.current !== null) window.clearTimeout(salvoCreditoTimerRef.current)
-        salvoCreditoTimerRef.current = window.setTimeout(() => setSalvoCredito(false), 1000)
-      }
-    }, 500)
   }
 
   return (
@@ -1628,7 +1551,7 @@ function SecaoPagamento({ barraca }: { barraca: Barraca }) {
           ))}
         </ul>
 
-        <IndicadorSalvo salvo={salvoMetodos} />
+        <ErroSalvar erro={metodos.erro} className="mt-2" />
 
         <p className="mt-4 text-sm text-mesa-text-secondary">
           Taxas que a maquininha cobra por transação. Usadas só para estimar o valor líquido no
@@ -1642,14 +1565,13 @@ function SecaoPagamento({ barraca }: { barraca: Barraca }) {
               type="percentage"
               size="sm"
               inputMode="decimal"
-              value={textoDebito}
-              onChange={(e) => aoMudarDebito(e.target.value)}
+              value={debitoR.valor}
+              onChange={(e) => debitoR.definir(e.target.value)}
               placeholder="0,00"
               aria-label="Taxa de débito"
               error={invalidoDebito ? 'Entre 0 e 50%' : undefined}
               className="mt-1"
             />
-            <IndicadorSalvo salvo={salvoDebito} />
           </div>
 
           <div className="min-w-[140px] flex-1">
@@ -1658,16 +1580,26 @@ function SecaoPagamento({ barraca }: { barraca: Barraca }) {
               type="percentage"
               size="sm"
               inputMode="decimal"
-              value={textoCredito}
-              onChange={(e) => aoMudarCredito(e.target.value)}
+              value={creditoR.valor}
+              onChange={(e) => creditoR.definir(e.target.value)}
               placeholder="0,00"
               aria-label="Taxa de crédito"
               error={invalidoCredito ? 'Entre 0 e 50%' : undefined}
               className="mt-1"
             />
-            <IndicadorSalvo salvo={salvoCredito} />
           </div>
         </div>
+
+        <BotaoSalvarCampo
+          alterado={debitoR.alterado || creditoR.alterado}
+          salvando={taxas.salvando}
+          salvo={taxas.salvo}
+          erro={taxas.erro}
+          desabilitado={invalidoDebito || invalidoCredito}
+          onSalvar={salvarTaxas}
+          rotulo="Salvar taxas"
+          className="mt-4"
+        />
       </Card>
     </section>
   )
@@ -1723,7 +1655,7 @@ function BottomSheetTokenFiscal({
   ambiente: AmbienteFiscal
   open: boolean
   onClose: () => void
-  onSucesso: (ambiente: AmbienteFiscal) => void
+  onSucesso: () => void
 }) {
   const [token, setToken] = useState('')
   const [processando, setProcessando] = useState(false)
@@ -1745,6 +1677,11 @@ function BottomSheetTokenFiscal({
       return
     }
 
+    if (navigator.onLine === false) {
+      setErro(MSG_SEM_INTERNET)
+      return
+    }
+
     setProcessando(true)
     setErro(null)
 
@@ -1757,12 +1694,12 @@ function BottomSheetTokenFiscal({
     setProcessando(false)
 
     if (error) {
-      setErro('Não foi possível salvar. Tente novamente.')
+      setErro(mensagemErroSalvar(error))
       return
     }
 
     fechar()
-    onSucesso(ambiente)
+    onSucesso()
   }
 
   return (
@@ -1803,58 +1740,98 @@ function BottomSheetTokenFiscal({
  * cadastrados pelo dono direto no site da FocusNFe — o Sai aê nunca
  * guarda o certificado, só o token da empresa. Emissão de verdade é
  * rodada futura; aqui só a configuração. */
+function apenasDigitos(valor: string): string {
+  return valor.replace(/\D/g, '')
+}
+
+function formatarCnpj(valor: string): string {
+  const d = apenasDigitos(valor).slice(0, 14)
+  if (d.length <= 2) return d
+  if (d.length <= 5) return `${d.slice(0, 2)}.${d.slice(2)}`
+  if (d.length <= 8) return `${d.slice(0, 2)}.${d.slice(2, 5)}.${d.slice(5)}`
+  if (d.length <= 12) return `${d.slice(0, 2)}.${d.slice(2, 5)}.${d.slice(5, 8)}/${d.slice(8)}`
+  return `${d.slice(0, 2)}.${d.slice(2, 5)}.${d.slice(5, 8)}/${d.slice(8, 12)}-${d.slice(12)}`
+}
+
 function SecaoFiscal({ barraca }: { barraca: Barraca }) {
-  const [habilitado, setHabilitado] = useState(barraca.fiscal_habilitado)
-  const [regime, setRegime] = useState(barraca.fiscal_regime_tributario)
-  const [ambiente, setAmbiente] = useState(barraca.fiscal_ambiente)
-  const [cnpj, setCnpj] = useState(barraca.cnpj ?? '')
-  const [salvoCnpj, setSalvoCnpj] = useState(false)
-  const [tokensConfigurados, setTokensConfigurados] = useState({ homologacao: false, producao: false })
+  const habilitadoR = useRascunho(barraca.fiscal_habilitado)
+  const regimeR = useRascunho(barraca.fiscal_regime_tributario)
+  const ambienteR = useRascunho(barraca.fiscal_ambiente)
+  const cnpjR = useRascunho(formatarCnpj(barraca.cnpj ?? ''), (a, b) => apenasDigitos(a) === apenasDigitos(b))
+  const habilitado = habilitadoR.valor
+  const regime = regimeR.valor
+  const ambiente = ambienteR.valor
+  const salvarCnpjEstado = useSalvarBarraca(barraca)
+  const salvarHabilitado = useSalvarBarraca(barraca)
+  const salvarRegime = useSalvarBarraca(barraca)
+  const salvarAmbiente = useSalvarBarraca(barraca)
+  const [erroCnpj, setErroCnpj] = useState<string | null>(null)
+  const [tokensConfigurados, setTokensConfigurados] = useState<{
+    homologacao: boolean
+    producao: boolean
+  } | null>(null)
+  const [erroTokens, setErroTokens] = useState<string | null>(null)
+  const [recargaTokens, setRecargaTokens] = useState(0)
   const [sheetTokenAmbiente, setSheetTokenAmbiente] = useState<AmbienteFiscal | null>(null)
 
+  // O estado "configurado" vem SEMPRE do banco (RPC), nunca de suposição: depois
+  // de salvar um token o sheet pede uma nova consulta em vez de marcar true.
   useEffect(() => {
     let cancelado = false
 
     supabase
       .rpc('token_fiscal_configurado', { p_barraca_id: barraca.id })
       .then(({ data, error }) => {
-        if (cancelado || error) return
-        const linha = Array.isArray(data) ? data[0] : data
-        if (linha) {
-          setTokensConfigurados({
-            homologacao: Boolean(linha.homologacao),
-            producao: Boolean(linha.producao),
-          })
+        if (cancelado) return
+        if (error) {
+          setErroTokens(mensagemErroSalvar(error).replace('salvar', 'verificar os tokens'))
+          return
         }
+        const linha = Array.isArray(data) ? data[0] : data
+        setErroTokens(null)
+        setTokensConfigurados({
+          homologacao: Boolean(linha?.homologacao),
+          producao: Boolean(linha?.producao),
+        })
       })
 
     return () => {
       cancelado = true
     }
-  }, [barraca.id])
+  }, [barraca.id, recargaTokens])
 
   async function alternarHabilitado(valor: boolean) {
-    setHabilitado(valor)
-    await supabase.from('barracas').update({ fiscal_habilitado: valor }).eq('id', barraca.id)
+    habilitadoR.definir(valor)
+    await salvarHabilitado.salvar({ fiscal_habilitado: valor })
+    habilitadoR.descartar()
   }
 
   async function salvarCnpj() {
-    const limpo = cnpj.replace(/\D/g, '')
-    const { error } = await supabase.from('barracas').update({ cnpj: limpo || null }).eq('id', barraca.id)
-    if (!error) {
-      setSalvoCnpj(true)
-      window.setTimeout(() => setSalvoCnpj(false), 1000)
+    const limpo = apenasDigitos(cnpjR.valor)
+    if (limpo.length !== 0 && limpo.length !== 14) {
+      setErroCnpj('O CNPJ precisa ter 14 números.')
+      return
     }
+    setErroCnpj(null)
+    const ok = await salvarCnpjEstado.salvar({ cnpj: limpo || null })
+    if (ok) cnpjR.descartar()
   }
 
   async function escolherRegime(valor: RegimeTributario) {
-    setRegime(valor)
-    await supabase.from('barracas').update({ fiscal_regime_tributario: valor }).eq('id', barraca.id)
+    regimeR.definir(valor)
+    await salvarRegime.salvar({ fiscal_regime_tributario: valor })
+    regimeR.descartar()
   }
 
   async function escolherAmbiente(valor: AmbienteFiscal) {
-    setAmbiente(valor)
-    await supabase.from('barracas').update({ fiscal_ambiente: valor }).eq('id', barraca.id)
+    ambienteR.definir(valor)
+    await salvarAmbiente.salvar({ fiscal_ambiente: valor })
+    ambienteR.descartar()
+  }
+
+  function textoToken(configurado: boolean | undefined): string {
+    if (tokensConfigurados === null) return erroTokens ? 'Não verificado' : 'Verificando...'
+    return configurado ? 'Configurado' : 'Não configurado'
   }
 
   return (
@@ -1867,25 +1844,35 @@ function SecaoFiscal({ barraca }: { barraca: Barraca }) {
           aê apenas orquestra a emissão.
         </p>
 
-        <div className="mt-4 flex items-end gap-2">
+        <div className="mt-4">
           <Input
             label="CNPJ (emitente)"
-            value={cnpj}
+            inputMode="numeric"
+            value={cnpjR.valor}
             onChange={(e) => {
-              setCnpj(e.target.value)
-              setSalvoCnpj(false)
+              setErroCnpj(null)
+              cnpjR.definir(formatarCnpj(e.target.value))
             }}
-            onBlur={salvarCnpj}
             placeholder="00.000.000/0000-00"
+            error={erroCnpj ?? undefined}
             className="max-w-xs"
           />
-          <IndicadorSalvo salvo={salvoCnpj} />
+          <BotaoSalvarCampo
+            alterado={cnpjR.alterado}
+            salvando={salvarCnpjEstado.salvando}
+            salvo={salvarCnpjEstado.salvo}
+            erro={salvarCnpjEstado.erro}
+            onSalvar={salvarCnpj}
+            rotulo="Salvar CNPJ"
+            className="mt-2"
+          />
         </div>
 
         <div className="mt-4 flex items-center justify-between gap-3">
           <span className="text-base text-mesa-text-primary">Fiscal habilitado</span>
           <Toggle checked={habilitado} onChange={alternarHabilitado} aria-label="Fiscal habilitado" />
         </div>
+        <ErroSalvar erro={salvarHabilitado.erro} className="mt-2" />
 
         <div className="mt-4">
           <p className="mb-2 text-sm font-medium text-mesa-text-primary">Regime tributário</p>
@@ -1896,6 +1883,7 @@ function SecaoFiscal({ barraca }: { barraca: Barraca }) {
               </Chip>
             ))}
           </div>
+          <ErroSalvar erro={salvarRegime.erro} className="mt-2" />
         </div>
 
         <div className="mt-4">
@@ -1907,6 +1895,7 @@ function SecaoFiscal({ barraca }: { barraca: Barraca }) {
               </Chip>
             ))}
           </div>
+          <ErroSalvar erro={salvarAmbiente.erro} className="mt-2" />
           {ambiente === 'producao' && (
             <div className="mt-3">
               <AvisoInline>Notas emitidas em produção têm validade fiscal real.</AvisoInline>
@@ -1921,25 +1910,33 @@ function SecaoFiscal({ barraca }: { barraca: Barraca }) {
               <div>
                 <p className="text-sm text-mesa-text-primary">Homologação</p>
                 <p className="text-xs text-mesa-text-secondary">
-                  {tokensConfigurados.homologacao ? 'Configurado' : 'Não configurado'}
+                  {textoToken(tokensConfigurados?.homologacao)}
                 </p>
               </div>
               <Button variant="outline" size="sm" onClick={() => setSheetTokenAmbiente('homologacao')}>
-                {tokensConfigurados.homologacao ? 'Trocar' : 'Definir'}
+                {tokensConfigurados?.homologacao ? 'Trocar' : 'Definir'}
               </Button>
             </div>
             <div className="flex min-w-[220px] flex-1 items-center justify-between gap-3 rounded-mesa-md border border-mesa-border-subtle p-3">
               <div>
                 <p className="text-sm text-mesa-text-primary">Produção</p>
                 <p className="text-xs text-mesa-text-secondary">
-                  {tokensConfigurados.producao ? 'Configurado' : 'Não configurado'}
+                  {textoToken(tokensConfigurados?.producao)}
                 </p>
               </div>
               <Button variant="outline" size="sm" onClick={() => setSheetTokenAmbiente('producao')}>
-                {tokensConfigurados.producao ? 'Trocar' : 'Definir'}
+                {tokensConfigurados?.producao ? 'Trocar' : 'Definir'}
               </Button>
             </div>
           </div>
+          {erroTokens && (
+            <div className="mt-2 flex flex-wrap items-center gap-2">
+              <ErroSalvar erro={erroTokens} />
+              <Button variant="ghost" size="sm" onClick={() => setRecargaTokens((n) => n + 1)}>
+                Tentar de novo
+              </Button>
+            </div>
+          )}
         </div>
       </Card>
 
@@ -1948,9 +1945,7 @@ function SecaoFiscal({ barraca }: { barraca: Barraca }) {
         ambiente={sheetTokenAmbiente ?? 'homologacao'}
         open={sheetTokenAmbiente !== null}
         onClose={() => setSheetTokenAmbiente(null)}
-        onSucesso={(ambienteSalvo) =>
-          setTokensConfigurados((atual) => ({ ...atual, [ambienteSalvo]: true }))
-        }
+        onSucesso={() => setRecargaTokens((n) => n + 1)}
       />
     </section>
   )
@@ -1986,6 +1981,11 @@ function BottomSheetTokenPagamento({
       return
     }
 
+    if (navigator.onLine === false) {
+      setErro(MSG_SEM_INTERNET)
+      return
+    }
+
     setProcessando(true)
     setErro(null)
 
@@ -1997,7 +1997,7 @@ function BottomSheetTokenPagamento({
     setProcessando(false)
 
     if (error) {
-      setErro('Não foi possível salvar. Tente novamente.')
+      setErro(mensagemErroSalvar(error))
       return
     }
 
@@ -2042,28 +2042,39 @@ function BottomSheetTokenPagamento({
  * Access Token dela aqui — mesmo modelo do Fiscal (FocusNFe). O dinheiro
  * cai direto na conta da barraca, o Sai aê nunca guarda nem repassa. */
 function SecaoPagamentoOnline({ barraca }: { barraca: Barraca }) {
-  const [habilitado, setHabilitado] = useState(barraca.pagamento_online_habilitado)
-  const [tokenConfigurado, setTokenConfigurado] = useState(false)
+  const habilitadoR = useRascunho(barraca.pagamento_online_habilitado)
+  const habilitado = habilitadoR.valor
+  const salvarHabilitado = useSalvarBarraca(barraca)
+  const [tokenConfigurado, setTokenConfigurado] = useState<boolean | null>(null)
+  const [erroToken, setErroToken] = useState<string | null>(null)
+  const [recargaToken, setRecargaToken] = useState(0)
   const [mostrarSheetToken, setMostrarSheetToken] = useState(false)
 
+  // Mesmo princípio do Fiscal: "configurado" é o que o banco responde.
   useEffect(() => {
     let cancelado = false
 
     supabase
       .rpc('token_pagamento_configurado', { p_barraca_id: barraca.id })
       .then(({ data, error }) => {
-        if (cancelado || error) return
+        if (cancelado) return
+        if (error) {
+          setErroToken(mensagemErroSalvar(error).replace('salvar', 'verificar o token'))
+          return
+        }
+        setErroToken(null)
         setTokenConfigurado(Boolean(data))
       })
 
     return () => {
       cancelado = true
     }
-  }, [barraca.id])
+  }, [barraca.id, recargaToken])
 
   async function alternarHabilitado(valor: boolean) {
-    setHabilitado(valor)
-    await supabase.from('barracas').update({ pagamento_online_habilitado: valor }).eq('id', barraca.id)
+    habilitadoR.definir(valor)
+    await salvarHabilitado.salvar({ pagamento_online_habilitado: valor })
+    habilitadoR.descartar()
   }
 
   return (
@@ -2084,17 +2095,32 @@ function SecaoPagamentoOnline({ barraca }: { barraca: Barraca }) {
             aria-label="Pagamento online habilitado"
           />
         </div>
+        <ErroSalvar erro={salvarHabilitado.erro} className="mt-2" />
 
         <div className="mt-4">
           <p className="mb-2 text-sm font-medium text-mesa-text-primary">Access Token do Mercado Pago</p>
           <div className="flex min-w-[220px] flex-1 items-center justify-between gap-3 rounded-mesa-md border border-mesa-border-subtle p-3">
             <p className="text-xs text-mesa-text-secondary">
-              {tokenConfigurado ? 'Configurado' : 'Não configurado'}
+              {tokenConfigurado === null
+                ? erroToken
+                  ? 'Não verificado'
+                  : 'Verificando...'
+                : tokenConfigurado
+                  ? 'Configurado'
+                  : 'Não configurado'}
             </p>
             <Button variant="outline" size="sm" onClick={() => setMostrarSheetToken(true)}>
               {tokenConfigurado ? 'Trocar' : 'Definir'}
             </Button>
           </div>
+          {erroToken && (
+            <div className="mt-2 flex flex-wrap items-center gap-2">
+              <ErroSalvar erro={erroToken} />
+              <Button variant="ghost" size="sm" onClick={() => setRecargaToken((n) => n + 1)}>
+                Tentar de novo
+              </Button>
+            </div>
+          )}
         </div>
       </Card>
 
@@ -2102,7 +2128,7 @@ function SecaoPagamentoOnline({ barraca }: { barraca: Barraca }) {
         barracaId={barraca.id}
         open={mostrarSheetToken}
         onClose={() => setMostrarSheetToken(false)}
-        onSucesso={() => setTokenConfigurado(true)}
+        onSucesso={() => setRecargaToken((n) => n + 1)}
       />
     </section>
   )

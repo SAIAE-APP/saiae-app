@@ -6,6 +6,8 @@ import { Card } from './ui/Card'
 import { Icone } from './ui/Icone'
 import { Input } from './ui/Input'
 import { Toggle } from './ui/Toggle'
+import { useToast } from './ui/Toast'
+import { MSG_SEM_INTERNET, mensagemErroSalvar } from '../hooks/useSalvarBarraca'
 import type { BannerCardapio } from '../types/database'
 
 type CampoTexto = 'titulo' | 'cta_texto'
@@ -60,6 +62,7 @@ function PreviaCarrossel({ banners }: { banners: BannerCardapio[] }) {
  * no desktop (pedido de produto 2026-09-27: telas largas ganham mais
  * função de edição, mesmo espírito do resto do app que é mobile-first). */
 export function SecaoBanners({ barracaId }: { barracaId: string }) {
+  const { mostrarToast } = useToast()
   const [banners, setBanners] = useState<BannerCardapio[]>([])
   const [carregando, setCarregando] = useState(true)
   const [erro, setErro] = useState<string | null>(null)
@@ -179,6 +182,8 @@ export function SecaoBanners({ barracaId }: { barracaId: string }) {
     const { error } = await supabase.from('banners_cardapio').update({ [campo]: normalizado }).eq('id', id)
 
     if (error) {
+      const mensagem = mensagemErroSalvar(error)
+      mostrarToast(mensagem, { variante: mensagem === MSG_SEM_INTERNET ? 'aviso' : 'erro' })
       setBanners((atual) =>
         atual.map((b) => (b.id === id ? { ...b, [campo]: valorAoFocarRef.current || null } : b)),
       )

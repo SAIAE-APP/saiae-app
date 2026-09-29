@@ -1,5 +1,6 @@
 import { useState, type ReactNode } from 'react'
-import { supabase } from '../lib/supabase'
+import { useRascunho, useSalvarBarraca } from '../hooks/useSalvarBarraca'
+import { ErroSalvar } from './BotaoSalvarCampo'
 import {
   dispositivosPareados,
   impressoraSuportada,
@@ -140,10 +141,15 @@ function BottomSheetEscolherImpressora({
  * clássico/SPP) — por isso a seção nem aparece fora do app instalado, mesmo
  * padrão de esconder por completo usado no Face ID de Ajustes.tsx. */
 export function SecaoImpressora({ barraca }: { barraca: Barraca }) {
-  const [habilitada, setHabilitada] = useState(barraca.impressora_habilitada)
-  const [largura, setLargura] = useState(barraca.impressora_largura_papel)
-  const [endereco, setEndereco] = useState(barraca.impressora_endereco)
-  const [nomeDispositivo, setNomeDispositivo] = useState(barraca.impressora_nome)
+  const habilitadaR = useRascunho(barraca.impressora_habilitada)
+  const larguraR = useRascunho(barraca.impressora_largura_papel)
+  const habilitada = habilitadaR.valor
+  const largura = larguraR.valor
+  const endereco = barraca.impressora_endereco
+  const nomeDispositivo = barraca.impressora_nome
+  const salvarHabilitada = useSalvarBarraca(barraca)
+  const salvarLargura = useSalvarBarraca(barraca)
+  const salvarDispositivo = useSalvarBarraca(barraca)
   const [sheetAberto, setSheetAberto] = useState(false)
   const [testando, setTestando] = useState(false)
   const [erroTeste, setErroTeste] = useState<string | null>(null)
@@ -152,25 +158,26 @@ export function SecaoImpressora({ barraca }: { barraca: Barraca }) {
   if (!impressoraSuportada()) return null
 
   async function alternarHabilitada(valor: boolean) {
-    setHabilitada(valor)
-    await supabase.from('barracas').update({ impressora_habilitada: valor }).eq('id', barraca.id)
+    habilitadaR.definir(valor)
+    await salvarHabilitada.salvar({ impressora_habilitada: valor })
+    // sucesso: o cache já tem o valor novo; falha: volta pro que está no banco
+    habilitadaR.descartar()
   }
 
   async function escolherLargura(valor: LarguraPapel) {
-    setLargura(valor)
-    await supabase.from('barracas').update({ impressora_largura_papel: valor }).eq('id', barraca.id)
+    larguraR.definir(valor)
+    await salvarLargura.salvar({ impressora_largura_papel: valor })
+    larguraR.descartar()
   }
 
   async function escolherDispositivo(dispositivo: PrinterDevice) {
     setSheetAberto(false)
     setSucessoTeste(false)
     setErroTeste(null)
-    setEndereco(dispositivo.address ?? null)
-    setNomeDispositivo(dispositivo.name ?? null)
-    await supabase
-      .from('barracas')
-      .update({ impressora_endereco: dispositivo.address ?? null, impressora_nome: dispositivo.name ?? null })
-      .eq('id', barraca.id)
+    await salvarDispositivo.salvar({
+      impressora_endereco: dispositivo.address ?? null,
+      impressora_nome: dispositivo.name ?? null,
+    })
   }
 
   async function testar() {
@@ -195,6 +202,7 @@ export function SecaoImpressora({ barraca }: { barraca: Barraca }) {
           <span className="text-base text-mesa-text-primary">Impressora habilitada</span>
           <Toggle checked={habilitada} onChange={alternarHabilitada} aria-label="Impressora habilitada" />
         </div>
+        <ErroSalvar erro={salvarHabilitada.erro} className="mt-2" />
 
         <div className="mt-4">
           <p className="mb-2 text-sm font-medium text-mesa-text-primary">Largura do papel</p>
@@ -205,6 +213,7 @@ export function SecaoImpressora({ barraca }: { barraca: Barraca }) {
               </Chip>
             ))}
           </div>
+          <ErroSalvar erro={salvarLargura.erro} className="mt-2" />
         </div>
 
         <div className="mt-4 flex items-center justify-between gap-3 rounded-mesa-md border border-mesa-border-subtle p-3">
@@ -218,6 +227,8 @@ export function SecaoImpressora({ barraca }: { barraca: Barraca }) {
             {endereco ? 'Trocar' : 'Escolher'}
           </Button>
         </div>
+
+        <ErroSalvar erro={salvarDispositivo.erro} className="mt-2" />
 
         {erroTeste && (
           <div className="mt-4">
