@@ -70,9 +70,19 @@ segundo plano (não bloqueia o envio); falha vira toast tocável
 `client_uuid` (localStorage + Set em memória). Pedido 100% entrega
 direta não imprime (não passa pela cozinha). Texto sai sem acento
 (`semAcento`): térmicas genéricas não têm a codepage e imprimiam "?".
+Revisão 2026-09-29 (a automática não imprimiu no aparelho do primeiro
+cliente, causa não reproduzida): a config da impressora é relida do
+servidor na hora de imprimir quando a barraca em memória/cache não tem
+impressora pronta, o ouvinte é registrado uma vez só (toast via ref), e
+o disparo agora é VISÍVEL — toast "Imprimindo comanda N...", depois
+"impressa" ou erro com causa; impressora habilitada sem dispositivo
+também avisa, nunca desiste em silêncio. Botão manual **"Imprimir
+comanda"** no card da Cozinha (só Android com impressora pronta, sem
+mostarda, `dadosComandaDoPedido`) serve de reimpressão/fallback — e é
+por ele que pedidos do cardápio digital (Pix) podem ser impressos hoje.
 **Próximo passo:** pedidos do cardápio digital (Pix) são criados no
-servidor e não passam por esse gatilho — imprimir quando aparecerem na
-Cozinha de um aparelho com impressora. Plugin só fala SPP clássico;
+servidor e não passam pelo gatilho automático — decidir qual aparelho
+imprime (sugestão: o que está com a Cozinha aberta) antes de automatizar. Plugin só fala SPP clássico;
 impressoras só-BLE não são suportadas.
 
 ## Regras de produto

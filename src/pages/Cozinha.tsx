@@ -17,6 +17,9 @@ import { SegmentedControl } from '../components/ui/SegmentedControl'
 import { ModalCancelamento } from '../components/ModalCancelamento'
 import { ModalEntregaDireta } from '../components/ModalEntregaDireta'
 import { DetalheComanda } from '../components/DetalheComanda'
+import { useToast } from '../components/ui/Toast'
+import { dadosComandaDoPedido } from '../hooks/useImpressaoAutomatica'
+import { descreverErroImpressao, imprimirComanda, impressoraSuportada } from '../lib/impressoraTermica'
 import type { MotivoCancelamento } from '../lib/cancelamento'
 import type { Barraca, ItemDoPedido, PedidoComItens } from '../types/database'
 import type { StatusConexao } from '../hooks/useRealtimePedidos'
@@ -171,6 +174,32 @@ function CardPedido({
     itensParaCozinha.every((i) => i.entregue)
   const itensComObservacao = itensAtivos.filter((i) => i.observacao)
 
+  // Reimpressão/fallback manual da comanda (a automática sai ao enviar o
+  // pedido — useImpressaoAutomatica). Só no app Android com impressora
+  // pronta; nunca é a ação principal do card, então sem mostarda.
+  const { mostrarToast } = useToast()
+  const [imprimindo, setImprimindo] = useState(false)
+  const podeImprimir =
+    impressoraSuportada() && barraca.impressora_habilitada && Boolean(barraca.impressora_endereco)
+
+  async function imprimirManual() {
+    if (!barraca.impressora_endereco || imprimindo) return
+    setImprimindo(true)
+    try {
+      await imprimirComanda({
+        endereco: barraca.impressora_endereco,
+        largura: barraca.impressora_largura_papel,
+        dados: dadosComandaDoPedido(pedido, barraca.nome),
+      })
+      mostrarToast(`Comanda ${pedido.senha ?? ''} impressa.`, { variante: 'sucesso', icone: 'print' })
+    } catch (erro) {
+      console.error('[impressora] reimpressão falhou', erro)
+      mostrarToast(`Não imprimiu. ${descreverErroImpressao(erro)}`, { variante: 'erro', duracaoMs: 10000 })
+    } finally {
+      setImprimindo(false)
+    }
+  }
+
   const iconeTipo = pedido.viagem ? 'takeout_dining' : 'storefront'
   const rotuloTipo = pedido.viagem ? 'Viagem' : pedido.mesa ? `Mesa ${pedido.mesa}` : 'Balcão'
 
@@ -316,7 +345,18 @@ function CardPedido({
           )}
         </div>
 
-        <div className="mt-2 flex justify-center">
+        <div className="mt-2 flex justify-center gap-2">
+          {podeImprimir && (
+            <button
+              type="button"
+              onClick={() => void imprimirManual()}
+              disabled={imprimindo}
+              className="flex min-h-11 items-center gap-1 px-2 text-sm font-semibold text-mesa-neutral-300 disabled:opacity-40"
+            >
+              <Icone nome="print" size={14} />
+              {imprimindo ? 'Imprimindo...' : 'Imprimir comanda'}
+            </button>
+          )}
           <button
             type="button"
             onClick={() => onCancelar(pedido)}
