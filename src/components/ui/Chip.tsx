@@ -24,11 +24,12 @@ export type ChipProps = ChipBaseProps &
     | ({ onClick?: undefined } & Omit<HTMLAttributes<HTMLSpanElement>, keyof ChipBaseProps>)
   )
 
-// Selecionado (teal) = mostarda/tinta; não-selecionado (plain) = cinza neutro.
-// Os dois com canto uniforme (pílula) — chip é controle interativo, não selo.
+// Selecionado (teal) = mostarda/tinta com canto balão, mesma assinatura do
+// selo "Popular" (pedido do João, 2026-09-29); não-selecionado (plain) =
+// cinza neutro em pílula uniforme.
 // Sem `variant` explícito, vem de `checked`: só o selecionado fica mostarda.
 const variantClasses: Record<ChipVariant, string> = {
-  teal: 'rounded-mesa-full bg-mesa-orange-500 text-mesa-neutral-900',
+  teal: 'rounded-mesa-balao bg-mesa-orange-500 text-mesa-neutral-900',
   plain: 'rounded-mesa-full bg-mesa-neutral-100 text-mesa-neutral-700 dark:bg-mesa-neutral-700 dark:text-mesa-neutral-200',
 }
 
