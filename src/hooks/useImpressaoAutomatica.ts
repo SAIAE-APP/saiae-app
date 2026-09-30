@@ -9,7 +9,8 @@ import {
   impressoraSuportada,
   type DadosComanda,
 } from '../lib/impressoraTermica'
-import type { Barraca, PedidoComItens } from '../types/database'
+import type { Barraca, Pedido } from '../types/database'
+import type { PedidoComItens } from './useRealtimePedidos'
 
 const PREFIXO_IMPRESSA = 'mesaagil:comanda-impressa:'
 
@@ -39,7 +40,7 @@ function marcarImpressa(clientUuid: string) {
 
 type ConfigImpressora = Pick<
   Barraca,
-  'nome' | 'impressora_habilitada' | 'impressora_endereco' | 'impressora_largura_papel'
+  'nome' | 'cnpj' | 'impressora_habilitada' | 'impressora_endereco' | 'impressora_largura_papel'
 >
 
 /** Config da impressora na hora de imprimir. A barraca do layout pode vir
@@ -55,23 +56,29 @@ async function carregarConfigImpressora(
   }
   const { data, error } = await supabase
     .from('barracas')
-    .select('nome, impressora_habilitada, impressora_endereco, impressora_largura_papel')
+    .select('nome, cnpj, impressora_habilitada, impressora_endereco, impressora_largura_papel')
     .eq('id', barracaId)
     .single()
   if (error || !data) return conhecida?.id === barracaId ? conhecida : null
   return data as ConfigImpressora
 }
 
-/** Dados da comanda a partir de um pedido já no servidor (Cozinha) — usado
- * pelo botão manual "Imprimir comanda". */
-export function dadosComandaDoPedido(pedido: PedidoComItens, nomeBarraca: string): DadosComanda {
+/** Dados da comanda a partir de um pedido já no servidor (Cozinha, Realtime) —
+ * usado pelo botão manual "Imprimir comanda" e pela impressão dos pedidos do
+ * cardápio digital. */
+export function dadosComandaDoPedido(
+  pedido: PedidoComItens,
+  barraca: Pick<Barraca, 'nome' | 'cnpj'>,
+): DadosComanda {
   return {
-    nomeBarraca,
+    nomeBarraca: barraca.nome,
+    cnpj: barraca.cnpj,
     senha: pedido.senha,
     criadoEm: pedido.criado_em,
     mesa: pedido.mesa,
     viagem: pedido.viagem,
     observacao: pedido.observacao,
+    metodoPagamento: pedido.metodo_pagamento,
     itens: pedido.itens_do_pedido
       .filter((i) => !i.removido && !i.entrega_direta)
       .map((i) => ({
@@ -83,16 +90,46 @@ export function dadosComandaDoPedido(pedido: PedidoComItens, nomeBarraca: string
   }
 }
 
+/** Pedido novo (INSERT no Realtime) só imprime se for recente: ao reconectar
+ * ou abrir o app, eventos velhos não podem sair impressos. */
+const JANELA_PEDIDO_NOVO_MS = 5 * 60 * 1000
+
+/** Reivindicação atômica no banco: só UM aparelho ganha (true) e imprime.
+ * Se a chamada falhar (rede/RPC ausente), imprime mesmo assim — melhor uma
+ * comanda duplicada que nenhuma. */
+async function reivindicar(pedidoId: string): Promise<boolean> {
+  try {
+    const { data, error } = await supabase.rpc('reivindicar_impressao_comanda', { p_pedido_id: pedidoId })
+    if (error) throw error
+    return data === true
+  } catch (erro) {
+    console.warn('[impressora] reivindicação falhou, imprimindo mesmo assim', erro)
+    return true
+  }
+}
+
+async function liberar(pedidoId: string) {
+  try {
+    await supabase.rpc('liberar_impressao_comanda', { p_pedido_id: pedidoId })
+  } catch (erro) {
+    console.warn('[impressora] não consegui liberar a reivindicação', erro)
+  }
+}
+
 /**
- * Imprime a comanda sozinha quando um pedido criado NESTE aparelho recebe a
- * senha do servidor (a senha só existe depois do sync — offline, imprime
- * quando a fila sobe, sem nunca mostrar/imprimir senha provisória).
+ * Imprime a comanda de TODO pedido, sozinha, num aparelho Android com
+ * impressora habilitada:
+ *  (a) pedido criado NESTE aparelho: quando recebe a senha do servidor
+ *      (offline, imprime quando a fila sobe, sem senha provisória);
+ *  (b) pedido novo que chega pelo Realtime (INSERT em `pedidos`) — cobre o
+ *      cardápio digital/Pix, criado no servidor.
+ * Com 2+ aparelhos ouvindo, `reivindicar_impressao_comanda` (pedidos.
+ * comanda_impressa_em, UPDATE atômico) garante uma impressão só.
  *
  * Roda em segundo plano, fora do fluxo de envio: falha vira toast tocável
- * ("Reimprimir") e nunca afeta o pedido. Idempotente por client_uuid.
- * Pedidos todos em entrega direta não passam pela cozinha — sem comanda.
- * Pedidos do cardápio digital (Pix) não são criados aqui, então não
- * imprimem (próximo passo: ver CLAUDE.md).
+ * ("Reimprimir"), libera a reivindicação e nunca afeta o pedido. Idempotente
+ * por pedido (Set em memória + client_uuid no localStorage). Pedidos todos
+ * em entrega direta não passam pela cozinha — sem comanda.
  */
 export function useImpressaoAutomatica(barraca: Barraca | null) {
   const { mostrarToast } = useToast()
@@ -102,77 +139,95 @@ export function useImpressaoAutomatica(barraca: Barraca | null) {
     barracaRef.current = barraca
   }, [barraca])
 
-  // Ref pro toast: o ouvinte do pedido é registrado UMA vez (sem depender
-  // da identidade de mostrarToast), pra nunca haver janela de re-registro
-  // em que um pedido sincroniza sem ninguém ouvindo.
+  // Ref pro toast: os ouvintes são registrados sem depender da identidade
+  // de mostrarToast, pra nunca haver janela de re-registro em que um pedido
+  // chega sem ninguém ouvindo.
   const toastRef = useRef(mostrarToast)
   useEffect(() => {
     toastRef.current = mostrarToast
   }, [mostrarToast])
 
+  const barracaId = barraca?.id ?? null
+
   useEffect(() => {
     if (!impressoraSuportada()) return
 
-    async function imprimir(dados: DadosComanda, cfg: ConfigImpressora, clientUuid: string, manual: boolean) {
+    async function imprimir(
+      pedidoId: string,
+      dados: DadosComanda,
+      cfg: ConfigImpressora,
+      clientUuid: string | null,
+    ) {
       if (!cfg.impressora_endereco) return
       try {
         await imprimirComanda({ endereco: cfg.impressora_endereco, largura: cfg.impressora_largura_papel, dados })
-        marcarImpressa(clientUuid)
+        if (clientUuid) marcarImpressa(clientUuid)
         toastRef.current(`Comanda ${dados.senha ?? ''} impressa.`, { variante: 'sucesso', icone: 'print' })
       } catch (erro) {
         console.error('[impressora] comanda não impressa', erro)
+        void liberar(pedidoId)
         toastRef.current(
           `Comanda ${dados.senha ?? ''} não imprimiu. Toque para reimprimir. ${descreverErroImpressao(erro)}`,
           {
             variante: 'erro',
             duracaoMs: 15000,
-            aoClicar: () => void imprimir(dados, cfg, clientUuid, true),
+            aoClicar: () => {
+              void (async () => {
+                await imprimir(pedidoId, dados, cfg, clientUuid)
+                void reivindicar(pedidoId)
+              })()
+            },
           },
         )
-      } finally {
-        if (!manual) emAndamentoRef.current.delete(clientUuid)
       }
     }
 
-    return aoCriarPedidoLocal(async (pedido: PedidoCriadoLocal) => {
-      const p = pedido.payload
-      const barracaId = String(p.p_barraca_id ?? '')
-      const itens = (p.p_itens as ItemPayload[]) ?? []
-      if (!barracaId || itens.length === 0 || itens.every((i) => i.entrega_direta)) return
-
-      const clientUuid = String(p.p_client_uuid ?? pedido.pedidoId)
-      if (emAndamentoRef.current.has(clientUuid) || jaImpressa(clientUuid)) return
-      emAndamentoRef.current.add(clientUuid)
-
+    /** Config pronta pra imprimir, ou null (avisando quando é o caso). */
+    async function configPronta(idBarraca: string): Promise<ConfigImpressora | null> {
       let cfg: ConfigImpressora | null
       try {
-        cfg = await carregarConfigImpressora(barracaId, barracaRef.current)
+        cfg = await carregarConfigImpressora(idBarraca, barracaRef.current)
       } catch (erro) {
         console.warn('[impressora] não consegui ler a config da impressora', erro)
         cfg = barracaRef.current
       }
-
       if (!cfg?.impressora_habilitada) {
         console.info('[impressora] comanda ignorada: impressora desabilitada nesta barraca')
-        emAndamentoRef.current.delete(clientUuid)
-        return
+        return null
       }
       if (!cfg.impressora_endereco) {
-        emAndamentoRef.current.delete(clientUuid)
         toastRef.current('Impressora habilitada, mas sem dispositivo escolhido. Escolha em Ajustes.', {
           variante: 'aviso',
           duracaoMs: 8000,
         })
-        return
+        return null
       }
+      return cfg
+    }
+
+    // (a) pedido criado neste aparelho
+    const cancelarLocal = aoCriarPedidoLocal(async (pedido: PedidoCriadoLocal) => {
+      const p = pedido.payload
+      const idBarraca = String(p.p_barraca_id ?? '')
+      const itens = (p.p_itens as ItemPayload[]) ?? []
+      if (!idBarraca || itens.length === 0 || itens.every((i) => i.entrega_direta)) return
+
+      const clientUuid = String(p.p_client_uuid ?? pedido.pedidoId)
+      if (emAndamentoRef.current.has(pedido.pedidoId) || jaImpressa(clientUuid)) return
+      emAndamentoRef.current.add(pedido.pedidoId)
+
+      const cfg = await configPronta(idBarraca)
+      if (!cfg || !(await reivindicar(pedido.pedidoId))) return
 
       const dados: DadosComanda = {
         nomeBarraca: cfg.nome,
+        cnpj: cfg.cnpj,
         senha: pedido.senha,
         criadoEm: new Date().toISOString(),
         mesa: (p.p_mesa as string | null) ?? null,
         viagem: Boolean(p.p_viagem),
         observacao: (p.p_observacao as string | null) ?? null,
+        metodoPagamento: (p.p_metodo_pagamento as string | null) ?? null,
         itens: itens
           .filter((i) => !i.entrega_direta)
           .map((i) => ({
@@ -184,7 +239,55 @@ export function useImpressaoAutomatica(barraca: Barraca | null) {
       }
 
       toastRef.current(`Imprimindo comanda ${pedido.senha}...`, { variante: 'aviso', icone: 'print', duracaoMs: 2500 })
-      await imprimir(dados, cfg, clientUuid, false)
+      await imprimir(pedido.pedidoId, dados, cfg, clientUuid)
     })
-  }, [])
+
+    // (b) pedido novo pelo Realtime (cardápio digital e pedidos de outros aparelhos)
+    async function aoChegarPedido(novo: Pedido) {
+      if (novo.status !== 'a_fazer' || novo.comanda_impressa_em) return
+      if (Date.now() - new Date(novo.criado_em).getTime() > JANELA_PEDIDO_NOVO_MS) return
+      if (emAndamentoRef.current.has(novo.id) || (novo.client_uuid && jaImpressa(novo.client_uuid))) return
+      emAndamentoRef.current.add(novo.id)
+
+      const cfg = await configPronta(novo.barraca_id)
+      if (!cfg) return
+
+      // O payload do Realtime não traz os itens: busca o pedido completo.
+      const { data, error } = await supabase
+        .from('pedidos')
+        .select('*, itens_do_pedido(*)')
+        .eq('id', novo.id)
+        .single()
+      if (error || !data) {
+        console.warn('[impressora] não consegui buscar o pedido novo', error)
+        emAndamentoRef.current.delete(novo.id)
+        return
+      }
+      const pedido = data as PedidoComItens
+      const dados = dadosComandaDoPedido(pedido, cfg)
+      if (dados.itens.length === 0) return
+      if (!(await reivindicar(pedido.id))) return
+
+      toastRef.current(`Imprimindo comanda ${pedido.senha}...`, { variante: 'aviso', icone: 'print', duracaoMs: 2500 })
+      await imprimir(pedido.id, dados, cfg, pedido.client_uuid)
+    }
+
+    const canal = barracaId
+      ? supabase
+          .channel(`impressao-${barracaId}`)
+          .on<Pedido>(
+            'postgres_changes',
+            { event: 'INSERT', schema: 'public', table: 'pedidos', filter: `barraca_id=eq.${barracaId}` },
+            (payload) => {
+              if ('id' in payload.new) void aoChegarPedido(payload.new)
+            },
+          )
+          .subscribe()
+      : null
+
+    return () => {
+      cancelarLocal()
+      if (canal) void supabase.removeChannel(canal)
+    }
+  }, [barracaId])
 }

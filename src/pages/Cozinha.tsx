@@ -189,7 +189,7 @@ function CardPedido({
       await imprimirComanda({
         endereco: barraca.impressora_endereco,
         largura: barraca.impressora_largura_papel,
-        dados: dadosComandaDoPedido(pedido, barraca.nome),
+        dados: dadosComandaDoPedido(pedido, barraca),
       })
       mostrarToast(`Comanda ${pedido.senha ?? ''} impressa.`, { variante: 'sucesso', icone: 'print' })
     } catch (erro) {

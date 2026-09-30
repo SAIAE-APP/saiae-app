@@ -257,55 +257,92 @@ export async function imprimirCupomFiscal({
 
 export type DadosComanda = {
   nomeBarraca: string
+  cnpj?: string | null
   senha: number | null
   criadoEm: string
   mesa: string | null
   viagem: boolean
   observacao: string | null
+  metodoPagamento?: string | null
   itens: { nome: string; quantidade: number; observacao: string | null; precoCentavos: number }[]
 }
 
-/** Comanda de cozinha (não fiscal): senha grande, mesa/viagem, itens com
- * observação, total. Separado de `imprimirComanda` pra testar sem impressora. */
+function centralizar(texto: string, largura: number): string {
+  const sobra = Math.max(0, largura - texto.length)
+  const esquerda = Math.floor(sobra / 2)
+  return ' '.repeat(esquerda) + texto + ' '.repeat(sobra - esquerda)
+}
+
+/** Comanda (cupom NÃO fiscal): barra preta com a senha em branco no topo,
+ * dados da barraca, tipo, itens em QTD/DESCRIÇÃO/VALOR com observação
+ * embaixo, total e forma de pagamento. Sem dado fiscal (chave, QR,
+ * protocolo, tributos). Separado de `imprimirComanda` pra testar sem impressora. */
 export function montarComanda(dados: DadosComanda, largura: LarguraPapel): Uint8Array {
+  const colunas = COLUNAS_POR_LARGURA[largura]
   const total = dados.itens.reduce((soma, i) => soma + i.precoCentavos * i.quantidade, 0)
 
-  let encoder = novoEncoder(COLUNAS_POR_LARGURA[largura])
+  // Barra preta = texto invertido (GS B 1) em tamanho 4x na largura, que divide
+  // 32 e 48 colunas exatamente: a linha de espaços pinta a largura toda.
+  // Linhas de espaço acima/abaixo (altura normal) dão corpo à barra.
+  const colunasBarra = colunas / 4
+  const espacosBarra = ' '.repeat(colunasBarra)
+  const senhaTexto = dados.senha !== null ? String(dados.senha).padStart(3, '0') : '---'
+
+  let encoder = novoEncoder(colunas)
+    .align('left')
+    .invert(true)
+    .size(4, 1)
+    .line(espacosBarra)
+    .size(4, 3)
+    .line(centralizar(senhaTexto, colunasBarra))
+    .size(4, 1)
+    .line(espacosBarra)
+    .size(1, 1)
+    .invert(false)
+    .newline()
     .align('center')
     .bold(true)
     .line(semAcento(dados.nomeBarraca))
     .bold(false)
-    .newline()
-    .line('SENHA')
-    .size(3, 3)
-    .bold(true)
-    .line(dados.senha !== null ? String(dados.senha).padStart(3, '0') : '---')
-    .bold(false)
-    .size(1, 1)
-    .newline()
-    .align('left')
+
+  if (dados.cnpj) encoder = encoder.line(`CNPJ: ${formatarCnpj(dados.cnpj)}`)
+
+  encoder = encoder
     .line(new Date(dados.criadoEm).toLocaleString('pt-BR'))
     .bold(true)
-    .line(dados.viagem ? 'VIAGEM' : dados.mesa ? semAcento(`Mesa ${dados.mesa}`) : 'Sem mesa')
+    .line(dados.viagem ? 'VIAGEM' : dados.mesa ? semAcento(`Mesa ${dados.mesa}`) : 'BALCAO')
     .bold(false)
+    .align('left')
     .rule()
 
+  const colunasTabela = [{ width: 4 }, { width: colunas - 14 }, { width: 10, align: 'right' as const }]
+  encoder = encoder.bold(true).table(colunasTabela, [['QTD', 'DESCRICAO', 'VALOR']]).bold(false).rule()
+
   for (const item of dados.itens) {
-    encoder = encoder.bold(true).line(semAcento(`${item.quantidade}x ${item.nome}`)).bold(false)
+    encoder = encoder.table(colunasTabela, [
+      [`${item.quantidade}x`, semAcento(item.nome), formatarPrecoBR(item.precoCentavos * item.quantidade)],
+    ])
     if (item.observacao) encoder = encoder.line(semAcento(`  > ${item.observacao}`))
   }
 
   encoder = encoder.rule()
   if (dados.observacao) encoder = encoder.line('Obs:').line(semAcento(dados.observacao)).rule()
 
-  return encoder
-    .align('right')
+  // TOTAL em dobro de largura/altura: metade das colunas, rótulo à esquerda e valor à direita.
+  const valorTotal = formatarPrecoBR(total)
+  const espacoTotal = Math.max(1, colunas / 2 - 'TOTAL'.length - valorTotal.length)
+  encoder = encoder
     .bold(true)
-    .line(`TOTAL ${formatarPrecoBR(total)}`)
+    .size(2, 2)
+    .line(`TOTAL${' '.repeat(espacoTotal)}${valorTotal}`)
+    .size(1, 1)
     .bold(false)
-    .newline(3)
-    .cut()
-    .encode()
+
+  if (dados.metodoPagamento) {
+    encoder = encoder.line(semAcento(`Pagamento: ${humanizarMetodo(dados.metodoPagamento)}`))
+  }
+
+  return encoder.newline().align('center').line('Obrigado! Sai ae').newline(3).cut().encode()
 }
 
 export async function imprimirComanda({

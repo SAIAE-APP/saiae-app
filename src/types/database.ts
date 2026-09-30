@@ -127,6 +127,7 @@ export type Pedido = {
   motivo_cancelamento: string | null
   cancelado_em: string | null
   metodo_pagamento: string | null
+  comanda_impressa_em: string | null
   nfce_status: string | null
   nfce_chave: string | null
   nfce_numero: string | null
