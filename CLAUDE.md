@@ -133,8 +133,14 @@ impressoras só-BLE não são suportadas.
   o cache local da barraca (`atualizarBarracaCache` em `useBarraca.ts`)
   só atualiza depois da confirmação do banco. Toggles/chips continuam
   salvando na hora, mas revertem e mostram erro se falhar. Exceção
-  deliberada: listas densas (nome de item/categoria, título de banner)
-  ainda salvam ao sair do campo, com toast de erro.
+  deliberada: listas densas (nome de categoria, título de banner) ainda
+  salvam ao sair do campo, com toast de erro. Itens do cardápio NÃO
+  entram mais nessa exceção (2026-09-29): a lista em Ajustes é só
+  leitura (linha tocável: foto, nome, categoria, selos, preço) e criar/
+  editar item é um formulário único (`BottomSheetItem`, aberto por
+  "Novo item" ou tocando na linha) com foto, nome, preço, categoria,
+  descrição, Ativo/Esgotado/Popular, dados fiscais e "Apagar item";
+  tudo grava de uma vez no botão Salvar/Adicionar.
 
 ## Regras de tema
 - Identidade visual atual é a IDV "Sai aê" (rebrand fechado em

@@ -35,3 +35,8 @@ export function reaisParaCentavos(reais: number | string): number {
   const resultado = negativo ? -centavos : centavos
   return Math.max(0, Math.min(CENTAVOS_MAX, resultado))
 }
+
+/** Filtro de campo de preço: mantém só dígitos, vírgula e ponto. */
+export function filtrarEntradaPreco(texto: string): string {
+  return texto.replace(/[^\d.,]/g, '')
+}

@@ -13,7 +13,7 @@ import { useAuth } from '../hooks/useAuth'
 import { useTheme } from '../hooks/useTheme'
 import { useAssinaturaBarraca } from '../hooks/useAssinaturaBarraca'
 import { MSG_SEM_INTERNET, mensagemErroSalvar, useRascunho, useSalvarBarraca } from '../hooks/useSalvarBarraca'
-import { centavosParaReais, reaisParaCentavos } from '../lib/preco'
+import { centavosParaReais, filtrarEntradaPreco, formatarPrecoBR, reaisParaCentavos } from '../lib/preco'
 import { apagarFotoItem, enviarFotoItem } from '../lib/fotoItem'
 import { apagarLogoBarraca, enviarLogoBarraca } from '../lib/logoBarraca'
 import { apagarCapaBarraca, enviarCapaBarraca } from '../lib/capaBarraca'
@@ -37,6 +37,7 @@ import { useToast } from '../components/ui/Toast'
 import { Textarea } from '../components/ui/Textarea'
 import { Toggle } from '../components/ui/Toggle'
 import { BottomSheet } from '../components/ui/BottomSheet'
+import { Badge } from '../components/ui/Badge'
 import type { AmbienteFiscal, Barraca, Categoria, Item, RegimeTributario } from '../types/database'
 
 function textoPrecoInicial(centavos: number): string {
@@ -80,231 +81,236 @@ function BotaoApagar({ onClick, rotulo }: { onClick: () => void; rotulo: string 
   )
 }
 
-function InputPreco({ item }: { item: Item }) {
-  const { mostrarToast } = useToast()
-  const [texto, setTexto] = useState(() => textoPrecoInicial(item.preco_centavos))
-  const [textoSalvo, setTextoSalvo] = useState(texto)
-  const [salvando, setSalvando] = useState(false)
-  const [salvo, setSalvo] = useState(false)
-  const salvoTimerRef = useRef<number | null>(null)
-  const alterado = texto !== textoSalvo
-
-  useEffect(() => {
-    return () => {
-      if (salvoTimerRef.current !== null) window.clearTimeout(salvoTimerRef.current)
-    }
-  }, [])
-
-  // Preço só é gravado quando o dono confirma (botão ✓ ou Enter) — antes era
-  // auto-salvar com debounce e uma falha passava em silêncio.
-  async function salvar() {
-    if (!alterado || salvando) return
-    if (navigator.onLine === false) {
-      mostrarToast(MSG_SEM_INTERNET, { variante: 'aviso' })
-      return
-    }
-
-    setSalvando(true)
-    setSalvo(false)
-    let mensagem: string | null = null
-    try {
-      const { data, error } = await supabase
-        .from('itens')
-        .update({ preco_centavos: reaisParaCentavos(texto) })
-        .eq('id', item.id)
-        .select('id')
-      if (error) mensagem = mensagemErroSalvar(error)
-      else if (!data || data.length === 0) mensagem = 'Não foi possível salvar: sem permissão para alterar este item.'
-    } catch (e) {
-      mensagem = mensagemErroSalvar(e instanceof Error ? e : null)
-    }
-    setSalvando(false)
-
-    if (mensagem) {
-      mostrarToast(mensagem, { variante: 'erro' })
-      return
-    }
-
-    setTextoSalvo(texto)
-    setSalvo(true)
-    if (salvoTimerRef.current !== null) window.clearTimeout(salvoTimerRef.current)
-    salvoTimerRef.current = window.setTimeout(() => setSalvo(false), 1500)
-  }
-
+function CampoToggle({
+  rotulo,
+  descricao,
+  checked,
+  onChange,
+}: {
+  rotulo: string
+  descricao?: string
+  checked: boolean
+  onChange: () => void
+}) {
   return (
-    <div className="flex shrink-0 items-center gap-1">
-      <Input
-        type="currency"
-        size="sm"
-        inputMode="decimal"
-        value={texto}
-        onChange={(e) => {
-          setTexto(e.target.value.replace(/[^\d.,]/g, ''))
-          setSalvo(false)
-        }}
-        onKeyDown={(e) => {
-          if (e.key === 'Enter') salvar()
-        }}
-        placeholder="0,00"
-        aria-label={`Preço de ${item.nome}`}
-        className="w-28"
-      />
-      {alterado || salvando ? (
-        <button
-          type="button"
-          onClick={salvar}
-          disabled={salvando}
-          aria-label={`Salvar preço de ${item.nome}`}
-          className="flex size-11 shrink-0 items-center justify-center rounded-mesa-md border-[1.5px] border-mesa-neutral-900 text-mesa-neutral-900 outline-none transition-colors hover:bg-[var(--mesa-state-hover-bg)] disabled:opacity-40 dark:border-mesa-neutral-50 dark:text-mesa-neutral-50"
-        >
-          <Icone nome={salvando ? 'progress_activity' : 'check'} size={18} />
-        </button>
-      ) : (
-        <span className="flex size-11 shrink-0 items-center justify-center">
-          {salvo && <Icone nome="check" size={16} className="text-mesa-success-700 dark:text-mesa-success-500" aria-label="Salvo" />}
-        </span>
-      )}
+    <div className="flex min-h-11 items-center justify-between gap-3 py-1">
+      <div className="min-w-0">
+        <p className="text-sm font-medium text-mesa-text-primary">{rotulo}</p>
+        {descricao && <p className="text-xs text-mesa-text-secondary">{descricao}</p>}
+      </div>
+      <Toggle checked={checked} onChange={onChange} aria-label={rotulo} />
     </div>
   )
 }
 
-function MiniaturaItem({
-  fotoUrl,
-  onClick,
-  rotulo,
-  tamanho = 'md',
-}: {
-  fotoUrl: string | null
-  onClick: () => void
-  rotulo: string
-  tamanho?: 'md' | 'lg'
-}) {
-  return (
-    <button
-      type="button"
-      onClick={onClick}
-      aria-label={rotulo}
-      className={clsx(
-        'flex shrink-0 items-center justify-center overflow-hidden rounded-mesa-md bg-mesa-neutral-100 text-mesa-text-tertiary outline-none focus-visible:[box-shadow:var(--mesa-focus-ring-primary)] dark:bg-mesa-neutral-700',
-        tamanho === 'lg' ? 'size-14' : 'size-11',
-      )}
-    >
-      {fotoUrl ? (
-        <img src={fotoUrl} alt="" className="size-full object-cover" />
-      ) : (
-        <Icone nome="image" size={tamanho === 'lg' ? 24 : 16} />
-      )}
-    </button>
-  )
-}
-
-function BottomSheetDetalhesItem({
+/**
+ * Formulário único de criar/editar item do cardápio. Nada salva sozinho:
+ * tudo grava de uma vez pelo botão Salvar (regra de Ajustes), com erro real,
+ * aviso offline e checagem de RLS (update que não afeta linha = erro).
+ */
+function BottomSheetItem({
   item,
   barracaId,
+  categorias,
+  proximaOrdem,
   onClose,
   onSalvo,
+  onApagar,
 }: {
-  item: Item | null
+  item: Item | 'novo' | null
   barracaId: string
+  categorias: Categoria[]
+  proximaOrdem: number
   onClose: () => void
-  onSalvo: (itemId: string, alteracoes: Partial<Item>) => void
+  onSalvo: (item: Item) => void
+  onApagar: (item: Item) => void
 }) {
-  const [descricao, setDescricao] = useState(() => item?.descricao ?? '')
-  const [fotoUrl, setFotoUrl] = useState<string | null>(() => item?.foto_url ?? null)
-  const [ncm, setNcm] = useState(() => item?.ncm ?? '')
-  const [cfop, setCfop] = useState(() => item?.cfop ?? '')
-  const [unidadeComercial, setUnidadeComercial] = useState(() => item?.unidade_comercial ?? '')
+  const existente = item && item !== 'novo' ? item : null
+  const [nome, setNome] = useState(() => existente?.nome ?? '')
+  const [preco, setPreco] = useState(() => (existente ? textoPrecoInicial(existente.preco_centavos) : ''))
+  const [categoriaId, setCategoriaId] = useState<string | null>(() => existente?.categoria_id ?? null)
+  const [descricao, setDescricao] = useState(() => existente?.descricao ?? '')
+  const [ativo, setAtivo] = useState(() => existente?.ativo ?? true)
+  const [esgotado, setEsgotado] = useState(() => existente?.esgotado ?? false)
+  const [popular, setPopular] = useState(() => existente?.popular ?? false)
+  const [ncm, setNcm] = useState(() => existente?.ncm ?? '')
+  const [cfop, setCfop] = useState(() => existente?.cfop ?? '')
+  const [unidade, setUnidade] = useState(() => existente?.unidade_comercial ?? '')
+  const [fotoUrl, setFotoUrl] = useState<string | null>(() => existente?.foto_url ?? null)
+  const [fotoPendente, setFotoPendente] = useState<File | null>(null)
+  const [previaPendente, setPreviaPendente] = useState<string | null>(null)
   const [enviandoFoto, setEnviandoFoto] = useState(false)
   const [salvando, setSalvando] = useState(false)
   const [erro, setErro] = useState<string | null>(null)
   const inputArquivoRef = useRef<HTMLInputElement>(null)
 
+  useEffect(() => {
+    return () => {
+      if (previaPendente) URL.revokeObjectURL(previaPendente)
+    }
+  }, [previaPendente])
+
   if (!item) return null
+
+  const alterado = existente
+    ? nome.trim() !== existente.nome ||
+      reaisParaCentavos(preco) !== existente.preco_centavos ||
+      categoriaId !== (existente.categoria_id ?? null) ||
+      descricao.trim() !== (existente.descricao ?? '') ||
+      ativo !== existente.ativo ||
+      esgotado !== existente.esgotado ||
+      popular !== existente.popular ||
+      ncm.trim() !== (existente.ncm ?? '') ||
+      cfop.trim() !== (existente.cfop ?? '') ||
+      unidade.trim() !== (existente.unidade_comercial ?? '') ||
+      fotoUrl !== (existente.foto_url ?? null)
+    : true
+  const podeSalvar = nome.trim().length > 0 && alterado && !salvando && !enviandoFoto
 
   async function aoEscolherArquivo(e: ChangeEvent<HTMLInputElement>) {
     const arquivo = e.target.files?.[0]
     e.target.value = ''
-    if (!arquivo || !item) return
-
-    setEnviandoFoto(true)
+    if (!arquivo) return
     setErro(null)
 
+    // Item novo ainda não tem id: guarda o arquivo e sobe depois de criar.
+    if (!existente) {
+      setFotoPendente(arquivo)
+      setPreviaPendente(URL.createObjectURL(arquivo))
+      return
+    }
+
+    setEnviandoFoto(true)
     try {
       const urlAntiga = fotoUrl
-      const novaUrl = await enviarFotoItem(barracaId, item.id, arquivo)
+      const novaUrl = await enviarFotoItem(barracaId, existente.id, arquivo)
       setFotoUrl(novaUrl)
-      if (urlAntiga) apagarFotoItem(urlAntiga)
+      // Só apaga do Storage a foto enviada nesta edição; a original só sai depois do Salvar.
+      if (urlAntiga && urlAntiga !== existente.foto_url) apagarFotoItem(urlAntiga)
     } catch {
       setErro('Não foi possível enviar a foto. Tente novamente.')
     }
-
     setEnviandoFoto(false)
   }
 
   function removerFoto() {
-    if (fotoUrl) apagarFotoItem(fotoUrl)
-    setFotoUrl(null)
     setErro(null)
+    if (fotoPendente) {
+      setFotoPendente(null)
+      setPreviaPendente(null)
+      return
+    }
+    setFotoUrl(null)
   }
 
   async function salvar() {
-    if (!item) return
-    setSalvando(true)
-    setErro(null)
-
-    const alteracoes = {
-      foto_url: fotoUrl,
-      descricao: descricao.trim() || null,
-      ncm: ncm.trim() || null,
-      cfop: cfop.trim() || null,
-      unidade_comercial: unidadeComercial.trim() || null,
-    }
-    const { error } = await supabase.from('itens').update(alteracoes).eq('id', item.id)
-
-    setSalvando(false)
-
-    if (error) {
-      setErro('Não foi possível salvar. Tente novamente.')
+    if (!podeSalvar) return
+    if (navigator.onLine === false) {
+      setErro(MSG_SEM_INTERNET)
       return
     }
 
-    onSalvo(item.id, alteracoes)
+    setSalvando(true)
+    setErro(null)
+
+    const campos = {
+      nome: nome.trim(),
+      preco_centavos: reaisParaCentavos(preco),
+      categoria_id: categoriaId,
+      descricao: descricao.trim() || null,
+      ativo,
+      esgotado,
+      popular,
+      ncm: ncm.trim() || null,
+      cfop: cfop.trim() || null,
+      unidade_comercial: unidade.trim() || null,
+      foto_url: fotoUrl,
+    }
+
+    let salvoItem: Item | null = null
+    let mensagem: string | null = null
+    try {
+      if (existente) {
+        const { data, error } = await supabase
+          .from('itens')
+          .update(campos)
+          .eq('id', existente.id)
+          .select()
+        if (error) mensagem = mensagemErroSalvar(error)
+        else if (!data || data.length === 0)
+          mensagem = 'Não foi possível salvar: sem permissão para alterar este item.'
+        else salvoItem = data[0] as Item
+      } else {
+        const { data, error } = await supabase
+          .from('itens')
+          .insert({ ...campos, barraca_id: barracaId, ordem: proximaOrdem })
+          .select()
+          .single()
+        if (error) mensagem = mensagemErroSalvar(error)
+        else salvoItem = data as Item
+      }
+    } catch (e) {
+      mensagem = mensagemErroSalvar(e instanceof Error ? e : null)
+    }
+
+    if (!salvoItem) {
+      setSalvando(false)
+      setErro(mensagem ?? 'Não foi possível salvar. Tente novamente.')
+      return
+    }
+
+    if (fotoPendente) {
+      try {
+        const url = await enviarFotoItem(barracaId, salvoItem.id, fotoPendente)
+        const { error } = await supabase.from('itens').update({ foto_url: url }).eq('id', salvoItem.id)
+        if (!error) salvoItem = { ...salvoItem, foto_url: url }
+      } catch {
+        // Item já foi criado; só a foto falhou — o dono tenta de novo editando.
+      }
+    }
+
+    // Foto antiga só é apagada do Storage depois que o banco confirmou.
+    if (existente?.foto_url && existente.foto_url !== fotoUrl) apagarFotoItem(existente.foto_url)
+
+    setSalvando(false)
+    onSalvo(salvoItem)
     onClose()
   }
 
+  const previa = previaPendente ?? fotoUrl
+
   return (
-    <BottomSheet open={!!item} onClose={onClose} aria-label={`Detalhes de ${item.nome}`}>
-      <h2 className="text-lg font-semibold text-mesa-text-primary">{item.nome}</h2>
-      <p className="mt-1 text-sm text-mesa-text-secondary">
-        Foto e descrição aparecem pro operador em Lançar Pedido.
-      </p>
+    <BottomSheet
+      open
+      onClose={onClose}
+      aria-label={existente ? `Editar ${existente.nome}` : 'Novo item'}
+      className="md:mx-auto md:max-w-lg"
+    >
+      <h2 className="text-lg font-semibold text-mesa-text-primary">
+        {existente ? 'Editar item' : 'Novo item'}
+      </h2>
 
       <div className="mt-4 flex flex-col gap-4">
         <div className="flex items-center gap-3">
           <span className="flex size-20 shrink-0 items-center justify-center overflow-hidden rounded-mesa-md bg-mesa-neutral-100 text-mesa-text-tertiary dark:bg-mesa-neutral-700">
-            {fotoUrl ? (
-              <img src={fotoUrl} alt="" className="size-full object-cover" />
+            {previa ? (
+              <img src={previa} alt="" className="size-full object-cover" />
             ) : (
               <Icone nome="image" size={24} />
             )}
           </span>
-          <div className="flex flex-col gap-2">
+          <div className="flex flex-col items-start gap-1">
             <Button
               variant="outline"
-              size="sm"
+              size="md"
               icon={<Icone nome="photo_camera" size={16} />}
               loading={enviandoFoto}
               onClick={() => inputArquivoRef.current?.click()}
             >
-              {fotoUrl ? 'Trocar foto' : 'Adicionar foto'}
+              {previa ? 'Trocar foto' : 'Adicionar foto'}
             </Button>
-            {fotoUrl && (
-              <Button
-                variant="textDanger"
-                size="sm"
-                icon={<Icone nome="delete" size={16} />}
-                onClick={removerFoto}
-              >
+            {previa && (
+              <Button variant="textDanger" size="sm" onClick={removerFoto}>
                 Remover foto
               </Button>
             )}
@@ -318,6 +324,46 @@ function BottomSheetDetalhesItem({
           />
         </div>
 
+        <Input
+          autoFocus={!existente}
+          label="Nome do item"
+          value={nome}
+          onChange={(e) => setNome(e.target.value)}
+          placeholder="Ex.: Yakisoba"
+          className="w-full"
+        />
+
+        <Input
+          type="currency"
+          label="Preço"
+          inputMode="decimal"
+          value={preco}
+          onChange={(e) => setPreco(filtrarEntradaPreco(e.target.value))}
+          placeholder="0,00"
+          className="w-full"
+        />
+
+        <div>
+          <p className="mb-1.5 text-xs font-semibold text-mesa-neutral-700 dark:text-mesa-neutral-300">
+            Categoria
+          </p>
+          <div className="flex flex-wrap gap-2">
+            <Chip checked={categoriaId === null} onClick={() => setCategoriaId(null)}>
+              Sem categoria
+            </Chip>
+            {categorias.map((c) => (
+              <Chip key={c.id} checked={categoriaId === c.id} onClick={() => setCategoriaId(c.id)}>
+                {c.nome}
+              </Chip>
+            ))}
+          </div>
+          {categorias.length === 0 && (
+            <p className="mt-2 text-xs text-mesa-text-secondary">
+              Nenhuma categoria ainda. Crie em "Categorias", no topo do cardápio.
+            </p>
+          )}
+        </div>
+
         <Textarea
           label="Descrição"
           value={descricao}
@@ -326,48 +372,82 @@ function BottomSheetDetalhesItem({
           rows={3}
         />
 
-        <div>
-          <p className="mb-2 text-xs font-semibold uppercase tracking-wide text-mesa-text-secondary">
-            Dados fiscais (opcional, pra emissão de nota)
-          </p>
-          <div className="flex flex-wrap gap-2">
+        <div className="divide-y divide-mesa-border-subtle">
+          <CampoToggle
+            rotulo="Ativo"
+            descricao="Aparece no Lançar Pedido e no cardápio digital"
+            checked={ativo}
+            onChange={() => setAtivo((v) => !v)}
+          />
+          <CampoToggle
+            rotulo="Esgotado"
+            descricao="Não deixa adicionar ao pedido"
+            checked={esgotado}
+            onChange={() => setEsgotado((v) => !v)}
+          />
+          <CampoToggle
+            rotulo="Popular"
+            descricao="Destaca em Populares no cardápio digital"
+            checked={popular}
+            onChange={() => setPopular((v) => !v)}
+          />
+        </div>
+
+        <details className="group rounded-mesa-md border border-mesa-border-default">
+          <summary className="flex min-h-11 cursor-pointer list-none items-center justify-between px-3 text-sm font-medium text-mesa-text-primary">
+            Dados fiscais (opcional)
+            <Icone nome="expand_more" size={18} className="transition-transform group-open:rotate-180" />
+          </summary>
+          <div className="grid grid-cols-3 gap-2 px-3 pb-3">
             <Input
               label="NCM"
-              size="sm"
               value={ncm}
               onChange={(e) => setNcm(e.target.value)}
-              placeholder="Ex.: 21069090"
-              className="w-32"
+              placeholder="21069090"
+              className="min-w-0"
             />
             <Input
               label="CFOP"
-              size="sm"
               value={cfop}
               onChange={(e) => setCfop(e.target.value)}
-              placeholder="Ex.: 5101"
-              className="w-28"
+              placeholder="5101"
+              className="min-w-0"
             />
             <Input
               label="Unidade"
-              size="sm"
-              value={unidadeComercial}
-              onChange={(e) => setUnidadeComercial(e.target.value)}
-              placeholder="Ex.: un"
-              className="w-24"
+              value={unidade}
+              onChange={(e) => setUnidade(e.target.value)}
+              placeholder="un"
+              className="min-w-0"
             />
           </div>
-        </div>
+        </details>
 
-        {erro && <p className="text-sm font-medium text-mesa-error-500">{erro}</p>}
+        {erro && (
+          <p role="alert" className="text-sm font-medium text-mesa-error-500">
+            {erro}
+          </p>
+        )}
 
-        <Button
-          size="xl"
-          icon={<Icone nome="check" size={20} />}
-          loading={salvando}
-          onClick={salvar}
-          className="w-full"
-        >
-          Salvar
+        {existente && (
+          <Button
+            variant="textDanger"
+            size="md"
+            icon={<Icone nome="delete" size={16} />}
+            onClick={() => onApagar(existente)}
+            className="self-start"
+          >
+            Apagar item
+          </Button>
+        )}
+      </div>
+
+      <div className="sticky -bottom-6 -mx-6 mt-4 grid grid-cols-2 gap-3 border-t border-mesa-border-subtle bg-mesa-surface px-6 pb-6 pt-3">
+        <Button variant="ghost" size="lg" onClick={onClose}>
+          Cancelar
+        </Button>
+        <Button size="lg" loading={salvando} disabled={!podeSalvar} onClick={salvar}>
+          {existente ? 'Salvar' : 'Adicionar'}
         </Button>
       </div>
     </BottomSheet>
@@ -379,15 +459,8 @@ function SecaoCardapio({ barracaId }: { barracaId: string }) {
   const [carregando, setCarregando] = useState(true)
   const [erro, setErro] = useState<string | null>(null)
 
-  const [criandoItem, setCriandoItem] = useState(false)
-  const [novoNome, setNovoNome] = useState('')
-  const [novoPreco, setNovoPreco] = useState('')
-  const [salvandoNovo, setSalvandoNovo] = useState(false)
-
-  const [editandoId, setEditandoId] = useState<string | null>(null)
-  const [nomeEdicao, setNomeEdicao] = useState('')
-
-  const [itemDetalhes, setItemDetalhes] = useState<Item | null>(null)
+  const [itemForm, setItemForm] = useState<Item | 'novo' | null>(null)
+  const [reordenando, setReordenando] = useState(false)
 
   const [itemParaExcluir, setItemParaExcluir] = useState<Item | null>(null)
   const [nomeExclusao, setNomeExclusao] = useState('')
@@ -396,11 +469,7 @@ function SecaoCardapio({ barracaId }: { barracaId: string }) {
 
   const { mostrarToast } = useToast()
   const [categorias, setCategorias] = useState<Categoria[]>([])
-  const [novaCategoriaId, setNovaCategoriaId] = useState<string | null>(null)
   const [gerenciandoCategorias, setGerenciandoCategorias] = useState(false)
-  const [itemEscolhendoCategoria, setItemEscolhendoCategoria] = useState<Item | 'novo' | null>(
-    null,
-  )
   const [novaCategoriaNome, setNovaCategoriaNome] = useState('')
   const [criandoCategoria, setCriandoCategoria] = useState(false)
   const [editandoCategoriaId, setEditandoCategoriaId] = useState<string | null>(null)
@@ -525,32 +594,6 @@ function SecaoCardapio({ barracaId }: { barracaId: string }) {
     await supabase.from('categorias').delete().eq('id', categoria.id)
   }
 
-  async function escolherCategoria(categoriaId: string | null) {
-    const alvo = itemEscolhendoCategoria
-    setItemEscolhendoCategoria(null)
-    if (!alvo) return
-
-    if (alvo === 'novo') {
-      setNovaCategoriaId(categoriaId)
-      return
-    }
-
-    setItens((atual) =>
-      atual.map((i) => (i.id === alvo.id ? { ...i, categoria_id: categoriaId } : i)),
-    )
-    const { error } = await supabase
-      .from('itens')
-      .update({ categoria_id: categoriaId })
-      .eq('id', alvo.id)
-
-    if (error) {
-      avisarFalha(error)
-      setItens((atual) =>
-        atual.map((i) => (i.id === alvo.id ? { ...i, categoria_id: alvo.categoria_id } : i)),
-      )
-    }
-  }
-
   async function persistirOrdem(lista: Item[]) {
     await Promise.all(
       lista.map((item, indice) =>
@@ -591,91 +634,12 @@ function SecaoCardapio({ barracaId }: { barracaId: string }) {
     persistirOrdem(comOrdem)
   }
 
-  async function criarItem() {
-    const nome = novoNome.trim()
-    if (!nome) return
-
-    setSalvandoNovo(true)
-    const proximaOrdem = itens.length > 0 ? Math.max(...itens.map((i) => i.ordem)) + 1 : 1
-    const precoCentavos = reaisParaCentavos(novoPreco)
-
-    const { data, error } = await supabase
-      .from('itens')
-      .insert({
-        barraca_id: barracaId,
-        nome,
-        ativo: true,
-        ordem: proximaOrdem,
-        preco_centavos: precoCentavos,
-        categoria_id: novaCategoriaId,
-      })
-      .select()
-      .single()
-
-    setSalvandoNovo(false)
-
-    if (!error && data) {
-      setItens((atual) => [...atual, data as Item])
-      setNovoNome('')
-      setNovoPreco('')
-      setNovaCategoriaId(null)
-      setCriandoItem(false)
-    }
-  }
-
-  function iniciarEdicao(item: Item) {
-    setEditandoId(item.id)
-    setNomeEdicao(item.nome)
-  }
-
-  async function salvarEdicao(item: Item) {
-    const nome = nomeEdicao.trim()
-    setEditandoId(null)
-    if (!nome || nome === item.nome) return
-
-    setItens((atual) => atual.map((i) => (i.id === item.id ? { ...i, nome } : i)))
-    const { error } = await supabase.from('itens').update({ nome }).eq('id', item.id)
-
-    if (error) {
-      avisarFalha(error)
-      setItens((atual) => atual.map((i) => (i.id === item.id ? { ...i, nome: item.nome } : i)))
-    }
-  }
-
-  async function alternarAtivo(item: Item) {
-    const novoAtivo = !item.ativo
-    setItens((atual) => atual.map((i) => (i.id === item.id ? { ...i, ativo: novoAtivo } : i)))
-    const { error } = await supabase.from('itens').update({ ativo: novoAtivo }).eq('id', item.id)
-
-    if (error) {
-      avisarFalha(error)
-      setItens((atual) => atual.map((i) => (i.id === item.id ? { ...i, ativo: item.ativo } : i)))
-    }
-  }
-
-  async function alternarEsgotado(item: Item) {
-    const novoEsgotado = !item.esgotado
-    setItens((atual) => atual.map((i) => (i.id === item.id ? { ...i, esgotado: novoEsgotado } : i)))
-    const { error } = await supabase.from('itens').update({ esgotado: novoEsgotado }).eq('id', item.id)
-
-    if (error) {
-      avisarFalha(error)
-      setItens((atual) => atual.map((i) => (i.id === item.id ? { ...i, esgotado: item.esgotado } : i)))
-    }
-  }
-
-  // "Populares" no cardápio digital é curadoria manual do dono (decisão de
-  // produto 2026-09-27) — diferente de "Mais pedido", que é algorítmico
-  // (pedidos_30d). Mesmo padrão de toggle que esgotado/ativo.
-  async function alternarPopular(item: Item) {
-    const novoPopular = !item.popular
-    setItens((atual) => atual.map((i) => (i.id === item.id ? { ...i, popular: novoPopular } : i)))
-    const { error } = await supabase.from('itens').update({ popular: novoPopular }).eq('id', item.id)
-
-    if (error) {
-      avisarFalha(error)
-      setItens((atual) => atual.map((i) => (i.id === item.id ? { ...i, popular: item.popular } : i)))
-    }
+  function aoSalvarItem(salvo: Item) {
+    setItens((atual) =>
+      atual.some((i) => i.id === salvo.id)
+        ? atual.map((i) => (i.id === salvo.id ? salvo : i))
+        : [...atual, salvo],
+    )
   }
 
   function pedirExclusao(item: Item) {
@@ -717,14 +681,23 @@ function SecaoCardapio({ barracaId }: { barracaId: string }) {
     <section>
       <div className="mb-3 flex items-center justify-between">
         <RotuloSecao icone="restaurant">Cardápio</RotuloSecao>
-        <Button
-          variant="outline"
-          size="sm"
-          icon={<Icone nome="category" size={16} />}
-          onClick={() => setGerenciandoCategorias(true)}
-        >
-          Categorias
-        </Button>
+        <div className="flex items-center gap-2">
+          <Button
+            variant="outline"
+            size="md"
+            icon={<Icone nome="category" size={16} />}
+            onClick={() => setGerenciandoCategorias(true)}
+          >
+            Categorias
+          </Button>
+          <Button
+            size="md"
+            icon={<Icone nome="add" size={16} />}
+            onClick={() => setItemForm('novo')}
+          >
+            Novo item
+          </Button>
+        </div>
       </div>
       <Card>
         {carregando && <p className="text-sm text-mesa-text-secondary">Carregando...</p>}
@@ -746,207 +719,116 @@ function SecaoCardapio({ barracaId }: { barracaId: string }) {
                   key={item.id}
                   onDragOver={(e) => e.preventDefault()}
                   onDrop={() => aoSoltar(item.id)}
-                  className={`flex flex-col gap-2 py-3 ${item.ativo ? '' : 'opacity-50'}`}
+                  className="flex items-center gap-1"
                 >
-                  <div className="flex gap-3">
-                    <MiniaturaItem
-                      fotoUrl={item.foto_url}
-                      onClick={() => setItemDetalhes(item)}
-                      rotulo={`Foto e descrição de ${item.nome}`}
-                      tamanho="lg"
-                    />
-
-                    <div className="min-w-0 flex-1">
-                      <div className="flex items-start justify-between gap-2">
-                        <div className="flex min-w-0 flex-col gap-1 sm:flex-row sm:flex-wrap sm:items-center sm:gap-1.5">
-                          {editandoId === item.id ? (
-                            <Input
-                              autoFocus
-                              size="sm"
-                              value={nomeEdicao}
-                              onChange={(e) => setNomeEdicao(e.target.value)}
-                              onBlur={() => salvarEdicao(item)}
-                              onKeyDown={(e) => {
-                                if (e.key === 'Enter') e.currentTarget.blur()
-                                if (e.key === 'Escape') setEditandoId(null)
-                              }}
-                              aria-label={`Nome do item ${item.nome}`}
-                              className="min-w-0 flex-1"
-                            />
-                          ) : (
-                            <button
-                              type="button"
-                              onClick={() => iniciarEdicao(item)}
-                              className="min-h-11 min-w-0 truncate text-left text-base font-semibold text-mesa-text-primary"
-                            >
-                              {item.nome}
-                            </button>
-                          )}
-                          <Chip
-                            variant="plain"
-                            onClick={() => setItemEscolhendoCategoria(item)}
-                            aria-label={`Categoria de ${item.nome}: ${nomeCategoria(item.categoria_id)}`}
-                          >
-                            {nomeCategoria(item.categoria_id)}
-                          </Chip>
-                        </div>
-
-                        <div className="flex shrink-0 flex-col">
-                          <button
-                            type="button"
-                            onClick={() => moverItem(item.id, -1)}
-                            disabled={indice === 0}
-                            aria-label={`Mover ${item.nome} para cima`}
-                            className="flex h-[22px] w-8 items-center justify-center text-sm text-mesa-text-tertiary disabled:opacity-30"
-                          >
-                            ▲
-                          </button>
-                          <button
-                            type="button"
-                            onClick={() => moverItem(item.id, 1)}
-                            disabled={indice === itens.length - 1}
-                            aria-label={`Mover ${item.nome} para baixo`}
-                            className="flex h-[22px] w-8 items-center justify-center text-sm text-mesa-text-tertiary disabled:opacity-30"
-                          >
-                            ▼
-                          </button>
-                        </div>
-                      </div>
-
-                      {item.descricao && (
-                        <p className="mt-0.5 line-clamp-1 text-xs text-mesa-text-secondary">
-                          {item.descricao}
-                        </p>
-                      )}
-
-                      <div className="mt-1.5">
-                        <InputPreco item={item} />
-                      </div>
-                    </div>
-                  </div>
-
-                  <div className="flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
-                    <button
-                      type="button"
-                      onClick={() => setItemDetalhes(item)}
-                      className="flex min-h-11 items-center gap-1 whitespace-nowrap text-xs font-medium text-mesa-text-primary"
+                  {reordenando && (
+                    <span
+                      draggable
+                      onDragStart={() => {
+                        arrastandoIdRef.current = item.id
+                      }}
+                      aria-hidden
+                      className="hidden cursor-grab select-none px-1 text-base text-mesa-text-tertiary sm:inline"
                     >
-                      <Icone nome="edit" size={14} />
-                      Editar Foto & Info
-                    </button>
-
-                    <span className="flex shrink-0 flex-wrap items-center gap-2 sm:flex-nowrap">
-                      <span
-                        draggable
-                        onDragStart={() => {
-                          arrastandoIdRef.current = item.id
-                        }}
-                        aria-hidden
-                        className="hidden cursor-grab select-none px-1 text-base text-mesa-text-tertiary sm:inline"
-                      >
-                        ⠿
-                      </span>
-                      <span className="text-xs text-mesa-text-secondary">Popular</span>
-                      <Toggle
-                        checked={item.popular}
-                        onChange={() => alternarPopular(item)}
-                        aria-label={`${item.nome} em Populares no cardápio digital`}
-                      />
-                      <span className="text-xs text-mesa-text-secondary">Esgotado</span>
-                      <Toggle
-                        checked={item.esgotado}
-                        onChange={() => alternarEsgotado(item)}
-                        aria-label={`${item.nome} esgotado`}
-                      />
-                      <span className="text-xs text-mesa-text-secondary">
-                        {item.ativo ? 'Ativo' : 'Inativo'}
-                      </span>
-                      <Toggle
-                        checked={item.ativo}
-                        onChange={() => alternarAtivo(item)}
-                        aria-label={`${item.nome} ativo no cardápio`}
-                      />
-                      <BotaoApagar onClick={() => pedirExclusao(item)} rotulo={`Apagar ${item.nome}`} />
+                      ⠿
                     </span>
-                  </div>
+                  )}
+                  <button
+                    type="button"
+                    onClick={() => setItemForm(item)}
+                    aria-label={`Editar ${item.nome}`}
+                    className={clsx(
+                      'flex min-h-16 min-w-0 flex-1 items-center gap-3 py-2 text-left outline-none focus-visible:[box-shadow:var(--mesa-focus-ring-primary)]',
+                      !item.ativo && 'opacity-60',
+                    )}
+                  >
+                    <span className="flex size-12 shrink-0 items-center justify-center overflow-hidden rounded-mesa-md bg-mesa-neutral-100 text-mesa-text-tertiary dark:bg-mesa-neutral-700">
+                      {item.foto_url ? (
+                        <img src={item.foto_url} alt="" className="size-full object-cover" />
+                      ) : (
+                        <Icone nome="image" size={20} />
+                      )}
+                    </span>
+                    <span className="min-w-0 flex-1">
+                      <span className="block truncate text-base font-semibold text-mesa-text-primary">
+                        {item.nome}
+                      </span>
+                      <span className="mt-0.5 flex flex-wrap items-center gap-x-2 gap-y-1 text-xs text-mesa-text-secondary">
+                        <span className="truncate">{nomeCategoria(item.categoria_id)}</span>
+                        {item.popular && (
+                          <Badge variant="highlight" className="px-2 py-0.5">
+                            Popular
+                          </Badge>
+                        )}
+                        {item.esgotado && (
+                          <Badge variant="danger" className="px-2 py-0.5">
+                            Esgotado
+                          </Badge>
+                        )}
+                        {!item.ativo && (
+                          <Badge variant="neutral" className="px-2 py-0.5">
+                            Inativo
+                          </Badge>
+                        )}
+                      </span>
+                    </span>
+                    <span className="shrink-0 font-mesa-display text-base font-semibold text-mesa-text-primary">
+                      {formatarPrecoBR(item.preco_centavos)}
+                    </span>
+                  </button>
+                  {reordenando && (
+                    <div className="flex shrink-0">
+                      <button
+                        type="button"
+                        onClick={() => moverItem(item.id, -1)}
+                        disabled={indice === 0}
+                        aria-label={`Mover ${item.nome} para cima`}
+                        className="flex size-11 items-center justify-center text-sm text-mesa-text-secondary disabled:opacity-30"
+                      >
+                        ▲
+                      </button>
+                      <button
+                        type="button"
+                        onClick={() => moverItem(item.id, 1)}
+                        disabled={indice === itens.length - 1}
+                        aria-label={`Mover ${item.nome} para baixo`}
+                        className="flex size-11 items-center justify-center text-sm text-mesa-text-secondary disabled:opacity-30"
+                      >
+                        ▼
+                      </button>
+                    </div>
+                  )}
                 </li>
               ))}
             </ul>
 
-            {criandoItem ? (
-              <div className="mt-3 flex flex-wrap items-end gap-2">
-                <Input
-                  autoFocus
-                  size="sm"
-                  value={novoNome}
-                  onChange={(e) => setNovoNome(e.target.value)}
-                  onKeyDown={(e) => e.key === 'Enter' && criarItem()}
-                  placeholder="Nome do item"
-                  aria-label="Nome do novo item"
-                  className="min-w-0 flex-1"
-                />
-                <Input
-                  type="currency"
-                  size="sm"
-                  inputMode="decimal"
-                  value={novoPreco}
-                  onChange={(e) => setNovoPreco(e.target.value.replace(/[^\d.,]/g, ''))}
-                  onKeyDown={(e) => e.key === 'Enter' && criarItem()}
-                  placeholder="0,00"
-                  aria-label="Preço do novo item"
-                  className="w-28"
-                />
-                <Chip
-                  variant="plain"
-                  onClick={() => setItemEscolhendoCategoria('novo')}
-                  aria-label={`Categoria do novo item: ${nomeCategoria(novaCategoriaId)}`}
-                >
-                  {nomeCategoria(novaCategoriaId)}
-                </Chip>
-                <Button
-                  size="sm"
-                  onClick={criarItem}
-                  disabled={!novoNome.trim()}
-                  loading={salvandoNovo}
-                >
-                  Adicionar
-                </Button>
-                <Button
-                  variant="ghost"
-                  size="sm"
-                  onClick={() => {
-                    setCriandoItem(false)
-                    setNovoNome('')
-                    setNovoPreco('')
-                    setNovaCategoriaId(null)
-                  }}
-                >
-                  Cancelar
-                </Button>
-              </div>
-            ) : (
+            {itens.length > 1 && (
               <Button
                 variant="ghost"
                 size="md"
-                icon={<Icone nome="add" size={16} />}
-                onClick={() => setCriandoItem(true)}
+                icon={<Icone nome="swap_vert" size={16} />}
+                onClick={() => setReordenando((v) => !v)}
                 className="mt-2 w-full"
               >
-                Novo item
+                {reordenando ? 'Concluir ordem' : 'Reordenar'}
               </Button>
             )}
           </>
         )}
       </Card>
 
-      <BottomSheetDetalhesItem
-        key={itemDetalhes?.id ?? 'fechado'}
-        item={itemDetalhes}
+      <BottomSheetItem
+        key={itemForm === 'novo' ? 'novo' : (itemForm?.id ?? 'fechado')}
+        item={itemForm}
         barracaId={barracaId}
-        onClose={() => setItemDetalhes(null)}
-        onSalvo={(itemId, alteracoes) =>
-          setItens((atual) => atual.map((i) => (i.id === itemId ? { ...i, ...alteracoes } : i)))
-        }
+        categorias={categorias}
+        proximaOrdem={itens.length > 0 ? Math.max(...itens.map((i) => i.ordem)) + 1 : 1}
+        onClose={() => setItemForm(null)}
+        onSalvo={aoSalvarItem}
+        onApagar={(item) => {
+          setItemForm(null)
+          pedirExclusao(item)
+        }}
       />
 
       <BottomSheet
@@ -975,62 +857,6 @@ function SecaoCardapio({ barracaId }: { barracaId: string }) {
             Cancelar
           </Button>
         </div>
-      </BottomSheet>
-
-      <BottomSheet
-        open={itemEscolhendoCategoria !== null}
-        onClose={() => setItemEscolhendoCategoria(null)}
-        aria-label="Selecionar categoria"
-      >
-        <h2 className="text-lg font-semibold text-mesa-text-primary">Categoria</h2>
-        <div className="mt-4 flex flex-wrap gap-2">
-          <Chip
-            variant={
-              (itemEscolhendoCategoria === 'novo'
-                ? novaCategoriaId
-                : (itemEscolhendoCategoria?.categoria_id ?? null)) === null
-                ? 'teal'
-                : 'plain'
-            }
-            checked={
-              (itemEscolhendoCategoria === 'novo'
-                ? novaCategoriaId
-                : (itemEscolhendoCategoria?.categoria_id ?? null)) === null
-            }
-            onClick={() => escolherCategoria(null)}
-          >
-            Sem categoria
-          </Chip>
-          {categorias.map((categoria) => {
-            const atual =
-              itemEscolhendoCategoria === 'novo'
-                ? novaCategoriaId
-                : (itemEscolhendoCategoria?.categoria_id ?? null)
-            return (
-              <Chip
-                key={categoria.id}
-                variant={atual === categoria.id ? 'teal' : 'plain'}
-                checked={atual === categoria.id}
-                onClick={() => escolherCategoria(categoria.id)}
-              >
-                {categoria.nome}
-              </Chip>
-            )
-          })}
-        </div>
-        {categorias.length === 0 && (
-          <p className="mt-3 text-sm text-mesa-text-secondary">
-            Nenhuma categoria ainda. Toque em "Categorias" no topo do cardápio pra criar uma.
-          </p>
-        )}
-        <Button
-          variant="ghost"
-          size="md"
-          onClick={() => setItemEscolhendoCategoria(null)}
-          className="mt-6 w-full"
-        >
-          Fechar
-        </Button>
       </BottomSheet>
 
       <BottomSheet
