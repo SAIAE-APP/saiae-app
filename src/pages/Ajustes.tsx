@@ -679,7 +679,9 @@ function SecaoCardapio({ barracaId }: { barracaId: string }) {
 
   return (
     <section>
-      <div className="mb-3 flex items-center justify-between">
+      {/* Mobile: título em cima e os dois botões dividindo a largura
+          embaixo (lado a lado com o título eles vazavam da tela em 375px). */}
+      <div className="mb-3 flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
         <RotuloSecao icone="restaurant">Cardápio</RotuloSecao>
         <div className="flex items-center gap-2">
           <Button
@@ -687,6 +689,7 @@ function SecaoCardapio({ barracaId }: { barracaId: string }) {
             size="md"
             icon={<Icone nome="category" size={16} />}
             onClick={() => setGerenciandoCategorias(true)}
+            className="flex-1 sm:flex-none"
           >
             Categorias
           </Button>
@@ -694,6 +697,7 @@ function SecaoCardapio({ barracaId }: { barracaId: string }) {
             size="md"
             icon={<Icone nome="add" size={16} />}
             onClick={() => setItemForm('novo')}
+            className="flex-1 sm:flex-none"
           >
             Novo item
           </Button>
