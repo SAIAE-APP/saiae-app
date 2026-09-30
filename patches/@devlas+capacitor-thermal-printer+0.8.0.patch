@@ -1,0 +1,38 @@
+diff --git a/node_modules/@devlas/capacitor-thermal-printer/android/src/main/java/app/devlas/plugins/thermalprinter/BluetoothTransport.kt b/node_modules/@devlas/capacitor-thermal-printer/android/src/main/java/app/devlas/plugins/thermalprinter/BluetoothTransport.kt
+index 14f9f02..6787c24 100644
+--- a/node_modules/@devlas/capacitor-thermal-printer/android/src/main/java/app/devlas/plugins/thermalprinter/BluetoothTransport.kt
++++ b/node_modules/@devlas/capacitor-thermal-printer/android/src/main/java/app/devlas/plugins/thermalprinter/BluetoothTransport.kt
+@@ -66,7 +66,7 @@ class BluetoothTransport(private val context: Context) {
+             PrinterStatus.N_PAPER,
+         )
+         try {
+-            a.cancelDiscovery()
++            cancelarDescobertaSePermitido(a)
+             device.createRfcommSocketToServiceRecord(SPP_UUID).use { socket ->
+                 socket.connect()
+                 val out = socket.outputStream
+@@ -99,7 +99,7 @@ class BluetoothTransport(private val context: Context) {
+             throw PrinterException("not_found", "Dirección Bluetooth inválida: $address")
+         }
+         try {
+-            a.cancelDiscovery() // discovery activo degrada la conexión SPP
++            cancelarDescobertaSePermitido(a) // discovery activo degrada la conexión SPP
+             device.createRfcommSocketToServiceRecord(SPP_UUID).use { socket ->
+                 socket.connect()
+                 val out = socket.outputStream
+@@ -121,3 +121,15 @@ class BluetoothTransport(private val context: Context) {
+         }
+     }
+ }
++
++/** Patch Sai aê: cancelDiscovery() exige BLUETOOTH_SCAN no Android 12+ (não
++ * declarada pelo plugin) e lançava SecurityException, reportada como falta de
++ * BLUETOOTH_CONNECT. Cancelar a busca é só otimização — ignora se não puder. */
++@SuppressLint("MissingPermission")
++private fun cancelarDescobertaSePermitido(adapter: android.bluetooth.BluetoothAdapter) {
++    try {
++        adapter.cancelDiscovery()
++    } catch (e: SecurityException) {
++        // sem BLUETOOTH_SCAN: segue sem cancelar a descoberta
++    }
++}
