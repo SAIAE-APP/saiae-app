@@ -139,7 +139,7 @@ function InputPreco({ item }: { item: Item }) {
         inputMode="decimal"
         value={texto}
         onChange={(e) => {
-          setTexto(e.target.value.replace(/[^d.,]/g, ''))
+          setTexto(e.target.value.replace(/[^\d.,]/g, ''))
           setSalvo(false)
         }}
         onKeyDown={(e) => {
