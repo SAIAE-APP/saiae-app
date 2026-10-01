@@ -1,10 +1,12 @@
-import { useEffect, useState } from 'react'
+import { useCallback, useEffect, useState } from 'react'
 import { useNavigate, useSearchParams } from 'react-router'
 import { useBarracaAtual } from '../layouts/contextoBarraca'
 import { supabase } from '../lib/supabase'
 import { PLANOS } from '../lib/planos'
 import { Button } from '../components/ui/Button'
 import { Icone } from '../components/ui/Icone'
+import { BottomSheet } from '../components/ui/BottomSheet'
+import { useToast } from '../components/ui/Toast'
 import type { Assinatura as TipoAssinatura } from '../types/database'
 
 const NOME_STATUS: Record<string, string> = {
@@ -20,28 +22,52 @@ function formatarData(iso: string | null): string {
   return new Date(iso).toLocaleDateString('pt-BR', { day: '2-digit', month: 'long', year: 'numeric' })
 }
 
-/** "Minha assinatura" — só o dono acessa (link em Ajustes). Estados de
- * texto puro; nenhuma ação aqui muda a assinatura no banco — quem muda é
- * sempre o webhook da Stripe (fonte da verdade fica no servidor). */
+/** "Minha assinatura" — só o dono acessa (link em Ajustes). O cancelamento
+ * passa pela edge function `cancelar-assinatura-stripe` (cancel_at_period_end:
+ * o acesso segue até o fim do período pago); o webhook da Stripe continua
+ * sendo a fonte da verdade e confirma o mesmo estado em seguida. */
 export function Assinatura() {
   const barraca = useBarracaAtual()
   const navigate = useNavigate()
+  const { mostrarToast } = useToast()
   const [params] = useSearchParams()
   const processando = params.get('status') === 'processando'
 
   const [assinatura, setAssinatura] = useState<TipoAssinatura | null>(null)
   const [carregando, setCarregando] = useState(true)
+  const [confirmandoCancelamento, setConfirmandoCancelamento] = useState(false)
+  const [cancelando, setCancelando] = useState(false)
+  const [erroCancelamento, setErroCancelamento] = useState<string | null>(null)
+
+  const buscar = useCallback(async () => {
+    const { data } = await supabase.rpc('minha_assinatura').single()
+    setAssinatura((data as TipoAssinatura) ?? null)
+    setCarregando(false)
+  }, [])
+
+  function fecharCancelamento() {
+    if (cancelando) return
+    setErroCancelamento(null)
+    setConfirmandoCancelamento(false)
+  }
+
+  async function cancelarAssinatura() {
+    setCancelando(true)
+    setErroCancelamento(null)
+    const { data, error } = await supabase.functions.invoke('cancelar-assinatura-stripe')
+    if (error || !data || data.erro) {
+      setErroCancelamento(data?.erro ?? 'Não foi possível cancelar agora. Tente novamente.')
+      setCancelando(false)
+      return
+    }
+    await buscar()
+    setCancelando(false)
+    setConfirmandoCancelamento(false)
+    mostrarToast('Assinatura cancelada.', { variante: 'sucesso' })
+  }
 
   useEffect(() => {
-    let cancelado = false
     let intervalo: ReturnType<typeof setInterval> | undefined
-
-    async function buscar() {
-      const { data } = await supabase.rpc('minha_assinatura').single()
-      if (cancelado) return
-      setAssinatura((data as TipoAssinatura) ?? null)
-      setCarregando(false)
-    }
 
     buscar()
 
@@ -53,10 +79,9 @@ export function Assinatura() {
     }
 
     return () => {
-      cancelado = true
       if (intervalo) clearInterval(intervalo)
     }
-  }, [processando])
+  }, [processando, buscar])
 
   const plano = assinatura?.plan ? PLANOS[assinatura.plan] : null
   const aindaProcessando = processando && assinatura?.status !== 'active'
@@ -130,8 +155,7 @@ export function Assinatura() {
           <div className="rounded-mesa-2xl border border-mesa-border-default bg-mesa-surface p-5">
             <h2 className="text-base font-semibold text-mesa-text-primary">Trocar ou cancelar</h2>
             <p className="mt-1 text-sm text-mesa-text-secondary">
-              Trocar de plano ou cancelar ainda é um processo manual: fale com o suporte que a gente
-              resolve pra você.
+              Trocar de plano é um processo manual: fale com o suporte que a gente resolve pra você.
             </p>
             <Button
               variant="outline"
@@ -142,6 +166,16 @@ export function Assinatura() {
             >
               Falar no WhatsApp
             </Button>
+            {assinatura?.status === 'active' && (
+              <Button
+                variant="textDanger"
+                size="lg"
+                className="mt-2 w-full"
+                onClick={() => setConfirmandoCancelamento(true)}
+              >
+                Cancelar assinatura
+              </Button>
+            )}
           </div>
 
           {assinatura?.status !== 'active' && (
@@ -151,6 +185,37 @@ export function Assinatura() {
           )}
         </>
       )}
+
+      <BottomSheet open={confirmandoCancelamento} onClose={fecharCancelamento} aria-label="Cancelar assinatura">
+        <h2 className="text-lg font-semibold text-mesa-text-primary">Cancelar assinatura?</h2>
+        <p className="mt-1 text-sm text-mesa-text-secondary">
+          Você continua com acesso até {formatarData(assinatura?.current_period_end ?? null)}, o fim do
+          período já pago. Depois dessa data não haverá nova cobrança e o acesso é encerrado.
+        </p>
+        {erroCancelamento && (
+          <p className="mt-3 text-sm font-medium text-mesa-error-500">{erroCancelamento}</p>
+        )}
+        <div className="mt-6 flex flex-col gap-2">
+          <Button
+            variant="destructive"
+            size="xl"
+            loading={cancelando}
+            className="w-full"
+            onClick={cancelarAssinatura}
+          >
+            Cancelar assinatura
+          </Button>
+          <Button
+            variant="ghost"
+            size="md"
+            className="w-full"
+            onClick={fecharCancelamento}
+            disabled={cancelando}
+          >
+            Manter assinatura
+          </Button>
+        </div>
+      </BottomSheet>
     </div>
   )
 }
