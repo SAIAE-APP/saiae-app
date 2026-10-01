@@ -22,7 +22,7 @@ function formatarData(iso: string | null): string {
 
 /** "Minha assinatura" — só o dono acessa (link em Ajustes). Estados de
  * texto puro; nenhuma ação aqui muda a assinatura no banco — quem muda é
- * sempre o webhook da Kirvano (fonte da verdade fica no servidor). */
+ * sempre o webhook da Stripe (fonte da verdade fica no servidor). */
 export function Assinatura() {
   const barraca = useBarracaAtual()
   const navigate = useNavigate()
@@ -131,7 +131,7 @@ export function Assinatura() {
             <h2 className="text-base font-semibold text-mesa-text-primary">Trocar ou cancelar</h2>
             <p className="mt-1 text-sm text-mesa-text-secondary">
               Trocar de plano ou cancelar ainda é um processo manual: fale com o suporte que a gente
-              resolve pra você (e cancela a assinatura antiga na Kirvano, se for troca de plano).
+              resolve pra você.
             </p>
             <Button
               variant="outline"

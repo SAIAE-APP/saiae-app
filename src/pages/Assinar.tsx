@@ -2,13 +2,13 @@ import { useEffect, useState } from 'react'
 import { useSearchParams } from 'react-router'
 import { useAuth } from '../hooks/useAuth'
 import { supabase } from '../lib/supabase'
-import type { OfertaPublica } from '../types/database'
 
-/** /assinar — ponte entre a LP/o app e o checkout da Kirvano.
+/** /assinar — ponte entre a LP/o app e o checkout da Stripe.
  * Sem sessão: manda pro cadastro preservando ?plano=&ciclo=.
- * Com sessão: acha o checkout_url certo via ofertas_publicas() e
- * redireciona pro Kirvano com ?src=<usuario_id> — é assim que o webhook
- * (seção 6 do doc) liga a venda de volta a esta conta. */
+ * Com sessão: pede uma Checkout Session pra edge function
+ * criar-checkout-stripe (ela resolve o price_id certo e manda
+ * client_reference_id=usuario_id — é assim que o webhook liga a venda de
+ * volta a esta conta) e redireciona pra lá. */
 export function Assinar() {
   const [params] = useSearchParams()
   const { usuario, carregando } = useAuth()
@@ -33,24 +33,15 @@ export function Assinar() {
 
     let cancelado = false
 
-    supabase
-      .rpc('ofertas_publicas')
+    supabase.functions
+      .invoke('criar-checkout-stripe', { body: { plano, ciclo } })
       .then(({ data, error }) => {
         if (cancelado) return
-        if (error) {
-          setErro('Não foi possível carregar os planos. Tente de novo em instantes.')
+        if (error || !data?.url) {
+          setErro(data?.erro ?? 'Não foi possível iniciar o checkout. Tente de novo em instantes.')
           return
         }
-
-        const oferta = (data as OfertaPublica[] | null)?.find((o) => o.plano === plano && o.ciclo === ciclo)
-        if (!oferta) {
-          setErro('Essa oferta ainda não está disponível.')
-          return
-        }
-
-        const url = new URL(oferta.checkout_url)
-        url.searchParams.set('src', usuario.id)
-        window.location.replace(url.toString())
+        window.location.replace(data.url)
       })
 
     return () => {

@@ -175,6 +175,8 @@ export type Assinatura = {
   kirvano_customer_email: string | null
   kirvano_sale_id: string | null
   kirvano_offer_id: string | null
+  stripe_customer_id: string | null
+  stripe_subscription_id: string | null
   canceled_at: string | null
   updated_at: string
 }
