@@ -80,6 +80,10 @@ Deno.serve(async (req: Request) => {
   if (userData.user.email) params.set('customer_email', userData.user.email)
   params.set('metadata[usuario_id]', userData.user.id)
   params.set('subscription_data[metadata][usuario_id]', userData.user.id)
+  // Mostra o campo "Código promocional" na tela de checkout da Stripe —
+  // usado pra testar o fluxo real com cupom de 100% off sem cobrar de
+  // verdade, e também serve pra promoções futuras.
+  params.set('allow_promotion_codes', 'true')
   params.set('success_url', `${origin}/?assinatura=sucesso`)
   params.set('cancel_url', `${origin}/?assinatura=cancelada`)
 
