@@ -56,6 +56,19 @@ async function assinaturaStripeValida(corpoBruto: string, headerAssinatura: stri
 
 type EventoStripe = { id: string; type: string; data: { object: Record<string, unknown> } }
 
+/** Desde a API 2025-03-31 da Stripe, current_period_end saiu da raiz da
+ * assinatura e foi pra items.data[0] (período passou a ser por item, não
+ * mais por assinatura inteira). A conta usa 2026-08-26.dahlia (bem depois
+ * dessa mudança), então lê sempre do item primeiro — raiz fica só de
+ * fallback pra não quebrar se uma versão mais antiga da API aparecer em
+ * algum evento. Nunca lança: evento sem período conhecido só não atualiza
+ * current_period_end (resto do processamento segue normal). */
+function periodoFimIso(sub: Record<string, unknown>): string | null {
+  const items = sub.items as { data?: Array<{ current_period_end?: number }> } | undefined
+  const unixSegundos = items?.data?.[0]?.current_period_end ?? (sub.current_period_end as number | undefined)
+  return typeof unixSegundos === 'number' ? new Date(unixSegundos * 1000).toISOString() : null
+}
+
 Deno.serve(async (req: Request) => {
   if (req.method === 'OPTIONS') return new Response('ok')
 
@@ -145,7 +158,7 @@ Deno.serve(async (req: Request) => {
           ...(paymentStatus === 'paid'
             ? {
                 status: 'active',
-                current_period_end: new Date((assinaturaStripe.current_period_end as number) * 1000).toISOString(),
+                current_period_end: periodoFimIso(assinaturaStripe),
                 grace_until: null,
                 canceled_at: null,
               }
@@ -164,7 +177,7 @@ Deno.serve(async (req: Request) => {
         .from('assinaturas')
         .update({
           status: 'active',
-          current_period_end: new Date((assinaturaStripe.current_period_end as number) * 1000).toISOString(),
+          current_period_end: periodoFimIso(assinaturaStripe),
           grace_until: null,
           updated_at: new Date().toISOString(),
         })
@@ -192,7 +205,7 @@ Deno.serve(async (req: Request) => {
     case 'customer.subscription.updated': {
       const subscriptionId = obj.id as string
       const canceladaNoFim = obj.cancel_at_period_end as boolean
-      const periodoFim = new Date((obj.current_period_end as number) * 1000).toISOString()
+      const periodoFim = periodoFimIso(obj)
 
       if (canceladaNoFim) {
         await supabase
@@ -216,7 +229,7 @@ Deno.serve(async (req: Request) => {
         .update({
           status: 'canceled',
           canceled_at: new Date().toISOString(),
-          current_period_end: new Date((obj.current_period_end as number) * 1000).toISOString(),
+          current_period_end: periodoFimIso(obj),
           updated_at: new Date().toISOString(),
         })
         .eq('stripe_subscription_id', subscriptionId)
