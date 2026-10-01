@@ -108,6 +108,11 @@ Deno.serve(async (req: Request) => {
       const usuarioId = obj.client_reference_id as string | null
       const subscriptionId = obj.subscription as string | null
       const customerId = obj.customer as string | null
+      // Boleto: a sessão "completa" (cliente gerou o boleto) MUITO antes do
+      // pagamento cair — payment_status continua 'unpaid' até lá. Só
+      // cartão/Pix instantâneo vem 'paid' já neste evento. Confirmação de
+      // verdade pro caso do boleto é o invoice.paid, mais abaixo.
+      const paymentStatus = obj.payment_status as string | null
       if (!usuarioId || !subscriptionId) break
 
       // Checkout Session não carrega current_period_end/price — confirma
@@ -126,18 +131,25 @@ Deno.serve(async (req: Request) => {
         .eq('stripe_price_id', priceId)
         .maybeSingle()
 
+      // Sempre linka a assinatura Stripe à conta (precisa disso pro
+      // invoice.paid achar a linha certa depois, mesmo sem liberar acesso
+      // ainda). Só ativa de verdade quando o pagamento já está confirmado.
       await supabase
         .from('assinaturas')
         .update({
-          status: 'active',
           plan: oferta?.plano ?? 'pro',
           cycle: oferta?.ciclo ?? null,
-          current_period_end: new Date((assinaturaStripe.current_period_end as number) * 1000).toISOString(),
           stripe_customer_id: customerId,
           stripe_subscription_id: subscriptionId,
-          grace_until: null,
-          canceled_at: null,
           updated_at: new Date().toISOString(),
+          ...(paymentStatus === 'paid'
+            ? {
+                status: 'active',
+                current_period_end: new Date((assinaturaStripe.current_period_end as number) * 1000).toISOString(),
+                grace_until: null,
+                canceled_at: null,
+              }
+            : {}),
         })
         .eq('usuario_id', usuarioId)
       break
