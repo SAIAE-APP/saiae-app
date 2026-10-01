@@ -191,15 +191,19 @@ function CardItemCardapio({
 function CardItemCardapioGrade({
   item,
   quantidade,
+  observacao,
   posicaoPopular,
   onIncrementar,
   onDecrementar,
+  onAbrirObservacao,
 }: {
   item: Item
   quantidade: number
+  observacao: string
   posicaoPopular: number | null
   onIncrementar: () => void
   onDecrementar: () => void
+  onAbrirObservacao: () => void
 }) {
   const selecionado = quantidade > 0
 
@@ -263,6 +267,17 @@ function CardItemCardapioGrade({
           </Button>
         )}
       </div>
+
+      {selecionado && (
+        <button
+          type="button"
+          onClick={onAbrirObservacao}
+          className="mt-1 flex min-h-11 min-w-0 items-center gap-1 text-xs font-medium text-mesa-text-secondary"
+        >
+          <Icone nome="description" size={14} />
+          <span className="truncate">{observacao ? `Obs: ${observacao}` : 'Adicionar observação'}</span>
+        </button>
+      )}
     </Card>
   )
 }
@@ -917,9 +932,11 @@ export function LancarPedido() {
                     key={item.id}
                     item={item}
                     quantidade={carrinho[item.id] ?? 0}
+                    observacao={observacaoPorItem[item.id] ?? ''}
                     posicaoPopular={indicePopular === -1 ? null : indicePopular}
                     onIncrementar={() => incrementar(item.id)}
                     onDecrementar={() => decrementar(item.id)}
+                    onAbrirObservacao={() => setItemObservacaoAberta(item)}
                   />
                 )
               })}
