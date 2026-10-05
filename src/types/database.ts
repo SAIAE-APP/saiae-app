@@ -28,6 +28,25 @@ export type Barraca = {
   mostrar_horario_pedido: boolean
   /** Opcional: cache local de antes da migration não tem o campo — usar `modosAtivos()`. */
   modos_atendimento?: TipoAtendimento[]
+  /** Opcionais: cache local de antes da migration não tem os campos — usar `configTaxaEntrega()`. */
+  taxa_entrega_habilitada?: boolean
+  taxa_entrega_centavos?: number
+  taxa_entrega_editavel?: boolean
+}
+
+/** Cliente final da barraca (cadastro pra pedidos de entrega). */
+export type ClienteFinal = {
+  id: string
+  barraca_id: string
+  nome: string
+  /** Só dígitos (DDD + número). */
+  telefone: string
+  rua: string
+  numero: string
+  bairro: string
+  referencia: string | null
+  criado_em: string
+  atualizado_em: string
 }
 
 export type HorarioFuncionamento = {
@@ -124,6 +143,15 @@ export type Pedido = {
   viagem: boolean
   /** NULL em pedido antigo / cardápio digital — derivar com `tipoDoPedido()`. */
   tipo_atendimento: TipoAtendimento | null
+  /** Dados de entrega (só em pedido de Entrega) e taxa cobrada, em centavos. */
+  entrega_nome?: string | null
+  entrega_telefone?: string | null
+  entrega_rua?: string | null
+  entrega_numero?: string | null
+  entrega_bairro?: string | null
+  entrega_referencia?: string | null
+  taxa_entrega_centavos?: number
+  cliente_final_id?: string | null
   observacao: string | null
   status: StatusPedido
   criado_em: string
