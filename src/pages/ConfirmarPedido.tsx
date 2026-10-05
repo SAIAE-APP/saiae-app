@@ -33,12 +33,15 @@ function LinhaItemConfirmar({
   item,
   quantidade,
   marcado,
+  permiteEntregaDireta,
   observacao,
   onAlternar,
 }: {
   item: Item
   quantidade: number
   marcado: boolean
+  /** Falso no modo Entrega: o pedido tem que passar pela cozinha. */
+  permiteEntregaDireta: boolean
   observacao: string
   onAlternar: () => void
 }) {
@@ -47,13 +50,15 @@ function LinhaItemConfirmar({
 
   return (
     <div className="flex items-start gap-3 border-b border-dashed border-mesa-border-subtle py-3 last:border-b-0">
-      <div className="pt-0.5">
-        <Checkbox
-          checked={marcado}
-          onChange={onAlternar}
-          aria-label={`Entregar ${item.nome} direto sem passar na cozinha`}
-        />
-      </div>
+      {permiteEntregaDireta && (
+        <div className="pt-0.5">
+          <Checkbox
+            checked={marcado}
+            onChange={onAlternar}
+            aria-label={`Entregar ${item.nome} direto sem passar na cozinha`}
+          />
+        </div>
+      )}
       {item.foto_url && (
         <img
           src={item.foto_url}
@@ -217,16 +222,19 @@ export function ConfirmarPedido() {
     enviandoRef.current = true
     setEnviando(true)
 
-    const todosEntregaDireta =
-      forcarEntregaDiretaEmTudo ||
-      linhas.every(({ itemId }) => entregaDireta[itemId] ?? false)
+    // Pedido de Entrega nunca é "entrega direta no balcão": ele precisa passar
+    // pela cozinha (e imprimir comanda). Marcação vinda de antes de trocar o
+    // modo é ignorada aqui, não só escondida na tela.
+    const forcarTudo = forcarEntregaDiretaEmTudo && !ehEntrega
+    const diretaPorItem = ehEntrega ? {} : entregaDireta
+    const todosEntregaDireta = forcarTudo || linhas.every(({ itemId }) => diretaPorItem[itemId] ?? false)
 
     const itensPedido = linhas.map(({ item, itemId, quantidade }) => ({
       item_id: itemId,
       nome_item: item.nome,
       quantidade,
       preco_centavos_unitario: item.preco_centavos,
-      entrega_direta: forcarEntregaDiretaEmTudo ? true : (entregaDireta[itemId] ?? false),
+      entrega_direta: forcarTudo ? true : (diretaPorItem[itemId] ?? false),
       observacao: observacaoPorItem[itemId] || null,
     }))
 
@@ -328,7 +336,8 @@ export function ConfirmarPedido() {
               key={itemId}
               item={item}
               quantidade={quantidade}
-              marcado={entregaDireta[itemId] ?? false}
+              permiteEntregaDireta={!ehEntrega}
+              marcado={!ehEntrega && (entregaDireta[itemId] ?? false)}
               observacao={observacaoPorItem[itemId] ?? ''}
               onAlternar={() => alternarEntregaDireta(itemId)}
             />

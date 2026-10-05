@@ -234,23 +234,11 @@ export function useImpressaoAutomatica(barraca: Barraca | null) {
       if (emAndamentoRef.current.has(pedido.pedidoId) || jaImpressa(clientUuid)) return
       emAndamentoRef.current.add(pedido.pedidoId)
 
-      // Operação velha que só agora sincronizou (fila travada, ou criar_pedido
-      // reexecutado e o servidor devolvendo a senha antiga): nunca imprime
-      // sozinha. Marca como tratada pra não voltar; a Cozinha tem "Imprimir comanda".
-      if (Date.now() - new Date(pedido.enviadoEm).getTime() > JANELA_PEDIDO_NOVO_MS) {
-        marcarImpressa(clientUuid)
-        console.info('[impressora] comanda antiga ignorada (sincronizou tarde)', pedido.senha)
-        return
-      }
-
-      const cfg = await configPronta(idBarraca)
-      if (!cfg || !(await reivindicar(pedido.pedidoId))) return
-
-      const dados: DadosComanda = {
+      const montarDados = (cfg: ConfigImpressora): DadosComanda => ({
         nomeBarraca: cfg.nome,
         cnpj: cfg.cnpj,
         senha: pedido.senha,
-        criadoEm: new Date().toISOString(),
+        criadoEm: pedido.enviadoEm,
         mesa: (p.p_mesa as string | null) ?? null,
         viagem: Boolean(p.p_viagem),
         tipo: (p.p_tipo_atendimento as TipoAtendimento | null | undefined) ?? null,
@@ -266,10 +254,41 @@ export function useImpressaoAutomatica(barraca: Barraca | null) {
             observacao: i.observacao,
             precoCentavos: i.preco_centavos_unitario,
           })),
+      })
+
+      // Operação velha que só agora sincronizou (fila travada, ou criar_pedido
+      // reexecutado e o servidor devolvendo a senha antiga): nunca imprime
+      // sozinha, mas também nunca em silêncio — avisa e deixa o operador
+      // imprimir com um toque. Marca como tratada pra não voltar sozinha.
+      const idadeMs = Date.now() - new Date(pedido.enviadoEm).getTime()
+      const minutosAtras = Math.round(idadeMs / 60000)
+      if (idadeMs > JANELA_PEDIDO_NOVO_MS) {
+        marcarImpressa(clientUuid)
+        console.info('[impressora] comanda antiga não impressa sozinha', pedido.senha)
+        const cfgAntiga = await configPronta(idBarraca)
+        if (!cfgAntiga) return
+        toastRef.current(
+          `Comanda ${pedido.senha} não saiu sozinha: o pedido foi enviado há ${minutosAtras} min e só agora sincronizou. Toque para imprimir.`,
+          {
+            variante: 'aviso',
+            icone: 'print',
+            duracaoMs: 20000,
+            aoClicar: () => {
+              void (async () => {
+                if (!(await reivindicar(pedido.pedidoId))) return
+                await imprimir(pedido.pedidoId, montarDados(cfgAntiga), cfgAntiga, clientUuid)
+              })()
+            },
+          },
+        )
+        return
       }
 
+      const cfg = await configPronta(idBarraca)
+      if (!cfg || !(await reivindicar(pedido.pedidoId))) return
+
       toastRef.current(`Imprimindo comanda ${pedido.senha}...`, { variante: 'aviso', icone: 'print', duracaoMs: 2500 })
-      await imprimir(pedido.pedidoId, dados, cfg, clientUuid)
+      await imprimir(pedido.pedidoId, montarDados(cfg), cfg, clientUuid)
     })
 
     // (b) pedido novo pelo Realtime (cardápio digital e pedidos de outros aparelhos)
