@@ -6,7 +6,7 @@ import { classesBotaoIcone } from '../lib/estiloBotaoIcone'
 import { useTheme } from '../hooks/useTheme'
 import { enfileirar } from '../lib/fila'
 import { filtrarEntradaPreco, formatarPrecoBR, reaisParaCentavos } from '../lib/preco'
-import { configTaxaEntrega, validarDadosEntrega, type DadosEntrega } from '../lib/entrega'
+import { configTaxaEntrega, normalizarTelefone, validarDadosEntrega, type DadosEntrega } from '../lib/entrega'
 import { ICONE_MODO, ROTULO_MODO } from '../lib/atendimento'
 import type {
   EntregaDiretaPorItem,
@@ -253,7 +253,7 @@ export function ConfirmarPedido() {
         ? {
             p_entrega: {
               nome: entrega.nome.trim(),
-              telefone: entrega.telefone.trim(),
+              telefone: normalizarTelefone(entrega.telefone),
               rua: entrega.rua.trim(),
               numero: entrega.numero.trim(),
               bairro: entrega.bairro.trim(),

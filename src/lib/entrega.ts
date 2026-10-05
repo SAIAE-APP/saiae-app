@@ -37,10 +37,21 @@ export function somenteDigitos(texto: string): string {
   return texto.replace(/\D/g, '')
 }
 
+/**
+ * Forma única de guardar e comparar telefone: só dígitos, sem o 55 do país.
+ * Só tira o 55 quando sobra um número brasileiro completo (12 ou 13 dígitos =
+ * 55 + DDD + 8/9 dígitos). Com 10 ou 11 dígitos o "55" é o DDD (região de
+ * Santa Maria/RS) e fica. Assim "11 91234-5678", "+55 11 91234-5678" e
+ * "5511912345678" viram o mesmo cliente.
+ */
+export function normalizarTelefone(texto: string): string {
+  const d = somenteDigitos(texto)
+  return (d.length === 12 || d.length === 13) && d.startsWith('55') ? d.slice(2) : d
+}
+
 /** Telefone brasileiro pra exibir: (11) 91234-5678 / (11) 1234-5678; outro formato volta como veio. */
 export function formatarTelefoneBR(telefone: string): string {
-  const d = somenteDigitos(telefone)
-  const local = d.length > 11 && d.startsWith('55') ? d.slice(2) : d
+  const local = normalizarTelefone(telefone)
   if (local.length === 11) return `(${local.slice(0, 2)}) ${local.slice(2, 7)}-${local.slice(7)}`
   if (local.length === 10) return `(${local.slice(0, 2)}) ${local.slice(2, 6)}-${local.slice(6)}`
   return telefone
@@ -52,7 +63,7 @@ export type ErrosEntrega = Partial<Record<'nome' | 'telefone' | 'rua' | 'numero'
 export function validarDadosEntrega(dados: DadosEntrega): ErrosEntrega {
   const erros: ErrosEntrega = {}
   if (!dados.nome.trim()) erros.nome = 'Informe o nome do cliente'
-  const digitos = somenteDigitos(dados.telefone)
+  const digitos = normalizarTelefone(dados.telefone)
   if (digitos.length < 8 || digitos.length > 15) erros.telefone = 'Informe um telefone válido'
   if (!dados.rua.trim()) erros.rua = 'Informe a rua'
   if (!dados.numero.trim()) erros.numero = 'Informe o número'

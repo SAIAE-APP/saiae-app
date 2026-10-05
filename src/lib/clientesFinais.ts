@@ -1,5 +1,5 @@
 import { supabase } from './supabase'
-import { somenteDigitos, type DadosEntrega } from './entrega'
+import { normalizarTelefone, somenteDigitos, type DadosEntrega } from './entrega'
 import type { ClienteFinal } from '../types/database'
 
 const COLUNAS = 'id, barraca_id, nome, telefone, rua, numero, bairro, referencia, criado_em, atualizado_em'
@@ -31,7 +31,14 @@ export async function buscarClientesFinais(
 
   if (pareceTelefone) {
     if (digitos.length < MIN_DIGITOS_TELEFONE) return []
-    consulta = consulta.like('telefone', `%${digitos}%`)
+    // O banco guarda sem o 55 do país. Quem digita "5511..." (ainda incompleto,
+    // então normalizarTelefone não tira o 55) também acha o "11...": busca as
+    // duas formas. Só dígitos entram no filtro, nada a escapar.
+    const semPais = digitos.startsWith('55') ? digitos.slice(2) : null
+    consulta =
+      semPais && semPais.length >= MIN_DIGITOS_TELEFONE
+        ? consulta.or(`telefone.like.%${digitos}%,telefone.like.%${semPais}%`)
+        : consulta.like('telefone', `%${digitos}%`)
   } else {
     if (texto.length < MIN_CARACTERES_NOME) return []
     consulta = consulta.ilike('nome', `%${escaparLike(texto)}%`)
@@ -66,7 +73,7 @@ export async function salvarClienteFinal(barracaId: string, dados: DadosEntrega)
       {
         barraca_id: barracaId,
         nome: dados.nome.trim(),
-        telefone: somenteDigitos(dados.telefone),
+        telefone: normalizarTelefone(dados.telefone),
         rua: dados.rua.trim(),
         numero: dados.numero.trim(),
         bairro: dados.bairro.trim(),
