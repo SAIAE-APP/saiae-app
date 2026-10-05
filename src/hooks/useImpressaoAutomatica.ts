@@ -216,6 +216,15 @@ export function useImpressaoAutomatica(barraca: Barraca | null) {
       if (emAndamentoRef.current.has(pedido.pedidoId) || jaImpressa(clientUuid)) return
       emAndamentoRef.current.add(pedido.pedidoId)
 
+      // Operação velha que só agora sincronizou (fila travada, ou criar_pedido
+      // reexecutado e o servidor devolvendo a senha antiga): nunca imprime
+      // sozinha. Marca como tratada pra não voltar; a Cozinha tem "Imprimir comanda".
+      if (Date.now() - new Date(pedido.enviadoEm).getTime() > JANELA_PEDIDO_NOVO_MS) {
+        marcarImpressa(clientUuid)
+        console.info('[impressora] comanda antiga ignorada (sincronizou tarde)', pedido.senha)
+        return
+      }
+
       const cfg = await configPronta(idBarraca)
       if (!cfg || !(await reivindicar(pedido.pedidoId))) return
 

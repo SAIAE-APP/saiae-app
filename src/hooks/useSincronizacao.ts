@@ -25,6 +25,7 @@ async function executarOperacao(op: OperacaoPendente): Promise<void> {
         pedidoId: resultado.pedido_id,
         senha: resultado.senha,
         payload: op.payload,
+        enviadoEm: op.criadoEm,
       })
       return
     }
