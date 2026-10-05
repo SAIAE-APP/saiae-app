@@ -224,6 +224,10 @@ function CardPedido({
           <span className="font-mesa-display text-2xl font-black leading-none text-white">
             #{pedido.senha}
           </span>
+          <Badge variant="neutral" className="gap-1">
+            <Icone nome={iconeTipo} size={14} />
+            {rotuloTipo}
+          </Badge>
           {coluna === 'a_fazer' && (
             <div className="ml-auto">
               <BotaoChecklist
@@ -233,11 +237,6 @@ function CardPedido({
               />
             </div>
           )}
-        </div>
-
-        <div className="mt-1 flex items-center gap-1.5 text-xs font-bold uppercase tracking-wide text-mesa-neutral-400">
-          <Icone nome={iconeTipo} size={14} />
-          {rotuloTipo}
         </div>
 
         {tudoEntregue && (
