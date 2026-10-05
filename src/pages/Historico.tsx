@@ -5,7 +5,7 @@ import { useBarracaAtual } from '../layouts/contextoBarraca'
 import { useTheme } from '../hooks/useTheme'
 import { MOTIVOS_CANCELAMENTO } from '../lib/cancelamento'
 import { formatarPrecoBR } from '../lib/preco'
-import { rotuloAtendimento } from '../lib/atendimento'
+import { ROTULO_MODO, rotuloAtendimento, tipoDoPedido } from '../lib/atendimento'
 import { corMetodo, humanizarMetodo, METODOS_DISPONIVEIS } from '../lib/metodoPagamento'
 import { hojeISO } from '../lib/datas'
 import { calcularIntervalosRelatorio, calcularTotalPedido, ehEntregaDireta } from '../lib/relatorio'
@@ -48,7 +48,14 @@ const PERIODOS: { valor: TipoFiltroRelatorio; rotulo: string }[] = [
   { valor: 'intervalo', rotulo: 'Período' },
 ]
 
-type TipoConsumo = 'todos' | 'mesa' | 'viagem'
+type TipoConsumo = 'todos' | 'mesa' | 'retirada' | 'entrega'
+
+const ROTULO_FILTRO_CONSUMO: Record<TipoConsumo, string> = {
+  todos: 'Todos',
+  mesa: 'No local',
+  retirada: 'Retirada',
+  entrega: 'Entrega',
+}
 
 function formatarHora(iso: string): string {
   return new Date(iso).toLocaleTimeString('pt-BR', { hour: '2-digit', minute: '2-digit' })
@@ -83,6 +90,8 @@ async function gerarPlanilha(pedidos: PedidoComItens[]): Promise<ArrayBuffer> {
     { header: 'Entrada', key: 'entrada', width: 10 },
     { header: 'Finalização', key: 'finalizacao', width: 12 },
     { header: 'Tempo total (min)', key: 'tempo', width: 16 },
+    { header: 'Tipo', key: 'tipo', width: 12 },
+    { header: 'Taxa de entrega', key: 'taxaEntrega', width: 16 },
   ]
 
   const linhaCabecalho = planilha.getRow(1)
@@ -93,7 +102,7 @@ async function gerarPlanilha(pedidos: PedidoComItens[]): Promise<ArrayBuffer> {
   linhaCabecalho.alignment = { vertical: 'middle' }
   linhaCabecalho.height = 20
   planilha.views = [{ state: 'frozen', ySplit: 1 }]
-  planilha.autoFilter = { from: 'A1', to: 'J1' }
+  planilha.autoFilter = { from: 'A1', to: 'L1' }
 
   for (const pedido of pedidos) {
     const itensTexto = pedido.itens_do_pedido
@@ -114,6 +123,8 @@ async function gerarPlanilha(pedidos: PedidoComItens[]): Promise<ArrayBuffer> {
       entrada: formatarHora(pedido.criado_em),
       finalizacao: pedido.entregue_em ? formatarHora(pedido.entregue_em) : '',
       tempo: pedido.entregue_em ? minutosEntre(pedido.criado_em, pedido.entregue_em) : '',
+      tipo: ROTULO_MODO[tipoDoPedido(pedido)],
+      taxaEntrega: (pedido.taxa_entrega_centavos ?? 0) > 0 ? formatarPrecoBR(pedido.taxa_entrega_centavos ?? 0) : '',
     })
 
     linha.alignment = { vertical: 'middle', wrapText: false }
@@ -235,6 +246,11 @@ function CardHistorico({
           {(pedido.viagem || pedido.mesa) && (
             <p className="mt-1 text-sm text-mesa-text-secondary">
               {rotuloAtendimento(pedido)}
+            </p>
+          )}
+          {(pedido.taxa_entrega_centavos ?? 0) > 0 && (
+            <p className="text-xs text-mesa-text-tertiary">
+              + {formatarPrecoBR(pedido.taxa_entrega_centavos ?? 0)} de taxa de entrega
             </p>
           )}
         </div>
@@ -407,7 +423,9 @@ export function Historico() {
   const pedidosPorConsumo =
     tipoConsumo === 'todos'
       ? pedidosDoPeriodoComItemFiltrado
-      : pedidosDoPeriodoComItemFiltrado.filter((p) => (tipoConsumo === 'viagem' ? p.viagem : !p.viagem))
+      : pedidosDoPeriodoComItemFiltrado.filter((p) =>
+          tipoConsumo === 'mesa' ? !p.viagem : tipoDoPedido(p) === tipoConsumo,
+        )
 
   const pedidosPorMetodo = metodoFiltrado
     ? pedidosPorConsumo.filter((p) => p.metodo_pagamento === metodoFiltrado)
@@ -612,14 +630,14 @@ export function Historico() {
         />
 
         <div className="mt-3 flex flex-wrap gap-1.5">
-          {(['todos', 'mesa', 'viagem'] as const).map((valor) => (
+          {(['todos', 'mesa', 'retirada', 'entrega'] as const).map((valor) => (
             <Chip
               key={valor}
               variant={tipoConsumo === valor ? 'teal' : 'plain'}
               checked={tipoConsumo === valor}
               onClick={() => setTipoConsumo(valor)}
             >
-              {valor === 'todos' ? 'Todos' : valor === 'mesa' ? 'No local' : 'Viagem'}
+              {ROTULO_FILTRO_CONSUMO[valor]}
             </Chip>
           ))}
           <span className="mx-1 self-center text-mesa-text-tertiary" aria-hidden>

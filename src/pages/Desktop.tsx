@@ -153,17 +153,20 @@ export function Desktop() {
         })
       }
 
-      const consumo = workbook.addWorksheet('Mesa vs Viagem')
+      const consumo = workbook.addWorksheet('Tipo de atendimento')
       consumo.columns = [
         { header: 'Modo', key: 'modo', width: 22 },
         { header: 'Valor', key: 'valor', width: 16 },
         { header: 'Comandas', key: 'quantidade', width: 12 },
       ]
       estilizarCabecalho(consumo, 'C')
-      const { viagem, mesaComNumero, mesaSemNumero } = atual.divisaoPorConsumo
+      const { retirada, entrega, mesaComNumero, mesaSemNumero, taxaEntrega } = atual.divisaoPorConsumo
       consumo.addRow({ modo: 'No local (com mesa)', valor: formatarPrecoBR(mesaComNumero.valor), quantidade: mesaComNumero.quantidade })
       consumo.addRow({ modo: 'No local (sem mesa)', valor: formatarPrecoBR(mesaSemNumero.valor), quantidade: mesaSemNumero.quantidade })
-      consumo.addRow({ modo: 'Viagem', valor: formatarPrecoBR(viagem.valor), quantidade: viagem.quantidade })
+      consumo.addRow({ modo: 'Retirada', valor: formatarPrecoBR(retirada.valor), quantidade: retirada.quantidade })
+      consumo.addRow({ modo: 'Entrega', valor: formatarPrecoBR(entrega.valor), quantidade: entrega.quantidade })
+      // Taxa de entrega fica à parte, fora dos valores acima e do faturamento dos itens.
+      consumo.addRow({ modo: 'Taxas de entrega (à parte)', valor: formatarPrecoBR(taxaEntrega.valor), quantidade: taxaEntrega.quantidade })
 
       const maisVendidos = workbook.addWorksheet('Mais vendidos')
       maisVendidos.columns = [

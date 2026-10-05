@@ -3,6 +3,8 @@ import { useParams } from 'react-router'
 import clsx from 'clsx'
 import { supabase } from '../lib/supabase'
 import { formatarPrecoBR } from '../lib/preco'
+import { ROTULO_MODO, modoInicial, modosDoCardapioPublico } from '../lib/atendimento'
+import type { TipoAtendimento } from '../types/database'
 import { Button } from '../components/ui/Button'
 import { BottomSheet } from '../components/ui/BottomSheet'
 import { Chip } from '../components/ui/Chip'
@@ -17,6 +19,8 @@ type LinhaCardapioPublico = {
   barraca_logo_url: string | null
   barraca_imagem_capa_url: string | null
   pagamento_online_habilitado: boolean
+  /** Ausente enquanto a migration da função não está no banco: usar `modosDoCardapioPublico`. */
+  barraca_modos_atendimento?: TipoAtendimento[] | null
   item_id: string
   item_nome: string
   item_descricao: string | null
@@ -89,7 +93,7 @@ type Estado =
   | { status: 'pronto'; linhas: LinhaCardapioPublico[] }
 
 type Carrinho = Record<string, number>
-type ModoConsumo = 'mesa' | 'balcao' | 'viagem'
+type ModoConsumo = 'mesa' | 'balcao' | 'retirada'
 
 // Fase 2+3 do Cardápio Digital (CLAUDE.md, roadmap): o pedido de verdade
 // só nasce depois do pagamento confirmado (ver edge functions
@@ -517,6 +521,14 @@ export function CardapioPublico() {
   const [observacao, setObservacao] = useState('')
   const [pagamento, setPagamento] = useState<EstadoPagamento>({ fase: 'formulario' })
   const [copiado, setCopiado] = useState(false)
+
+  // Só os modos que a barraca ligou em Ajustes (sem Entrega). Se o modo
+  // escolhido saiu da lista, cai no inicial em vez de pedir algo indisponível.
+  const modosPublicos = useMemo(
+    () => modosDoCardapioPublico(estado.status === 'pronto' ? estado.linhas[0]?.barraca_modos_atendimento : undefined),
+    [estado],
+  ) as ModoConsumo[]
+  const modoEfetivo: ModoConsumo = modosPublicos.includes(modoConsumo) ? modoConsumo : (modoInicial(modosPublicos) as ModoConsumo)
   const [mostrarAvisoBalcao, setMostrarAvisoBalcao] = useState(false)
   const clientUuidRef = useRef(crypto.randomUUID())
 
@@ -696,8 +708,8 @@ export function CardapioPublico() {
     const { data, error } = await supabase.functions.invoke('criar-pagamento-pix', {
       body: {
         barraca_id: barracaId,
-        mesa: modoConsumo === 'mesa' ? mesa.trim() || null : null,
-        viagem: modoConsumo === 'viagem',
+        mesa: modoEfetivo === 'mesa' ? mesa.trim() || null : null,
+        viagem: modoEfetivo === 'retirada',
         observacao: observacao.trim() || null,
         client_uuid: clientUuidRef.current,
         itens: itensCarrinho.map((l) => ({ item_id: l.item.item_id, quantidade: l.quantidade })),
@@ -985,14 +997,16 @@ export function CardapioPublico() {
               ))}
             </div>
 
-            <SegmentedControl
-              aria-label="Mesa, balcão ou viagem"
-              items={[{ label: 'Mesa' }, { label: 'Balcão' }, { label: 'Viagem' }]}
-              activeIndex={modoConsumo === 'mesa' ? 0 : modoConsumo === 'balcao' ? 1 : 2}
-              onChange={(indice) => setModoConsumo(indice === 0 ? 'mesa' : indice === 1 ? 'balcao' : 'viagem')}
-            />
+            {modosPublicos.length > 1 && (
+              <SegmentedControl
+                aria-label="Tipo de atendimento"
+                items={modosPublicos.map((modo) => ({ label: ROTULO_MODO[modo] }))}
+                activeIndex={modosPublicos.indexOf(modoEfetivo)}
+                onChange={(indice) => setModoConsumo(modosPublicos[indice])}
+              />
+            )}
 
-            {modoConsumo === 'mesa' && (
+            {modoEfetivo === 'mesa' && (
               <Input
                 value={mesa}
                 onChange={(e) => setMesa(e.target.value)}

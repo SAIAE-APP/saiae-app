@@ -269,8 +269,9 @@ export function PainelRelatorio({
     (chave) => atual.divisaoPorMetodo[chave].quantidade > 0,
   )
 
-  const { viagem, mesaComNumero, mesaSemNumero } = atual.divisaoPorConsumo
-  const temDadosDeConsumo = viagem.quantidade + mesaComNumero.quantidade + mesaSemNumero.quantidade > 0
+  const { retirada, entrega, mesaComNumero, mesaSemNumero, taxaEntrega } = atual.divisaoPorConsumo
+  const temDadosDeConsumo =
+    retirada.quantidade + entrega.quantidade + mesaComNumero.quantidade + mesaSemNumero.quantidade > 0
 
   const { cancelados, entregaDireta, itensSemPreco, itensRemovidos } = atual.pontosAtencao
   const mostraEntregaDireta = periodoDeUmDiaSo
@@ -388,7 +389,7 @@ export function PainelRelatorio({
       )}
 
       {temDadosDeConsumo && (
-        <SecaoRelatorio titulo="Mesa vs Viagem" icone="table_restaurant">
+        <SecaoRelatorio titulo="Tipo de atendimento" icone="table_restaurant">
           <ListaBarras
             itens={[
               {
@@ -404,13 +405,27 @@ export function PainelRelatorio({
                 rotuloValor: `${mesaSemNumero.quantidade} comanda${mesaSemNumero.quantidade === 1 ? '' : 's'}`,
               },
               {
-                chave: 'viagem',
-                rotulo: 'Viagem',
-                valor: viagem.valor,
-                rotuloValor: `${viagem.quantidade} comanda${viagem.quantidade === 1 ? '' : 's'}`,
+                chave: 'retirada',
+                rotulo: 'Retirada',
+                valor: retirada.valor,
+                rotuloValor: `${retirada.quantidade} comanda${retirada.quantidade === 1 ? '' : 's'}`,
+              },
+              {
+                chave: 'entrega',
+                rotulo: 'Entrega',
+                valor: entrega.valor,
+                rotuloValor: `${entrega.quantidade} comanda${entrega.quantidade === 1 ? '' : 's'}`,
               },
             ]}
           />
+          {taxaEntrega.quantidade > 0 && (
+            <p className="mt-3 text-sm text-mesa-text-secondary">
+              Taxas de entrega cobradas:{' '}
+              <strong className="font-mesa-display text-mesa-text-primary">{formatarPrecoBR(taxaEntrega.valor)}</strong>{' '}
+              em {taxaEntrega.quantidade} entrega{taxaEntrega.quantidade === 1 ? '' : 's'}. Ficam à parte: não
+              entram nos valores acima.
+            </p>
+          )}
         </SecaoRelatorio>
       )}
 

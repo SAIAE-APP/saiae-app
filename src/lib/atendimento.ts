@@ -36,6 +36,16 @@ export function modosAtivos(barraca: Pick<Barraca, 'modos_atendimento'> | null):
   return ativos.length > 0 ? ativos : MODOS_PADRAO
 }
 
+/** Modos que o cardápio digital público pode oferecer: os ligados pela barraca,
+ * menos Entrega (o cardápio não coleta endereço nem taxa). Resposta antiga da
+ * função (sem o campo), ou barraca que só tem Entrega ligada, cai no padrão
+ * em vez de deixar o cliente sem opção. */
+export function modosDoCardapioPublico(salvos: TipoAtendimento[] | null | undefined): TipoAtendimento[] {
+  if (!salvos || salvos.length === 0) return MODOS_PADRAO
+  const oferecidos = TODOS_OS_MODOS.filter((m) => m !== 'entrega' && salvos.includes(m))
+  return oferecidos.length > 0 ? oferecidos : MODOS_PADRAO
+}
+
 /** `pedidos.viagem` = "não consome no local" (Retirada ou Entrega). */
 export function ehViagem(tipo: TipoAtendimento): boolean {
   return tipo === 'retirada' || tipo === 'entrega'

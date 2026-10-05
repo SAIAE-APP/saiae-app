@@ -1,5 +1,6 @@
 import { deslocarDias, hojeISO } from './datas'
 import type { MetodoPagamento } from './metodoPagamento'
+import { tipoDoPedido } from './atendimento'
 import type { PedidoComItens } from '../types/database'
 
 export type MetodoOuNaoInformado = MetodoPagamento | 'nao_informado'
@@ -189,13 +190,18 @@ export function calcularMaisVendidos(pedidos: PedidoComItens[]): ItemMaisVendido
 export type DivisaoConsumo = { quantidade: number; valor: number; percentual: number }
 
 export type DivisaoPorConsumo = {
-  viagem: DivisaoConsumo
+  retirada: DivisaoConsumo
+  entrega: DivisaoConsumo
   mesaComNumero: DivisaoConsumo
   mesaSemNumero: DivisaoConsumo
+  /** Taxas de entrega cobradas: ficam À PARTE, nunca somadas aos valores dos
+   * buckets acima nem ao faturamento dos itens (a taxa também fica fora da NFC-e). */
+  taxaEntrega: { quantidade: number; valor: number }
 }
 
-/** Viagem sempre desabilita o campo mesa (regra de produto), então "mesa
- * sem número" só existe pra quem ficou no local mas não preencheu a mesa. */
+/** Retirada e Entrega são as duas formas de "não consome no local" (viagem).
+ * Viagem sempre desabilita o campo mesa (regra de produto), então "mesa sem
+ * número" só existe pra quem ficou no local mas não preencheu a mesa. */
 export function calcularDivisaoPorConsumo(pedidos: PedidoComItens[]): DivisaoPorConsumo {
   const validos = naoCancelados(pedidos)
   const totalGeral = validos.reduce((soma, p) => soma + calcularTotalPedido(p), 0)
@@ -210,10 +216,17 @@ export function calcularDivisaoPorConsumo(pedidos: PedidoComItens[]): DivisaoPor
     }
   }
 
+  const comTaxa = validos.filter((p) => (p.taxa_entrega_centavos ?? 0) > 0)
+
   return {
-    viagem: bucket((p) => p.viagem),
+    retirada: bucket((p) => p.viagem && tipoDoPedido(p) !== 'entrega'),
+    entrega: bucket((p) => tipoDoPedido(p) === 'entrega'),
     mesaComNumero: bucket((p) => !p.viagem && !!p.mesa),
     mesaSemNumero: bucket((p) => !p.viagem && !p.mesa),
+    taxaEntrega: {
+      quantidade: comTaxa.length,
+      valor: comTaxa.reduce((soma, p) => soma + (p.taxa_entrega_centavos ?? 0), 0),
+    },
   }
 }
 
