@@ -137,7 +137,14 @@ export function notificarCriacaoPedido(idOperacao: string, resultado: ResultadoC
  * senha real do servidor) — usado pela impressão automática da comanda, que
  * precisa da senha e dos itens e não pode depender de tela montada.
  */
-export type PedidoCriadoLocal = { idOperacao: string; pedidoId: string; senha: number; payload: Record<string, unknown> }
+export type PedidoCriadoLocal = {
+  idOperacao: string
+  pedidoId: string
+  senha: number
+  payload: Record<string, unknown>
+  /** Quando o operador enviou o pedido (op.criadoEm), não quando a fila sincronizou. */
+  enviadoEm: string
+}
 const ouvintesPedidoCriado = new Set<(pedido: PedidoCriadoLocal) => void>()
 
 export function aoCriarPedidoLocal(ouvinte: (pedido: PedidoCriadoLocal) => void): () => void {
