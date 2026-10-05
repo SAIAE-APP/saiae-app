@@ -36,3 +36,40 @@ index 14f9f02..6787c24 100644
 +        // sem BLUETOOTH_SCAN: segue sem cancelar a descoberta
 +    }
 +}
+diff --git a/node_modules/@devlas/capacitor-thermal-printer/android/src/main/java/app/devlas/plugins/thermalprinter/ThermalPrinterPlugin.kt b/node_modules/@devlas/capacitor-thermal-printer/android/src/main/java/app/devlas/plugins/thermalprinter/ThermalPrinterPlugin.kt
+index f00d5fa..9f1b6da 100644
+--- a/node_modules/@devlas/capacitor-thermal-printer/android/src/main/java/app/devlas/plugins/thermalprinter/ThermalPrinterPlugin.kt
++++ b/node_modules/@devlas/capacitor-thermal-printer/android/src/main/java/app/devlas/plugins/thermalprinter/ThermalPrinterPlugin.kt
+@@ -154,6 +154,14 @@ class ThermalPrinterPlugin : Plugin() {
+         }
+     }
+ 
++    /** Patch Sai aê: BLUETOOTH_CONNECT só existe a partir do Android 12 (API 31).
++     * Em API <= 30 o checkSelfPermission dela volta DENIED e o pedido em tempo de
++     * execução nunca concede, então list/print falhavam com permission_denied.
++     * Ali basta BLUETOOTH/BLUETOOTH_ADMIN do manifest (concedidas na instalação). */
++    private fun bluetoothConcedido(): Boolean =
++        Build.VERSION.SDK_INT < Build.VERSION_CODES.S ||
++            getPermissionState("bluetooth") == PermissionState.GRANTED
++
+     // ── list ─────────────────────────────────────────────────────────────
+ 
+     @PluginMethod
+@@ -161,7 +169,7 @@ class ThermalPrinterPlugin : Plugin() {
+         when (call.getString("transport")) {
+             "usb" -> call.resolve(JSObject().put("devices", usb.list()))
+             "bluetooth" -> {
+-                if (getPermissionState("bluetooth") != PermissionState.GRANTED) {
++                if (!bluetoothConcedido()) {
+                     requestPermissionForAlias("bluetooth", call, "bluetoothListCallback")
+                     return
+                 }
+@@ -200,7 +208,7 @@ class ThermalPrinterPlugin : Plugin() {
+                 onError = { code, msg -> call.reject(msg, code) },
+             )
+             "bluetooth" -> {
+-                if (getPermissionState("bluetooth") == PermissionState.GRANTED) {
++                if (bluetoothConcedido()) {
+                     call.resolve(JSObject().put("granted", true))
+                 } else {
+                     requestPermissionForAlias("bluetooth", call, "bluetoothPermissionCallback")

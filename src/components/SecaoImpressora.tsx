@@ -71,8 +71,8 @@ function BottomSheetEscolherImpressora({
       const lista = await dispositivosPareados()
       setDispositivos(lista)
       setBuscou(true)
-    } catch {
-      setErro('Não foi possível listar os dispositivos pareados. Confirme a permissão de Bluetooth do app.')
+    } catch (e) {
+      setErro(`Não foi possível listar os dispositivos pareados. ${descreverErroImpressao(e)}`)
     }
     setBuscando(false)
   }

@@ -32,4 +32,16 @@
     <!-- Permissions -->
 
     <uses-permission android:name="android.permission.INTERNET" />
+
+    <!-- Impressora térmica Bluetooth (SPP): só usa dispositivos JÁ pareados no
+         sistema, sem descoberta — não precisa de BLUETOOTH_SCAN nem de
+         localização em nenhuma versão.
+         Android 11 (API 30) ou menor: BLUETOOTH/BLUETOOTH_ADMIN, permissões
+         normais concedidas na instalação (sem pedido em tempo de execução).
+         Android 12+ (API 31): BLUETOOTH_CONNECT, pedida em tempo de execução
+         pelo plugin. O plugin já declara as três; repetido aqui pra não
+         depender de uma atualização dele. -->
+    <uses-permission android:name="android.permission.BLUETOOTH" android:maxSdkVersion="30" />
+    <uses-permission android:name="android.permission.BLUETOOTH_ADMIN" android:maxSdkVersion="30" />
+    <uses-permission android:name="android.permission.BLUETOOTH_CONNECT" />
 </manifest>
