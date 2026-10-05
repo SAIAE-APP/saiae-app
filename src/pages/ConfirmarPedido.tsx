@@ -6,6 +6,7 @@ import { classesBotaoIcone } from '../lib/estiloBotaoIcone'
 import { useTheme } from '../hooks/useTheme'
 import { enfileirar } from '../lib/fila'
 import { formatarPrecoBR } from '../lib/preco'
+import { ICONE_MODO, ROTULO_MODO } from '../lib/atendimento'
 import type {
   EntregaDiretaPorItem,
   EstadoParaConfirmar,
@@ -140,7 +141,7 @@ export function ConfirmarPedido() {
     return null
   }
 
-  const { carrinho, itens, mesa, viagem } = estado
+  const { carrinho, itens, mesa, viagem, tipoAtendimento } = estado
   const observacaoPorItem = estado.observacaoPorItem ?? {}
 
   const linhas = Object.entries(carrinho)
@@ -168,6 +169,7 @@ export function ConfirmarPedido() {
         carrinho,
         mesa,
         viagem,
+        tipoAtendimento,
         observacao,
         entregaDireta,
         observacaoPorItem,
@@ -206,6 +208,7 @@ export function ConfirmarPedido() {
       p_barraca_id: barraca.id,
       p_mesa: viagem ? null : mesa.trim() || null,
       p_viagem: viagem,
+      p_tipo_atendimento: tipoAtendimento,
       p_observacao: observacao.trim() || null,
       p_client_uuid: clientUuidRef.current,
       p_metodo_pagamento: metodoSelecionado,
@@ -286,10 +289,12 @@ export function ConfirmarPedido() {
           className="mt-3"
         />
 
-        {(mesa.trim() || viagem) && (
+        {(mesa.trim() || tipoAtendimento === 'retirada' || tipoAtendimento === 'entrega') && (
           <Card className="mt-4">
-            {viagem ? (
-              <LinhaMeta icone="takeout_dining" label="Viagem" valor="sim" />
+            {tipoAtendimento === 'entrega' ? (
+              <LinhaMeta icone={ICONE_MODO.entrega} label="Atendimento" valor={ROTULO_MODO.entrega} />
+            ) : tipoAtendimento === 'retirada' ? (
+              <LinhaMeta icone={ICONE_MODO.retirada} label="Atendimento" valor={ROTULO_MODO.retirada} />
             ) : mesa.trim() ? (
               <LinhaMeta icone="tag" label="Mesa" valor={mesa.trim()} />
             ) : null}

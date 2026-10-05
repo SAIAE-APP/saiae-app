@@ -9,7 +9,8 @@ import {
   impressoraSuportada,
   type DadosComanda,
 } from '../lib/impressoraTermica'
-import type { Barraca, Pedido } from '../types/database'
+import { tipoDoPedido } from '../lib/atendimento'
+import type { Barraca, Pedido, TipoAtendimento } from '../types/database'
 import type { PedidoComItens } from './useRealtimePedidos'
 
 const PREFIXO_IMPRESSA = 'mesaagil:comanda-impressa:'
@@ -77,6 +78,7 @@ export function dadosComandaDoPedido(
     criadoEm: pedido.criado_em,
     mesa: pedido.mesa,
     viagem: pedido.viagem,
+    tipo: tipoDoPedido(pedido),
     observacao: pedido.observacao,
     metodoPagamento: pedido.metodo_pagamento,
     itens: pedido.itens_do_pedido
@@ -226,6 +228,7 @@ export function useImpressaoAutomatica(barraca: Barraca | null) {
         criadoEm: new Date().toISOString(),
         mesa: (p.p_mesa as string | null) ?? null,
         viagem: Boolean(p.p_viagem),
+        tipo: (p.p_tipo_atendimento as TipoAtendimento | null | undefined) ?? null,
         observacao: (p.p_observacao as string | null) ?? null,
         metodoPagamento: (p.p_metodo_pagamento as string | null) ?? null,
         itens: itens

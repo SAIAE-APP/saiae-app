@@ -5,6 +5,7 @@ import { useBarracaAtual } from '../layouts/contextoBarraca'
 import { useTheme } from '../hooks/useTheme'
 import { MOTIVOS_CANCELAMENTO } from '../lib/cancelamento'
 import { formatarPrecoBR } from '../lib/preco'
+import { rotuloAtendimento } from '../lib/atendimento'
 import { corMetodo, humanizarMetodo, METODOS_DISPONIVEIS } from '../lib/metodoPagamento'
 import { hojeISO } from '../lib/datas'
 import { calcularIntervalosRelatorio, calcularTotalPedido, ehEntregaDireta } from '../lib/relatorio'
@@ -233,7 +234,7 @@ function CardHistorico({
           </p>
           {(pedido.viagem || pedido.mesa) && (
             <p className="mt-1 text-sm text-mesa-text-secondary">
-              {pedido.viagem ? 'Viagem' : `Mesa ${pedido.mesa}`}
+              {rotuloAtendimento(pedido)}
             </p>
           )}
         </div>

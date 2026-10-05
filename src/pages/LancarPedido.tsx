@@ -28,9 +28,8 @@ import { Icone } from '../components/ui/Icone'
 import { Input } from '../components/ui/Input'
 import { SegmentedControl } from '../components/ui/SegmentedControl'
 import { Textarea } from '../components/ui/Textarea'
-import type { Categoria, Item } from '../types/database'
-
-type ModoConsumo = 'mesa' | 'balcao' | 'viagem'
+import { ROTULO_MODO, ehViagem, modoInicial, modosAtivos, tipoDoPedido } from '../lib/atendimento'
+import type { Categoria, Item, TipoAtendimento } from '../types/database'
 
 type ModoVisualizacaoCardapio = 'lista' | 'grade'
 const CHAVE_MODO_VISUALIZACAO = 'mesa-modo-visualizacao-cardapio'
@@ -369,17 +368,24 @@ export function LancarPedido() {
 
   const [carrinho, setCarrinho] = useState<Carrinho>(() => edicaoRecebida?.carrinho ?? {})
   const [mesa, setMesa] = useState(() => edicaoRecebida?.mesa ?? '')
-  const [viagem, setViagem] = useState(() => edicaoRecebida?.viagem ?? false)
-  // Só decide qual aba mostra marcada — mesa/viagem continuam sendo os
-  // campos de verdade que vão pro pedido. "Balcão" e "Mesa vazia" resultam
-  // no mesmo dado (mesa=null, viagem=false); essa aba só existe pra deixar
-  // a intenção explícita em vez de o operador ter que "adivinhar" deixando
-  // o campo em branco.
-  const [modoConsumo, setModoConsumo] = useState<ModoConsumo>(() => {
-    if (edicaoRecebida?.viagem) return 'viagem'
-    if (edicaoRecebida?.mesa) return 'mesa'
-    return 'balcao'
+  // Modos que a barraca liga em Ajustes (ordem fixa). Um só = já vem
+  // selecionado e o seletor nem aparece.
+  const modosDisponiveis = useMemo(() => modosAtivos(barraca), [barraca])
+  // Modo escolhido: "Balcão" e "Mesa vazia" resultam no mesmo par mesa/viagem
+  // (null/false); o tipo existe pra deixar a intenção explícita e separar
+  // Retirada de Entrega. `viagem` (não consome no local) é derivado dele.
+  const [tipoAtendimento, setTipoAtendimento] = useState<TipoAtendimento>(() => {
+    const salvo =
+      edicaoRecebida?.tipoAtendimento ??
+      (edicaoRecebida
+        ? tipoDoPedido({ tipo_atendimento: null, mesa: edicaoRecebida.mesa, viagem: edicaoRecebida.viagem })
+        : null)
+    return salvo && modosDisponiveis.includes(salvo) ? salvo : modoInicial(modosDisponiveis)
   })
+  // Se a barraca desligar o modo escolhido (ex.: Ajustes mudou em outro
+  // aparelho), cai pro modo inicial em vez de lançar com um modo que não existe.
+  const tipoEfetivo = modosDisponiveis.includes(tipoAtendimento) ? tipoAtendimento : modoInicial(modosDisponiveis)
+  const viagem = ehViagem(tipoEfetivo)
   const [buscaItem, setBuscaItem] = useState('')
   const [modoVisualizacao, setModoVisualizacao] = useState<ModoVisualizacaoCardapio>(lerModoVisualizacaoSalvo)
   const [idsMaisPedidos, setIdsMaisPedidos] = useState<string[]>([])
@@ -491,14 +497,8 @@ export function LancarPedido() {
     return mapa
   }, [itens])
 
-  const itensMaisPedidos = useMemo(
-    () => idsMaisPedidos.map((id) => itens.find((i) => i.id === id)).filter((i): i is Item => Boolean(i)),
-    [idsMaisPedidos, itens],
-  )
-
-  // Chips exibidos na fileira: "Mais Pedidos" (só se tiver histórico de
-  // pedido) + uma por categoria com item ativo + "Outros" se sobrar item
-  // sem categoria.
+  // Chips exibidos na fileira: "Todos" + uma por categoria com item ativo +
+  // "Outros" se sobrar item sem categoria.
   const chipsCategoria = useMemo(() => {
     const chips: { id: string; nome: string; quantidade: number }[] = []
     for (const categoria of categorias) {
@@ -510,19 +510,15 @@ export function LancarPedido() {
     return chips
   }, [categorias, itensPorCategoria])
 
-  // Chip padrão antes do operador escolher algo: prioriza "Mais Pedidos" se
-  // tiver histórico, senão a primeira categoria com item. Derivado direto do
-  // dado em vez de sincronizado por efeito — `filtroAtivo` só existe de fato
-  // depois que o operador clica em algum chip.
-  const filtroEfetivo =
-    filtroAtivo ?? (itensMaisPedidos.length > 0 ? 'mais-pedidos' : (chipsCategoria[0]?.id ?? null))
+  // Chip padrão antes do operador escolher algo: a primeira categoria com
+  // item. Derivado direto do dado em vez de sincronizado por efeito —
+  // `filtroAtivo` só existe de fato depois que o operador clica em algum chip.
+  const filtroEfetivo = filtroAtivo ?? chipsCategoria[0]?.id ?? null
 
   const nomeSecaoAtiva =
     filtroEfetivo === 'todos'
       ? 'Todos os itens'
-      : filtroEfetivo === 'mais-pedidos'
-        ? 'Mais pedidos'
-        : (chipsCategoria.find((c) => c.id === filtroEfetivo)?.nome ?? null)
+      : (chipsCategoria.find((c) => c.id === filtroEfetivo)?.nome ?? null)
 
   const itensFiltrados = useMemo(() => {
     const termo = buscaItem.trim().toLowerCase()
@@ -530,10 +526,25 @@ export function LancarPedido() {
     // um prato quer achar ele em qualquer categoria, não só na aberta.
     if (termo) return itens.filter((item) => item.nome.toLowerCase().includes(termo))
     if (filtroEfetivo === 'todos') return itens
-    if (filtroEfetivo === 'mais-pedidos') return itensMaisPedidos
     if (filtroEfetivo) return itensPorCategoria.get(filtroEfetivo) ?? []
     return itens
-  }, [itens, buscaItem, filtroEfetivo, itensMaisPedidos, itensPorCategoria])
+  }, [itens, buscaItem, filtroEfetivo, itensPorCategoria])
+
+  // Blocos que a lista renderiza. "Todos" (sem busca) agrupa por categoria,
+  // com o nome como cabeçalho de seção, na ordem das chips; qualquer outro
+  // filtro (ou busca) é um bloco só, sem cabeçalho.
+  const gruposExibidos = useMemo(() => {
+    const grupos: { id: string; titulo: string | null; itens: Item[] }[] = []
+    if (filtroEfetivo === 'todos' && !buscaItem.trim()) {
+      for (const chip of chipsCategoria) {
+        const lista = itensPorCategoria.get(chip.id)
+        if (lista && lista.length > 0) grupos.push({ id: chip.id, titulo: chip.nome, itens: lista })
+      }
+    } else if (itensFiltrados.length > 0) {
+      grupos.push({ id: 'unico', titulo: null, itens: itensFiltrados })
+    }
+    return grupos
+  }, [filtroEfetivo, buscaItem, chipsCategoria, itensPorCategoria, itensFiltrados])
 
   useEffect(() => {
     if (!senha || senha.valor !== null) return
@@ -597,16 +608,14 @@ export function LancarPedido() {
   function limparFormulario() {
     setCarrinho({})
     setMesa('')
-    setViagem(false)
-    setModoConsumo('balcao')
+    setTipoAtendimento(modoInicial(modosDisponiveis))
     setObservacao('')
     setObservacaoPorItem({})
   }
 
-  function selecionarModo(modo: ModoConsumo) {
-    setModoConsumo(modo)
-    setViagem(modo === 'viagem')
-    if (modo === 'balcao') setMesa('')
+  function selecionarModo(modo: TipoAtendimento) {
+    setTipoAtendimento(modo)
+    if (modo !== 'mesa') setMesa('')
   }
 
   function alternarModoVisualizacao() {
@@ -638,8 +647,9 @@ export function LancarPedido() {
       state: {
         carrinho,
         itens,
-        mesa,
+        mesa: tipoEfetivo === 'mesa' ? mesa : '',
         viagem,
+        tipoAtendimento: tipoEfetivo,
         observacao,
         entregaDireta: entregaDiretaHerdada,
         observacaoPorItem,
@@ -770,16 +780,18 @@ export function LancarPedido() {
           aria-label="Buscar item do cardápio"
         />
 
-        <div className="mt-4">
-          <SegmentedControl
-            aria-label="Mesa, balcão ou viagem"
-            items={[{ label: 'Mesa' }, { label: 'Balcão' }, { label: 'Viagem' }]}
-            activeIndex={modoConsumo === 'mesa' ? 0 : modoConsumo === 'balcao' ? 1 : 2}
-            onChange={(indice) => selecionarModo(indice === 0 ? 'mesa' : indice === 1 ? 'balcao' : 'viagem')}
-          />
-        </div>
+        {modosDisponiveis.length > 1 && (
+          <div className="mt-4">
+            <SegmentedControl
+              aria-label="Tipo de atendimento"
+              items={modosDisponiveis.map((modo) => ({ label: ROTULO_MODO[modo] }))}
+              activeIndex={modosDisponiveis.indexOf(tipoEfetivo)}
+              onChange={(indice) => selecionarModo(modosDisponiveis[indice])}
+            />
+          </div>
+        )}
 
-        {modoConsumo === 'mesa' && (
+        {tipoEfetivo === 'mesa' && (
           <Input
             value={mesa}
             onChange={(e) => setMesa(e.target.value)}
@@ -828,7 +840,7 @@ export function LancarPedido() {
             !erroItens &&
             itens.length > 0 &&
             !buscaItem.trim() &&
-            (itensMaisPedidos.length > 0 || chipsCategoria.length > 0) && (
+            chipsCategoria.length > 0 && (
             <div
               ref={chipsRef}
               onPointerDown={aoPressionarChips}
@@ -846,17 +858,6 @@ export function LancarPedido() {
               >
                 Todos
               </Chip>
-              {itensMaisPedidos.length > 0 && (
-                <Chip
-                  variant={filtroEfetivo === 'mais-pedidos' ? 'teal' : 'plain'}
-                  checked={filtroEfetivo === 'mais-pedidos'}
-                  onClick={() => setFiltroAtivo('mais-pedidos')}
-                  className="shrink-0"
-                >
-                  <Icone nome="star" size={14} />
-                  Mais Pedidos
-                </Chip>
-              )}
               {chipsCategoria.map((chip) => (
                 <Chip
                   key={chip.id}
@@ -903,45 +904,55 @@ export function LancarPedido() {
             </p>
           )}
 
-          {!carregandoItens && !erroItens && itensFiltrados.length > 0 && modoVisualizacao === 'lista' && (
-            <div className="flex flex-col gap-3">
-              {itensFiltrados.map((item) => {
-                const indicePopular = idsMaisPedidos.indexOf(item.id)
-                return (
-                  <CardItemCardapio
-                    key={item.id}
-                    item={item}
-                    quantidade={carrinho[item.id] ?? 0}
-                    observacao={observacaoPorItem[item.id] ?? ''}
-                    posicaoPopular={indicePopular === -1 ? null : indicePopular}
-                    onIncrementar={() => incrementar(item.id)}
-                    onDecrementar={() => decrementar(item.id)}
-                    onAbrirObservacao={() => setItemObservacaoAberta(item)}
-                  />
-                )
-              })}
-            </div>
-          )}
-
-          {!carregandoItens && !erroItens && itensFiltrados.length > 0 && modoVisualizacao === 'grade' && (
-            <div className="grid grid-cols-2 gap-3 md:grid-cols-3 md:gap-4 xl:grid-cols-4">
-              {itensFiltrados.map((item) => {
-                const indicePopular = idsMaisPedidos.indexOf(item.id)
-                return (
-                  <CardItemCardapioGrade
-                    key={item.id}
-                    item={item}
-                    quantidade={carrinho[item.id] ?? 0}
-                    observacao={observacaoPorItem[item.id] ?? ''}
-                    posicaoPopular={indicePopular === -1 ? null : indicePopular}
-                    onIncrementar={() => incrementar(item.id)}
-                    onDecrementar={() => decrementar(item.id)}
-                    onAbrirObservacao={() => setItemObservacaoAberta(item)}
-                  />
-                )
-              })}
-            </div>
-          )}
+          {!carregandoItens &&
+            !erroItens &&
+            gruposExibidos.map((grupo) => (
+              <section key={grupo.id} className="mb-6 last:mb-0">
+                {grupo.titulo && (
+                  <h3 className="mb-3 flex items-center gap-1.5 font-mesa-sans text-sm font-bold text-mesa-text-primary">
+                    {grupo.titulo}
+                    <span className="text-xs font-medium text-mesa-text-tertiary">· {grupo.itens.length}</span>
+                  </h3>
+                )}
+                {modoVisualizacao === 'lista' ? (
+                  <div className="flex flex-col gap-3">
+                    {grupo.itens.map((item) => {
+                      const indicePopular = idsMaisPedidos.indexOf(item.id)
+                      return (
+                        <CardItemCardapio
+                          key={item.id}
+                          item={item}
+                          quantidade={carrinho[item.id] ?? 0}
+                          observacao={observacaoPorItem[item.id] ?? ''}
+                          posicaoPopular={indicePopular === -1 ? null : indicePopular}
+                          onIncrementar={() => incrementar(item.id)}
+                          onDecrementar={() => decrementar(item.id)}
+                          onAbrirObservacao={() => setItemObservacaoAberta(item)}
+                        />
+                      )
+                    })}
+                  </div>
+                ) : (
+                  <div className="grid grid-cols-2 gap-3 md:grid-cols-3 md:gap-4 xl:grid-cols-4">
+                    {grupo.itens.map((item) => {
+                      const indicePopular = idsMaisPedidos.indexOf(item.id)
+                      return (
+                        <CardItemCardapioGrade
+                          key={item.id}
+                          item={item}
+                          quantidade={carrinho[item.id] ?? 0}
+                          observacao={observacaoPorItem[item.id] ?? ''}
+                          posicaoPopular={indicePopular === -1 ? null : indicePopular}
+                          onIncrementar={() => incrementar(item.id)}
+                          onDecrementar={() => decrementar(item.id)}
+                          onAbrirObservacao={() => setItemObservacaoAberta(item)}
+                        />
+                      )
+                    })}
+                  </div>
+                )}
+              </section>
+            ))}
         </div>
       </div>
 

@@ -4,6 +4,7 @@ import clsx from 'clsx'
 import { useBarracaAtual } from '../layouts/contextoBarraca'
 import { usePedidosAtual } from '../layouts/contextoPedidos'
 import { tocarSomPedidoNaChamada } from '../lib/sons'
+import { rotuloAtendimento } from '../lib/atendimento'
 import { Icone } from '../components/ui/Icone'
 
 const OPACIDADES_ANTERIORES = [0.7, 0.5, 0.3]
@@ -106,7 +107,7 @@ export function TelaChamada() {
             </div>
             {hero.viagem && (
               <span className="text-xs font-bold tracking-widest text-mesa-neutral-400">
-                VIAGEM
+                {rotuloAtendimento(hero).toUpperCase()}
               </span>
             )}
             <span className="text-2xl font-bold text-white">Pode retirar!</span>

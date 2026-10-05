@@ -4,6 +4,7 @@ import clsx from 'clsx'
 import { useBarracaAtual, useSincronizacaoAtual } from '../layouts/contextoBarraca'
 import { useTheme } from '../hooks/useTheme'
 import { turnoAtual } from '../lib/datas'
+import { iconeAtendimento, rotuloAtendimento } from '../lib/atendimento'
 import { usePedidosAtual } from '../layouts/contextoPedidos'
 import { enfileirar } from '../lib/fila'
 import { classesBotaoIcone } from '../lib/estiloBotaoIcone'
@@ -200,8 +201,8 @@ function CardPedido({
     }
   }
 
-  const iconeTipo = pedido.viagem ? 'takeout_dining' : 'storefront'
-  const rotuloTipo = pedido.viagem ? 'Viagem' : pedido.mesa ? `Mesa ${pedido.mesa}` : 'Balcão'
+  const iconeTipo = iconeAtendimento(pedido)
+  const rotuloTipo = rotuloAtendimento(pedido)
 
   return (
     // Card novo (IDV "Sai aê", redesign_ux_ui_app/saiae/DESIGN.md): "Card
@@ -425,7 +426,7 @@ function SecaoDespachados({ pedidos }: { pedidos: PedidoComItens[] }) {
                 <span className="font-mesa-display font-bold text-mesa-text-primary">
                   #{pedido.senha}
                 </span>{' '}
-                {pedido.viagem ? 'Viagem' : pedido.mesa ? `Mesa ${pedido.mesa}` : 'Balcão'}
+                {rotuloAtendimento(pedido)}
                 {resumoItens && ` · ${resumoItens}`}
               </span>
               <span className="shrink-0 font-mesa-display font-semibold text-xs text-mesa-text-tertiary">

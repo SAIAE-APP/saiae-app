@@ -1,4 +1,4 @@
-import type { Item } from '../types/database'
+import type { Item, TipoAtendimento } from '../types/database'
 
 /**
  * Contrato de estado passado via `navigate(..., { state })` entre
@@ -17,7 +17,9 @@ export type EstadoParaConfirmar = {
   carrinho: Carrinho
   itens: Item[]
   mesa: string
+  /** "Não consome no local" (Retirada ou Entrega) — derivado de `tipoAtendimento`. */
   viagem: boolean
+  tipoAtendimento: TipoAtendimento
   observacao: string
   entregaDireta?: EntregaDiretaPorItem
   observacaoPorItem?: ObservacaoPorItem
@@ -28,6 +30,7 @@ export type EstadoParaEditar = {
   carrinho: Carrinho
   mesa: string
   viagem: boolean
+  tipoAtendimento?: TipoAtendimento
   observacao: string
   entregaDireta?: EntregaDiretaPorItem
   observacaoPorItem?: ObservacaoPorItem

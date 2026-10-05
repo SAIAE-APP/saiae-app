@@ -87,7 +87,24 @@ impressoras só-BLE não são suportadas.
 
 ## Regras de produto
 - Senha sequencial por pedido, reinicia todo dia
-- Mesa é campo opcional; toggle "Viagem" desabilita a mesa
+- Tipo de atendimento (2026-10-04, backlog PDV Sprint 2): Mesa, Balcão,
+  Retirada (antigo "Viagem") e Entrega, ligados/desligados por barraca em
+  Ajustes > Cardápio & Operação (`barracas.modos_atendimento`, ao menos um
+  ativo, padrão Mesa+Balcão+Retirada = o que existia). Lançar Pedido mostra
+  só os ativos (um só = sem seletor). `pedidos.tipo_atendimento` é o dado
+  novo; `pedidos.viagem` continua e significa "não consome no local"
+  (Retirada OU Entrega), então relatórios/Cozinha antigos seguem valendo —
+  Relatório e filtro do Histórico ainda agrupam Retirada+Entrega como
+  "Viagem". `tipo_atendimento` NULL (pedido antigo, cardápio digital) é
+  derivado de mesa/viagem (`tipoDoPedido`, `src/lib/atendimento.ts`).
+  Comanda impressa traz `*** RETIRADA ***`/`*** ENTREGA ***` em 2x logo
+  abaixo da senha. Mesa só pede número no modo Mesa. A migration
+  `20261004120000_modos_atendimento.sql` PRECISA estar aplicada antes do
+  deploy do app: o front manda `p_tipo_atendimento` no `criar_pedido`.
+  Entrega ainda não coleta endereço/taxa/WhatsApp (Sprint 3).
+- Lançar Pedido: chip "Mais pedidos" removido (2026-10-04); "Todos" agrupa os
+  itens por categoria com o nome como cabeçalho de seção. O selo "Top N"
+  nos cards continua.
 - Observação existe em DOIS níveis (regra mudou em 2026-09-18,
   decisão do dono do produto): `pedidos.observacao` é o recado geral
   do pedido inteiro (ex.: "cliente com pressa"), e

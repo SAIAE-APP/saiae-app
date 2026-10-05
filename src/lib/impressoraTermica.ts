@@ -13,7 +13,8 @@
 import { Capacitor } from '@capacitor/core'
 import { ThermalPrinter, bytesToBase64, type PrinterDevice } from '@devlas/capacitor-thermal-printer'
 import ReceiptPrinterEncoder from '@point-of-sale/receipt-printer-encoder'
-import type { Barraca, LarguraPapel, PedidoComItens } from '../types/database'
+import type { Barraca, LarguraPapel, PedidoComItens, TipoAtendimento } from '../types/database'
+import { faixaImpressao, tipoDoPedido } from './atendimento'
 import { formatarPrecoBR } from './preco'
 import { humanizarMetodo } from './metodoPagamento'
 
@@ -262,6 +263,8 @@ export type DadosComanda = {
   criadoEm: string
   mesa: string | null
   viagem: boolean
+  /** Opcional: sem ele deriva de mesa/viagem (pedido antigo, cardápio digital). */
+  tipo?: TipoAtendimento | null
   observacao: string | null
   metodoPagamento?: string | null
   itens: { nome: string; quantidade: number; observacao: string | null; precoCentavos: number }[]
@@ -301,19 +304,25 @@ export function montarComanda(dados: DadosComanda, largura: LarguraPapel): Uint8
     .invert(false)
     .newline()
     .align('center')
-    .bold(true)
-    .line(semAcento(dados.nomeBarraca))
-    .bold(false)
+
+  // Retirada x Entrega em destaque logo abaixo da senha: 2x de largura e
+  // altura, "*** RETIRADA ***" (16 colunas) ainda cabe nas 32 do papel 58mm.
+  const tipo = dados.tipo ?? tipoDoPedido({ tipo_atendimento: null, mesa: dados.mesa, viagem: dados.viagem })
+  const faixa = faixaImpressao(tipo)
+  if (faixa) encoder = encoder.bold(true).size(2, 2).line(faixa).size(1, 1).bold(false).newline()
+
+  encoder = encoder.bold(true).line(semAcento(dados.nomeBarraca)).bold(false)
 
   if (dados.cnpj) encoder = encoder.line(`CNPJ: ${formatarCnpj(dados.cnpj)}`)
 
-  encoder = encoder
-    .line(new Date(dados.criadoEm).toLocaleString('pt-BR'))
-    .bold(true)
-    .line(dados.viagem ? 'VIAGEM' : dados.mesa ? semAcento(`Mesa ${dados.mesa}`) : 'BALCAO')
-    .bold(false)
-    .align('left')
-    .rule()
+  encoder = encoder.line(new Date(dados.criadoEm).toLocaleString('pt-BR'))
+  if (!faixa) {
+    encoder = encoder
+      .bold(true)
+      .line(dados.mesa ? semAcento(`Mesa ${dados.mesa}`) : 'BALCAO')
+      .bold(false)
+  }
+  encoder = encoder.align('left').rule()
 
   const colunasTabela = [{ width: 4 }, { width: colunas - 14 }, { width: 10, align: 'right' as const }]
   encoder = encoder.bold(true).table(colunasTabela, [['QTD', 'DESCRICAO', 'VALOR']]).bold(false).rule()

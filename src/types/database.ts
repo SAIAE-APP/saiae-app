@@ -1,6 +1,7 @@
 export type RegimeTributario = 'simples_nacional' | 'mei'
 export type AmbienteFiscal = 'homologacao' | 'producao'
 export type LarguraPapel = '58mm' | '80mm'
+export type TipoAtendimento = 'mesa' | 'balcao' | 'retirada' | 'entrega'
 
 export type Barraca = {
   id: string
@@ -25,6 +26,8 @@ export type Barraca = {
   pagamento_online_habilitado: boolean
   imagem_capa_url: string | null
   mostrar_horario_pedido: boolean
+  /** Opcional: cache local de antes da migration não tem o campo — usar `modosAtivos()`. */
+  modos_atendimento?: TipoAtendimento[]
 }
 
 export type HorarioFuncionamento = {
@@ -117,7 +120,10 @@ export type Pedido = {
   senha: number
   data_operacao: string
   mesa: string | null
+  /** "Não consome no local": Retirada OU Entrega. */
   viagem: boolean
+  /** NULL em pedido antigo / cardápio digital — derivar com `tipoDoPedido()`. */
+  tipo_atendimento: TipoAtendimento | null
   observacao: string | null
   status: StatusPedido
   criado_em: string

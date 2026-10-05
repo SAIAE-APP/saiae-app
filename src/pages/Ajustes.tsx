@@ -28,6 +28,7 @@ import { SecaoBanners } from '../components/SecaoBanners'
 import { SecaoHorarioFuncionamento } from '../components/SecaoHorarioFuncionamento'
 import { SecaoAjudaSuporte } from '../components/SecaoAjudaSuporte'
 import { BotaoSalvarCampo, ErroSalvar } from '../components/BotaoSalvarCampo'
+import { SecaoModosAtendimento } from '../components/SecaoModosAtendimento'
 import { Button } from '../components/ui/Button'
 import { Card } from '../components/ui/Card'
 import { Chip } from '../components/ui/Chip'
@@ -2433,6 +2434,9 @@ export function Ajustes({ categoria = 'conta' }: { categoria?: CategoriaAjustes 
           </SecaoDaCategoria>
           <SecaoDaCategoria categoria="cardapio" atual={categoria}>
             <SecaoHorarioFuncionamento barracaId={barraca.id} />
+          </SecaoDaCategoria>
+          <SecaoDaCategoria categoria="cardapio" atual={categoria}>
+            <SecaoModosAtendimento barraca={barraca} />
           </SecaoDaCategoria>
           <SecaoDaCategoria categoria="cardapio" atual={categoria}>
             <SecaoFaixas barraca={barraca} />
