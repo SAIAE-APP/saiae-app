@@ -16,7 +16,18 @@ const ATRASO_MAXIMO_MS = 30000
 async function executarOperacao(op: OperacaoPendente): Promise<void> {
   switch (op.tipo) {
     case 'criar_pedido': {
-      const { data, error } = await supabase.rpc('criar_pedido', op.payload).single()
+      let { data, error } = await supabase.rpc('criar_pedido', op.payload).single()
+      // PGRST202 = função não existe com esses argumentos. Com o app novo
+      // publicado antes da migration de modos_atendimento, o banco ainda só
+      // conhece criar_pedido de 7 args; sem esta volta, o pedido novo falharia
+      // pra sempre e (por causa do break abaixo) travaria toda a fila atrás
+      // dele. Reenvia sem o campo novo: o pedido entra com tipo_atendimento
+      // NULL, e o app deriva de mesa/viagem (tipoDoPedido).
+      if (error?.code === 'PGRST202' && 'p_tipo_atendimento' in op.payload) {
+        const { p_tipo_atendimento: _semTipo, ...payloadAntigo } = op.payload
+        void _semTipo
+        ;({ data, error } = await supabase.rpc('criar_pedido', payloadAntigo).single())
+      }
       if (error) throw error
       const resultado = data as { pedido_id: string; senha: number }
       notificarCriacaoPedido(op.id, { pedidoId: resultado.pedido_id, senha: resultado.senha })
