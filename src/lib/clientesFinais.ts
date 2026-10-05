@@ -17,7 +17,11 @@ function escaparLike(termo: string): string {
  * Busca clientes da barraca por telefone (só dígitos, parcial) ou nome
  * (parcial, sem caixa). Sempre filtra por barraca_id além da RLS.
  */
-export async function buscarClientesFinais(barracaId: string, termo: string): Promise<ClienteFinal[]> {
+export async function buscarClientesFinais(
+  barracaId: string,
+  termo: string,
+  limite = LIMITE_BUSCA,
+): Promise<ClienteFinal[]> {
   const texto = termo.trim()
   const digitos = somenteDigitos(texto)
   // "Parece telefone" = só dígitos e separadores comuns; senão é nome.
@@ -33,7 +37,23 @@ export async function buscarClientesFinais(barracaId: string, termo: string): Pr
     consulta = consulta.ilike('nome', `%${escaparLike(texto)}%`)
   }
 
-  const { data, error } = await consulta.order('nome').limit(LIMITE_BUSCA)
+  const { data, error } = await consulta.order('nome').limit(limite)
+  if (error) throw error
+  return (data ?? []) as ClienteFinal[]
+}
+
+const LIMITE_LISTA = 20
+
+/** Lista pra tela de gestão (Ajustes): sem termo, os últimos atualizados;
+ * com termo, a mesma busca de telefone/nome do pedido, só que mais longa. */
+export async function listarClientesFinais(barracaId: string, termo: string): Promise<ClienteFinal[]> {
+  if (termo.trim()) return buscarClientesFinais(barracaId, termo, LIMITE_LISTA)
+  const { data, error } = await supabase
+    .from('clientes_finais')
+    .select(COLUNAS)
+    .eq('barraca_id', barracaId)
+    .order('atualizado_em', { ascending: false })
+    .limit(LIMITE_LISTA)
   if (error) throw error
   return (data ?? []) as ClienteFinal[]
 }
