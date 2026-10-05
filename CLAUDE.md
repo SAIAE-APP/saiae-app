@@ -116,9 +116,14 @@ aparelho Android 7–11 e 12+ antes de publicar.
   só os ativos (um só = sem seletor). `pedidos.tipo_atendimento` é o dado
   novo; `pedidos.viagem` continua e significa "não consome no local"
   (Retirada OU Entrega), então relatórios/Cozinha antigos seguem valendo —
-  Relatório e filtro do Histórico ainda agrupam Retirada+Entrega como
-  "Viagem". `tipo_atendimento` NULL (pedido antigo, cardápio digital) é
+  Relatório/Faturamento e Histórico (2026-10-05) já SEPARAM Retirada de
+  Entrega ("Tipo de atendimento", filtros e coluna "Tipo" na planilha).
+  `tipo_atendimento` NULL (pedido antigo, cardápio digital) é
   derivado de mesa/viagem (`tipoDoPedido`, `src/lib/atendimento.ts`).
+  Cardápio digital público (2026-10-05) só oferece os modos que a barraca
+  ligou, sem Entrega (não coleta endereço/taxa): `cardapio_publico` devolve
+  `barraca_modos_atendimento` e `modosDoCardapioPublico` trata resposta
+  antiga ou barraca só com Entrega como modos padrão.
   Comanda impressa traz `*** RETIRADA ***`/`*** ENTREGA ***` em 2x logo
   abaixo da senha. Mesa só pede número no modo Mesa. A migration
   `20261004120000_modos_atendimento.sql` PRECISA estar aplicada antes do
@@ -149,8 +154,9 @@ aparelho Android 7–11 e 12+ antes de publicar.
   **Decisão do dono do produto (2026-10-05): a taxa fica POR FORA da
   NFC-e** — não entra em `emitir-nfce` nem em `montarCupomFiscal`, de
   propósito. Consequência assumida: nota de pedido com entrega sai com
-  valor menor que o cobrado. Relatório/Histórico também ainda não somam
-  a taxa.
+  valor menor que o cobrado. Relatório/Faturamento e Histórico mostram a
+  taxa À PARTE (linha "Taxas de entrega", coluna na planilha, linha no
+  card), nunca somada aos valores dos itens nem ao faturamento.
 - Clientes de entrega (2026-10-04): tabela `clientes_finais` (um endereço
   por cliente, único por `barraca_id`+`telefone`, RLS por
   `usuario_tem_acesso_barraca` com WITH CHECK). Salvo/atualizado em segundo
