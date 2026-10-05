@@ -64,7 +64,7 @@ const EXPLICACAO_POR_CODIGO: Record<string, string> = {
   not_found:
     'Impressora não encontrada. Ligue-a, pareie de novo no Bluetooth do celular e escolha o dispositivo outra vez.',
   permission_denied:
-    'Falta a permissão de Bluetooth ("Dispositivos próximos"). Libere em Configurações > Apps > Sai aê > Permissões.',
+    'Falta a permissão de Bluetooth ("Dispositivos próximos", Android 12 ou mais novo). Libere em Configurações > Apps > Sai aê > Permissões.',
   connect_failed:
     'Não conseguiu conectar. Confira se a impressora está ligada e não está conectada a outro celular ou app; se persistir, desligue e ligue a impressora. Em Xiaomi/MIUI, libere "Dispositivos próximos" e tire a restrição de bateria do app.',
   write_failed: 'A conexão caiu durante a impressão. Tente de novo perto da impressora.',
