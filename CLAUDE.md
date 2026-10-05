@@ -85,6 +85,28 @@ servidor e não passam pelo gatilho automático — decidir qual aparelho
 imprime (sugestão: o que está com a Cozinha aberta) antes de automatizar. Plugin só fala SPP clássico;
 impressoras só-BLE não são suportadas.
 
+**Fichas antigas (2026-10-04, relato do cliente: aparelho antigo imprimiu
+senha 32 estando na 50):** causa mais provável era operação velha da fila
+(`criar_pedido` reexecutado, servidor devolve a senha antiga por
+idempotência de `client_uuid`) disparando a impressão automática. Agora a
+impressão automática só roda se o pedido foi ENVIADO há menos de 5 min
+(`PedidoCriadoLocal.enviadoEm` = `op.criadoEm`); mais velho que isso não
+imprime sozinho, marca como tratado e mostra aviso tocável "Toque para
+imprimir" (nunca em silêncio). É hipótese, não foi reproduzida nem testada
+no aparelho.
+
+**Android / Bluetooth (2026-10-04) — NÃO foi gerada build nova.** O repo já
+tem, em `main`, `minSdkVersion = 24` (não dá pra descer: o Cordova que o
+`@capacitor/android` 8 traz exige 24), permissões `BLUETOOTH`/
+`BLUETOOTH_ADMIN` (até o Android 11) e `BLUETOOTH_CONNECT` no manifest, e o
+patch do plugin térmico (`patches/@devlas+capacitor-thermal-printer+0.8.0.patch`,
+`bluetoothConcedido()`: antes do Android 12 conta como concedido — sem isso
+`list`/`print` davam sempre `permission_denied` em Android 7–11). Decisão do
+dono do produto (2026-10-05): **o APK/AAB em produção fica como está** e
+nada disso foi testado em aparelho. Quem gerar a próxima build leva essas
+mudanças sem teste: rodar `npm install` (aplica o patch) e validar em
+aparelho Android 7–11 e 12+ antes de publicar.
+
 ## Regras de produto
 - Senha sequencial por pedido, reinicia todo dia
 - Tipo de atendimento (2026-10-04, backlog PDV Sprint 2): Mesa, Balcão,
@@ -101,10 +123,55 @@ impressoras só-BLE não são suportadas.
   abaixo da senha. Mesa só pede número no modo Mesa. A migration
   `20261004120000_modos_atendimento.sql` PRECISA estar aplicada antes do
   deploy do app: o front manda `p_tipo_atendimento` no `criar_pedido`.
-  Entrega ainda não coleta endereço/taxa/WhatsApp (Sprint 3).
 - Lançar Pedido: chip "Mais pedidos" removido (2026-10-04); "Todos" agrupa os
   itens por categoria com o nome como cabeçalho de seção. O selo "Top N"
   nos cards continua.
+- Entrega (2026-10-04, backlog PDV Sprint 3): no modo Entrega,
+  Confirmar Pedido pede nome, telefone, rua, número e bairro (referência
+  opcional) — `FormularioEntrega`, obrigatórios validados em
+  `validarDadosEntrega` (`src/lib/entrega.ts`). Os dados ficam COPIADOS no
+  pedido (`pedidos.entrega_*`), não só referenciados: apagar o cadastro do
+  cliente não muda comanda antiga. Pedido de Entrega NUNCA é "entregar
+  direto no balcão" (checkbox e botão somem, e a marcação herdada é
+  ignorada no envio): precisa passar pela cozinha e imprimir comanda.
+  Na tela da senha, "Chamar entregador" (`ChamarEntregador`, em
+  `LancarPedido.tsx`) abre `https://wa.me/?text=` SEM número, o operador
+  escolhe o contato; sem integração com API do WhatsApp, com aviso se não
+  abrir e "Copiar mensagem". A comanda impressa leva faixa `*** ENTREGA ***`,
+  bloco "ENTREGAR PARA" (nome, telefone, endereço) e a linha "Taxa de
+  entrega" separada do total.
+- Taxa de entrega (2026-10-04): cobrada do cliente final, entra no total do
+  pedido (`pedidos.taxa_entrega_centavos`). Configurável em Ajustes
+  (`SecaoTaxaEntrega`: liga/desliga, valor padrão, editável ou não no
+  pedido; `barracas.taxa_entrega_*`, desligada por padrão). Sem controle do
+  que se paga ao motoboy (fora do escopo). Taxa única por barraca; por
+  bairro/distância é pergunta em aberto do backlog, não implementada.
+  **Decisão do dono do produto (2026-10-05): a taxa fica POR FORA da
+  NFC-e** — não entra em `emitir-nfce` nem em `montarCupomFiscal`, de
+  propósito. Consequência assumida: nota de pedido com entrega sai com
+  valor menor que o cobrado. Relatório/Histórico também ainda não somam
+  a taxa.
+- Clientes de entrega (2026-10-04): tabela `clientes_finais` (um endereço
+  por cliente, único por `barraca_id`+`telefone`, RLS por
+  `usuario_tem_acesso_barraca` com WITH CHECK). Salvo/atualizado em segundo
+  plano pela fila de sincronização DEPOIS do `criar_pedido` confirmar
+  (nunca bloqueia o envio; falha só vai pro console). Busca por telefone ou
+  nome no formulário de entrega (`useBuscaClienteFinal`). LGPD: o dono vê e
+  EXCLUI o cadastro em Ajustes > Cardápio & Operação > "Clientes de entrega"
+  (`SecaoClientesEntrega`, só aparece com Entrega ligada ou cliente já
+  salvo); excluir apaga o cadastro, não os pedidos antigos (só "Apagar
+  período" ou excluir a barraca). Política de Privacidade (seção 4) e
+  Excluir conta já descrevem isso. Telefone guardado só com dígitos e SEM o
+  55 do país (`normalizarTelefone`: tira o 55 só com 12/13 dígitos, porque
+  com 10/11 o 55 é o DDD de Santa Maria/RS), no app e por trigger no banco.
+- `criar_pedido` está na v6 (migration `20261004140000`): 10 args, os 3
+  últimos opcionais (`p_tipo_atendimento`, `p_entrega`,
+  `p_taxa_entrega_centavos`). Cada versão derruba a assinatura anterior pra
+  não ficar sobrecarga ambígua; arquivo-fonte em
+  `supabase/functions/criar_pedido.sql`. Fila (`useSincronizacao`): se o
+  banco não conhece os args novos (PGRST202), pedido comum reenvia sem eles,
+  e pedido de Entrega fica ADIADO na fila (`OperacaoAdiadaError`) sem travar
+  os outros — não entra sem endereço/taxa.
 - Observação existe em DOIS níveis (regra mudou em 2026-09-18,
   decisão do dono do produto): `pedidos.observacao` é o recado geral
   do pedido inteiro (ex.: "cliente com pressa"), e
@@ -421,6 +488,10 @@ nenhum item daqui sozinho, só quando for pedido explicitamente.
     só com a FocusNFe, nunca com o Sai aê), não de uma emissão real
     inspecionada — confirmar contra o `resultado` bruto na primeira
     emissão de verdade, já que isso ainda não aconteceu.
+    **Taxa de entrega fica fora da nota** (decisão de 2026-10-05, ver
+    "Taxa de entrega" em Regras de produto): `emitir-nfce` e
+    `montarCupomFiscal` seguem somando só os itens, nunca
+    `pedidos.taxa_entrega_centavos`.
   - Estoque: item mais delicado por reverter a regra mais antiga do
     projeto. **Implementado** o mais simples definido em 2026-09-26 —
     toggle "esgotado" por item (`itens.esgotado`, editável em Ajustes,
