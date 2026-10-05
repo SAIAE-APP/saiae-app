@@ -15,6 +15,17 @@ import type { DadosEntrega } from '../lib/entrega'
 const ATRASO_INICIAL_MS = 1000
 const ATRASO_MAXIMO_MS = 30000
 
+/** A operação não pode ser enviada AGORA por causa de algo que só o servidor
+ * resolve (ex.: banco sem a criar_pedido v6), mas não tem nada a ver com as
+ * outras operações da fila. Fica na fila e é reenviada com backoff, sem
+ * travar as que vêm depois. */
+class OperacaoAdiadaError extends Error {
+  constructor(mensagem: string) {
+    super(mensagem)
+    this.name = 'OperacaoAdiadaError'
+  }
+}
+
 /** Payload com endereço de entrega ou taxa > 0 só vale na criar_pedido v6. */
 function pedidoPrecisaDaV6(payload: Record<string, unknown>): boolean {
   const taxa = payload.p_taxa_entrega_centavos
@@ -46,9 +57,14 @@ async function executarOperacao(op: OperacaoPendente): Promise<void> {
       // NULL, e o app deriva de mesa/viagem (tipoDoPedido).
       if (error?.code === 'PGRST202' && 'p_tipo_atendimento' in op.payload) {
         // Pedido com dados de entrega ou taxa NÃO cai pra assinatura antiga:
-        // entraria no banco sem endereço e sem taxa. Falha visível; a fila
-        // reenvia sozinha depois que a migration da v6 entrar.
-        if (!pedidoPrecisaDaV6(op.payload)) {
+        // entraria no banco sem endereço e sem taxa. Fica adiado na fila (a
+        // fila reenvia sozinha depois que a migration da v6 entrar) e NÃO
+        // trava os pedidos seguintes, que não dependem dele.
+        if (pedidoPrecisaDaV6(op.payload)) {
+          throw new OperacaoAdiadaError(
+            'Pedido de Entrega aguardando a atualização do servidor (criar_pedido v6)',
+          )
+        } else {
           const {
             p_tipo_atendimento: _semTipo,
             p_entrega: _semEntrega,
@@ -157,6 +173,9 @@ export function useSincronizacao() {
           console.error(`[sincronizacao] falha em ${op.tipo} (tentativa ${op.tentativas + 1})`, erro)
           await incrementarTentativa(op.id)
           falhou = true
+          // Operação adiada só espera; as outras seguem. Qualquer outra falha
+          // (rede, erro do banco) continua parando a fila, pra preservar a ordem.
+          if (erro instanceof OperacaoAdiadaError) continue
           break
         }
       }
