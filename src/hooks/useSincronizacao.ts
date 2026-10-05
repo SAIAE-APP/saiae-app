@@ -9,9 +9,30 @@ import {
   ouvirMudancaFila,
 } from '../lib/fila'
 import type { OperacaoPendente } from '../lib/fila'
+import { salvarClienteFinal } from '../lib/clientesFinais'
+import type { DadosEntrega } from '../lib/entrega'
 
 const ATRASO_INICIAL_MS = 1000
 const ATRASO_MAXIMO_MS = 30000
+
+/** Payload com endereço de entrega ou taxa > 0 só vale na criar_pedido v6. */
+function pedidoPrecisaDaV6(payload: Record<string, unknown>): boolean {
+  const taxa = payload.p_taxa_entrega_centavos
+  return payload.p_entrega != null || (typeof taxa === 'number' && taxa > 0)
+}
+
+/** Guarda o cliente de um pedido de Entrega no cadastro da barraca. Roda depois
+ * do pedido já confirmado, em segundo plano: falha (rede, tabela ainda sem
+ * migration) só vai pro console e nunca atrapalha a fila. O upsert por
+ * barraca+telefone é idempotente, então reenvio não duplica. */
+function salvarClienteDoPedido(payload: Record<string, unknown>) {
+  const entrega = payload.p_entrega as DadosEntrega | null | undefined
+  const barracaId = payload.p_barraca_id
+  if (!entrega || typeof barracaId !== 'string') return
+  salvarClienteFinal(barracaId, entrega).catch((erro) => {
+    console.warn('[sincronizacao] cliente final não salvo', erro)
+  })
+}
 
 async function executarOperacao(op: OperacaoPendente): Promise<void> {
   switch (op.tipo) {
@@ -24,12 +45,25 @@ async function executarOperacao(op: OperacaoPendente): Promise<void> {
       // dele. Reenvia sem o campo novo: o pedido entra com tipo_atendimento
       // NULL, e o app deriva de mesa/viagem (tipoDoPedido).
       if (error?.code === 'PGRST202' && 'p_tipo_atendimento' in op.payload) {
-        const { p_tipo_atendimento: _semTipo, ...payloadAntigo } = op.payload
-        void _semTipo
-        ;({ data, error } = await supabase.rpc('criar_pedido', payloadAntigo).single())
+        // Pedido com dados de entrega ou taxa NÃO cai pra assinatura antiga:
+        // entraria no banco sem endereço e sem taxa. Falha visível; a fila
+        // reenvia sozinha depois que a migration da v6 entrar.
+        if (!pedidoPrecisaDaV6(op.payload)) {
+          const {
+            p_tipo_atendimento: _semTipo,
+            p_entrega: _semEntrega,
+            p_taxa_entrega_centavos: _semTaxa,
+            ...payloadAntigo
+          } = op.payload
+          void _semTipo
+          void _semEntrega
+          void _semTaxa
+          ;({ data, error } = await supabase.rpc('criar_pedido', payloadAntigo).single())
+        }
       }
       if (error) throw error
       const resultado = data as { pedido_id: string; senha: number }
+      salvarClienteDoPedido(op.payload)
       notificarCriacaoPedido(op.id, { pedidoId: resultado.pedido_id, senha: resultado.senha })
       emitirPedidoCriadoLocal({
         idOperacao: op.id,

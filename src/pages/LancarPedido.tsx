@@ -8,6 +8,7 @@ import { useBarracaAtual, useSincronizacaoAtual } from '../layouts/contextoBarra
 import { useTheme } from '../hooks/useTheme'
 import { aoConcluirCriacaoPedido } from '../lib/fila'
 import { formatarPrecoBR } from '../lib/preco'
+import { linkWhatsAppSemNumero, montarMensagemEntregador } from '../lib/entrega'
 import { tocarSomPedidoCriado } from '../lib/sons'
 import { buscarIdsMaisPedidos } from '../lib/popularidade'
 import type {
@@ -55,6 +56,7 @@ type SenhaConfirmada = {
   valor: number | null
   idFila: string
   entregaDireta: boolean
+  entrega?: EstadoPedidoEnviado['senhaEnviada']['entrega']
 }
 
 /**
@@ -281,6 +283,73 @@ function CardItemCardapioGrade({
   )
 }
 
+/** "Chamar entregador": abre o WhatsApp na escolha de contato com a mensagem
+ * pronta (wa.me sem número, sem API). Se a tela continua visível logo depois,
+ * o WhatsApp provavelmente não abriu: avisa e oferece copiar a mensagem. */
+function ChamarEntregador({
+  dados,
+  senha,
+  aguardandoSenha,
+}: {
+  dados: NonNullable<SenhaConfirmada['entrega']>
+  senha: number | null
+  aguardandoSenha: boolean
+}) {
+  const [aviso, setAviso] = useState(false)
+  const [copiado, setCopiado] = useState(false)
+
+  const mensagem = () => montarMensagemEntregador({ ...dados, senha: senha ?? 0 })
+
+  function chamar() {
+    setAviso(false)
+    window.open(linkWhatsAppSemNumero(mensagem()), '_blank', 'noopener')
+    window.setTimeout(() => {
+      if (!document.hidden) setAviso(true)
+    }, 1500)
+  }
+
+  async function copiar() {
+    try {
+      await navigator.clipboard.writeText(mensagem())
+      setCopiado(true)
+      window.setTimeout(() => setCopiado(false), 2500)
+    } catch {
+      setAviso(true)
+    }
+  }
+
+  return (
+    <div className="mt-2 flex w-full max-w-xs flex-col gap-2">
+      <Button
+        variant="outline"
+        size="xl"
+        icon={<Icone nome="two_wheeler" size={20} />}
+        disabled={aguardandoSenha}
+        onClick={chamar}
+        className="w-full"
+      >
+        Chamar entregador
+      </Button>
+      {aviso && (
+        <p
+          role="alert"
+          className="rounded-mesa-md border-l-[3px] border-mesa-warning-500 bg-mesa-warning-50 p-3 text-left text-sm font-medium text-mesa-warning-700 dark:bg-mesa-warning-500/15"
+        >
+          O WhatsApp não abriu. Confira se ele está instalado neste aparelho ou copie a mensagem.
+        </p>
+      )}
+      <button
+        type="button"
+        onClick={copiar}
+        disabled={aguardandoSenha}
+        className="min-h-11 text-center text-sm font-semibold text-mesa-text-secondary disabled:opacity-40"
+      >
+        {copiado ? 'Mensagem copiada' : 'Copiar mensagem'}
+      </button>
+    </div>
+  )
+}
+
 function ehEstadoParaEditar(estado: unknown): estado is EstadoParaEditar {
   return typeof estado === 'object' && estado !== null && 'carrinho' in estado
 }
@@ -403,6 +472,9 @@ export function LancarPedido() {
   const [entregaDiretaHerdada] = useState<EntregaDiretaPorItem>(
     () => edicaoRecebida?.entregaDireta ?? {},
   )
+
+  // Não editável aqui: só guardado pra devolver pra ConfirmarPedido intacto.
+  const [entregaHerdada] = useState(() => edicaoRecebida?.entrega)
 
   const [senhaDemorando, setSenhaDemorando] = useState(false)
   const [senha, setSenha] = useState<SenhaConfirmada | null>(
@@ -653,6 +725,7 @@ export function LancarPedido() {
         observacao,
         entregaDireta: entregaDiretaHerdada,
         observacaoPorItem,
+        entrega: tipoEfetivo === 'entrega' ? entregaHerdada : undefined,
       } satisfies EstadoParaConfirmar,
     })
   }
@@ -717,6 +790,14 @@ export function LancarPedido() {
             <Icone nome="check" size={16} />
             Enviado para a cozinha
           </span>
+        )}
+
+        {senha.entrega && (
+          <ChamarEntregador
+            dados={senha.entrega}
+            senha={senha.valor}
+            aguardandoSenha={aguardandoSenha}
+          />
         )}
 
         <Button

@@ -5,7 +5,8 @@ import { useBarracaAtual } from '../layouts/contextoBarraca'
 import { classesBotaoIcone } from '../lib/estiloBotaoIcone'
 import { useTheme } from '../hooks/useTheme'
 import { enfileirar } from '../lib/fila'
-import { formatarPrecoBR } from '../lib/preco'
+import { filtrarEntradaPreco, formatarPrecoBR, reaisParaCentavos } from '../lib/preco'
+import { configTaxaEntrega, validarDadosEntrega, type DadosEntrega } from '../lib/entrega'
 import { ICONE_MODO, ROTULO_MODO } from '../lib/atendimento'
 import type {
   EntregaDiretaPorItem,
@@ -13,14 +14,16 @@ import type {
   EstadoParaEditar,
   EstadoPedidoEnviado,
 } from '../lib/carrinho'
-import { METODOS_DISPONIVEIS } from '../lib/metodoPagamento'
+import { METODOS_DISPONIVEIS, humanizarMetodo } from '../lib/metodoPagamento'
 import type { MetodoPagamento } from '../lib/metodoPagamento'
 import { BotaoHome } from '../components/ui/BotaoHome'
 import { BottomSheet } from '../components/ui/BottomSheet'
 import { Button } from '../components/ui/Button'
 import { Card } from '../components/ui/Card'
 import { Checkbox } from '../components/ui/Checkbox'
+import { FormularioEntrega } from '../components/FormularioEntrega'
 import { Icone } from '../components/ui/Icone'
+import { Input } from '../components/ui/Input'
 import { Textarea } from '../components/ui/Textarea'
 import type { Item } from '../types/database'
 
@@ -131,6 +134,16 @@ export function ConfirmarPedido() {
   const [metodoSelecionado, setMetodoSelecionado] = useState<MetodoPagamento | null>(() =>
     opcoesPagamento.length === 1 ? opcoesPagamento[0].chave : null,
   )
+  const ehEntrega = estado?.tipoAtendimento === 'entrega'
+  const configTaxa = configTaxaEntrega(barraca)
+  const cobraTaxa = ehEntrega && configTaxa.habilitada
+  const [entrega, setEntrega] = useState<DadosEntrega>(
+    () => estado?.entrega ?? { nome: '', telefone: '', rua: '', numero: '', bairro: '', referencia: '' },
+  )
+  const [taxaTexto, setTaxaTexto] = useState(() =>
+    (configTaxa.centavos / 100).toFixed(2).replace('.', ','),
+  )
+  const [mostrarErrosEntrega, setMostrarErrosEntrega] = useState(false)
   const [enviando, setEnviando] = useState(false)
   const [confirmandoDescarte, setConfirmandoDescarte] = useState(false)
   const [confirmandoEntregaDireta, setConfirmandoEntregaDireta] = useState(false)
@@ -158,6 +171,14 @@ export function ConfirmarPedido() {
     0,
   )
 
+  const errosEntrega = ehEntrega ? validarDadosEntrega(entrega) : {}
+  const taxaCentavos = !cobraTaxa
+    ? 0
+    : configTaxa.editavel
+      ? reaisParaCentavos(taxaTexto)
+      : configTaxa.centavos
+  const totalComTaxa = totalCentavos + taxaCentavos
+
   function alternarEntregaDireta(itemId: string) {
     setEntregaDireta((atual) => ({ ...atual, [itemId]: !atual[itemId] }))
   }
@@ -173,6 +194,7 @@ export function ConfirmarPedido() {
         observacao,
         entregaDireta,
         observacaoPorItem,
+        entrega: ehEntrega ? entrega : undefined,
       } satisfies EstadoParaEditar,
     })
   }
@@ -188,6 +210,10 @@ export function ConfirmarPedido() {
 
   async function enviarPedido(forcarEntregaDiretaEmTudo: boolean) {
     if (enviandoRef.current || !metodoSelecionado) return
+    if (ehEntrega && Object.keys(errosEntrega).length > 0) {
+      setMostrarErrosEntrega(true)
+      return
+    }
     enviandoRef.current = true
     setEnviando(true)
 
@@ -213,6 +239,21 @@ export function ConfirmarPedido() {
       p_client_uuid: clientUuidRef.current,
       p_metodo_pagamento: metodoSelecionado,
       p_itens: itensPedido,
+      // Só pedido de Entrega leva estes campos: os demais seguem com o mesmo
+      // formato de antes (e a criar_pedido sem v6 no banco continua servindo).
+      ...(ehEntrega
+        ? {
+            p_entrega: {
+              nome: entrega.nome.trim(),
+              telefone: entrega.telefone.trim(),
+              rua: entrega.rua.trim(),
+              numero: entrega.numero.trim(),
+              bairro: entrega.bairro.trim(),
+              referencia: entrega.referencia?.trim() || null,
+            },
+            p_taxa_entrega_centavos: taxaCentavos,
+          }
+        : {}),
     })
 
     navigate(`/${barraca.slug}/lancar`, {
@@ -222,6 +263,20 @@ export function ConfirmarPedido() {
           valor: null,
           idFila: operacao.id,
           entregaDireta: todosEntregaDireta,
+          entrega: ehEntrega
+            ? {
+                itens: linhas.map(({ item, quantidade, itemId }) => ({
+                  nome: item.nome,
+                  quantidade,
+                  observacao: observacaoPorItem[itemId] || null,
+                })),
+                cliente: entrega,
+                totalCentavos: totalComTaxa,
+                taxaEntregaCentavos: taxaCentavos,
+                metodoPagamento: humanizarMetodo(metodoSelecionado),
+                observacao: observacao.trim() || null,
+              }
+            : undefined,
         },
       } satisfies EstadoPedidoEnviado,
     })
@@ -301,11 +356,58 @@ export function ConfirmarPedido() {
           </Card>
         )}
 
-        <div className="mt-4 flex items-center justify-between rounded-mesa-lg bg-mesa-neutral-100 px-5 py-4 dark:bg-mesa-neutral-800">
-          <span className="text-base font-semibold text-mesa-text-primary">Total</span>
-          <span className="font-mesa-display text-2xl font-bold text-mesa-text-primary">
-            {formatarPrecoBR(totalCentavos)}
-          </span>
+        {ehEntrega && (
+          <>
+            <h2 className="mb-3 mt-6 flex items-center gap-1.5 font-mesa-sans text-xs font-semibold uppercase tracking-wider text-mesa-text-secondary">
+              <Icone nome={ICONE_MODO.entrega} size={14} />
+              Dados da entrega
+            </h2>
+            <Card>
+              <FormularioEntrega
+                barracaId={barraca.id}
+                dados={entrega}
+                erros={mostrarErrosEntrega ? errosEntrega : {}}
+                onChange={setEntrega}
+              />
+            </Card>
+          </>
+        )}
+
+        {cobraTaxa && (
+          <Card className="mt-4">
+            {configTaxa.editavel ? (
+              <Input
+                type="currency"
+                label="Taxa de entrega"
+                inputMode="decimal"
+                value={taxaTexto}
+                onChange={(e) => setTaxaTexto(filtrarEntradaPreco(e.target.value))}
+              />
+            ) : (
+              <LinhaMeta icone="two_wheeler" label="Taxa de entrega" valor={formatarPrecoBR(taxaCentavos)} />
+            )}
+          </Card>
+        )}
+
+        <div className="mt-4 rounded-mesa-lg bg-mesa-neutral-100 px-5 py-4 dark:bg-mesa-neutral-800">
+          {cobraTaxa && (
+            <div className="mb-2 flex items-center justify-between text-sm text-mesa-text-secondary">
+              <span>Itens</span>
+              <span>{formatarPrecoBR(totalCentavos)}</span>
+            </div>
+          )}
+          {cobraTaxa && (
+            <div className="mb-2 flex items-center justify-between text-sm text-mesa-text-secondary">
+              <span>Taxa de entrega</span>
+              <span>{formatarPrecoBR(taxaCentavos)}</span>
+            </div>
+          )}
+          <div className="flex items-center justify-between">
+            <span className="text-base font-semibold text-mesa-text-primary">Total</span>
+            <span className="font-mesa-display text-2xl font-bold text-mesa-text-primary">
+              {formatarPrecoBR(totalComTaxa)}
+            </span>
+          </div>
         </div>
         </div>
 
@@ -382,6 +484,7 @@ export function ConfirmarPedido() {
             Voltar e editar
           </button>
 
+          {!ehEntrega && (
           <button
             type="button"
             onClick={() => setConfirmandoEntregaDireta(true)}
@@ -391,6 +494,7 @@ export function ConfirmarPedido() {
             <Icone nome="local_shipping" size={14} />
             Entregar direto no balcão (não vai pra cozinha)
           </button>
+          )}
         </div>
         </div>
       </div>

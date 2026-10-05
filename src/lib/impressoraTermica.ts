@@ -15,6 +15,7 @@ import { ThermalPrinter, bytesToBase64, type PrinterDevice } from '@devlas/capac
 import ReceiptPrinterEncoder from '@point-of-sale/receipt-printer-encoder'
 import type { Barraca, LarguraPapel, PedidoComItens, TipoAtendimento } from '../types/database'
 import { faixaImpressao, tipoDoPedido } from './atendimento'
+import { formatarTelefoneBR, type DadosEntrega } from './entrega'
 import { formatarPrecoBR } from './preco'
 import { humanizarMetodo } from './metodoPagamento'
 
@@ -267,6 +268,10 @@ export type DadosComanda = {
   tipo?: TipoAtendimento | null
   observacao: string | null
   metodoPagamento?: string | null
+  /** Pedido de Entrega: nome, telefone e endereço abaixo da faixa. */
+  entrega?: DadosEntrega | null
+  /** Taxa cobrada, em linha separada do total (que já a inclui). */
+  taxaEntregaCentavos?: number
   itens: { nome: string; quantidade: number; observacao: string | null; precoCentavos: number }[]
 }
 
@@ -282,7 +287,8 @@ function centralizar(texto: string, largura: number): string {
  * protocolo, tributos). Separado de `imprimirComanda` pra testar sem impressora. */
 export function montarComanda(dados: DadosComanda, largura: LarguraPapel): Uint8Array {
   const colunas = COLUNAS_POR_LARGURA[largura]
-  const total = dados.itens.reduce((soma, i) => soma + i.precoCentavos * i.quantidade, 0)
+  const taxa = dados.taxaEntregaCentavos ?? 0
+  const total = dados.itens.reduce((soma, i) => soma + i.precoCentavos * i.quantidade, 0) + taxa
 
   // Barra preta = texto invertido (GS B 1) em tamanho 4x na largura, que divide
   // 32 e 48 colunas exatamente: a linha de espaços pinta a largura toda.
@@ -324,6 +330,19 @@ export function montarComanda(dados: DadosComanda, largura: LarguraPapel): Uint8
   }
   encoder = encoder.align('left').rule()
 
+  if (dados.entrega) {
+    encoder = encoder.bold(true).line('ENTREGAR PARA:').bold(false)
+    encoder = encoder.line(semAcento(dados.entrega.nome.trim()))
+    encoder = encoder.line(semAcento(formatarTelefoneBR(dados.entrega.telefone)))
+    encoder = encoder.line(
+      semAcento(`${dados.entrega.rua.trim()}, ${dados.entrega.numero.trim()} - ${dados.entrega.bairro.trim()}`),
+    )
+    if (dados.entrega.referencia?.trim()) {
+      encoder = encoder.line(semAcento(`Ref: ${dados.entrega.referencia.trim()}`))
+    }
+    encoder = encoder.rule()
+  }
+
   const colunasTabela = [{ width: 4 }, { width: colunas - 14 }, { width: 10, align: 'right' as const }]
   encoder = encoder.bold(true).table(colunasTabela, [['QTD', 'DESCRICAO', 'VALOR']]).bold(false).rule()
 
@@ -336,6 +355,12 @@ export function montarComanda(dados: DadosComanda, largura: LarguraPapel): Uint8
 
   encoder = encoder.rule()
   if (dados.observacao) encoder = encoder.line('Obs:').line(semAcento(dados.observacao)).rule()
+
+  if (taxa > 0) {
+    const valorTaxa = formatarPrecoBR(taxa)
+    const rotuloTaxa = 'Taxa de entrega'
+    encoder = encoder.line(`${rotuloTaxa}${' '.repeat(Math.max(1, colunas - rotuloTaxa.length - valorTaxa.length))}${valorTaxa}`)
+  }
 
   // TOTAL em dobro de largura/altura: metade das colunas, rótulo à esquerda e valor à direita.
   const valorTotal = formatarPrecoBR(total)

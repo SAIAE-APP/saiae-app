@@ -10,6 +10,7 @@ import {
   type DadosComanda,
 } from '../lib/impressoraTermica'
 import { tipoDoPedido } from '../lib/atendimento'
+import type { DadosEntrega } from '../lib/entrega'
 import type { Barraca, Pedido, TipoAtendimento } from '../types/database'
 import type { PedidoComItens } from './useRealtimePedidos'
 
@@ -64,6 +65,19 @@ async function carregarConfigImpressora(
   return data as ConfigImpressora
 }
 
+/** Endereço gravado no pedido (snapshot), ou null se não for pedido de Entrega. */
+function dadosEntregaDoPedido(pedido: Pedido): DadosEntrega | null {
+  if (!pedido.entrega_rua) return null
+  return {
+    nome: pedido.entrega_nome ?? '',
+    telefone: pedido.entrega_telefone ?? '',
+    rua: pedido.entrega_rua,
+    numero: pedido.entrega_numero ?? '',
+    bairro: pedido.entrega_bairro ?? '',
+    referencia: pedido.entrega_referencia,
+  }
+}
+
 /** Dados da comanda a partir de um pedido já no servidor (Cozinha, Realtime) —
  * usado pelo botão manual "Imprimir comanda" e pela impressão dos pedidos do
  * cardápio digital. */
@@ -81,6 +95,8 @@ export function dadosComandaDoPedido(
     tipo: tipoDoPedido(pedido),
     observacao: pedido.observacao,
     metodoPagamento: pedido.metodo_pagamento,
+    entrega: dadosEntregaDoPedido(pedido),
+    taxaEntregaCentavos: pedido.taxa_entrega_centavos ?? 0,
     itens: pedido.itens_do_pedido
       .filter((i) => !i.removido && !i.entrega_direta)
       .map((i) => ({
@@ -231,6 +247,8 @@ export function useImpressaoAutomatica(barraca: Barraca | null) {
         tipo: (p.p_tipo_atendimento as TipoAtendimento | null | undefined) ?? null,
         observacao: (p.p_observacao as string | null) ?? null,
         metodoPagamento: (p.p_metodo_pagamento as string | null) ?? null,
+        entrega: (p.p_entrega as DadosEntrega | null | undefined) ?? null,
+        taxaEntregaCentavos: (p.p_taxa_entrega_centavos as number | undefined) ?? 0,
         itens: itens
           .filter((i) => !i.entrega_direta)
           .map((i) => ({

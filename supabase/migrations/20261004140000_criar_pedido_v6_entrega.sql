@@ -1,43 +1,16 @@
--- Versão v2 (Fase 4): aceita entrega_direta por item + pedido
--- 100% entrega direta vai direto pro Histórico
+-- v6 de criar_pedido: aceita os dados de entrega (p_entrega jsonb) e a taxa
+-- de entrega cobrada (p_taxa_entrega_centavos), e grava nas colunas de
+-- pedidos criadas em 20261004130000_entrega_taxa_clientes.sql.
 --
--- Mudanças em relação à versão v1:
--- 1. Aceita campo `entrega_direta` (boolean) no JSON de cada item
--- 2. Persiste esse campo em itens_do_pedido
--- 3. Marca itens com entrega_direta=true como entregues no ato
---    (entregue = true, entregue_em = now())
--- 4. Se TODOS os itens são entrega_direta, o pedido nasce direto
---    com status='entregue' + pronto_em + entregue_em preenchidos
---    (não aparece em Cozinha nem Chamada, vai direto pro Histórico)
--- 5. Nesse caso, o trigger set_senha_pedido pula geração de senha
---    e deixa senha=NULL (não precisa chamar cliente)
---
--- IMPORTANTE: p_client_uuid é `text`, não `uuid`. A coluna
--- pedidos.client_uuid no banco é text — mantido pra bater com o
--- código do frontend, que sempre enviou string.
---
--- v3 (2026-09-18): aceita `observacao` (text) por item em p_itens, além
--- do p_observacao geral do pedido que já existia — ver migração
--- 20260918130000_add_observacao_item_pedido.sql.
---
--- v4 (2026-09-27): grava barraca_id em cada item (mesmo p_barraca_id do
--- pedido pai) — ver migração 20260927120000_add_barraca_id_itens_pedido.sql.
--- Corrige a única tabela sem barraca_id do projeto, o que permite filtrar
--- a subscription Realtime de itens_do_pedido no servidor em vez de
--- transmitir toda mudança de item de qualquer barraca pra todo cliente
--- conectado (useRealtimePedidos.ts).
+-- p_entrega: {nome, telefone, rua, numero, bairro, referencia} ou NULL.
+-- Parte da v5 (8 args) de 20261004120000_modos_atendimento.sql. A assinatura
+-- de 8 args sai pra não ficar sobrecarga ambígua com a de 10 (os 2 novos têm
+-- default): quem chama com 7 ou 8 args continua resolvendo na função nova.
+-- Sem SECURITY DEFINER (igual à v5): a RLS segue valendo.
 
---
--- v5 (2026-10-04): aceita p_tipo_atendimento (opcional, default NULL) e grava
--- em pedidos.tipo_atendimento — ver migração 20261004120000_modos_atendimento.sql.
--- Aquela migração derruba a assinatura de 7 args; chamadas com 7 args seguem
--- resolvendo nesta (o 8º tem default).
--- v6 (2026-10-04): aceita p_entrega (jsonb: nome, telefone, rua, numero,
--- bairro, referencia) e p_taxa_entrega_centavos e grava em pedidos.entrega_* e
--- pedidos.taxa_entrega_centavos — ver migração 20261004140000_criar_pedido_v6_entrega.sql.
--- Aquela migração derruba a assinatura de 8 args.
+drop function if exists public.criar_pedido(uuid, text, boolean, text, text, text, jsonb, text);
 
-CREATE OR REPLACE FUNCTION public.criar_pedido(
+create or replace function public.criar_pedido(
   p_barraca_id uuid,
   p_mesa text,
   p_viagem boolean,

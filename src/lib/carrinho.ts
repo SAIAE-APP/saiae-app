@@ -1,4 +1,5 @@
 import type { Item, TipoAtendimento } from '../types/database'
+import type { DadosEntrega, DadosMensagemEntrega } from './entrega'
 
 /**
  * Contrato de estado passado via `navigate(..., { state })` entre
@@ -23,6 +24,8 @@ export type EstadoParaConfirmar = {
   observacao: string
   entregaDireta?: EntregaDiretaPorItem
   observacaoPorItem?: ObservacaoPorItem
+  /** Dados do cliente (só no modo Entrega); preenchidos em ConfirmarPedido. */
+  entrega?: DadosEntrega
 }
 
 /** ConfirmarPedido → LancarPedido, ao clicar "Voltar e editar". */
@@ -34,6 +37,8 @@ export type EstadoParaEditar = {
   observacao: string
   entregaDireta?: EntregaDiretaPorItem
   observacaoPorItem?: ObservacaoPorItem
+  /** Devolvido intacto pra não perder o que foi digitado em ConfirmarPedido. */
+  entrega?: DadosEntrega
 }
 
 /** ConfirmarPedido → LancarPedido, depois de enviar com sucesso — LancarPedido
@@ -47,5 +52,7 @@ export type EstadoPedidoEnviado = {
     valor: number | null
     idFila: string
     entregaDireta: boolean
+    /** Só em pedido de Entrega: base da mensagem do botão "Chamar entregador" (a senha entra depois). */
+    entrega?: Omit<DadosMensagemEntrega, 'senha'>
   }
 }
