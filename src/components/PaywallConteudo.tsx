@@ -134,7 +134,7 @@ export function PaywallConteudo({
       </div>
 
       <p className="text-center text-xs text-mesa-text-tertiary">
-        7 dias grátis para testar. Sem fidelidade no mensal. Cancele quando quiser.
+        30 dias grátis para testar. Sem fidelidade no mensal. Cancele quando quiser.
       </p>
     </div>
   )
