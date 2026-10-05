@@ -27,6 +27,12 @@
 -- transmitir toda mudança de item de qualquer barraca pra todo cliente
 -- conectado (useRealtimePedidos.ts).
 
+--
+-- v5 (2026-10-04): aceita p_tipo_atendimento (opcional, default NULL) e grava
+-- em pedidos.tipo_atendimento — ver migração 20261004120000_modos_atendimento.sql.
+-- Aquela migração derruba a assinatura de 7 args; chamadas com 7 args seguem
+-- resolvendo nesta (o 8º tem default).
+
 CREATE OR REPLACE FUNCTION public.criar_pedido(
   p_barraca_id uuid,
   p_mesa text,
@@ -34,10 +40,12 @@ CREATE OR REPLACE FUNCTION public.criar_pedido(
   p_observacao text,
   p_client_uuid text,
   p_metodo_pagamento text,
-  p_itens jsonb
+  p_itens jsonb,
+  p_tipo_atendimento text default null
 )
 RETURNS TABLE(pedido_id uuid, senha integer)
 LANGUAGE plpgsql
+SET search_path = public, pg_temp
 AS $$
 declare
   v_id uuid;
@@ -70,6 +78,7 @@ begin
     barraca_id,
     mesa,
     viagem,
+    tipo_atendimento,
     observacao,
     client_uuid,
     metodo_pagamento,
@@ -81,6 +90,7 @@ begin
     p_barraca_id,
     p_mesa,
     p_viagem,
+    p_tipo_atendimento,
     p_observacao,
     p_client_uuid,
     p_metodo_pagamento,

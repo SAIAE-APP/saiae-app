@@ -53,7 +53,8 @@ type DadosAtendimento = Pick<Pedido, 'tipo_atendimento' | 'mesa' | 'viagem'>
 /** Texto do tipo no card do pedido: "Mesa 4", "Balcão", "Retirada", "Entrega". */
 export function rotuloAtendimento(pedido: DadosAtendimento): string {
   const tipo = tipoDoPedido(pedido)
-  return tipo === 'mesa' && pedido.mesa ? `Mesa ${pedido.mesa}` : ROTULO_MODO[tipo]
+  if (tipo === 'mesa') return pedido.mesa ? `Mesa ${pedido.mesa}` : ROTULO_MODO.balcao
+  return ROTULO_MODO[tipo]
 }
 
 export function iconeAtendimento(pedido: DadosAtendimento): string {

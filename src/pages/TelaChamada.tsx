@@ -4,7 +4,7 @@ import clsx from 'clsx'
 import { useBarracaAtual } from '../layouts/contextoBarraca'
 import { usePedidosAtual } from '../layouts/contextoPedidos'
 import { tocarSomPedidoNaChamada } from '../lib/sons'
-import { rotuloAtendimento } from '../lib/atendimento'
+import { rotuloAtendimento, tipoDoPedido } from '../lib/atendimento'
 import { Icone } from '../components/ui/Icone'
 
 const OPACIDADES_ANTERIORES = [0.7, 0.5, 0.3]
@@ -110,7 +110,9 @@ export function TelaChamada() {
                 {rotuloAtendimento(hero).toUpperCase()}
               </span>
             )}
-            <span className="text-2xl font-bold text-white">Pode retirar!</span>
+            <span className="text-2xl font-bold text-white">
+              {tipoDoPedido(hero) === 'entrega' ? 'Aguardando o entregador' : 'Pode retirar!'}
+            </span>
           </>
         ) : (
           <p className="text-3xl font-medium text-mesa-neutral-600">Aguardando pedidos...</p>

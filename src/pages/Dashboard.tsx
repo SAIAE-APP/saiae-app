@@ -143,7 +143,7 @@ export function Dashboard() {
     {
       alvo: caixaRef,
       titulo: 'Depois, lance os pedidos aqui',
-      texto: 'Escolha os itens do cardápio, marque mesa, balcão ou viagem e envie pra cozinha.',
+      texto: 'Escolha os itens do cardápio, escolha o tipo de atendimento e envie pra cozinha.',
     },
     {
       alvo: cozinhaRef,
