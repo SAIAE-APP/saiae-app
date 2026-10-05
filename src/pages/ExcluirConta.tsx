@@ -98,7 +98,8 @@ export function ExcluirConta() {
           <ul className="flex flex-col gap-2 text-[15px] leading-[1.6] text-mesa-text-secondary">
             <ItemLista>Sua conta de acesso (e-mail e senha).</ItemLista>
             <ItemLista>
-              Toda barraca da qual você é dono: cardápio, pedidos, histórico, caixa e configurações.
+              Toda barraca da qual você é dono: cardápio, pedidos (inclusive os dados de entrega),
+              clientes de entrega cadastrados, histórico, caixa e configurações.
             </ItemLista>
             <ItemLista>
               Tokens de integração associados (fiscal, pagamento online) e a credencial de biometria

@@ -13,7 +13,7 @@ import { Icone } from '../components/ui/Icone'
 // usa nenhum rastreador de terceiro (confirmado por busca no código,
 // 2026-09-28) — não há seção de cookies além da nota informativa abaixo.
 
-const DATA_VIGENCIA = '28 de setembro de 2026'
+const DATA_VIGENCIA = '4 de outubro de 2026'
 
 function Secao({ titulo, children }: { titulo: string; children: React.ReactNode }) {
   return (
@@ -143,7 +143,53 @@ export function Privacidade() {
           </ul>
         </Secao>
 
-        <Secao titulo="4. Biometria (Face ID / Touch ID / biometria do Android)">
+        <Secao titulo="4. Dados de clientes de entrega (informados pela barraca)">
+          <p>
+            Quando a barraca usa o tipo de atendimento <strong>Entrega</strong>, quem lança o pedido
+            informa os dados de quem vai receber. Esses dados são digitados pelo operador da barraca, não
+            pelo cliente final dentro do app. Eles são:
+          </p>
+          <ul className="flex flex-col gap-2">
+            <ItemLista>
+              <strong>Nome e telefone</strong> do cliente.
+            </ItemLista>
+            <ItemLista>
+              <strong>Endereço de entrega</strong>: rua, número, bairro e ponto de referência (opcional).
+            </ItemLista>
+          </ul>
+          <p>Para que usamos esses dados, em nome da barraca:</p>
+          <ul className="flex flex-col gap-2">
+            <ItemLista>
+              <strong>No pedido:</strong> os dados ficam copiados no próprio pedido, como registro da
+              venda, e aparecem na comanda impressa para quem faz a entrega.
+            </ItemLista>
+            <ItemLista>
+              <strong>No cadastro de clientes da barraca:</strong> nome, telefone e endereço são guardados
+              para preencher a entrega automaticamente nos próximos pedidos do mesmo cliente. Cada barraca
+              só enxerga os clientes cadastrados por ela; nenhuma barraca vê os clientes de outra.
+            </ItemLista>
+            <ItemLista>
+              <strong>Chamar o entregador:</strong> o botão abre o WhatsApp do próprio aparelho com uma
+              mensagem pronta (itens, nome, telefone e endereço do cliente) e <strong>sem número de
+              destino</strong>. O operador escolhe o contato e envia. O Sai aê não envia mensagem, não se
+              conecta ao WhatsApp e não recebe cópia dela.
+            </ItemLista>
+          </ul>
+          <p>
+            A barraca é quem decide coletar esses dados e para que usá-los; o Sai aê só os armazena e
+            processa para a barraca poder operar. Antes de sincronizar com o servidor, o pedido (inclusive
+            esses dados) fica guardado temporariamente no aparelho para funcionar sem internet.
+          </p>
+          <p>
+            <strong>Excluir:</strong> o dono da barraca pode excluir o cadastro de um cliente em Ajustes,
+            na seção "Clientes de entrega". Isso apaga o cadastro; os pedidos já feitos continuam no
+            Histórico com os dados da entrega, e só são apagados pelo "Apagar período" ou ao excluir a
+            barraca (ver "Retenção de dados"). O cliente final que quiser corrigir ou apagar os próprios
+            dados pode pedir à barraca ou diretamente a nós pelo e-mail de contato abaixo.
+          </p>
+        </Secao>
+
+        <Secao titulo="5. Biometria (Face ID / Touch ID / biometria do Android)">
           <p>
             O desbloqueio por biometria é um atalho de reentrada no mesmo aparelho — não é um método de
             login novo nem um cadastro de dados biométricos. A credencial (WebAuthn) fica armazenada
@@ -152,7 +198,7 @@ export function Privacidade() {
           </p>
         </Secao>
 
-        <Secao titulo="5. Reportar um problema">
+        <Secao titulo="6. Reportar um problema">
           <p>
             Ao usar o formulário "Ajuda e suporte" para reportar um bug, enviamos por e-mail à nossa
             equipe: a descrição do problema, seu e-mail de cadastro, o nome da barraca e informações
@@ -160,7 +206,7 @@ export function Privacidade() {
           </p>
         </Secao>
 
-        <Secao titulo="6. Com quem compartilhamos dados">
+        <Secao titulo="7. Com quem compartilhamos dados">
           <p>Usamos os seguintes prestadores de serviço para operar o Sai aê. Nenhum deles usa seus dados para fins próprios de publicidade:</p>
           <ul className="flex flex-col gap-2">
             <ItemLista><strong>Supabase</strong> — banco de dados, autenticação e sincronização em tempo real.</ItemLista>
@@ -177,7 +223,7 @@ export function Privacidade() {
           </p>
         </Secao>
 
-        <Secao titulo="7. Segurança">
+        <Secao titulo="8. Segurança">
           <p>
             Dados sensíveis (senhas de acesso, tokens de integração fiscal e de pagamento) ficam
             protegidos por controle de acesso a nível de linha (RLS) no banco de dados, sem consulta
@@ -186,16 +232,21 @@ export function Privacidade() {
           </p>
         </Secao>
 
-        <Secao titulo="8. Retenção de dados">
+        <Secao titulo="9. Retenção de dados">
           <p>
             Mantemos os dados da sua conta e da sua barraca enquanto ela existir. Histórico de pedidos
             pode ser apagado manualmente pelo dono da barraca (função "Apagar período", em Histórico).
             Ao excluir uma barraca, todos os dados associados a ela (pedidos, cardápio, histórico, senha
-            administrativa) são apagados permanentemente.
+            administrativa, clientes de entrega) são apagados permanentemente.
+          </p>
+          <p>
+            O cadastro de clientes de entrega fica guardado enquanto a barraca existir ou até o dono
+            excluí-lo em Ajustes. Os dados de entrega copiados em cada pedido ficam no Histórico até a
+            barraca apagar o período correspondente.
           </p>
         </Secao>
 
-        <Secao titulo="9. Seus direitos (LGPD)">
+        <Secao titulo="10. Seus direitos (LGPD)">
           <p>
             Você pode solicitar, a qualquer momento e gratuitamente, através do e-mail{' '}
             <a href="mailto:contatosaiae@gmail.com" className="font-medium text-mesa-text-primary underline">
@@ -217,7 +268,7 @@ export function Privacidade() {
           </ul>
         </Secao>
 
-        <Secao titulo="10. Alterações nesta política">
+        <Secao titulo="11. Alterações nesta política">
           <p>
             Podemos atualizar esta política conforme o Sai aê ganha novos recursos. Mudanças relevantes
             serão comunicadas por e-mail ou aviso no aplicativo. A data no topo desta página sempre
@@ -225,7 +276,7 @@ export function Privacidade() {
           </p>
         </Secao>
 
-        <Secao titulo="11. Contato">
+        <Secao titulo="12. Contato">
           <p>
             Dúvidas sobre esta política ou sobre seus dados:{' '}
             <a href="mailto:contatosaiae@gmail.com" className="font-medium text-mesa-text-primary underline">
