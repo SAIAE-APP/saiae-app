@@ -12,6 +12,7 @@ import { Icone } from '../components/ui/Icone'
 import { Input } from '../components/ui/Input'
 import { SegmentedControl } from '../components/ui/SegmentedControl'
 import { Textarea } from '../components/ui/Textarea'
+import { statusFuncionamento, type HorarioPublico } from '../lib/horarioFuncionamento'
 
 type LinhaCardapioPublico = {
   barraca_id: string
@@ -37,54 +38,6 @@ type BannerPublico = {
   imagem_url: string
   titulo: string | null
   cta_texto: string | null
-}
-
-type HorarioPublico = {
-  dia_semana: number
-  aberto: boolean
-  hora_abertura: string | null
-  hora_fechamento: string | null
-}
-
-const DIAS_ABREV = ['domingo', 'segunda', 'terça', 'quarta', 'quinta', 'sexta', 'sábado']
-
-function paraMinutos(hora: string): number {
-  const [h, m] = hora.split(':').map(Number)
-  return h * 60 + m
-}
-
-/** "Aberto agora"/"Fechado — abre às Xh" calculado no client, a partir da
- * data/hora do visitante — não trata horário que atravessa a meia-noite
- * (ex.: 18h–02h), fora de escopo por ora (feira/food service normalmente
- * fecha antes disso). */
-function statusFuncionamento(horarios: HorarioPublico[]): { aberto: boolean; texto: string } | null {
-  if (horarios.length === 0 || horarios.every((h) => !h.aberto)) return null
-
-  const agora = new Date()
-  const diaAtual = agora.getDay()
-  const minutosAgora = agora.getHours() * 60 + agora.getMinutes()
-
-  const hoje = horarios.find((h) => h.dia_semana === diaAtual)
-  if (hoje?.aberto && hoje.hora_abertura && hoje.hora_fechamento) {
-    const inicio = paraMinutos(hoje.hora_abertura)
-    const fim = paraMinutos(hoje.hora_fechamento)
-    if (minutosAgora >= inicio && minutosAgora < fim) {
-      return { aberto: true, texto: `Aberto agora · fecha às ${hoje.hora_fechamento.slice(0, 5)}` }
-    }
-    if (minutosAgora < inicio) {
-      return { aberto: false, texto: `Fechado · abre hoje às ${hoje.hora_abertura.slice(0, 5)}` }
-    }
-  }
-
-  for (let i = 1; i <= 7; i++) {
-    const dia = (diaAtual + i) % 7
-    const h = horarios.find((x) => x.dia_semana === dia)
-    if (!h?.aberto || !h.hora_abertura) continue
-    const rotuloDia = i === 1 ? 'amanhã' : DIAS_ABREV[dia]
-    return { aberto: false, texto: `Fechado · abre ${rotuloDia} às ${h.hora_abertura.slice(0, 5)}` }
-  }
-
-  return { aberto: false, texto: 'Fechado' }
 }
 
 type Estado =
