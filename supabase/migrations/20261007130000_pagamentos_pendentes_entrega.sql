@@ -45,5 +45,6 @@ alter table public.pagamentos_pendentes
 alter table public.pagamentos_pendentes
   add constraint pagamentos_pendentes_entrega_coerente check (
     (entrega is null or jsonb_typeof(entrega) = 'object')
-    and (taxa_entrega_centavos = 0 or tipo_atendimento = 'entrega')
+    -- coalesce: com tipo NULL a comparação seria NULL e o CHECK deixaria passar taxa > 0.
+    and (taxa_entrega_centavos = 0 or coalesce(tipo_atendimento, '') = 'entrega')
   );
