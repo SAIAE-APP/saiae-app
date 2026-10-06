@@ -68,6 +68,13 @@ h1, h2, h3 {
   font-family: 'Material Symbols Rounded';
   font-weight: normal;
   font-style: normal;
+  /* Antes vinham do CSS do Google Fonts e sumiram junto com ele: sem isso o
+     ícone dentro de texto em maiúsculas/com espaçamento vira a palavra
+     escrita (ex.: títulos uppercase tracking-wider). */
+  text-transform: none;
+  letter-spacing: normal;
+  font-feature-settings: 'liga';
+  font-variant-ligatures: normal;
   white-space: nowrap;
   word-wrap: normal;
   direction: ltr;
