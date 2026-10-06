@@ -26,6 +26,14 @@ export type Barraca = {
   pagamento_online_habilitado: boolean
   imagem_capa_url: string | null
   mostrar_horario_pedido: boolean
+  /** Emitente fiscal e PROCON (cupom da NFC-e). Opcionais: cache local anterior à migration não tem. */
+  emitente_razao_social?: string | null
+  emitente_inscricao_estadual?: string | null
+  emitente_telefone?: string | null
+  emitente_endereco?: string | null
+  procon_endereco?: string | null
+  /** Alíquota aproximada de tributos (Lei 12.741) em pontos-base. */
+  tributos_aprox_bps?: number | null
   /** Opcional: cache local de antes da migration não tem o campo — usar `modosAtivos()`. */
   modos_atendimento?: TipoAtendimento[]
   /** Opcionais: cache local de antes da migration não tem os campos — usar `configTaxaEntrega()`. */
@@ -144,6 +152,8 @@ export type Pedido = {
   /** NULL em pedido antigo / cardápio digital — derivar com `tipoDoPedido()`. */
   tipo_atendimento: TipoAtendimento | null
   /** Dados de entrega (só em pedido de Entrega) e taxa cobrada, em centavos. */
+  /** Nome do cliente, opcional em qualquer modo (criar_pedido v7). */
+  cliente_nome?: string | null
   entrega_nome?: string | null
   entrega_telefone?: string | null
   entrega_rua?: string | null
@@ -173,6 +183,8 @@ export type Pedido = {
   nfce_serie: string | null
   nfce_protocolo: string | null
   nfce_qrcode_url: string | null
+  nfce_cpf_consumidor?: string | null
+  nfce_tributos_centavos?: number | null
 }
 
 export type ItemDoPedido = {

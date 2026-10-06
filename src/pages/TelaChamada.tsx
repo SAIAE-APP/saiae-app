@@ -4,7 +4,7 @@ import clsx from 'clsx'
 import { useBarracaAtual } from '../layouts/contextoBarraca'
 import { usePedidosAtual } from '../layouts/contextoPedidos'
 import { tocarSomPedidoNaChamada } from '../lib/sons'
-import { rotuloAtendimento, tipoDoPedido } from '../lib/atendimento'
+import { nomeDoCliente, rotuloAtendimento, tipoDoPedido } from '../lib/atendimento'
 import { Icone } from '../components/ui/Icone'
 
 const OPACIDADES_ANTERIORES = [0.7, 0.5, 0.3]
@@ -105,6 +105,11 @@ export function TelaChamada() {
                 {formatarSenha(hero.senha)}
               </span>
             </div>
+            {nomeDoCliente(hero) && (
+              <span className="max-w-full truncate text-3xl font-semibold text-white">
+                {nomeDoCliente(hero)}
+              </span>
+            )}
             {hero.viagem && (
               <span className="text-xs font-bold tracking-widest text-mesa-neutral-400">
                 {rotuloAtendimento(hero).toUpperCase()}

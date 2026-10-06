@@ -51,6 +51,17 @@ function jsonResponse(body: unknown, status = 200) {
   })
 }
 
+// Dígitos verificadores do CPF (mesma regra de src/lib/fiscal.ts).
+function cpfValido(d: string): boolean {
+  if (d.length !== 11 || /^(\d)\1{10}$/.test(d)) return false
+  for (const tamanho of [9, 10]) {
+    let soma = 0
+    for (let i = 0; i < tamanho; i++) soma += Number(d[i]) * (tamanho + 1 - i)
+    if (((soma * 10) % 11) % 10 !== Number(d[tamanho])) return false
+  }
+  return true
+}
+
 type ItemDoPedidoRow = {
   id: string
   item_id: string | null
@@ -73,15 +84,22 @@ Deno.serve(async (req: Request) => {
   }
 
   let pedidoId: string | undefined
+  let cpfConsumidor: string | null
   try {
     const body = await req.json()
     pedidoId = body?.pedido_id
+    // CPF na nota é SEMPRE opcional; vazio = consumidor não identificado.
+    cpfConsumidor = String(body?.cpf_consumidor ?? '').replace(/\D/g, '') || null
   } catch {
     return jsonResponse({ erro: 'JSON inválido' }, 400)
   }
 
   if (!pedidoId) {
     return jsonResponse({ erro: 'pedido_id é obrigatório' }, 400)
+  }
+
+  if (cpfConsumidor && !cpfValido(cpfConsumidor)) {
+    return jsonResponse({ erro: 'CPF do consumidor inválido. Corrija ou deixe em branco.' }, 422)
   }
 
   const jwt = (req.headers.get('Authorization') ?? '').replace(/^Bearer\s+/i, '')
@@ -129,7 +147,7 @@ Deno.serve(async (req: Request) => {
 
   const { data: barraca, error: erroBarraca } = await supabase
     .from('barracas')
-    .select('id, cnpj, fiscal_habilitado, fiscal_ambiente')
+    .select('id, cnpj, fiscal_habilitado, fiscal_ambiente, tributos_aprox_bps')
     .eq('id', pedido.barraca_id)
     .single()
 
@@ -167,6 +185,18 @@ Deno.serve(async (req: Request) => {
   const itensAtivos = ((pedido.itens_do_pedido ?? []) as ItemDoPedidoRow[]).filter((item) => !item.removido)
   if (itensAtivos.length === 0) {
     return jsonResponse({ erro: 'Pedido sem itens para emitir' }, 422)
+  }
+
+  // "Pagar na entrega": o método real só existe depois que o entregador
+  // confirma (grava o final em pedidos.metodo_pagamento). Antes disso a nota
+  // sairia com forma de pagamento errada, e NFC-e autorizada não se corrige.
+  if (pedido.metodo_pagamento === 'na_entrega') {
+    return jsonResponse(
+      {
+        erro: 'A forma de pagamento deste pedido será definida na entrega. Emita a nota depois que o entregador confirmar o pagamento.',
+      },
+      422,
+    )
   }
 
   const formaPagamento = pedido.metodo_pagamento
@@ -219,8 +249,15 @@ Deno.serve(async (req: Request) => {
     const cadastro = cadastroPorId.get(item.item_id as string) as ItemCadastroRow
     const valorUnitario = item.preco_centavos_unitario / 100
     const valorBruto = (item.preco_centavos_unitario * item.quantidade) / 100
+    // Lei 12.741: a FocusNFe não calcula IBPT; usa a alíquota do dono
+    // (mesma conta de src/lib/fiscal.ts).
+    const tributosCentavos =
+      barraca.tributos_aprox_bps === null || barraca.tributos_aprox_bps === undefined
+        ? null
+        : Math.round((item.preco_centavos_unitario * item.quantidade * barraca.tributos_aprox_bps) / 10000)
 
     return {
+      tributosCentavos,
       numero_item: String(indice + 1),
       codigo_produto: item.item_id,
       descricao: item.nome_item,
@@ -235,8 +272,13 @@ Deno.serve(async (req: Request) => {
       unidade_tributavel: cadastro.unidade_comercial,
       icms_origem: ICMS_ORIGEM,
       icms_situacao_tributaria: ICMS_SITUACAO_TRIBUTARIA,
+      ...(tributosCentavos !== null ? { valor_total_tributos: tributosCentavos / 100 } : {}),
     }
   })
+
+  const tributosTotalCentavos = itemsPayload.some((i) => i.tributosCentavos === null)
+    ? null
+    : itemsPayload.reduce((soma, i) => soma + (i.tributosCentavos ?? 0), 0)
 
   const valorTotal = itemsPayload.reduce((soma, item) => soma + item.valor_bruto, 0)
 
@@ -247,7 +289,10 @@ Deno.serve(async (req: Request) => {
     modalidade_frete: '9',
     local_destino: '1',
     natureza_operacao: 'VENDA AO CONSUMIDOR',
-    items: itemsPayload,
+    // CPF só vai se informado; dados de entrega NUNCA entram na NFC-e.
+    ...(cpfConsumidor ? { cpf_destinatario: cpfConsumidor } : {}),
+    // eslint-disable-next-line @typescript-eslint/no-unused-vars
+    items: itemsPayload.map(({ tributosCentavos, ...item }) => item),
     formas_pagamento: [{ forma_pagamento: formaPagamento, valor_pagamento: valorTotal }],
   }
 
@@ -271,7 +316,18 @@ Deno.serve(async (req: Request) => {
     return jsonResponse({ erro: `Falha ao contatar a FocusNFe: ${String(erroRede)}` }, 502)
   }
 
-  const resultado = await respostaFocusNFe.json().catch(() => null)
+  let resultado = await respostaFocusNFe.json().catch(() => null)
+
+  // Pode ficar em processando_autorizacao: consulta a mesma ref algumas
+  // vezes antes de desistir (a nota segue sendo processada na FocusNFe).
+  for (let tentativa = 0; tentativa < 4 && resultado?.status === 'processando_autorizacao'; tentativa++) {
+    await new Promise((r) => setTimeout(r, 1500))
+    const consulta = await fetch(`${baseUrl}/nfce/${pedidoId}`, {
+      headers: { Authorization: `Basic ${auth}` },
+    }).catch(() => null)
+    const corpo = await consulta?.json().catch(() => null)
+    if (corpo) resultado = corpo
+  }
 
   if (!respostaFocusNFe.ok) {
     const mensagem =
@@ -297,8 +353,11 @@ Deno.serve(async (req: Request) => {
       // confirmados numa emissão real (nenhuma nota emitida de verdade até
       // agora), por isso aceita variantes prováveis em vez de travar num só.
       nfce_serie: resultado?.serie ?? null,
-      nfce_protocolo: resultado?.protocolo_autorizacao ?? resultado?.protocolo ?? null,
-      nfce_qrcode_url: resultado?.qrcode_url ?? resultado?.qrcode ?? resultado?.url_qrcode ?? null,
+      // Nomes conferidos na doc oficial (consultar_nfce, 2026-10-06): serie,
+      // protocolo (= numero_protocolo), qrcode_url, url_consulta_nf.
+      nfce_protocolo: resultado?.protocolo ?? resultado?.numero_protocolo ?? null,
+      nfce_qrcode_url: resultado?.qrcode_url ?? null,
+      ...(autorizado ? { nfce_cpf_consumidor: cpfConsumidor, nfce_tributos_centavos: tributosTotalCentavos } : {}),
     })
     .eq('id', pedidoId)
 
