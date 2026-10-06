@@ -8,6 +8,8 @@ import { enfileirar } from '../lib/fila'
 import { filtrarEntradaPreco, formatarPrecoBR, reaisParaCentavos } from '../lib/preco'
 import { configTaxaEntrega, normalizarTelefone, validarDadosEntrega, type DadosEntrega } from '../lib/entrega'
 import { ICONE_MODO, ROTULO_MODO } from '../lib/atendimento'
+import { configBairrosDaBarraca, normalizarBairro, taxaDoBairro } from '../lib/bairros'
+import { useBairrosEntrega } from '../hooks/useBairrosEntrega'
 import type {
   EntregaDiretaPorItem,
   EstadoParaConfirmar,
@@ -141,16 +143,18 @@ export function ConfirmarPedido() {
   )
   const ehEntrega = estado?.tipoAtendimento === 'entrega'
   const configTaxa = configTaxaEntrega(barraca)
-  const cobraTaxa = ehEntrega && configTaxa.habilitada
+  const bairrosTaxa = useBairrosEntrega(barraca.id)
+  const configBairros = configBairrosDaBarraca(barraca)
+  // Com bairros cadastrados a taxa vale mesmo com a taxa padrão desligada.
+  const cobraTaxa = ehEntrega && (configTaxa.habilitada || bairrosTaxa.some((b) => b.ativo !== false))
   const [entrega, setEntrega] = useState<DadosEntrega>(
     () => estado?.entrega ?? { nome: '', telefone: '', rua: '', numero: '', bairro: '', referencia: '' },
   )
   // Modos sem formulário de Entrega: nome opcional. Na Entrega o nome é o do
   // formulário (obrigatório lá), então este campo não aparece.
   const [clienteNome, setClienteNome] = useState(() => estado?.clienteNome ?? '')
-  const [taxaTexto, setTaxaTexto] = useState(() =>
-    (configTaxa.centavos / 100).toFixed(2).replace('.', ','),
-  )
+  // Valor digitado à mão (taxa editável); null = segue a taxa do bairro.
+  const [taxaEditada, setTaxaEditada] = useState<string | null>(null)
   const [mostrarErrosEntrega, setMostrarErrosEntrega] = useState(false)
   const [enviando, setEnviando] = useState(false)
   const [confirmandoDescarte, setConfirmandoDescarte] = useState(false)
@@ -180,11 +184,20 @@ export function ConfirmarPedido() {
   )
 
   const errosEntrega = ehEntrega ? validarDadosEntrega(entrega) : {}
-  const taxaCentavos = !cobraTaxa
+  // Taxa do bairro digitado (mesma regra do servidor). Bairro "bloqueado" não
+  // trava o operador: usa a taxa padrão, que ele pode ajustar se for editável.
+  const taxaBairro = taxaDoBairro(configBairros, bairrosTaxa, entrega.bairro)
+  const taxaSugerida = !cobraTaxa
     ? 0
-    : configTaxa.editavel
-      ? reaisParaCentavos(taxaTexto)
-      : configTaxa.centavos
+    : taxaBairro.origem === 'bloqueado'
+      ? configBairros.taxaHabilitada
+        ? configBairros.taxaPadraoCentavos
+        : 0
+      : taxaBairro.taxaCentavos
+  const taxaTexto = taxaEditada ?? (taxaSugerida / 100).toFixed(2).replace('.', ',')
+  const taxaCentavos = !cobraTaxa ? 0 : configTaxa.editavel ? reaisParaCentavos(taxaTexto) : taxaSugerida
+  const bairroForaDaLista =
+    ehEntrega && entrega.bairro.trim() !== '' && bairrosTaxa.length > 0 && taxaBairro.origem !== 'bairro'
   const totalComTaxa = totalCentavos + taxaCentavos
 
   function alternarEntregaDireta(itemId: string) {
@@ -395,7 +408,19 @@ export function ConfirmarPedido() {
                 barracaId={barraca.id}
                 dados={entrega}
                 erros={mostrarErrosEntrega ? errosEntrega : {}}
-                onChange={setEntrega}
+                onChange={(novos) => {
+                  // Trocou de bairro: a taxa volta a seguir o bairro novo.
+                  if (normalizarBairro(novos.bairro) !== normalizarBairro(entrega.bairro)) setTaxaEditada(null)
+                  setEntrega(novos)
+                }}
+                sugestoesBairro={bairrosTaxa.map((b) => b.bairro)}
+                avisoBairro={
+                  bairroForaDaLista
+                    ? taxaBairro.origem === 'bloqueado'
+                      ? 'Bairro fora da lista de entrega. Confirme com o cliente; a taxa padrão foi aplicada.'
+                      : 'Bairro fora da lista: taxa padrão aplicada.'
+                    : undefined
+                }
               />
             </Card>
           </>
@@ -409,7 +434,7 @@ export function ConfirmarPedido() {
                 label="Taxa de entrega"
                 inputMode="decimal"
                 value={taxaTexto}
-                onChange={(e) => setTaxaTexto(filtrarEntradaPreco(e.target.value))}
+                onChange={(e) => setTaxaEditada(filtrarEntradaPreco(e.target.value))}
               />
             ) : (
               <LinhaMeta icone="two_wheeler" label="Taxa de entrega" valor={formatarPrecoBR(taxaCentavos)} />

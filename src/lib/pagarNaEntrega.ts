@@ -14,7 +14,10 @@ export type ResumoPedidoEntrega = {
   endereco: string
   observacao: string
   itens: { nome_item: string; quantidade: number; preco_centavos_unitario: number }[]
+  /** Total já com a taxa. */
   totalCentavos: number
+  /** Taxa de entrega calculada pelo servidor (0/ausente = sem linha de taxa). */
+  taxaCentavos?: number
 }
 
 /** Texto do WhatsApp pro dono. Itens e valores vêm da resposta do servidor
@@ -28,6 +31,9 @@ export function montarMensagemPagarNaEntrega(r: ResumoPedidoEntrega): string {
       (i) => `${i.quantidade}x ${i.nome_item} - ${formatarPrecoBR(i.preco_centavos_unitario * i.quantidade)}`,
     ),
     '',
+    ...((r.taxaCentavos ?? 0) > 0
+      ? [`Subtotal: ${formatarPrecoBR(r.totalCentavos - (r.taxaCentavos ?? 0))}`, `Taxa de entrega: ${formatarPrecoBR(r.taxaCentavos ?? 0)}`]
+      : []),
     `*Total: ${formatarPrecoBR(r.totalCentavos)}* (pago na entrega)`,
     '',
     `Cliente: ${r.nome}`,
