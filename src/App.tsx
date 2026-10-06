@@ -30,6 +30,7 @@ import { Onboarding } from './pages/Onboarding'
 import { Assinar } from './pages/Assinar'
 import { Assinatura } from './pages/Assinatura'
 import { Planos } from './pages/Planos'
+import { Entregador } from './pages/Entregador'
 
 function App() {
   // Fonte única de verdade do tema claro/escuro: preferência manual do
@@ -66,6 +67,8 @@ function App() {
                 de /:slug (dinâmico) na prioridade de rota do React Router
                 mesmo assim, mas fica perto das outras rotas públicas por
                 clareza. */}
+            {/* Link público do entregador (sem login, fora do layout da barraca). */}
+            <Route path="/e/:token" element={<Entregador />} />
             <Route path="/privacidade" element={<Privacidade />} />
             <Route path="/excluir-conta" element={<ExcluirConta />} />
 

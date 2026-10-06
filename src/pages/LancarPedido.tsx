@@ -19,6 +19,8 @@ import type {
   EstadoPedidoEnviado,
   ObservacaoPorItem,
 } from '../lib/carrinho'
+import { BotoesLinkEntregador } from '../components/BotoesLinkEntregador'
+import { useEntregaToken } from '../hooks/useEntregaToken'
 import { Badge } from '../components/ui/Badge'
 import { BotaoHome } from '../components/ui/BotaoHome'
 import { BottomSheet } from '../components/ui/BottomSheet'
@@ -54,6 +56,8 @@ const TEMPO_LIMITE_SENHA_MS = 15000
 // "Gerando a senha..." pra sempre nesse caso).
 type SenhaConfirmada = {
   valor: number | null
+  /** Id do pedido no servidor (chega com a senha); usado pro link do entregador. */
+  pedidoId?: string
   idFila: string
   entregaDireta: boolean
   entrega?: EstadoPedidoEnviado['senhaEnviada']['entrega']
@@ -290,11 +294,14 @@ function ChamarEntregador({
   dados,
   senha,
   aguardandoSenha,
+  pedidoId,
 }: {
   dados: NonNullable<SenhaConfirmada['entrega']>
   senha: number | null
   aguardandoSenha: boolean
+  pedidoId?: string
 }) {
+  const tokenEntregador = useEntregaToken(pedidoId ?? null)
   const [aviso, setAviso] = useState(false)
   const [copiado, setCopiado] = useState(false)
 
@@ -346,6 +353,7 @@ function ChamarEntregador({
       >
         {copiado ? 'Mensagem copiada' : 'Copiar mensagem'}
       </button>
+      <BotoesLinkEntregador token={tokenEntregador} senha={senha} />
     </div>
   )
 }
@@ -622,7 +630,9 @@ export function LancarPedido() {
     if (!senha || senha.valor !== null) return
 
     return aoConcluirCriacaoPedido(senha.idFila, (resultado) => {
-      setSenha((atual) => (atual ? { ...atual, valor: resultado.senha } : atual))
+      setSenha((atual) =>
+        atual ? { ...atual, valor: resultado.senha, pedidoId: resultado.pedidoId } : atual,
+      )
     })
   }, [senha])
 
@@ -797,6 +807,7 @@ export function LancarPedido() {
             dados={senha.entrega}
             senha={senha.valor}
             aguardandoSenha={aguardandoSenha}
+            pedidoId={senha.pedidoId}
           />
         )}
 

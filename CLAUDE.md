@@ -157,6 +157,24 @@ aparelho Android 7–11 e 12+ antes de publicar.
   valor menor que o cobrado. Relatório/Faturamento e Histórico mostram a
   taxa À PARTE (linha "Taxas de entrega", coluna na planilha, linha no
   card), nunca somada aos valores dos itens nem ao faturamento.
+- Link do entregador (2026-10-06, migration `20261006150000`): pedido de
+  Entrega nasce com `pedidos.entrega_token` (64 hex, gerado por trigger no
+  servidor; NULL nos antigos) e `entrega_confirmada_em`. Rota pública
+  `/e/:token` (`Entregador.tsx`, fora do layout da barraca, sem login): o
+  motoboy vê cliente/telefone/endereço/itens/taxa/total, escolhe como o
+  cliente pagou (dinheiro/Pix/débito/crédito, SEM troco) e confirma. RPCs
+  SECURITY DEFINER liberadas pra `anon`: `entregador_pedido(p_token)` e
+  `entregador_confirmar(p_token, p_metodo)`, que devolvem `estado` (ok,
+  ja_confirmado, cancelado, expirado, invalido, bloqueado...). O método só
+  é gravado quando o pedido está em `na_entrega` (cardápio digital); qualquer
+  outro método já definido não muda. Confirmar é idempotente e grava status
+  `entregue`, `entregue_em` e `entrega_confirmada_em` (Realtime leva ao app;
+  Histórico/Relatório/Caixa já contam `metodo_pagamento`). Link expira ao
+  confirmar ou 24h após criar o pedido; token inválido repetido (20/10min
+  por IP) bloqueia. Operador: "Enviar link ao entregador" (WhatsApp sem
+  número) + "Copiar link" na tela da senha, no card da Cozinha e no do
+  Histórico (`BotoesLinkEntregador`, só com token). Política de Privacidade
+  (seção 4) descreve o link.
 - Clientes de entrega (2026-10-04): tabela `clientes_finais` (um endereço
   por cliente, único por `barraca_id`+`telefone`, RLS por
   `usuario_tem_acesso_barraca` com WITH CHECK). Salvo/atualizado em segundo
