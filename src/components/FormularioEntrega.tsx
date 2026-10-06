@@ -17,11 +17,16 @@ export function FormularioEntrega({
   dados,
   erros,
   onChange,
+  sugestoesBairro = [],
+  avisoBairro,
 }: {
   barracaId: string
   dados: DadosEntrega
   erros: ErrosEntrega
   onChange: (dados: DadosEntrega) => void
+  /** Bairros cadastrados: viram sugestões (o operador ainda pode digitar outro). */
+  sugestoesBairro?: string[]
+  avisoBairro?: string
 }) {
   const [campoBusca, setCampoBusca] = useState<'telefone' | 'nome' | null>(null)
   const termo = campoBusca ? dados[campoBusca] : ''
@@ -100,11 +105,20 @@ export function FormularioEntrega({
         <Input
           label="Bairro"
           autoComplete="off"
+          list={sugestoesBairro.length > 0 ? 'bairros-entrega-sugeridos' : undefined}
           value={dados.bairro}
           onChange={(e) => alterar('bairro', e.target.value)}
           error={erros.bairro}
         />
       </div>
+      {sugestoesBairro.length > 0 && (
+        <datalist id="bairros-entrega-sugeridos">
+          {sugestoesBairro.map((b) => (
+            <option key={b} value={b} />
+          ))}
+        </datalist>
+      )}
+      {avisoBairro && <p className="text-sm font-medium text-mesa-warning-700">{avisoBairro}</p>}
       <Input
         label="Referência (opcional)"
         autoComplete="off"
