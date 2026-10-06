@@ -175,6 +175,14 @@ export function Privacidade() {
               conecta ao WhatsApp e não recebe cópia dela.
             </ItemLista>
             <ItemLista>
+              <strong>Contato comercial (opcional):</strong> no cardápio digital, quem pede entrega pode
+              marcar, em uma caixa separada, que aceita receber ofertas e novidades da loja por WhatsApp.
+              Sem essa marcação os dados servem só para entregar o pedido. A barraca pode exportar uma
+              lista dos clientes que aceitaram, para usar no próprio contato; o Sai aê não envia
+              mensagens em massa. Quem aceitou pode revogar a qualquer momento pedindo à barraca, e o dono
+              da barraca pode excluir o cadastro do cliente em Ajustes, na seção "Clientes de entrega".
+            </ItemLista>
+            <ItemLista>
               <strong>Link do entregador:</strong> a barraca pode enviar ao entregador um link (por
               exemplo pelo WhatsApp) que mostra, sem login, os itens do pedido e o nome, telefone e
               endereço de entrega do cliente, para o entregador confirmar a entrega e a forma de

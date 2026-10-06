@@ -205,6 +205,21 @@ aparelho Android 7–11 e 12+ antes de publicar.
   ao `criar_pedido` e faz upsert best-effort em `clientes_finais`
   (`origem='cardapio'`, `consentimento_lgpd_em`). Sem `entrega` segue o modo
   antigo (nome/telefone/endereço livre). A taxa continua FORA da NFC-e.
+- Exportar clientes de entrega (2026-10-07, Story 3, migration
+  `20261007140000`): botão "Exportar" em `SecaoClientesEntrega` (XLSX via
+  `exceljs` por import dinâmico, ou CSV UTF-8 com BOM e `;`), mesma regra de
+  plano do Histórico (Essencial desabilitado; trial e Pro liberam). Colunas:
+  nome, telefone (formatado e só dígitos), endereço, nº de pedidos, último
+  pedido, ticket médio dos itens (sem a taxa), origem, cadastro e "aceita
+  contato comercial" (`src/lib/exportarClientes.ts`: 2 consultas paginadas,
+  sem N+1; pedido cancelado não conta). LGPD: o consentimento de cadastro
+  cobre só a entrega; contato comercial é um checkbox OPCIONAL e separado
+  no formulário de Entrega do cardápio (`clientes_finais.consentimento_marketing_em`,
+  gravado por `criar-pedido-cardapio` só quando marcado; NULL = "não
+  informado" para cadastros antigos e do operador). O export padrão inclui só
+  quem aceitou; "todos" mostra aviso de LGPD. Células que começam com = + - @
+  recebem apóstrofo (sem injeção de fórmula). O app não envia mensagem em massa.
+  Política de Privacidade (seção 4) descreve finalidade, revogação e exclusão.
 - Clientes de entrega (2026-10-04): tabela `clientes_finais` (um endereço
   por cliente, único por `barraca_id`+`telefone`, RLS por
   `usuario_tem_acesso_barraca` com WITH CHECK). Salvo/atualizado em segundo
