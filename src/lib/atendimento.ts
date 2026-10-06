@@ -1,5 +1,13 @@
 import type { Barraca, Pedido, TipoAtendimento } from '../types/database'
 
+/** Nome do cliente pra mostrar: o informado no pedido, ou o do formulário de
+ * Entrega (pedido da v6, sem `cliente_nome`). Vazio vira null. */
+export function nomeDoCliente(
+  pedido: Pick<Pedido, 'cliente_nome' | 'entrega_nome'>,
+): string | null {
+  return pedido.cliente_nome?.trim() || pedido.entrega_nome?.trim() || null
+}
+
 /** Ordem fixa em que os modos aparecem (Ajustes e seletor de Lançar). */
 export const TODOS_OS_MODOS: TipoAtendimento[] = ['mesa', 'balcao', 'retirada', 'entrega']
 

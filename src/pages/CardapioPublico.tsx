@@ -484,6 +484,8 @@ export function CardapioPublico() {
   const [nomeCliente, setNomeCliente] = useState('')
   const [telefoneCliente, setTelefoneCliente] = useState('')
   const [enderecoCliente, setEnderecoCliente] = useState('')
+  const [honeypot, setHoneypot] = useState('')
+  const aberturaCheckoutRef = useRef(0)
   const [copiado, setCopiado] = useState(false)
 
   // Só os modos que a barraca ligou em Ajustes (sem Entrega). Se o modo
@@ -726,12 +728,22 @@ export function CardapioPublico() {
       return
     }
 
+    // Envio humano leva mais que 2s depois de abrir o formulário; mais rápido é
+    // script (o servidor confere o mesmo tempo).
+    const msNoCheckout = Date.now() - aberturaCheckoutRef.current
+    if (msNoCheckout < 2000) {
+      setPagamento({ fase: 'dados_entrega', erro: 'Confira seus dados e toque em Enviar pedido.' })
+      return
+    }
+
     setPagamento({ fase: 'enviando_entrega' })
 
     const { data, error } = await supabase.functions.invoke('criar-pedido-cardapio', {
       body: {
         barraca_id: itensCarrinho[0].item.barraca_id,
         client_uuid: clientUuidRef.current,
+        website: honeypot,
+        ms_no_checkout: msNoCheckout,
         nome,
         telefone,
         endereco: enderecoCliente.trim() || null,
@@ -1068,7 +1080,10 @@ export function CardapioPublico() {
                 icon={<Icone nome="two_wheeler" size={20} />}
                 className="w-full"
                 disabled={itensCarrinho.length === 0}
-                onClick={() => setPagamento({ fase: 'dados_entrega' })}
+                onClick={() => {
+                  aberturaCheckoutRef.current = Date.now()
+                  setPagamento({ fase: 'dados_entrega' })
+                }}
               >
                 Pagar na entrega
               </Button>
@@ -1105,6 +1120,17 @@ export function CardapioPublico() {
               Seu pedido vai direto pra cozinha e você avisa a barraca pelo WhatsApp. O pagamento é
               combinado na entrega.
             </p>
+            {/* Honeypot: fora da tela e fora da tabulação; só robô preenche. */}
+            <input
+              type="text"
+              name="website"
+              tabIndex={-1}
+              autoComplete="off"
+              aria-hidden="true"
+              value={honeypot}
+              onChange={(e) => setHoneypot(e.target.value)}
+              className="absolute -left-[9999px] h-0 w-0 opacity-0"
+            />
             <Input
               label="Seu nome"
               type="text"

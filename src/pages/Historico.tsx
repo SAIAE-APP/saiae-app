@@ -5,7 +5,7 @@ import { useBarracaAtual } from '../layouts/contextoBarraca'
 import { useTheme } from '../hooks/useTheme'
 import { MOTIVOS_CANCELAMENTO } from '../lib/cancelamento'
 import { formatarPrecoBR } from '../lib/preco'
-import { ROTULO_MODO, rotuloAtendimento, tipoDoPedido } from '../lib/atendimento'
+import { ROTULO_MODO, nomeDoCliente, rotuloAtendimento, tipoDoPedido } from '../lib/atendimento'
 import { corMetodo, humanizarMetodo, METODOS_DISPONIVEIS } from '../lib/metodoPagamento'
 import { hojeISO } from '../lib/datas'
 import { calcularIntervalosRelatorio, calcularTotalPedido, ehEntregaDireta } from '../lib/relatorio'
@@ -23,6 +23,8 @@ import { Icone } from '../components/ui/Icone'
 import { Input } from '../components/ui/Input'
 import { SegmentedControl } from '../components/ui/SegmentedControl'
 import { useToast } from '../components/ui/Toast'
+import { cpfValido, formatarCpf } from '../lib/fiscal'
+import { descreverErroImpressao, imprimirCupomFiscal, impressoraSuportada } from '../lib/impressoraTermica'
 import type { Item, PedidoComItens } from '../types/database'
 
 function motivoHumanizado(motivo: string | null): string {
@@ -162,14 +164,52 @@ function BotaoEmitirNota({ pedido }: { pedido: PedidoComItens }) {
   const [mensagem, setMensagem] = useState(pedido.nfce_mensagem)
   const [chave, setChave] = useState(pedido.nfce_chave)
   const [emitindo, setEmitindo] = useState(false)
+  const [imprimindo, setImprimindo] = useState(false)
+  const [cpf, setCpf] = useState('')
+  const [erroCpf, setErroCpf] = useState<string | null>(null)
   const { mostrarToast } = useToast()
+  const barraca = useBarracaAtual()
+  const podeImprimir =
+    impressoraSuportada() && barraca.impressora_habilitada && Boolean(barraca.impressora_endereco)
+
+  // Reimprime o cupom da NFC-e já autorizada. Relê o pedido do servidor: a
+  // emissão acabou de gravar QR code/protocolo/tributos, que o card ainda não tem.
+  async function imprimirCupom() {
+    if (!barraca.impressora_endereco || imprimindo) return
+    setImprimindo(true)
+    try {
+      const { data, error } = await supabase
+        .from('pedidos')
+        .select('*, itens_do_pedido(*)')
+        .eq('id', pedido.id)
+        .single()
+      const atual = (error || !data ? pedido : data) as PedidoComItens
+      await imprimirCupomFiscal({
+        endereco: barraca.impressora_endereco,
+        largura: barraca.impressora_largura_papel,
+        barraca,
+        pedido: atual,
+      })
+      mostrarToast('Cupom fiscal impresso.', { variante: 'sucesso', icone: 'print' })
+    } catch (erroImpressao) {
+      console.error('[impressora] cupom fiscal falhou', erroImpressao)
+      mostrarToast(`Não imprimiu. ${descreverErroImpressao(erroImpressao)}`, { variante: 'erro', duracaoMs: 10000 })
+    } finally {
+      setImprimindo(false)
+    }
+  }
 
   async function emitir() {
+    if (cpf && !cpfValido(cpf)) {
+      setErroCpf('CPF inválido. Corrija ou deixe em branco.')
+      return
+    }
+    setErroCpf(null)
     setEmitindo(true)
     setMensagem(null)
 
     const { data, error } = await supabase.functions.invoke('emitir-nfce', {
-      body: { pedido_id: pedido.id },
+      body: { pedido_id: pedido.id, cpf_consumidor: cpf || undefined },
     })
 
     setEmitindo(false)
@@ -197,15 +237,35 @@ function BotaoEmitirNota({ pedido }: { pedido: PedidoComItens }) {
 
   if (status === 'autorizado') {
     return (
-      <p className="mt-3 flex items-center gap-1.5 text-xs font-medium text-mesa-success-700 dark:text-mesa-success-500">
-        <Icone nome="task_alt" size={14} />
-        Nota fiscal emitida{chave ? ` — final ${chave.slice(-8)}` : ''}
-      </p>
+      <div className="mt-3">
+        <p className="flex items-center gap-1.5 text-xs font-medium text-mesa-success-700 dark:text-mesa-success-500">
+          <Icone nome="task_alt" size={14} />
+          Nota fiscal emitida{chave ? ` — final ${chave.slice(-8)}` : ''}
+        </p>
+        {podeImprimir && (
+          <Button variant="outline" size="md" loading={imprimindo} onClick={imprimirCupom} className="mt-2 w-full">
+            <Icone nome="print" size={18} />
+            Imprimir cupom fiscal
+          </Button>
+        )}
+      </div>
     )
   }
 
   return (
     <div className="mt-3">
+      <Input
+        label="CPF na nota (opcional)"
+        inputMode="numeric"
+        value={cpf}
+        onChange={(e) => {
+          setErroCpf(null)
+          setCpf(formatarCpf(e.target.value))
+        }}
+        placeholder="000.000.000-00"
+        error={erroCpf ?? undefined}
+        className="mb-2 max-w-xs"
+      />
       <Button variant="outline" size="sm" loading={emitindo} onClick={emitir}>
         {status === 'erro' ? 'Tentar emitir nota de novo' : 'Emitir nota fiscal'}
       </Button>
@@ -243,6 +303,9 @@ function CardHistorico({
           >
             {formatarPrecoBR(calcularTotalPedido(pedido))}
           </p>
+          {nomeDoCliente(pedido) && (
+            <p className="mt-1 text-sm font-semibold text-mesa-text-primary">{nomeDoCliente(pedido)}</p>
+          )}
           {(pedido.viagem || pedido.mesa) && (
             <p className="mt-1 text-sm text-mesa-text-secondary">
               {rotuloAtendimento(pedido)}
@@ -436,7 +499,8 @@ export function Historico() {
     ? pedidosPorMetodo.filter(
         (p) =>
           String(p.senha).includes(buscaNormalizada) ||
-          (p.mesa ?? '').toLowerCase().includes(buscaNormalizada),
+          (p.mesa ?? '').toLowerCase().includes(buscaNormalizada) ||
+          (nomeDoCliente(p) ?? '').toLowerCase().includes(buscaNormalizada),
       )
     : pedidosPorMetodo
 
@@ -624,8 +688,8 @@ export function Historico() {
           value={busca}
           onChange={(e) => setBusca(e.target.value)}
           onClear={() => setBusca('')}
-          placeholder="Buscar por senha ou mesa"
-          aria-label="Buscar por senha ou mesa"
+          placeholder="Buscar por senha, mesa ou nome"
+          aria-label="Buscar por senha, mesa ou nome"
           className="mt-3"
         />
 

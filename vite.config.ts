@@ -15,7 +15,7 @@ export default defineConfig({
       manifest: false,
       injectRegister: 'auto',
       workbox: {
-        globPatterns: ['**/*.{js,css,html,ico,png,svg,webmanifest}'],
+        globPatterns: ['**/*.{js,css,html,ico,png,svg,webmanifest,ttf}'],
         // exceljs só carrega sob demanda (import dinâmico no botão Exportar
         // de Histórico) — é ~1MB, não vale precachear pra todo mundo que
         // nunca exporta nada

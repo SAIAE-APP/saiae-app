@@ -1,6 +1,17 @@
 @import "tailwindcss";
 @import "./styles/tokens.css";
 
+/* Ícones: fonte própria (subset só com os glifos usados, ~29KB) em vez do
+   Google Fonts (1,2MB, display=block deixava o ícone invisível ~1s). Se um
+   ícone novo for usado, regerar o subset (ver CLAUDE.md, "Ícones"). */
+@font-face {
+  font-family: "Material Symbols Rounded";
+  font-style: normal;
+  font-weight: 400 700;
+  font-display: block;
+  src: url("./assets/fonts/material-symbols-rounded.ttf") format("truetype");
+}
+
 @custom-variant dark (&:where(.dark, .dark *));
 
 /* Rebrand "Sai aê" (redesign_ux_ui_app/saiae/DESIGN.md): corpo em

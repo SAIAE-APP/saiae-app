@@ -9,9 +9,14 @@
 // (reenvio devolve a mesma senha). Usa a service role key.
 import { createClient } from 'jsr:@supabase/supabase-js@2'
 
-const JANELA_MS = 10 * 60 * 1000
-const LIMITE_POR_IP = 3
-const LIMITE_POR_BARRACA = 30
+// Anti-bot, NÃO limite de volume: barraca em evento recebe centenas de pedidos em
+// poucos minutos e vários consumidores saem do mesmo IP (wifi/NAT). Por isso não
+// há teto por barraca e o teto por IP é altíssimo: só barra script em loop.
+// Cliente real nunca chega perto disso.
+const JANELA_MS = 5 * 60 * 1000
+const LIMITE_POR_IP = 120
+// Envio mais rápido que isso depois de abrir o checkout não é humano.
+const MIN_MS_NO_CHECKOUT = 2000
 const MAX_LINHAS = 40
 const MAX_QUANTIDADE = 50
 
@@ -66,6 +71,10 @@ Deno.serve(async (req: Request) => {
     endereco?: string | null
     observacao?: string | null
     itens?: { item_id?: string; quantidade?: number }[]
+    /** Honeypot: campo oculto no formulário; humano nunca preenche. */
+    website?: string
+    /** Tempo entre abrir o checkout e enviar (medido no navegador). */
+    ms_no_checkout?: number
   }
   try {
     body = await req.json()
@@ -79,6 +88,17 @@ Deno.serve(async (req: Request) => {
   const telefone = String(body.telefone ?? '').replace(/\D/g, '')
   const endereco = String(body.endereco ?? '').trim().slice(0, 200)
   const observacaoCliente = String(body.observacao ?? '').trim().slice(0, 200)
+
+  // Defesas baratas que não afetam cliente real: honeypot preenchido ou envio
+  // rápido demais. Mesma resposta genérica, sem dizer qual regra pegou.
+  const msNoCheckout = Number(body.ms_no_checkout)
+  if (
+    String(body.website ?? '').length > 0 ||
+    !Number.isFinite(msNoCheckout) ||
+    msNoCheckout < MIN_MS_NO_CHECKOUT
+  ) {
+    return jsonResponse({ erro: 'Não foi possível enviar o pedido. Tente de novo.' }, 400)
+  }
 
   if (!UUID.test(barracaId) || !UUID.test(clientUuid)) {
     return jsonResponse({ erro: 'barraca_id e client_uuid inválidos' }, 400)
@@ -161,26 +181,16 @@ Deno.serve(async (req: Request) => {
     return jsonResponse({ senha: existente.senha, total_centavos: totalCentavos, itens: itensResolvidos })
   }
 
-  // Anti-spam: janela deslizante por IP (hash) e por barraca.
+  // Teto anti-bot por IP (hash), janela deslizante. Sem limite por barraca.
   const desde = new Date(Date.now() - JANELA_MS).toISOString()
   const ipHash = await hashIp(ipDoCliente(req), barracaId)
-  const [{ count: porIp }, { count: porBarraca }] = await Promise.all([
-    supabase
-      .from('cardapio_pedidos_log')
-      .select('id', { count: 'exact', head: true })
-      .eq('ip_hash', ipHash)
-      .gte('criado_em', desde),
-    supabase
-      .from('cardapio_pedidos_log')
-      .select('id', { count: 'exact', head: true })
-      .eq('barraca_id', barracaId)
-      .gte('criado_em', desde),
-  ])
-  if ((porIp ?? 0) >= LIMITE_POR_IP || (porBarraca ?? 0) >= LIMITE_POR_BARRACA) {
-    return jsonResponse(
-      { erro: 'Muitos pedidos em pouco tempo. Aguarde alguns minutos ou fale com a barraca.' },
-      429,
-    )
+  const { count: porIp } = await supabase
+    .from('cardapio_pedidos_log')
+    .select('id', { count: 'exact', head: true })
+    .eq('ip_hash', ipHash)
+    .gte('criado_em', desde)
+  if ((porIp ?? 0) >= LIMITE_POR_IP) {
+    return jsonResponse({ erro: 'Muitos pedidos em pouco tempo. Aguarde um instante e tente de novo.' }, 429)
   }
   await supabase.from('cardapio_pedidos_log').insert({ barraca_id: barracaId, ip_hash: ipHash, client_uuid: clientUuid })
 

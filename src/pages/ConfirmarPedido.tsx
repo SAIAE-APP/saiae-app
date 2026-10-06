@@ -145,6 +145,9 @@ export function ConfirmarPedido() {
   const [entrega, setEntrega] = useState<DadosEntrega>(
     () => estado?.entrega ?? { nome: '', telefone: '', rua: '', numero: '', bairro: '', referencia: '' },
   )
+  // Modos sem formulário de Entrega: nome opcional. Na Entrega o nome é o do
+  // formulário (obrigatório lá), então este campo não aparece.
+  const [clienteNome, setClienteNome] = useState(() => estado?.clienteNome ?? '')
   const [taxaTexto, setTaxaTexto] = useState(() =>
     (configTaxa.centavos / 100).toFixed(2).replace('.', ','),
   )
@@ -200,6 +203,7 @@ export function ConfirmarPedido() {
         entregaDireta,
         observacaoPorItem,
         entrega: ehEntrega ? entrega : undefined,
+        clienteNome,
       } satisfies EstadoParaEditar,
     })
   }
@@ -249,6 +253,9 @@ export function ConfirmarPedido() {
       p_itens: itensPedido,
       // Só pedido de Entrega leva estes campos: os demais seguem com o mesmo
       // formato de antes (e a criar_pedido sem v6 no banco continua servindo).
+      // Nome opcional: só vai no payload quando preenchido (pedido sem nome
+      // segue idêntico ao do app antigo). Na Entrega o nome já está em p_entrega.
+      ...(!ehEntrega && clienteNome.trim() ? { p_cliente_nome: clienteNome.trim() } : {}),
       ...(ehEntrega
         ? {
             p_entrega: {
@@ -343,6 +350,18 @@ export function ConfirmarPedido() {
             />
           ))}
         </Card>
+
+        {!ehEntrega && (
+          <Input
+            label="Nome do cliente (opcional)"
+            type="text"
+            autoComplete="off"
+            maxLength={60}
+            value={clienteNome}
+            onChange={(e) => setClienteNome(e.target.value)}
+            className="mt-3"
+          />
+        )}
 
         <Textarea
           value={observacao}

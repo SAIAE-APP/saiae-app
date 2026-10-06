@@ -4,7 +4,7 @@ import clsx from 'clsx'
 import { useBarracaAtual, useSincronizacaoAtual } from '../layouts/contextoBarraca'
 import { useTheme } from '../hooks/useTheme'
 import { turnoAtual } from '../lib/datas'
-import { iconeAtendimento, rotuloAtendimento } from '../lib/atendimento'
+import { iconeAtendimento, nomeDoCliente, rotuloAtendimento } from '../lib/atendimento'
 import { usePedidosAtual } from '../layouts/contextoPedidos'
 import { enfileirar } from '../lib/fila'
 import { classesBotaoIcone } from '../lib/estiloBotaoIcone'
@@ -203,6 +203,7 @@ function CardPedido({
 
   const iconeTipo = iconeAtendimento(pedido)
   const rotuloTipo = rotuloAtendimento(pedido)
+  const nomeCliente = nomeDoCliente(pedido)
 
   return (
     // Card novo (IDV "Sai aê", redesign_ux_ui_app/saiae/DESIGN.md): "Card
@@ -238,6 +239,10 @@ function CardPedido({
             </div>
           )}
         </div>
+
+        {nomeCliente && (
+          <p className="mt-2 truncate text-sm font-semibold text-mesa-neutral-200">{nomeCliente}</p>
+        )}
 
         {tudoEntregue && (
           <div className="mt-3 flex h-9 items-center justify-center gap-2 rounded-mesa-md bg-mesa-success-500/15">
