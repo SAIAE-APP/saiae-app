@@ -3,13 +3,15 @@ import type { MetodoPagamento } from './metodoPagamento'
 import { tipoDoPedido } from './atendimento'
 import type { PedidoComItens } from '../types/database'
 
-export type MetodoOuNaoInformado = MetodoPagamento | 'nao_informado'
+/** `na_entrega`: pedido do cardápio digital cujo método real só se define na entrega. */
+export type MetodoOuNaoInformado = MetodoPagamento | 'na_entrega' | 'nao_informado'
 
 export const METODOS_OU_NAO_INFORMADO: MetodoOuNaoInformado[] = [
   'dinheiro',
   'debito',
   'credito',
   'pix',
+  'na_entrega',
   'nao_informado',
 ]
 
@@ -85,6 +87,7 @@ export function calcularEstimativaLiquida(
     debito: taxaDebitoBps,
     credito: taxaCreditoBps,
     pix: null,
+    na_entrega: null,
     nao_informado: null,
   }
 

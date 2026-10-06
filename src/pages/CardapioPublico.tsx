@@ -12,6 +12,9 @@ import { Icone } from '../components/ui/Icone'
 import { Input } from '../components/ui/Input'
 import { SegmentedControl } from '../components/ui/SegmentedControl'
 import { Textarea } from '../components/ui/Textarea'
+import { statusFuncionamento, type HorarioPublico } from '../lib/horarioFuncionamento'
+import { montarMensagemPagarNaEntrega, urlWhatsappDono } from '../lib/pagarNaEntrega'
+import { formatarTelefoneBR } from '../lib/entrega'
 
 type LinhaCardapioPublico = {
   barraca_id: string
@@ -19,6 +22,8 @@ type LinhaCardapioPublico = {
   barraca_logo_url: string | null
   barraca_imagem_capa_url: string | null
   pagamento_online_habilitado: boolean
+  /** WhatsApp do dono (só dígitos) quando "Pagar na entrega" está ligado; ausente na função antiga. */
+  barraca_whatsapp_pedidos?: string | null
   /** Ausente enquanto a migration da função não está no banco: usar `modosDoCardapioPublico`. */
   barraca_modos_atendimento?: TipoAtendimento[] | null
   item_id: string
@@ -39,54 +44,6 @@ type BannerPublico = {
   cta_texto: string | null
 }
 
-type HorarioPublico = {
-  dia_semana: number
-  aberto: boolean
-  hora_abertura: string | null
-  hora_fechamento: string | null
-}
-
-const DIAS_ABREV = ['domingo', 'segunda', 'terça', 'quarta', 'quinta', 'sexta', 'sábado']
-
-function paraMinutos(hora: string): number {
-  const [h, m] = hora.split(':').map(Number)
-  return h * 60 + m
-}
-
-/** "Aberto agora"/"Fechado — abre às Xh" calculado no client, a partir da
- * data/hora do visitante — não trata horário que atravessa a meia-noite
- * (ex.: 18h–02h), fora de escopo por ora (feira/food service normalmente
- * fecha antes disso). */
-function statusFuncionamento(horarios: HorarioPublico[]): { aberto: boolean; texto: string } | null {
-  if (horarios.length === 0 || horarios.every((h) => !h.aberto)) return null
-
-  const agora = new Date()
-  const diaAtual = agora.getDay()
-  const minutosAgora = agora.getHours() * 60 + agora.getMinutes()
-
-  const hoje = horarios.find((h) => h.dia_semana === diaAtual)
-  if (hoje?.aberto && hoje.hora_abertura && hoje.hora_fechamento) {
-    const inicio = paraMinutos(hoje.hora_abertura)
-    const fim = paraMinutos(hoje.hora_fechamento)
-    if (minutosAgora >= inicio && minutosAgora < fim) {
-      return { aberto: true, texto: `Aberto agora · fecha às ${hoje.hora_fechamento.slice(0, 5)}` }
-    }
-    if (minutosAgora < inicio) {
-      return { aberto: false, texto: `Fechado · abre hoje às ${hoje.hora_abertura.slice(0, 5)}` }
-    }
-  }
-
-  for (let i = 1; i <= 7; i++) {
-    const dia = (diaAtual + i) % 7
-    const h = horarios.find((x) => x.dia_semana === dia)
-    if (!h?.aberto || !h.hora_abertura) continue
-    const rotuloDia = i === 1 ? 'amanhã' : DIAS_ABREV[dia]
-    return { aberto: false, texto: `Fechado · abre ${rotuloDia} às ${h.hora_abertura.slice(0, 5)}` }
-  }
-
-  return { aberto: false, texto: 'Fechado' }
-}
-
 type Estado =
   | { status: 'carregando' }
   | { status: 'erro' }
@@ -104,6 +61,10 @@ type EstadoPagamento =
   | { fase: 'processando' }
   | { fase: 'aguardando'; pendenteId: string; qrCode: string | null; qrCodeBase64: string | null }
   | { fase: 'aprovado'; senha: number | null }
+  // "Pagar na entrega": dados do cliente -> envio -> pedido já na cozinha + wa.me do dono.
+  | { fase: 'dados_entrega'; erro?: string }
+  | { fase: 'enviando_entrega' }
+  | { fase: 'entrega_enviada'; senha: number | null; urlWhatsapp: string; abriu: boolean }
   | { fase: 'recusado' }
   | { fase: 'erro'; mensagem: string }
 
@@ -520,6 +481,11 @@ export function CardapioPublico() {
   const [mesa, setMesa] = useState('')
   const [observacao, setObservacao] = useState('')
   const [pagamento, setPagamento] = useState<EstadoPagamento>({ fase: 'formulario' })
+  const [nomeCliente, setNomeCliente] = useState('')
+  const [telefoneCliente, setTelefoneCliente] = useState('')
+  const [enderecoCliente, setEnderecoCliente] = useState('')
+  const [honeypot, setHoneypot] = useState('')
+  const aberturaCheckoutRef = useRef(0)
   const [copiado, setCopiado] = useState(false)
 
   // Só os modos que a barraca ligou em Ajustes (sem Entrega). Se o modo
@@ -690,7 +656,7 @@ export function CardapioPublico() {
 
   function fecharCheckout() {
     setMostrarCheckout(false)
-    if (pagamento.fase === 'aprovado') {
+    if (pagamento.fase === 'aprovado' || pagamento.fase === 'entrega_enviada') {
       setCarrinho({})
       setMesa('')
       setObservacao('')
@@ -747,6 +713,83 @@ export function CardapioPublico() {
     })
   }
 
+  async function enviarPedidoNaEntrega() {
+    if (itensCarrinho.length === 0) return
+    const numeroDono = linhas[0].barraca_whatsapp_pedidos
+    if (!numeroDono) return
+    const nome = nomeCliente.trim()
+    const telefone = telefoneCliente.replace(/\D/g, '')
+    if (nome.length < 2) {
+      setPagamento({ fase: 'dados_entrega', erro: 'Informe seu nome.' })
+      return
+    }
+    if (telefone.length < 10 || telefone.length > 13) {
+      setPagamento({ fase: 'dados_entrega', erro: 'Informe seu telefone com DDD.' })
+      return
+    }
+
+    // Envio humano leva mais que 2s depois de abrir o formulário; mais rápido é
+    // script (o servidor confere o mesmo tempo).
+    const msNoCheckout = Date.now() - aberturaCheckoutRef.current
+    if (msNoCheckout < 2000) {
+      setPagamento({ fase: 'dados_entrega', erro: 'Confira seus dados e toque em Enviar pedido.' })
+      return
+    }
+
+    setPagamento({ fase: 'enviando_entrega' })
+
+    const { data, error } = await supabase.functions.invoke('criar-pedido-cardapio', {
+      body: {
+        barraca_id: itensCarrinho[0].item.barraca_id,
+        client_uuid: clientUuidRef.current,
+        website: honeypot,
+        ms_no_checkout: msNoCheckout,
+        nome,
+        telefone,
+        endereco: enderecoCliente.trim() || null,
+        observacao: observacao.trim() || null,
+        itens: itensCarrinho.map((l) => ({ item_id: l.item.item_id, quantidade: l.quantidade })),
+      },
+    })
+
+    if (error || !data || data.erro) {
+      // Mesmo cuidado do Pix: com status não-2xx o corpo fica em error.context.
+      let corpo: { erro?: string } | null = data ?? null
+      const contexto = (error as { context?: unknown } | null)?.context
+      if (!corpo && contexto instanceof Response) {
+        corpo = await contexto.json().catch(() => null)
+      }
+      console.error('Falha ao enviar pedido (pagar na entrega):', error, corpo?.erro)
+      const recusaNossa = contexto instanceof Response && contexto.status < 500
+      // Mantém o client_uuid: tentar de novo é idempotente, não duplica o pedido.
+      setPagamento({
+        fase: 'dados_entrega',
+        erro:
+          recusaNossa && corpo?.erro
+            ? corpo.erro
+            : 'Não foi possível enviar o pedido agora. Tente de novo em instantes.',
+      })
+      return
+    }
+
+    // Resumo montado com o que o SERVIDOR devolveu (preços reais).
+    const mensagem = montarMensagemPagarNaEntrega({
+      nomeBarraca: linhas[0].barraca_nome,
+      senha: data.senha ?? null,
+      nome,
+      telefone: formatarTelefoneBR(telefone),
+      endereco: enderecoCliente,
+      observacao,
+      itens: data.itens,
+      totalCentavos: data.total_centavos,
+    })
+    const urlWhatsapp = urlWhatsappDono(numeroDono, mensagem)
+    // Depois de um await o navegador pode bloquear o pop-up: se bloquear, a tela
+    // seguinte mostra o botão "Avisar no WhatsApp" (toque do cliente = permitido).
+    const janela = window.open(urlWhatsapp, '_blank', 'noopener')
+    setPagamento({ fase: 'entrega_enviada', senha: data.senha ?? null, urlWhatsapp, abriu: janela !== null })
+  }
+
   async function copiarCodigoPix() {
     if (pagamento.fase !== 'aguardando' || !pagamento.qrCode) return
     try {
@@ -783,6 +826,7 @@ export function CardapioPublico() {
   const logoUrl = linhas[0].barraca_logo_url
   const capaUrl = linhas[0].barraca_imagem_capa_url
   const podeComprar = linhas[0].pagamento_online_habilitado
+  const pagarNaEntrega = Boolean(linhas[0].barraca_whatsapp_pedidos)
 
   return (
     <div className="min-h-dvh bg-mesa-bg-base pb-12 pt-[env(safe-area-inset-top)] md:mx-auto md:max-w-4xl">
@@ -1029,6 +1073,22 @@ export function CardapioPublico() {
               </span>
             </div>
 
+            {pagarNaEntrega && (
+              <Button
+                variant="outline"
+                size="xl"
+                icon={<Icone nome="two_wheeler" size={20} />}
+                className="w-full"
+                disabled={itensCarrinho.length === 0}
+                onClick={() => {
+                  aberturaCheckoutRef.current = Date.now()
+                  setPagamento({ fase: 'dados_entrega' })
+                }}
+              >
+                Pagar na entrega
+              </Button>
+            )}
+
             {podeComprar ? (
               <Button
                 size="xl"
@@ -1050,6 +1110,110 @@ export function CardapioPublico() {
                 Finalizar no caixa
               </Button>
             )}
+          </div>
+        )}
+
+        {(pagamento.fase === 'dados_entrega' || pagamento.fase === 'enviando_entrega') && (
+          <div className="flex flex-col gap-3">
+            <h2 className="text-lg font-semibold text-mesa-text-primary">Pagar na entrega</h2>
+            <p className="text-sm text-mesa-text-secondary">
+              Seu pedido vai direto pra cozinha e você avisa a barraca pelo WhatsApp. O pagamento é
+              combinado na entrega.
+            </p>
+            {/* Honeypot: fora da tela e fora da tabulação; só robô preenche. */}
+            <input
+              type="text"
+              name="website"
+              tabIndex={-1}
+              autoComplete="off"
+              aria-hidden="true"
+              value={honeypot}
+              onChange={(e) => setHoneypot(e.target.value)}
+              className="absolute -left-[9999px] h-0 w-0 opacity-0"
+            />
+            <Input
+              label="Seu nome"
+              type="text"
+              autoComplete="name"
+              maxLength={60}
+              value={nomeCliente}
+              onChange={(e) => setNomeCliente(e.target.value)}
+            />
+            <Input
+              label="Seu telefone (com DDD)"
+              type="text"
+              inputMode="tel"
+              autoComplete="tel"
+              value={telefoneCliente}
+              onChange={(e) => setTelefoneCliente(e.target.value)}
+            />
+            <Input
+              label="Endereço de entrega (opcional)"
+              type="text"
+              autoComplete="street-address"
+              maxLength={200}
+              value={enderecoCliente}
+              onChange={(e) => setEnderecoCliente(e.target.value)}
+            />
+            {pagamento.fase === 'dados_entrega' && pagamento.erro && (
+              <p className="rounded-mesa-md border-l-[3px] border-mesa-error-500 bg-mesa-error-50 p-3 text-sm font-medium text-mesa-error-700 dark:bg-mesa-error-500/15 dark:text-mesa-error-400">
+                {pagamento.erro}
+              </p>
+            )}
+            <div className="flex items-center justify-between border-t border-mesa-border-subtle pt-3">
+              <span className="text-sm text-mesa-text-secondary">Total</span>
+              <span className="font-mesa-display text-lg font-bold text-mesa-text-primary">
+                {formatarPrecoBR(totalCentavosCarrinho)}
+              </span>
+            </div>
+            <Button
+              size="xl"
+              icon={<Icone nome="send" size={20} />}
+              className="w-full"
+              loading={pagamento.fase === 'enviando_entrega'}
+              onClick={enviarPedidoNaEntrega}
+            >
+              Enviar pedido
+            </Button>
+            <Button
+              variant="ghost"
+              size="md"
+              className="w-full"
+              disabled={pagamento.fase === 'enviando_entrega'}
+              onClick={() => setPagamento({ fase: 'formulario' })}
+            >
+              Voltar
+            </Button>
+          </div>
+        )}
+
+        {pagamento.fase === 'entrega_enviada' && (
+          <div className="flex flex-col items-center gap-3 py-6 text-center">
+            <Icone nome="check_circle" size={40} className="text-mesa-success-500" />
+            <h2 className="text-lg font-semibold text-mesa-text-primary">Pedido enviado!</h2>
+            <p className="text-sm text-mesa-text-secondary">
+              Seu pedido já foi pra cozinha.
+              {pagamento.abriu
+                ? ' Confirme o aviso no WhatsApp pra barraca saber que é você.'
+                : ' Toque abaixo pra avisar a barraca no WhatsApp.'}
+            </p>
+            {pagamento.senha !== null && (
+              <p className="font-mesa-display text-3xl font-black text-mesa-text-primary">
+                Senha {String(pagamento.senha).padStart(3, '0')}
+              </p>
+            )}
+            <a
+              href={pagamento.urlWhatsapp}
+              target="_blank"
+              rel="noopener noreferrer"
+              className="inline-flex min-h-12 w-full items-center justify-center gap-2 rounded-mesa-btn bg-mesa-orange-500 px-5 text-base font-bold text-mesa-neutral-900"
+            >
+              <Icone nome="chat" size={20} />
+              {pagamento.abriu ? 'Abrir o WhatsApp de novo' : 'Avisar no WhatsApp'}
+            </a>
+            <Button variant="ghost" size="md" onClick={fecharCheckout} className="w-full">
+              Fechar
+            </Button>
           </div>
         )}
 

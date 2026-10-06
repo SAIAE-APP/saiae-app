@@ -67,11 +67,13 @@ async function carregarConfigImpressora(
 
 /** Endereço gravado no pedido (snapshot), ou null se não for pedido de Entrega. */
 function dadosEntregaDoPedido(pedido: Pedido): DadosEntrega | null {
-  if (!pedido.entrega_rua) return null
+  // Pedido do cardápio digital ("Pagar na entrega") nasce só com nome/telefone e o
+  // endereço livre em `entrega_referencia`, sem rua: ainda é uma Entrega.
+  if (!pedido.entrega_rua && !pedido.entrega_nome && !pedido.entrega_telefone) return null
   return {
     nome: pedido.entrega_nome ?? '',
     telefone: pedido.entrega_telefone ?? '',
-    rua: pedido.entrega_rua,
+    rua: pedido.entrega_rua ?? '',
     numero: pedido.entrega_numero ?? '',
     bairro: pedido.entrega_bairro ?? '',
     referencia: pedido.entrega_referencia,

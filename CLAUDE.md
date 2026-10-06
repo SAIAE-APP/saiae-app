@@ -632,9 +632,29 @@ nenhum item daqui sozinho, só quando for pedido explicitamente.
     cardápio público via `horarios_publicos(slug)` SECURITY DEFINER
     (mesmo padrão de `banners_publicos`); "Aberto agora"/"Fechado —
     abre às Xh" é calculado no client a partir da hora do visitante
-    (`statusFuncionamento` em `CardapioPublico.tsx`) — não trata
-    horário que atravessa a meia-noite (ex.: 18h–02h), fora de escopo
-    por ora.
+    (`statusFuncionamento`, função pura em `src/lib/horarioFuncionamento.ts`).
+    Desde 2026-10-06 trata janela que cruza a meia-noite (18h–02h; de
+    madrugada olha a janela do dia anterior; fechamento <= abertura = vira
+    o dia).
+  - "Pagar na entrega" (2026-10-06): opção extra no checkout do cardápio,
+    só aparece se o dono salvou o WhatsApp (`barracas.whatsapp_pedidos`, só
+    dígitos) E ligou `pagar_na_entrega_habilitado` (Ajustes > Cardápio &
+    Operação, `SecaoPagarNaEntrega`); `cardapio_publico` só devolve o número
+    com a opção ligada. O cliente informa nome, telefone e endereço
+    (opcional); a edge function PÚBLICA `criar-pedido-cardapio` resolve
+    preço/disponibilidade no servidor (nunca do cliente), tem só um teto anti-bot
+    por IP (hash, 120 pedidos/5min, em `cardapio_pedidos_log`; SEM limite por
+    barraca, porque evento tem centenas de pedidos e IP compartilhado),
+    honeypot oculto e rejeita envio < 2s após abrir o formulário, é idempotente por `client_uuid` e chama `criar_pedido` com método
+    `na_entrega`, tipo Entrega, `p_entrega` só com nome/telefone/referência
+    (sem rua: o endereço livre vai em `entrega_referencia`, a comanda mostra
+    "ENTREGAR PARA" mesmo sem rua e a observação do card da Cozinha repete
+    nome, telefone e endereço). O pedido
+    cai na Cozinha/imprime pelo Realtime e o celular do cliente abre
+    `wa.me/<dono>?text=<resumo>` (se o pop-up for bloqueado, botão "Avisar
+    no WhatsApp"). Método `na_entrega` aparece como "A definir na entrega"
+    (Histórico, comanda, Relatório/Faturamento em linha própria); o método
+    real é definido depois (frente F, link do entregador).
   - Fase 2 (futura): cliente monta pedido e ele cai direto na
     Cozinha, mas o pagamento continua fora do app (maquininha/Pix na
     mesa, como já funciona hoje) — só tira a fila de atendimento,

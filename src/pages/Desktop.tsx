@@ -23,6 +23,7 @@ const COR_CABECALHO = 'FFFFC21A' // mesa-orange-500 (Sai aê / mostarda), mesmo 
 
 function labelMetodoExportar(chave: string): string {
   if (chave === 'nao_informado') return 'Não informado'
+  if (chave === 'na_entrega') return 'A definir na entrega'
   return METODOS_DISPONIVEIS.find((m) => m.chave === chave)?.label ?? chave
 }
 
