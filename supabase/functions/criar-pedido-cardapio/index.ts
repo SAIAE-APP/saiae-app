@@ -71,6 +71,20 @@ Deno.serve(async (req: Request) => {
     endereco?: string | null
     observacao?: string | null
     itens?: { item_id?: string; quantidade?: number }[]
+    /** Entrega com endereço estruturado (taxa por bairro). Sem isto vale o modo antigo
+     * "só nome/telefone/endereço livre". */
+    entrega?: {
+      nome?: string
+      telefone?: string
+      rua?: string
+      numero?: string
+      bairro?: string
+      referencia?: string | null
+      /** Aceito aqui também (contrato do Pix com Entrega); vale o de cima ou este. */
+      consentimento_lgpd?: boolean
+    } | null
+    /** Cliente aceitou o aviso de LGPD (obrigatório com `entrega`). */
+    consentimento_lgpd?: boolean
     /** Honeypot: campo oculto no formulário; humano nunca preenche. */
     website?: string
     /** Tempo entre abrir o checkout e enviar (medido no navegador). */
@@ -111,6 +125,31 @@ Deno.serve(async (req: Request) => {
     return jsonResponse({ erro: 'Informe um telefone com DDD' }, 422)
   }
 
+  // Entrega estruturada (rua, número, bairro): a taxa é decidida AQUI pelo bairro.
+  const entregaBruta = body.entrega ?? null
+  const entregaEstruturada = entregaBruta
+    ? {
+        nome: String(entregaBruta.nome ?? nome).trim().slice(0, 60),
+        telefone: String(entregaBruta.telefone ?? telefone).replace(/\D/g, ''),
+        rua: String(entregaBruta.rua ?? '').trim().slice(0, 100),
+        numero: String(entregaBruta.numero ?? '').trim().slice(0, 20),
+        bairro: String(entregaBruta.bairro ?? '').trim().replace(/\s+/g, ' ').slice(0, 80),
+        referencia: String(entregaBruta.referencia ?? '').trim().slice(0, 120) || null,
+      }
+    : null
+  if (entregaEstruturada) {
+    if (entregaEstruturada.nome.length < 2) return jsonResponse({ erro: 'Informe seu nome' }, 422)
+    if (entregaEstruturada.telefone.length < 10 || entregaEstruturada.telefone.length > 13) {
+      return jsonResponse({ erro: 'Informe um telefone com DDD' }, 422)
+    }
+    if (!entregaEstruturada.rua) return jsonResponse({ erro: 'Informe a rua' }, 422)
+    if (!entregaEstruturada.numero) return jsonResponse({ erro: 'Informe o número' }, 422)
+    if (!entregaEstruturada.bairro) return jsonResponse({ erro: 'Informe o bairro' }, 422)
+    if (body.consentimento_lgpd !== true && entregaBruta?.consentimento_lgpd !== true) {
+      return jsonResponse({ erro: 'É preciso aceitar o uso dos seus dados para a entrega' }, 422)
+    }
+  }
+
   const supabase = createClient(
     Deno.env.get('SUPABASE_URL') ?? '',
     Deno.env.get('SUPABASE_SERVICE_ROLE_KEY') ?? '',
@@ -127,12 +166,15 @@ Deno.serve(async (req: Request) => {
 
   const { data: barraca } = await supabase
     .from('barracas')
-    .select('id, pagar_na_entrega_habilitado, whatsapp_pedidos')
+    .select('id, pagar_na_entrega_habilitado, whatsapp_pedidos, modos_atendimento')
     .eq('id', barracaId)
     .maybeSingle()
   if (!barraca) return jsonResponse({ erro: 'Barraca não encontrada' }, 404)
   if (!barraca.pagar_na_entrega_habilitado || !barraca.whatsapp_pedidos) {
     return jsonResponse({ erro: 'Esta barraca não aceita "Pagar na entrega" pelo cardápio' }, 422)
+  }
+  if (entregaEstruturada && !((barraca.modos_atendimento as string[] | null) ?? []).includes('entrega')) {
+    return jsonResponse({ erro: 'Esta barraca não faz entrega pelo cardápio' }, 422)
   }
 
   // Preço e disponibilidade SEMPRE do cadastro real.
@@ -173,12 +215,35 @@ Deno.serve(async (req: Request) => {
   // NÃO conta no limite — duplo toque/retry de rede não é spam).
   const { data: existente } = await supabase
     .from('pedidos')
-    .select('id, senha, barraca_id')
+    .select('id, senha, barraca_id, taxa_entrega_centavos')
     .eq('client_uuid', clientUuid)
     .maybeSingle()
   if (existente) {
     if (existente.barraca_id !== barracaId) return jsonResponse({ erro: 'client_uuid já usado' }, 409)
-    return jsonResponse({ senha: existente.senha, total_centavos: totalCentavos, itens: itensResolvidos })
+    const taxaExistente = Number(existente.taxa_entrega_centavos ?? 0)
+    return jsonResponse({
+      senha: existente.senha,
+      taxa_entrega_centavos: taxaExistente,
+      total_centavos: totalCentavos + taxaExistente,
+      itens: itensResolvidos,
+    })
+  }
+
+  // Taxa de entrega: SEMPRE calculada aqui pelo bairro (nunca vem do cliente).
+  let taxaEntregaCentavos = 0
+  if (entregaEstruturada) {
+    const { data: taxaData, error: erroTaxa } = await supabase
+      .rpc('taxa_entrega_do_bairro', { p_barraca_id: barracaId, p_bairro: entregaEstruturada.bairro })
+      .single()
+    const taxa = taxaData as { permitido: boolean; taxa_centavos: number } | null
+    if (erroTaxa || !taxa) {
+      console.error('criar-pedido-cardapio: falha em taxa_entrega_do_bairro', erroTaxa?.message)
+      return jsonResponse({ erro: 'Não foi possível calcular a taxa de entrega. Tente de novo.' }, 500)
+    }
+    if (!taxa.permitido) {
+      return jsonResponse({ erro: 'Não entregamos nesse bairro.' }, 422)
+    }
+    taxaEntregaCentavos = Math.max(0, Math.floor(Number(taxa.taxa_centavos) || 0))
   }
 
   // Teto anti-bot por IP (hash), janela deslizante. Sem limite por barraca.
@@ -194,15 +259,18 @@ Deno.serve(async (req: Request) => {
   }
   await supabase.from('cardapio_pedidos_log').insert({ barraca_id: barracaId, ip_hash: ipHash, client_uuid: clientUuid })
 
-  // Aqui não há rua/número estruturados, então a comanda impressa não traz o
-  // bloco "ENTREGAR PARA": nome, telefone e endereço vão na observação.
-  const observacao = [
-    `PAGAR NA ENTREGA - ${nome} - ${telefone}`,
-    endereco ? `Endereco: ${endereco}` : null,
-    observacaoCliente || null,
-  ]
-    .filter(Boolean)
-    .join(' | ')
+  // Modo antigo (sem endereço estruturado): a comanda não tem rua, então nome,
+  // telefone e endereço livre vão também na observação. Com entrega estruturada
+  // a comanda/link do entregador já mostram tudo; a observação só marca a origem.
+  const observacao = entregaEstruturada
+    ? ['PAGAR NA ENTREGA', observacaoCliente || null].filter(Boolean).join(' | ')
+    : [
+        `PAGAR NA ENTREGA - ${nome} - ${telefone}`,
+        endereco ? `Endereco: ${endereco}` : null,
+        observacaoCliente || null,
+      ]
+        .filter(Boolean)
+        .join(' | ')
 
   const { data: criado, error: erroPedido } = await supabase
     .rpc('criar_pedido', {
@@ -214,9 +282,15 @@ Deno.serve(async (req: Request) => {
       p_metodo_pagamento: 'na_entrega',
       p_itens: itensResolvidos,
       p_tipo_atendimento: 'entrega',
-      // Sem rua estruturada: o endereço livre vai em `referencia` (a comanda e o
-      // link do entregador mostram nome, telefone e essa referência).
-      p_entrega: { nome, telefone, referencia: endereco || null },
+      p_entrega: entregaEstruturada ?? {
+        // Sem rua: o endereço livre vai em `referencia` (a comanda e o link do
+        // entregador mostram nome, telefone e essa referência).
+        nome,
+        telefone,
+        referencia: endereco || null,
+      },
+      p_taxa_entrega_centavos: taxaEntregaCentavos,
+      p_cliente_nome: entregaEstruturada ? entregaEstruturada.nome : nome,
     })
     .single()
 
@@ -225,9 +299,38 @@ Deno.serve(async (req: Request) => {
     return jsonResponse({ erro: 'Não foi possível enviar o pedido agora. Tente de novo.' }, 500)
   }
 
+  // Cadastro do cliente (LGPD: só com consentimento explícito, origem 'cardapio').
+  // Best-effort: falha aqui NUNCA derruba um pedido já criado.
+  if (entregaEstruturada) {
+    try {
+      let telefoneCadastro = entregaEstruturada.telefone
+      if ((telefoneCadastro.length === 12 || telefoneCadastro.length === 13) && telefoneCadastro.startsWith('55')) {
+        telefoneCadastro = telefoneCadastro.slice(2)
+      }
+      const { error: erroCliente } = await supabase.from('clientes_finais').upsert(
+        {
+          barraca_id: barracaId,
+          nome: entregaEstruturada.nome,
+          telefone: telefoneCadastro,
+          rua: entregaEstruturada.rua,
+          numero: entregaEstruturada.numero,
+          bairro: entregaEstruturada.bairro,
+          referencia: entregaEstruturada.referencia,
+          origem: 'cardapio',
+          consentimento_lgpd_em: new Date().toISOString(),
+        },
+        { onConflict: 'barraca_id,telefone' },
+      )
+      if (erroCliente) console.warn('criar-pedido-cardapio: cliente não salvo', erroCliente.message)
+    } catch (erro) {
+      console.warn('criar-pedido-cardapio: cliente não salvo', String(erro))
+    }
+  }
+
   return jsonResponse({
     senha: (criado as { senha: number }).senha,
-    total_centavos: totalCentavos,
+    taxa_entrega_centavos: taxaEntregaCentavos,
+    total_centavos: totalCentavos + taxaEntregaCentavos,
     itens: itensResolvidos,
   })
 })

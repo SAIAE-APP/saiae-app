@@ -7,6 +7,7 @@ import { ROTULO_MODO, modoInicial, modosDoCardapioPublico } from '../lib/atendim
 import type { TipoAtendimento } from '../types/database'
 import { Button } from '../components/ui/Button'
 import { BottomSheet } from '../components/ui/BottomSheet'
+import { Checkbox } from '../components/ui/Checkbox'
 import { Chip } from '../components/ui/Chip'
 import { Icone } from '../components/ui/Icone'
 import { Input } from '../components/ui/Input'
@@ -15,6 +16,7 @@ import { Textarea } from '../components/ui/Textarea'
 import { statusFuncionamento, type HorarioPublico } from '../lib/horarioFuncionamento'
 import { montarMensagemPagarNaEntrega, urlWhatsappDono } from '../lib/pagarNaEntrega'
 import { formatarTelefoneBR } from '../lib/entrega'
+import { buscarBairrosPublicos, taxaDoBairro, type BairrosPublicos } from '../lib/bairros'
 
 type LinhaCardapioPublico = {
   barraca_id: string
@@ -50,7 +52,7 @@ type Estado =
   | { status: 'pronto'; linhas: LinhaCardapioPublico[] }
 
 type Carrinho = Record<string, number>
-type ModoConsumo = 'mesa' | 'balcao' | 'retirada'
+type ModoConsumo = 'mesa' | 'balcao' | 'retirada' | 'entrega'
 
 // Fase 2+3 do Cardápio Digital (CLAUDE.md, roadmap): o pedido de verdade
 // só nasce depois do pagamento confirmado (ver edge functions
@@ -485,15 +487,26 @@ export function CardapioPublico() {
   const [telefoneCliente, setTelefoneCliente] = useState('')
   const [enderecoCliente, setEnderecoCliente] = useState('')
   const [honeypot, setHoneypot] = useState('')
+  // Entrega estruturada (modo Entrega do cardápio)
+  const [ruaCliente, setRuaCliente] = useState('')
+  const [numeroCliente, setNumeroCliente] = useState('')
+  const [bairroCliente, setBairroCliente] = useState('')
+  const [bairroOutro, setBairroOutro] = useState(false)
+  const [referenciaCliente, setReferenciaCliente] = useState('')
+  const [consentimento, setConsentimento] = useState(false)
+  const [bairrosPublicos, setBairrosPublicos] = useState<BairrosPublicos | null>(null)
   const aberturaCheckoutRef = useRef(0)
   const [copiado, setCopiado] = useState(false)
 
-  // Só os modos que a barraca ligou em Ajustes (sem Entrega). Se o modo
-  // escolhido saiu da lista, cai no inicial em vez de pedir algo indisponível.
-  const modosPublicos = useMemo(
-    () => modosDoCardapioPublico(estado.status === 'pronto' ? estado.linhas[0]?.barraca_modos_atendimento : undefined),
-    [estado],
-  ) as ModoConsumo[]
+  // Só os modos que a barraca ligou em Ajustes. Entrega entra se a barraca a
+  // ligou E o cardápio consegue finalizá-la ("Pagar na entrega" ou Pix).
+  // Se o modo escolhido saiu da lista, cai no inicial em vez de pedir algo
+  // indisponível.
+  const modosPublicos = useMemo(() => {
+    const primeira = estado.status === 'pronto' ? estado.linhas[0] : undefined
+    const entregaDisponivel = Boolean(primeira?.barraca_whatsapp_pedidos) || Boolean(primeira?.pagamento_online_habilitado)
+    return modosDoCardapioPublico(primeira?.barraca_modos_atendimento, entregaDisponivel)
+  }, [estado]) as ModoConsumo[]
   const modoEfetivo: ModoConsumo = modosPublicos.includes(modoConsumo) ? modoConsumo : (modoInicial(modosPublicos) as ModoConsumo)
   const [mostrarAvisoBalcao, setMostrarAvisoBalcao] = useState(false)
   const clientUuidRef = useRef(crypto.randomUUID())
@@ -517,6 +530,22 @@ export function CardapioPublico() {
       cancelado = true
     }
   }, [slug])
+
+  const entregaOfertada = modosPublicos.includes('entrega')
+  useEffect(() => {
+    if (!slug || !entregaOfertada) return
+    let cancelado = false
+    buscarBairrosPublicos(slug)
+      .then((r) => {
+        if (!cancelado) setBairrosPublicos(r)
+      })
+      .catch(() => {
+        // Sem a lista o formulário cai em "bairro digitado"; o servidor decide a taxa.
+      })
+    return () => {
+      cancelado = true
+    }
+  }, [slug, entregaOfertada])
 
   useEffect(() => {
     if (!slug) return
@@ -719,6 +748,24 @@ export function CardapioPublico() {
     if (!numeroDono) return
     const nome = nomeCliente.trim()
     const telefone = telefoneCliente.replace(/\D/g, '')
+    const estruturada = modoEfetivo === 'entrega'
+    if (estruturada) {
+      const rua = ruaCliente.trim()
+      const numero = numeroCliente.trim()
+      const bairro = bairroCliente.trim()
+      if (!rua || !numero || !bairro) {
+        setPagamento({ fase: 'dados_entrega', erro: 'Informe rua, número e bairro.' })
+        return
+      }
+      if (previaTaxa && !previaTaxa.permitido) {
+        setPagamento({ fase: 'dados_entrega', erro: 'Não entregamos nesse bairro.' })
+        return
+      }
+      if (!consentimento) {
+        setPagamento({ fase: 'dados_entrega', erro: 'Marque a autorização para usarmos seus dados na entrega.' })
+        return
+      }
+    }
     if (nome.length < 2) {
       setPagamento({ fase: 'dados_entrega', erro: 'Informe seu nome.' })
       return
@@ -746,7 +793,20 @@ export function CardapioPublico() {
         ms_no_checkout: msNoCheckout,
         nome,
         telefone,
-        endereco: enderecoCliente.trim() || null,
+        endereco: estruturada ? null : enderecoCliente.trim() || null,
+        ...(estruturada
+          ? {
+              entrega: {
+                nome,
+                telefone,
+                rua: ruaCliente.trim(),
+                numero: numeroCliente.trim(),
+                bairro: bairroCliente.trim(),
+                referencia: referenciaCliente.trim() || null,
+              },
+              consentimento_lgpd: true,
+            }
+          : {}),
         observacao: observacao.trim() || null,
         itens: itensCarrinho.map((l) => ({ item_id: l.item.item_id, quantidade: l.quantidade })),
       },
@@ -778,10 +838,15 @@ export function CardapioPublico() {
       senha: data.senha ?? null,
       nome,
       telefone: formatarTelefoneBR(telefone),
-      endereco: enderecoCliente,
+      endereco: estruturada
+        ? [`${ruaCliente.trim()}, ${numeroCliente.trim()} - ${bairroCliente.trim()}`, referenciaCliente.trim() && `(${referenciaCliente.trim()})`]
+            .filter(Boolean)
+            .join(' ')
+        : enderecoCliente,
       observacao,
       itens: data.itens,
       totalCentavos: data.total_centavos,
+      taxaCentavos: data.taxa_entrega_centavos ?? 0,
     })
     const urlWhatsapp = urlWhatsappDono(numeroDono, mensagem)
     // Depois de um await o navegador pode bloquear o pop-up: se bloquear, a tela
@@ -827,6 +892,16 @@ export function CardapioPublico() {
   const capaUrl = linhas[0].barraca_imagem_capa_url
   const podeComprar = linhas[0].pagamento_online_habilitado
   const pagarNaEntrega = Boolean(linhas[0].barraca_whatsapp_pedidos)
+  const entregaNoCardapio = modoEfetivo === 'entrega'
+  // "Pagar na entrega": com Entrega ofertada só vale nesse modo; sem Entrega
+  // ofertada segue como era (nome/telefone/endereço livre).
+  const mostrarPagarNaEntrega = pagarNaEntrega && (!entregaOfertada || entregaNoCardapio)
+  const bairrosLista = bairrosPublicos?.bairros ?? []
+  const politicaBloqueia = bairrosPublicos?.config.naoListado === 'bloquear'
+  const previaTaxa =
+    entregaNoCardapio && bairrosPublicos && bairroCliente.trim()
+      ? taxaDoBairro(bairrosPublicos.config, bairrosLista, bairroCliente)
+      : null
 
   return (
     <div className="min-h-dvh bg-mesa-bg-base pb-12 pt-[env(safe-area-inset-top)] md:mx-auto md:max-w-4xl">
@@ -1073,7 +1148,7 @@ export function CardapioPublico() {
               </span>
             </div>
 
-            {pagarNaEntrega && (
+            {mostrarPagarNaEntrega && (
               <Button
                 variant="outline"
                 size="xl"
@@ -1089,7 +1164,15 @@ export function CardapioPublico() {
               </Button>
             )}
 
-            {podeComprar ? (
+            {entregaNoCardapio ? (
+              // Pix com Entrega só chega na Story 2 (a cobrança precisa somar a taxa
+              // no servidor): aqui NUNCA gera Pix de pedido de Entrega.
+              podeComprar && (
+                <p className="rounded-mesa-md bg-mesa-neutral-100 p-3 text-center text-sm font-medium text-mesa-text-secondary dark:bg-mesa-neutral-800">
+                  Pix com entrega: em breve
+                </p>
+              )
+            ) : podeComprar ? (
               <Button
                 size="xl"
                 icon={<Icone nome="qr_code" size={20} />}
@@ -1147,28 +1230,135 @@ export function CardapioPublico() {
               value={telefoneCliente}
               onChange={(e) => setTelefoneCliente(e.target.value)}
             />
-            <Input
-              label="Endereço de entrega (opcional)"
-              type="text"
-              autoComplete="street-address"
-              maxLength={200}
-              value={enderecoCliente}
-              onChange={(e) => setEnderecoCliente(e.target.value)}
-            />
+            {entregaNoCardapio ? (
+              <>
+                <Input
+                  label="Rua"
+                  type="text"
+                  autoComplete="address-line1"
+                  maxLength={100}
+                  value={ruaCliente}
+                  onChange={(e) => setRuaCliente(e.target.value)}
+                />
+                <div className="grid grid-cols-[96px_1fr] gap-3">
+                  <Input
+                    label="Número"
+                    type="text"
+                    autoComplete="off"
+                    maxLength={20}
+                    value={numeroCliente}
+                    onChange={(e) => setNumeroCliente(e.target.value)}
+                  />
+                  {bairrosLista.length > 0 && !bairroOutro ? (
+                    <label className="flex flex-col gap-1.5">
+                      <span className="text-sm font-medium text-mesa-text-secondary">Bairro</span>
+                      <select
+                        value={bairroCliente}
+                        onChange={(e) => {
+                          if (e.target.value === '__outro__') {
+                            setBairroOutro(true)
+                            setBairroCliente('')
+                          } else {
+                            setBairroCliente(e.target.value)
+                          }
+                        }}
+                        className="h-12 w-full rounded-mesa-md border border-mesa-border-subtle bg-mesa-surface px-3 text-base text-mesa-text-primary"
+                      >
+                        <option value="">Escolha...</option>
+                        {bairrosLista.map((b) => (
+                          <option key={b.bairro} value={b.bairro}>
+                            {b.bairro}
+                          </option>
+                        ))}
+                        {!politicaBloqueia && <option value="__outro__">Outro bairro</option>}
+                      </select>
+                    </label>
+                  ) : (
+                    <Input
+                      label="Bairro"
+                      type="text"
+                      autoComplete="off"
+                      maxLength={80}
+                      value={bairroCliente}
+                      onChange={(e) => setBairroCliente(e.target.value)}
+                    />
+                  )}
+                </div>
+                <Input
+                  label="Referência (opcional)"
+                  type="text"
+                  autoComplete="off"
+                  maxLength={120}
+                  value={referenciaCliente}
+                  onChange={(e) => setReferenciaCliente(e.target.value)}
+                />
+                {previaTaxa && !previaTaxa.permitido && (
+                  <p role="alert" className="text-sm font-semibold text-mesa-error-700 dark:text-mesa-error-400">
+                    Não entregamos nesse bairro.
+                  </p>
+                )}
+                <label className="flex min-h-11 cursor-pointer items-start gap-3 text-sm text-mesa-text-secondary">
+                  <Checkbox
+                    checked={consentimento}
+                    onChange={() => setConsentimento((v) => !v)}
+                    aria-label="Autorizo o uso dos meus dados para a entrega"
+                  />
+                  <span>
+                    Autorizo a barraca a guardar meu nome, telefone e endereço para entregar este pedido
+                    e agilizar os próximos. Posso pedir a exclusão a qualquer momento.
+                  </span>
+                </label>
+              </>
+            ) : (
+              <Input
+                label="Endereço de entrega (opcional)"
+                type="text"
+                autoComplete="street-address"
+                maxLength={200}
+                value={enderecoCliente}
+                onChange={(e) => setEnderecoCliente(e.target.value)}
+              />
+            )}
             {pagamento.fase === 'dados_entrega' && pagamento.erro && (
               <p className="rounded-mesa-md border-l-[3px] border-mesa-error-500 bg-mesa-error-50 p-3 text-sm font-medium text-mesa-error-700 dark:bg-mesa-error-500/15 dark:text-mesa-error-400">
                 {pagamento.erro}
               </p>
             )}
-            <div className="flex items-center justify-between border-t border-mesa-border-subtle pt-3">
-              <span className="text-sm text-mesa-text-secondary">Total</span>
-              <span className="font-mesa-display text-lg font-bold text-mesa-text-primary">
-                {formatarPrecoBR(totalCentavosCarrinho)}
-              </span>
+            <div className="flex flex-col gap-1 border-t border-mesa-border-subtle pt-3">
+              {entregaNoCardapio && (
+                <>
+                  <div className="flex items-center justify-between text-sm text-mesa-text-secondary">
+                    <span>Itens</span>
+                    <span>{formatarPrecoBR(totalCentavosCarrinho)}</span>
+                  </div>
+                  <div className="flex items-center justify-between text-sm text-mesa-text-secondary">
+                    <span>Taxa de entrega</span>
+                    <span>
+                      {previaTaxa?.permitido
+                        ? formatarPrecoBR(previaTaxa.taxaCentavos)
+                        : previaTaxa
+                          ? '—'
+                          : 'definida pelo bairro'}
+                    </span>
+                  </div>
+                </>
+              )}
+              <div className="flex items-center justify-between">
+                <span className="text-sm text-mesa-text-secondary">Total</span>
+                <span className="font-mesa-display text-lg font-bold text-mesa-text-primary">
+                  {formatarPrecoBR(totalCentavosCarrinho + (previaTaxa?.permitido ? previaTaxa.taxaCentavos : 0))}
+                </span>
+              </div>
+              {entregaNoCardapio && (
+                <p className="text-xs text-mesa-text-tertiary">
+                  O valor final da taxa é confirmado pela barraca ao enviar o pedido.
+                </p>
+              )}
             </div>
             <Button
               size="xl"
               icon={<Icone nome="send" size={20} />}
+              disabled={Boolean(entregaNoCardapio && previaTaxa && !previaTaxa.permitido)}
               className="w-full"
               loading={pagamento.fase === 'enviando_entrega'}
               onClick={enviarPedidoNaEntrega}

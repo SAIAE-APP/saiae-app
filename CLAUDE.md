@@ -177,6 +177,34 @@ aparelho Android 7–11 e 12+ antes de publicar.
   número) + "Copiar link" na tela da senha, no card da Cozinha e no do
   Histórico (`BotoesLinkEntregador`, só com token). Política de Privacidade
   (seção 4) descreve o link.
+- Taxa por bairro e Entrega no cardápio (2026-10-07, Sprint 2 Story 1,
+  migration `20261007120000`): tabela `taxas_entrega_bairro` (bairro,
+  `bairro_normalizado` por trigger via `normalizar_bairro`: minúsculo, sem
+  acento, espaços colapsados; único por barraca; RLS como `categorias`) e
+  `barracas.entrega_bairro_nao_listado` ('taxa_padrao' = padrão | 'bloquear').
+  Regra única, no SQL `taxa_entrega_do_bairro(p_barraca_id, p_bairro)` →
+  (`permitido`, `taxa_centavos`, `origem`: bairro | padrao | bloqueado |
+  sem_taxa), executável só pelas edge functions; espelhada no front em
+  `src/lib/bairros.ts` (`taxaDoBairro`, só preview — o servidor SEMPRE
+  recalcula). Bairro ativo cadastrado vale mesmo com a taxa padrão desligada.
+  `bairros_entrega_publicos(slug)` (anon) devolve os bairros ativos + política
+  + taxa padrão (uma linha com bairro NULL se não há bairros). Ajustes:
+  `SecaoBairrosEntrega` (um por um, "Colar lista" `Bairro; 5,00`, ativar,
+  remover, regra do bairro não listado, tudo por botão). App do operador:
+  bairro do `FormularioEntrega` sugere os cadastrados (pode digitar outro), a
+  taxa preenche pelo bairro e segue editável se `taxa_entrega_editavel`; lista
+  em cache no aparelho (`useBairrosEntrega`), sem lista = taxa padrão; o
+  operador NUNCA é bloqueado (bairro "bloqueado" só avisa). Cardápio público:
+  modo Entrega aparece se a barraca ligou Entrega E ("Pagar na entrega" ou
+  pagamento online); formulário com nome, telefone, rua, número, bairro,
+  referência, consentimento LGPD e resumo itens + taxa = total; finaliza só
+  por "Pagar na entrega" (Pix com Entrega = "em breve", Story 2: nunca gerar
+  Pix sem a taxa). `criar-pedido-cardapio` aceita `entrega` estruturada
+  (+ `consentimento_lgpd`), calcula a taxa no servidor, bairro bloqueado =
+  422 "Não entregamos nesse bairro.", passa `p_entrega`/`p_taxa_entrega_centavos`
+  ao `criar_pedido` e faz upsert best-effort em `clientes_finais`
+  (`origem='cardapio'`, `consentimento_lgpd_em`). Sem `entrega` segue o modo
+  antigo (nome/telefone/endereço livre). A taxa continua FORA da NFC-e.
 - Clientes de entrega (2026-10-04): tabela `clientes_finais` (um endereço
   por cliente, único por `barraca_id`+`telefone`, RLS por
   `usuario_tem_acesso_barraca` com WITH CHECK). Salvo/atualizado em segundo
