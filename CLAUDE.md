@@ -298,7 +298,7 @@ aparelho Android 7–11 e 12+ antes de publicar.
   técnico pontual (`.timer`, `.step .n`); o app replica o caso do
   timer, que é o único com equivalente na UI do app. Não é uma volta
   geral da Mono — todo o resto continua Outfit.
-- Ícones: Material Symbols Rounded, peso 500, preenchido = estado
+- Ícones: fonte PRÓPRIA (2026-10-06): subset de Material Symbols Rounded em `src/assets/fonts/material-symbols-rounded.ttf` (~29KB; FILL 0..1, wght 400..700, opsz 20..48), declarada em `src/index.css` e precacheada pelo service worker. Antes vinha do Google Fonts (1,2MB, `display=block`) e o ícone ficava invisível ~1s — NÃO era o Supabase. Ícone NOVO fora do subset aparece como texto: regerar o subset na API do Google Fonts com `icon_names=` (lista ordenada) incluindo o nome novo. Estilo: Material Symbols Rounded, peso 500, preenchido = estado
   ativo (ver `src/components/ui/Icone.tsx`)
 - Onboarding (`src/pages/Onboarding.tsx`): carrossel de 4 telas
   mostrado só no primeiro acesso do aparelho (antes do login,
