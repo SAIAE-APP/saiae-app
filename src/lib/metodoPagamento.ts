@@ -9,8 +9,12 @@ export const METODOS_DISPONIVEIS: { chave: MetodoPagamento; label: string; icone
   { chave: 'pix', label: 'Pix', icone: 'qr_code_2' },
 ]
 
+/** Pedido do cardápio digital "Pagar na entrega": o método real só é definido na entrega. */
+export const METODO_NA_ENTREGA = 'na_entrega'
+
 export function humanizarMetodo(chave: string | null): string {
   if (!chave) return 'Método não informado'
+  if (chave === METODO_NA_ENTREGA) return 'A definir na entrega'
   return METODOS_DISPONIVEIS.find((m) => m.chave === chave)?.label ?? 'Método não informado'
 }
 

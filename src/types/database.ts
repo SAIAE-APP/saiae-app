@@ -24,6 +24,9 @@ export type Barraca = {
   impressora_nome: string | null
   impressora_largura_papel: LarguraPapel
   pagamento_online_habilitado: boolean
+  /** WhatsApp do dono (só dígitos) e liga/desliga do "Pagar na entrega" no cardápio. */
+  whatsapp_pedidos?: string | null
+  pagar_na_entrega_habilitado?: boolean
   imagem_capa_url: string | null
   mostrar_horario_pedido: boolean
   /** Opcional: cache local de antes da migration não tem o campo — usar `modosAtivos()`. */
