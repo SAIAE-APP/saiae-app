@@ -42,10 +42,9 @@ impressa.
 A aba de configuração que faltava foi **implementada em 2026-09-26**
 (`SecaoImpressora`, em Ajustes) — habilitar impressora, escolher
 largura de papel (58mm/80mm), selecionar impressora Bluetooth já
-pareada no Android e "Imprimir teste". Ainda **nenhum botão imprime
-cupom de pedido ou nota fiscal de verdade** — só a conexão/teste,
-decisão de produto de qual gatilho usar (Fiscal, Comanda, ou os dois)
-fica pra depois. Só funciona no app Android instalado, nunca no PWA/
+pareada no Android e "Imprimir teste". Os gatilhos vieram depois: comanda
+automática + botão na Cozinha, e cupom fiscal no Histórico (ver abaixo).
+Só funciona no app Android instalado, nunca no PWA/
 navegador: Web Bluetooth só fala BLE, e a maioria das térmicas
 baratas do mercado (Elgin, Bematech, Diebold, genéricas) usa
 Bluetooth clássico (SPP), que exige plugin nativo
@@ -80,9 +79,12 @@ também avisa, nunca desiste em silêncio. Botão manual **"Imprimir
 comanda"** no card da Cozinha (só Android com impressora pronta, sem
 mostarda, `dadosComandaDoPedido`) serve de reimpressão/fallback — e é
 por ele que pedidos do cardápio digital (Pix) podem ser impressos hoje.
-**Próximo passo:** pedidos do cardápio digital (Pix) são criados no
-servidor e não passam pelo gatilho automático — decidir qual aparelho
-imprime (sugestão: o que está com a Cozinha aberta) antes de automatizar. Plugin só fala SPP clássico;
+**Pedidos do cardápio digital (Pix) JÁ imprimem sozinhos** (revisado
+2026-10-06): `useImpressaoAutomatica` tem dois caminhos — (a) pedido criado
+neste aparelho, ao receber a senha; (b) pedido novo que chega pelo Realtime
+(INSERT em `pedidos`), que cobre cardápio/Pix. Com 2+ aparelhos ouvindo, a
+RPC `reivindicar_impressao_comanda` (`pedidos.comanda_impressa_em`, UPDATE
+atômico) garante uma impressão só. Plugin só fala SPP clássico;
 impressoras só-BLE não são suportadas.
 
 **Fichas antigas (2026-10-04, relato do cliente: aparelho antigo imprimiu
@@ -480,10 +482,7 @@ nenhum item daqui sozinho, só quando for pedido explicitamente.
     mesmo padrão de bytes ESC/POS de `imprimirTeste`) — layout baseado num
     cupom real de NFC-e (referência: McDonald's), sem NCM/CFOP por item
     (fica em `itens`, não em `itens_do_pedido`, e cupom de consumidor
-    normalmente não precisa) nem valor estimado de tributos (não
-    calculamos isso). **De propósito sem gatilho de UI ainda** — decisão
-    de qual tela dispara a impressão continua em aberto, mesmo caso do
-    resto da impressora (ver acima). Pré-requisito resolvido nessa
+    normalmente não precisa). Pré-requisito resolvido nessa
     implementação: `emitir-nfce` só salvava `nfce_status/chave/numero/
     mensagem`, descartando o resto da resposta da FocusNFe — agora também
     salva `nfce_serie`, `nfce_protocolo` e `nfce_qrcode_url` (novas
@@ -494,6 +493,27 @@ nenhum item daqui sozinho, só quando for pedido explicitamente.
     só com a FocusNFe, nunca com o Sai aê), não de uma emissão real
     inspecionada — confirmar contra o `resultado` bruto na primeira
     emissão de verdade, já que isso ainda não aconteceu.
+    **Fiscal/PROCON (2026-10-06, Frente A do sprint):** nomes conferidos na
+    doc oficial da FocusNFe (`serie`, `protocolo`/`numero_protocolo`,
+    `qrcode_url`, `url_consulta_nf`), ainda sem emissão real inspecionada.
+    Botão **"Imprimir cupom fiscal"** no `CardHistorico` (só NFC-e
+    autorizada + Android com impressora pronta; relê o pedido do servidor
+    antes de imprimir). CPF do consumidor é OPCIONAL (campo sempre visível
+    ao emitir; `cpf_destinatario` na FocusNFe; `pedidos.nfce_cpf_consumidor`;
+    cupom mostra "CONSUMIDOR NAO IDENTIFICADO" sem CPF). Emitente em Ajustes
+    > Fiscal (`EmitenteFiscal`): `barracas.emitente_razao_social/
+    inscricao_estadual/telefone/endereco` e `procon_endereco` (texto livre).
+    PROCON: o cupom sempre traz "PROCON 151" (fixo, `TELEFONE_PROCON`) + o
+    endereço da sede. Tributos (Lei 12.741): a FocusNFe NÃO calcula IBPT, então
+    o dono informa a alíquota (`barracas.tributos_aprox_bps`), o valor por
+    item vai em `valor_total_tributos` e o total fica em
+    `pedidos.nfce_tributos_centavos`; o cupom marca "Fonte: aliquota informada
+    pelo emitente". `emitir-nfce` recusa pedido com `metodo_pagamento =
+    'na_entrega'` (método real só existe depois que o entregador confirma) e
+    consulta a ref se a nota ficar `processando_autorizacao`. Dados do cliente
+    de entrega NUNCA entram na NFC-e. Migration
+    `20261006130000_fiscal_emitente_procon.sql` precisa estar aplicada antes
+    do front e do deploy de `emitir-nfce`.
     **Taxa de entrega fica fora da nota** (decisão de 2026-10-05, ver
     "Taxa de entrega" em Regras de produto): `emitir-nfce` e
     `montarCupomFiscal` seguem somando só os itens, nunca
