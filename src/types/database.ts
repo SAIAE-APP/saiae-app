@@ -43,9 +43,25 @@ export type Barraca = {
   taxa_entrega_habilitada?: boolean
   taxa_entrega_centavos?: number
   taxa_entrega_editavel?: boolean
+  /** Bairro fora da lista: cobra a taxa padrão ou bloqueia (cache antigo sem o campo = taxa padrão). */
+  entrega_bairro_nao_listado?: PoliticaBairroNaoListado
 }
 
 /** Cliente final da barraca (cadastro pra pedidos de entrega). */
+export type PoliticaBairroNaoListado = 'taxa_padrao' | 'bloquear'
+
+export type TaxaEntregaBairro = {
+  id: string
+  barraca_id: string
+  /** Como o dono digitou. */
+  bairro: string
+  /** Minúsculo, sem acento (gerado por trigger). */
+  bairro_normalizado: string
+  valor_centavos: number
+  ativo: boolean
+  criado_em: string
+}
+
 export type ClienteFinal = {
   id: string
   barraca_id: string
