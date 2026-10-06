@@ -334,9 +334,11 @@ export function montarComanda(dados: DadosComanda, largura: LarguraPapel): Uint8
     encoder = encoder.bold(true).line('ENTREGAR PARA:').bold(false)
     encoder = encoder.line(semAcento(dados.entrega.nome.trim()))
     encoder = encoder.line(semAcento(formatarTelefoneBR(dados.entrega.telefone)))
-    encoder = encoder.line(
-      semAcento(`${dados.entrega.rua.trim()}, ${dados.entrega.numero.trim()} - ${dados.entrega.bairro.trim()}`),
-    )
+    if (dados.entrega.rua.trim()) {
+      encoder = encoder.line(
+        semAcento(`${dados.entrega.rua.trim()}, ${dados.entrega.numero.trim()} - ${dados.entrega.bairro.trim()}`),
+      )
+    }
     if (dados.entrega.referencia?.trim()) {
       encoder = encoder.line(semAcento(`Ref: ${dados.entrega.referencia.trim()}`))
     }

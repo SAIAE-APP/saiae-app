@@ -204,7 +204,9 @@ Deno.serve(async (req: Request) => {
       p_metodo_pagamento: 'na_entrega',
       p_itens: itensResolvidos,
       p_tipo_atendimento: 'entrega',
-      p_entrega: { nome, telefone },
+      // Sem rua estruturada: o endereço livre vai em `referencia` (a comanda e o
+      // link do entregador mostram nome, telefone e essa referência).
+      p_entrega: { nome, telefone, referencia: endereco || null },
     })
     .single()
 

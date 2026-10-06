@@ -616,8 +616,10 @@ nenhum item daqui sozinho, só quando for pedido explicitamente.
     preço/disponibilidade no servidor (nunca do cliente), limita por IP
     (hash, 3/10min) e por barraca (30/10min) em `cardapio_pedidos_log`,
     é idempotente por `client_uuid` e chama `criar_pedido` com método
-    `na_entrega`, tipo Entrega, `p_entrega` só com nome/telefone (sem rua:
-    nome, telefone e endereço vão também na observação da comanda). O pedido
+    `na_entrega`, tipo Entrega, `p_entrega` só com nome/telefone/referência
+    (sem rua: o endereço livre vai em `entrega_referencia`, a comanda mostra
+    "ENTREGAR PARA" mesmo sem rua e a observação do card da Cozinha repete
+    nome, telefone e endereço). O pedido
     cai na Cozinha/imprime pelo Realtime e o celular do cliente abre
     `wa.me/<dono>?text=<resumo>` (se o pop-up for bloqueado, botão "Avisar
     no WhatsApp"). Método `na_entrega` aparece como "A definir na entrega"
