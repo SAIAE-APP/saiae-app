@@ -25,6 +25,16 @@ function jsonResponse(body: unknown, status = 200) {
 
 type ItemPendente = { quantidade: number; preco_centavos_unitario: number }
 
+type EntregaPendente = {
+  nome: string
+  telefone: string
+  rua: string
+  numero: string
+  bairro: string
+  referencia: string | null
+  consentimento_lgpd_em?: string | null
+}
+
 Deno.serve(async (req: Request) => {
   if (req.method === 'OPTIONS') {
     return new Response('ok')
@@ -54,7 +64,10 @@ Deno.serve(async (req: Request) => {
 
   const consulta = supabase
     .from('pagamentos_pendentes')
-    .select('id, barraca_id, mesa, viagem, observacao, itens, status, client_uuid, mercadopago_order_id')
+    .select(
+      'id, barraca_id, mesa, viagem, observacao, itens, status, client_uuid, mercadopago_order_id, ' +
+        'tipo_atendimento, entrega, taxa_entrega_centavos, cliente_nome',
+    )
   const { data: pendente, error: erroPendente } = pendenteIdUrl
     ? await consulta.eq('id', pendenteIdUrl).maybeSingle()
     : await consulta.eq('mercadopago_order_id', pagamentoId).maybeSingle()
@@ -102,25 +115,55 @@ Deno.serve(async (req: Request) => {
   const statusMp = pagamento.status as string
 
   if (statusMp === 'approved') {
-    const totalCentavos = (pendente.itens as ItemPendente[]).reduce(
+    // Total esperado = itens + taxa de entrega DO SNAPSHOT do pendente (gravado
+    // no momento da cobrança). A taxa NUNCA é recalculada aqui: se o dono
+    // mudou a tabela de bairros depois, vale o que o cliente viu e pagou.
+    // Pendente sem entrega tem taxa 0 => conta idêntica à de antes.
+    const taxaEntregaCentavos = Number(pendente.taxa_entrega_centavos ?? 0)
+    const itensCentavos = (pendente.itens as ItemPendente[]).reduce(
       (soma, item) => soma + item.preco_centavos_unitario * item.quantidade,
       0,
     )
+    const totalCentavos = itensCentavos + taxaEntregaCentavos
     if (Math.round(Number(pagamento.transaction_amount) * 100) !== totalCentavos) {
+      // Pago mas não confere: NÃO cria pedido; fica registrado pra conferência manual.
+      console.error('webhook-mercadopago: valor pago não confere', {
+        pendente: pendente.id,
+        pago: pagamento.transaction_amount,
+        esperado_centavos: totalCentavos,
+        taxa_entrega_centavos: taxaEntregaCentavos,
+      })
       return jsonResponse({ ok: true, aviso: 'valor pago não confere com o pedido' })
     }
 
-    const { data: resultadoPedido, error: erroPedido } = await supabase
-      .rpc('criar_pedido', {
-        p_barraca_id: pendente.barraca_id,
-        p_mesa: pendente.mesa,
-        p_viagem: pendente.viagem,
-        p_observacao: pendente.observacao,
-        p_client_uuid: pendente.client_uuid,
-        p_metodo_pagamento: 'pix',
-        p_itens: pendente.itens,
-      })
-      .single()
+    // Argumentos de sempre; os de entrega só entram quando o pendente é de
+    // Entrega, pra pedido comum chamar criar_pedido EXATAMENTE como hoje.
+    const entrega: EntregaPendente | null =
+      pendente.tipo_atendimento === 'entrega' && pendente.entrega ? (pendente.entrega as EntregaPendente) : null
+    const argsPedido: Record<string, unknown> = {
+      p_barraca_id: pendente.barraca_id,
+      p_mesa: pendente.mesa,
+      p_viagem: pendente.viagem,
+      p_observacao: pendente.observacao,
+      p_client_uuid: pendente.client_uuid,
+      p_metodo_pagamento: 'pix',
+      p_itens: pendente.itens,
+    }
+    if (entrega) {
+      argsPedido.p_tipo_atendimento = 'entrega'
+      argsPedido.p_entrega = {
+        nome: entrega.nome,
+        telefone: entrega.telefone,
+        rua: entrega.rua,
+        numero: entrega.numero,
+        bairro: entrega.bairro,
+        referencia: entrega.referencia,
+      }
+      argsPedido.p_taxa_entrega_centavos = taxaEntregaCentavos
+      if (pendente.cliente_nome) argsPedido.p_cliente_nome = pendente.cliente_nome
+    }
+
+    const { data: resultadoPedido, error: erroPedido } = await supabase.rpc('criar_pedido', argsPedido).single()
 
     if (erroPedido || !resultadoPedido) {
       // 500 faz o MP tentar de novo depois — o pagamento já foi aprovado e o
@@ -132,6 +175,31 @@ Deno.serve(async (req: Request) => {
       .from('pagamentos_pendentes')
       .update({ status: 'aprovado', pedido_id: (resultadoPedido as { pedido_id: string }).pedido_id })
       .eq('id', pendente.id)
+
+    // Entrega: guarda/atualiza o cliente (endereço pra próximos pedidos), com o
+    // consentimento LGPD que ele deu no formulário. Best-effort: o pedido já
+    // existe e foi pago, então NADA aqui pode falhar a resposta ao MP.
+    if (entrega?.consentimento_lgpd_em) {
+      try {
+        const { error: erroCliente } = await supabase.from('clientes_finais').upsert(
+          {
+            barraca_id: pendente.barraca_id,
+            nome: entrega.nome,
+            telefone: entrega.telefone,
+            rua: entrega.rua,
+            numero: entrega.numero,
+            bairro: entrega.bairro,
+            referencia: entrega.referencia,
+            origem: 'cardapio',
+            consentimento_lgpd_em: entrega.consentimento_lgpd_em,
+          },
+          { onConflict: 'barraca_id,telefone' },
+        )
+        if (erroCliente) console.warn('webhook-mercadopago: cliente_final não salvo', erroCliente.message)
+      } catch (erroCliente) {
+        console.warn('webhook-mercadopago: cliente_final não salvo', String(erroCliente))
+      }
+    }
 
     return jsonResponse({ ok: true })
   }

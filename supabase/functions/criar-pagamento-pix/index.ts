@@ -34,6 +34,20 @@ function jsonResponse(body: unknown, status = 200) {
 
 type ItemCarrinho = { item_id: string; quantidade: number }
 
+/** Entrega estruturada vinda do formulário do cardápio (tudo texto do cliente:
+ * só é sanitizado aqui; a TAXA nunca vem do cliente). */
+type EntregaBody = {
+  nome?: string
+  telefone?: string
+  rua?: string
+  numero?: string
+  bairro?: string
+  referencia?: string | null
+  consentimento_lgpd?: boolean
+}
+
+type TaxaEntregaRow = { permitido: boolean; taxa_centavos: number; origem: string }
+
 type ItemCadastroRow = {
   id: string
   nome: string
@@ -83,6 +97,13 @@ Deno.serve(async (req: Request) => {
     observacao?: string | null
     client_uuid?: string
     itens?: ItemCarrinho[]
+    /** Só 'entrega' muda o fluxo; ausente = exatamente o comportamento de sempre. */
+    tipo_atendimento?: string | null
+    entrega?: EntregaBody | null
+    /** Nome opcional do cliente (fora da Entrega, onde vale o nome do formulário). */
+    cliente_nome?: string | null
+    /** Total que o cliente viu na tela (itens + taxa). Se o servidor calcular outro, não cobra. */
+    total_esperado_centavos?: number | null
   }
   try {
     body = await req.json()
@@ -122,7 +143,7 @@ Deno.serve(async (req: Request) => {
 
   const { data: barraca, error: erroBarraca } = await supabase
     .from('barracas')
-    .select('id, pagamento_online_habilitado')
+    .select('id, pagamento_online_habilitado, modos_atendimento')
     .eq('id', barraca_id)
     .single()
 
@@ -191,6 +212,89 @@ Deno.serve(async (req: Request) => {
     return jsonResponse({ erro: 'Carrinho vazio' }, 422)
   }
 
+  // ---- Entrega (só quando pedida; sem ela nada abaixo muda o fluxo antigo) ----
+  const ehEntrega = body.tipo_atendimento === 'entrega'
+  let entregaSnapshot: Record<string, string | null> | null = null
+  let taxaEntregaCentavos = 0
+  let clienteNome: string | null = String(body.cliente_nome ?? '').trim().slice(0, 60) || null
+
+  if (ehEntrega) {
+    const modos = (barraca.modos_atendimento ?? []) as string[]
+    if (!modos.includes('entrega')) {
+      return jsonResponse({ erro: 'Esta barraca não está aceitando pedidos de entrega' }, 422)
+    }
+
+    const e = body.entrega ?? {}
+    const texto = (valor: unknown, max: number) => String(valor ?? '').trim().slice(0, max)
+    const nome = texto(e.nome, 60)
+    const telefone = String(e.telefone ?? '').replace(/D/g, '')
+    const rua = texto(e.rua, 120)
+    const numero = texto(e.numero, 20)
+    const bairro = texto(e.bairro, 80)
+    const referencia = texto(e.referencia, 120) || null
+
+    if (nome.length < 2) return jsonResponse({ erro: 'Informe seu nome' }, 422)
+    if (telefone.length < 10 || telefone.length > 13) {
+      return jsonResponse({ erro: 'Informe um telefone com DDD' }, 422)
+    }
+    if (!rua || !numero || !bairro) {
+      return jsonResponse({ erro: 'Informe rua, número e bairro da entrega' }, 422)
+    }
+    // LGPD: o cadastro do cliente só é guardado com o consentimento visível.
+    if (e.consentimento_lgpd !== true) {
+      return jsonResponse({ erro: 'É preciso aceitar o uso dos seus dados para a entrega' }, 422)
+    }
+
+    // A taxa é SEMPRE calculada aqui (contrato do sprint 2: função só da
+    // service role). Falha ao calcular NÃO cai em taxa 0 — é dinheiro: sem
+    // taxa confiável, não cobra.
+    const { data: taxaData, error: erroTaxa } = await supabase.rpc('taxa_entrega_do_bairro', {
+      p_barraca_id: barraca_id,
+      p_bairro: bairro,
+    })
+    const taxa = (Array.isArray(taxaData) ? taxaData[0] : taxaData) as TaxaEntregaRow | null
+    if (erroTaxa || !taxa) {
+      console.error('criar-pagamento-pix: taxa_entrega_do_bairro falhou', erroTaxa?.message)
+      return jsonResponse({ erro: 'Não foi possível calcular a taxa de entrega agora. Tente de novo.' }, 500)
+    }
+    if (!taxa.permitido) {
+      return jsonResponse({ erro: 'Não entregamos nesse bairro.' }, 422)
+    }
+    if (!Number.isInteger(taxa.taxa_centavos) || taxa.taxa_centavos < 0) {
+      console.error('criar-pagamento-pix: taxa inválida', taxa)
+      return jsonResponse({ erro: 'Não foi possível calcular a taxa de entrega agora. Tente de novo.' }, 500)
+    }
+
+    taxaEntregaCentavos = taxa.taxa_centavos
+    clienteNome = nome
+    entregaSnapshot = {
+      nome,
+      telefone,
+      rua,
+      numero,
+      bairro,
+      referencia,
+      consentimento_lgpd_em: new Date().toISOString(),
+    }
+  }
+
+  // Tudo em centavos INTEIROS; só vira reais na última linha (MP).
+  const totalCobradoCentavos = totalCentavos + taxaEntregaCentavos
+
+  // Cliente viu um total na tela; se o servidor chegou a outro (dono mexeu na
+  // taxa/preço no meio), NÃO cobra sem o cliente ver o novo valor.
+  const esperado = body.total_esperado_centavos
+  if (esperado !== undefined && esperado !== null && esperado !== totalCobradoCentavos) {
+    return jsonResponse(
+      {
+        erro: 'O valor do pedido mudou. Confira o novo total antes de pagar.',
+        total_centavos: totalCobradoCentavos,
+        taxa_entrega_centavos: taxaEntregaCentavos,
+      },
+      409,
+    )
+  }
+
   // Retry depois de uma falha do MP (pendente já existe, sem pagamento no MP):
   // reaproveita a linha em vez de estourar a unique de client_uuid. Só
   // reaproveita se ainda está pendente e é da mesma barraca.
@@ -203,10 +307,15 @@ Deno.serve(async (req: Request) => {
     const { data: reaproveitado } = await supabase
       .from('pagamentos_pendentes')
       .update({
-        mesa: body.mesa || null,
-        viagem: Boolean(body.viagem),
+        mesa: ehEntrega ? null : body.mesa || null,
+        viagem: ehEntrega ? true : Boolean(body.viagem),
         observacao: body.observacao || null,
         itens: itensResolvidos,
+        // Reaproveitado: o snapshot de entrega acompanha os itens.
+        tipo_atendimento: ehEntrega ? 'entrega' : null,
+        entrega: entregaSnapshot,
+        taxa_entrega_centavos: taxaEntregaCentavos,
+        cliente_nome: clienteNome,
       })
       .eq('id', pendenteExistente.id)
       .eq('status', 'pendente')
@@ -220,11 +329,21 @@ Deno.serve(async (req: Request) => {
       .from('pagamentos_pendentes')
       .insert({
         barraca_id,
-        mesa: body.mesa || null,
-        viagem: Boolean(body.viagem),
+        mesa: ehEntrega ? null : body.mesa || null,
+        viagem: ehEntrega ? true : Boolean(body.viagem),
         observacao: body.observacao || null,
         itens: itensResolvidos,
         client_uuid,
+        // Só entram quando há entrega: pedido comum insere EXATAMENTE o que
+        // inseria antes (as colunas novas ficam NULL/0 pelo default).
+        ...(ehEntrega
+          ? {
+              tipo_atendimento: 'entrega',
+              entrega: entregaSnapshot,
+              taxa_entrega_centavos: taxaEntregaCentavos,
+              cliente_nome: clienteNome,
+            }
+          : {}),
       })
       .select('id')
       .single()
@@ -247,9 +366,9 @@ Deno.serve(async (req: Request) => {
         'X-Idempotency-Key': pendente.id,
       },
       body: JSON.stringify({
-        transaction_amount: totalCentavos / 100,
+        transaction_amount: totalCobradoCentavos / 100,
         payment_method_id: 'pix',
-        description: `Pedido no cardápio digital`,
+        description: ehEntrega ? 'Pedido com entrega no cardápio digital' : 'Pedido no cardápio digital',
         external_reference: pendente.id,
         date_of_expiration: dataExpiracao(),
         // Mercado Pago exige um e-mail de pagador; o cardápio público não
@@ -280,5 +399,10 @@ Deno.serve(async (req: Request) => {
     .update({ mercadopago_order_id: String(resultadoMp.id) })
     .eq('id', pendente.id)
 
-  return jsonResponse({ pendente_id: pendente.id, ...extrairQr(resultadoMp) })
+  return jsonResponse({
+    pendente_id: pendente.id,
+    ...extrairQr(resultadoMp),
+    total_centavos: totalCobradoCentavos,
+    taxa_entrega_centavos: taxaEntregaCentavos,
+  })
 })
