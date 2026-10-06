@@ -124,11 +124,26 @@ Deno.serve(async (req: Request) => {
   // Idempotência: duplo toque / retry de rede não gera duas cobranças.
   const { data: pendenteExistente } = await supabase
     .from('pagamentos_pendentes')
-    .select('id, barraca_id, mercadopago_order_id')
+    .select('id, barraca_id, mercadopago_order_id, itens, taxa_entrega_centavos')
     .eq('client_uuid', client_uuid)
     .maybeSingle()
 
   if (pendenteExistente?.mercadopago_order_id) {
+    // Retry do mesmo client_uuid devolve o QR já emitido. Se o cliente agora
+    // espera OUTRO total (mudou endereço/taxa), não reaproveita: o QR antigo
+    // cobraria o valor antigo. O front gera client_uuid novo e tenta de novo.
+    const esperadoRetry = body.total_esperado_centavos
+    if (esperadoRetry !== undefined && esperadoRetry !== null) {
+      const totalExistente =
+        ((pendenteExistente.itens ?? []) as { quantidade: number; preco_centavos_unitario: number }[]).reduce(
+          (soma, item) => soma + item.preco_centavos_unitario * item.quantidade,
+          0,
+        ) + Number(pendenteExistente.taxa_entrega_centavos ?? 0)
+      if (esperadoRetry !== totalExistente) {
+        return jsonResponse({ erro: 'Os dados do pedido mudaram. Gere um novo Pix.' }, 409)
+      }
+    }
+
     const { data: tokenRow } = await supabase
       .from('barracas_pagamento_token')
       .select('access_token')

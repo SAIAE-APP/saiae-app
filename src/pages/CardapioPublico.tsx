@@ -61,7 +61,15 @@ type ModoConsumo = 'mesa' | 'balcao' | 'retirada' | 'entrega'
 type EstadoPagamento =
   | { fase: 'formulario' }
   | { fase: 'processando' }
-  | { fase: 'aguardando'; pendenteId: string; qrCode: string | null; qrCodeBase64: string | null }
+  | {
+      fase: 'aguardando'
+      pendenteId: string
+      qrCode: string | null
+      qrCodeBase64: string | null
+      /** Pix com Entrega: total cobrado e taxa, como o SERVIDOR calculou. */
+      totalCentavos?: number
+      taxaCentavos?: number
+    }
   | { fase: 'aprovado'; senha: number | null }
   // "Pagar na entrega": dados do cliente -> envio -> pedido já na cozinha + wa.me do dono.
   | { fase: 'dados_entrega'; erro?: string }
@@ -494,6 +502,10 @@ export function CardapioPublico() {
   const [bairroOutro, setBairroOutro] = useState(false)
   const [referenciaCliente, setReferenciaCliente] = useState('')
   const [consentimento, setConsentimento] = useState(false)
+  // Entrega: "Pagar na entrega" (padrão) ou "Pix" (cobra itens + taxa agora).
+  const [formaEntrega, setFormaEntrega] = useState<'na_entrega' | 'pix'>('na_entrega')
+  // Taxa que o servidor disse valer pra um bairro (quando difere do preview local).
+  const [taxaServidor, setTaxaServidor] = useState<{ bairro: string; centavos: number } | null>(null)
   const [bairrosPublicos, setBairrosPublicos] = useState<BairrosPublicos | null>(null)
   const aberturaCheckoutRef = useRef(0)
   const [copiado, setCopiado] = useState(false)
@@ -685,6 +697,9 @@ export function CardapioPublico() {
 
   function fecharCheckout() {
     setMostrarCheckout(false)
+    // Saiu do QR sem pagar: um próximo Pix é OUTRA cobrança (client_uuid novo),
+    // senão o servidor devolveria o QR antigo, com o endereço/taxa antigos.
+    if (pagamento.fase === 'aguardando') clientUuidRef.current = crypto.randomUUID()
     if (pagamento.fase === 'aprovado' || pagamento.fase === 'entrega_enviada') {
       setCarrinho({})
       setMesa('')
@@ -898,10 +913,114 @@ export function CardapioPublico() {
   const mostrarPagarNaEntrega = pagarNaEntrega && (!entregaOfertada || entregaNoCardapio)
   const bairrosLista = bairrosPublicos?.bairros ?? []
   const politicaBloqueia = bairrosPublicos?.config.naoListado === 'bloquear'
-  const previaTaxa =
+  const previaTaxaLocal =
     entregaNoCardapio && bairrosPublicos && bairroCliente.trim()
       ? taxaDoBairro(bairrosPublicos.config, bairrosLista, bairroCliente)
       : null
+  // O que o servidor já confirmou pro bairro atual vale mais que o preview local.
+  const previaTaxa =
+    previaTaxaLocal?.permitido && taxaServidor && taxaServidor.bairro === bairroCliente.trim()
+      ? { ...previaTaxaLocal, taxaCentavos: taxaServidor.centavos }
+      : previaTaxaLocal
+  // Total do Pix com entrega: só existe com bairro escolhido e aceito.
+  const totalPixEntregaCentavos = previaTaxa?.permitido ? totalCentavosCarrinho + previaTaxa.taxaCentavos : null
+
+  /** Valida o formulário de Entrega; devolve a mensagem de erro ou null. */
+  function erroDoFormularioEntrega(): string | null {
+    if (!ruaCliente.trim() || !numeroCliente.trim() || !bairroCliente.trim()) return 'Informe rua, número e bairro.'
+    if (previaTaxa && !previaTaxa.permitido) return 'Não entregamos nesse bairro.'
+    if (!consentimento) return 'Marque a autorização para usarmos seus dados na entrega.'
+    if (nomeCliente.trim().length < 2) return 'Informe seu nome.'
+    const telefone = telefoneCliente.replace(/D/g, '')
+    if (telefone.length < 10 || telefone.length > 13) return 'Informe seu telefone com DDD.'
+    return null
+  }
+
+  /** Pix com Entrega: a taxa é recalculada no servidor e o cliente só paga o
+   * total que viu. Se o servidor chegar a outro total, NÃO cobra: mostra o novo. */
+  async function pagarPixEntrega() {
+    if (itensCarrinho.length === 0 || totalPixEntregaCentavos === null) return
+    const erroForm = erroDoFormularioEntrega()
+    if (erroForm) {
+      setPagamento({ fase: 'dados_entrega', erro: erroForm })
+      return
+    }
+
+    setPagamento({ fase: 'processando' })
+
+    const { data, error } = await supabase.functions.invoke('criar-pagamento-pix', {
+      body: {
+        barraca_id: itensCarrinho[0].item.barraca_id,
+        tipo_atendimento: 'entrega',
+        observacao: observacao.trim() || null,
+        client_uuid: clientUuidRef.current,
+        itens: itensCarrinho.map((l) => ({ item_id: l.item.item_id, quantidade: l.quantidade })),
+        total_esperado_centavos: totalPixEntregaCentavos,
+        entrega: {
+          nome: nomeCliente.trim(),
+          telefone: telefoneCliente.replace(/D/g, ''),
+          rua: ruaCliente.trim(),
+          numero: numeroCliente.trim(),
+          bairro: bairroCliente.trim(),
+          referencia: referenciaCliente.trim() || null,
+          consentimento_lgpd: true,
+        },
+      },
+    })
+
+    if (error || !data || data.erro) {
+      let corpo: {
+        erro?: string
+        detalhe?: unknown
+        total_centavos?: number
+        taxa_entrega_centavos?: number
+      } | null = data ?? null
+      const contexto = (error as { context?: unknown } | null)?.context
+      let status = 0
+      if (contexto instanceof Response) {
+        status = contexto.status
+        if (!corpo) corpo = await contexto.json().catch(() => null)
+      }
+      console.error('Falha ao gerar Pix com entrega:', error, corpo?.erro, corpo?.detalhe)
+
+      // 409 = o servidor não cobrou (valor mudou ou cobrança antiga com outros dados):
+      // a próxima tentativa é uma cobrança nova.
+      if (status === 409) clientUuidRef.current = crypto.randomUUID()
+
+      // Valor mudou (dono alterou taxa/preço): mostra o novo total e deixa o
+      // cliente decidir. Nada foi cobrado.
+      if (status === 409 && typeof corpo?.taxa_entrega_centavos === 'number') {
+        setTaxaServidor({ bairro: bairroCliente.trim(), centavos: corpo.taxa_entrega_centavos })
+        clientUuidRef.current = crypto.randomUUID()
+        setPagamento({
+          fase: 'dados_entrega',
+          erro: `O valor do pedido mudou. O novo total é ${formatarPrecoBR(corpo.total_centavos ?? 0)}. Confira e toque em "Gerar Pix" de novo.`,
+        })
+        return
+      }
+
+      // 4xx são recusas nossas (bairro bloqueado, item esgotado...) com texto
+      // pro cliente; 5xx/502 carregam erro cru que não vai pra tela.
+      const recusaNossa = status > 0 && status < 500
+      setPagamento({
+        fase: 'dados_entrega',
+        erro:
+          recusaNossa && corpo?.erro
+            ? corpo.erro
+            : 'Não foi possível gerar o Pix agora. Tente novamente em instantes ou chame o atendente.',
+      })
+      return
+    }
+
+    setPagamento({
+      fase: 'aguardando',
+      pendenteId: data.pendente_id,
+      qrCode: data.qr_code,
+      qrCodeBase64: data.qr_code_base64,
+      totalCentavos: data.total_centavos,
+      taxaCentavos: data.taxa_entrega_centavos,
+    })
+  }
 
   return (
     <div className="min-h-dvh bg-mesa-bg-base pb-12 pt-[env(safe-area-inset-top)] md:mx-auto md:max-w-4xl">
@@ -1157,6 +1276,7 @@ export function CardapioPublico() {
                 disabled={itensCarrinho.length === 0}
                 onClick={() => {
                   aberturaCheckoutRef.current = Date.now()
+                  setFormaEntrega('na_entrega')
                   setPagamento({ fase: 'dados_entrega' })
                 }}
               >
@@ -1165,12 +1285,22 @@ export function CardapioPublico() {
             )}
 
             {entregaNoCardapio ? (
-              // Pix com Entrega só chega na Story 2 (a cobrança precisa somar a taxa
-              // no servidor): aqui NUNCA gera Pix de pedido de Entrega.
+              // Pix com Entrega: o QR só sai depois de escolher o bairro e ver
+              // itens + taxa = total (tela de dados da entrega); nunca daqui direto.
               podeComprar && (
-                <p className="rounded-mesa-md bg-mesa-neutral-100 p-3 text-center text-sm font-medium text-mesa-text-secondary dark:bg-mesa-neutral-800">
-                  Pix com entrega: em breve
-                </p>
+                <Button
+                  size="xl"
+                  icon={<Icone nome="qr_code" size={20} />}
+                  className="w-full"
+                  disabled={itensCarrinho.length === 0}
+                  onClick={() => {
+                    aberturaCheckoutRef.current = Date.now()
+                    setFormaEntrega('pix')
+                    setPagamento({ fase: 'dados_entrega' })
+                  }}
+                >
+                  Pagar com Pix
+                </Button>
               )
             ) : podeComprar ? (
               <Button
@@ -1198,10 +1328,13 @@ export function CardapioPublico() {
 
         {(pagamento.fase === 'dados_entrega' || pagamento.fase === 'enviando_entrega') && (
           <div className="flex flex-col gap-3">
-            <h2 className="text-lg font-semibold text-mesa-text-primary">Pagar na entrega</h2>
+            <h2 className="text-lg font-semibold text-mesa-text-primary">
+              {formaEntrega === 'pix' ? 'Entrega com Pix' : 'Pagar na entrega'}
+            </h2>
             <p className="text-sm text-mesa-text-secondary">
-              Seu pedido vai direto pra cozinha e você avisa a barraca pelo WhatsApp. O pagamento é
-              combinado na entrega.
+              {formaEntrega === 'pix'
+                ? 'Você paga agora pelo Pix o valor dos itens mais a taxa de entrega. Assim que o pagamento cair, o pedido vai direto pra cozinha.'
+                : 'Seu pedido vai direto pra cozinha e você avisa a barraca pelo WhatsApp. O pagamento é combinado na entrega.'}
             </p>
             {/* Honeypot: fora da tela e fora da tabulação; só robô preenche. */}
             <input
@@ -1351,20 +1484,36 @@ export function CardapioPublico() {
               </div>
               {entregaNoCardapio && (
                 <p className="text-xs text-mesa-text-tertiary">
-                  O valor final da taxa é confirmado pela barraca ao enviar o pedido.
+                  {formaEntrega === 'pix'
+                    ? 'O Pix é gerado com o total acima. Se a barraca tiver mudado o valor, mostramos o novo total antes de cobrar.'
+                    : 'O valor final da taxa é confirmado pela barraca ao enviar o pedido.'}
                 </p>
               )}
             </div>
-            <Button
-              size="xl"
-              icon={<Icone nome="send" size={20} />}
-              disabled={Boolean(entregaNoCardapio && previaTaxa && !previaTaxa.permitido)}
-              className="w-full"
-              loading={pagamento.fase === 'enviando_entrega'}
-              onClick={enviarPedidoNaEntrega}
-            >
-              Enviar pedido
-            </Button>
+            {formaEntrega === 'pix' ? (
+              <Button
+                size="xl"
+                icon={<Icone nome="qr_code" size={20} />}
+                disabled={totalPixEntregaCentavos === null}
+                className="w-full"
+                onClick={pagarPixEntrega}
+              >
+                {totalPixEntregaCentavos === null
+                  ? 'Escolha o bairro pra ver o total'
+                  : `Gerar Pix de ${formatarPrecoBR(totalPixEntregaCentavos)}`}
+              </Button>
+            ) : (
+              <Button
+                size="xl"
+                icon={<Icone nome="send" size={20} />}
+                disabled={Boolean(entregaNoCardapio && previaTaxa && !previaTaxa.permitido)}
+                className="w-full"
+                loading={pagamento.fase === 'enviando_entrega'}
+                onClick={enviarPedidoNaEntrega}
+              >
+                Enviar pedido
+              </Button>
+            )}
             <Button
               variant="ghost"
               size="md"
@@ -1420,6 +1569,17 @@ export function CardapioPublico() {
             <p className="text-sm text-mesa-text-secondary">
               Assim que o pagamento cair, seu pedido já vai direto pra cozinha.
             </p>
+            {pagamento.totalCentavos !== undefined && (pagamento.taxaCentavos ?? 0) > 0 && (
+              <p className="text-sm text-mesa-text-secondary">
+                Itens {formatarPrecoBR(pagamento.totalCentavos - (pagamento.taxaCentavos ?? 0))} + taxa de entrega{' '}
+                {formatarPrecoBR(pagamento.taxaCentavos ?? 0)}
+              </p>
+            )}
+            {pagamento.totalCentavos !== undefined && (
+              <p className="font-mesa-display text-2xl font-black text-mesa-text-primary">
+                {formatarPrecoBR(pagamento.totalCentavos)}
+              </p>
+            )}
             {pagamento.qrCodeBase64 && (
               <img
                 src={`data:image/png;base64,${pagamento.qrCodeBase64}`}
