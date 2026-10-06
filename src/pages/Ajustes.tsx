@@ -31,6 +31,7 @@ import { BotaoSalvarCampo, ErroSalvar } from '../components/BotaoSalvarCampo'
 import { SecaoModosAtendimento } from '../components/SecaoModosAtendimento'
 import { SecaoTaxaEntrega } from '../components/SecaoTaxaEntrega'
 import { SecaoClientesEntrega } from '../components/SecaoClientesEntrega'
+import { EmitenteFiscal } from '../components/EmitenteFiscal'
 import { Button } from '../components/ui/Button'
 import { Card } from '../components/ui/Card'
 import { Chip } from '../components/ui/Chip'
@@ -1700,6 +1701,8 @@ function SecaoFiscal({ barraca }: { barraca: Barraca }) {
             className="mt-2"
           />
         </div>
+
+        <EmitenteFiscal barraca={barraca} />
 
         <div className="mt-4 flex items-center justify-between gap-3">
           <span className="text-base text-mesa-text-primary">Fiscal habilitado</span>

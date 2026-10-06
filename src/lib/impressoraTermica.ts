@@ -18,6 +18,7 @@ import { faixaImpressao, tipoDoPedido } from './atendimento'
 import { formatarTelefoneBR, type DadosEntrega } from './entrega'
 import { formatarPrecoBR } from './preco'
 import { humanizarMetodo } from './metodoPagamento'
+import { TELEFONE_PROCON, formatarCpf } from './fiscal'
 
 const COLUNAS_POR_LARGURA: Record<LarguraPapel, number> = {
   '58mm': 32,
@@ -153,7 +154,17 @@ function labelRegimeTributario(regime: Barraca['fiscal_regime_tributario']): str
 }
 
 export type DadosCupomFiscal = {
-  barraca: Pick<Barraca, 'nome' | 'cnpj' | 'fiscal_regime_tributario'>
+  barraca: Pick<
+    Barraca,
+    | 'nome'
+    | 'cnpj'
+    | 'fiscal_regime_tributario'
+    | 'emitente_razao_social'
+    | 'emitente_inscricao_estadual'
+    | 'emitente_telefone'
+    | 'emitente_endereco'
+    | 'procon_endereco'
+  >
   pedido: PedidoComItens
 }
 
@@ -165,8 +176,7 @@ export type DadosCupomFiscal = {
  * McDonald's), sem os itens que exigiriam dado que o sistema não calcula
  * (NCM/CFOP por item, valor estimado de tributos) — ver CLAUDE.md.
  *
- * Ainda sem gatilho de UI que chame isso (decisão de produto em aberto,
- * ver CLAUDE.md) — só o modelo pronto, como pedido.
+ * Gatilho: botão "Imprimir cupom fiscal" no CardHistorico (Historico.tsx).
  */
 export function montarCupomFiscal({ barraca, pedido }: DadosCupomFiscal, largura: LarguraPapel): Uint8Array {
   if (pedido.nfce_status !== 'autorizado' || !pedido.nfce_chave) {
@@ -184,10 +194,21 @@ export function montarCupomFiscal({ barraca, pedido }: DadosCupomFiscal, largura
   let encoder = novoEncoder(colunas)
     .align('center')
     .bold(true)
-    .line(semAcento(barraca.nome))
+    .line(semAcento(barraca.emitente_razao_social?.trim() || barraca.nome))
     .bold(false)
 
-  if (barraca.cnpj) encoder = encoder.line(`CNPJ: ${formatarCnpj(barraca.cnpj)}`)
+  // Emitente completo: nome fantasia (se a razão social foi preenchida),
+  // CNPJ, IE, endereço e telefone.
+  if (barraca.emitente_razao_social?.trim() && barraca.emitente_razao_social.trim() !== barraca.nome) {
+    encoder = encoder.line(semAcento(barraca.nome))
+  }
+  const linhaDocumentos = [
+    barraca.cnpj ? `CNPJ: ${formatarCnpj(barraca.cnpj)}` : null,
+    barraca.emitente_inscricao_estadual?.trim() ? `IE: ${barraca.emitente_inscricao_estadual.trim()}` : null,
+  ].filter(Boolean)
+  for (const linha of linhaDocumentos) encoder = encoder.line(semAcento(linha as string))
+  if (barraca.emitente_endereco?.trim()) encoder = encoder.line(semAcento(barraca.emitente_endereco.trim()))
+  if (barraca.emitente_telefone?.trim()) encoder = encoder.line(semAcento(`Tel: ${barraca.emitente_telefone.trim()}`))
 
   encoder = encoder
     .line('DANFE NFC-e')
@@ -217,8 +238,17 @@ export function montarCupomFiscal({ barraca, pedido }: DadosCupomFiscal, largura
     .align('left')
     .line(semAcento(`Forma de pagamento: ${humanizarMetodo(pedido.metodo_pagamento)}`))
     .newline()
+    .bold(true)
+    // CPF é opcional na nota, mas o campo SEMPRE aparece no cupom.
+    .line(
+      pedido.nfce_cpf_consumidor
+        ? `CONSUMIDOR CPF: ${formatarCpf(pedido.nfce_cpf_consumidor)}`
+        : 'CONSUMIDOR NAO IDENTIFICADO',
+    )
+    .bold(false)
+    .newline()
     .align('center')
-    .line(`No ${pedido.nfce_numero ?? '-'}  Série ${pedido.nfce_serie ?? '1'}`)
+    .line(`No ${pedido.nfce_numero ?? '-'}  Serie ${pedido.nfce_serie ?? '1'}`)
 
   if (pedido.nfce_emitida_em) {
     encoder = encoder.line(`Emissao: ${new Date(pedido.nfce_emitida_em).toLocaleString('pt-BR')}`)
@@ -239,7 +269,26 @@ export function montarCupomFiscal({ barraca, pedido }: DadosCupomFiscal, largura
 
   encoder = encoder.line('Consulte pela Chave de Acesso')
 
+  // Lei 12.741/2012: valor aproximado dos tributos. A fonte é a alíquota
+  // informada pelo emitente (a FocusNFe não calcula IBPT) — marcada no cupom.
+  if (pedido.nfce_tributos_centavos !== null && pedido.nfce_tributos_centavos !== undefined) {
+    encoder = encoder
+      .newline()
+      .line(semAcento('Tributos Totais Incidentes'))
+      .line(semAcento('(Lei Federal 12.741/2012):'))
+      .bold(true)
+      .line(formatarPrecoBR(pedido.nfce_tributos_centavos))
+      .bold(false)
+      .line('Fonte: aliquota informada pelo emitente')
+  }
+
   if (labelRegime) encoder = encoder.newline().line(semAcento(labelRegime))
+
+  // PROCON: telefone 151 fixo + endereço da sede (texto livre da barraca).
+  encoder = encoder.newline().rule().bold(true).line(`PROCON ${TELEFONE_PROCON}`).bold(false)
+  if (barraca.procon_endereco?.trim()) {
+    encoder = encoder.line(semAcento(`Sede: ${barraca.procon_endereco.trim()}`))
+  }
 
   return encoder.newline(2).cut().encode()
 }
