@@ -3,6 +3,8 @@ import { classesBotaoIcone } from '../lib/estiloBotaoIcone'
 import { excluirClienteFinal, listarClientesFinais } from '../lib/clientesFinais'
 import { formatarTelefoneBR } from '../lib/entrega'
 import { modosAtivos } from '../lib/atendimento'
+import { exportarClientes, type FiltroExportar, type FormatoExportar } from '../lib/exportarClientes'
+import { useAssinaturaBarraca } from '../hooks/useAssinaturaBarraca'
 import { MSG_SEM_INTERNET, mensagemErroSalvar } from '../hooks/useSalvarBarraca'
 import { BottomSheet } from './ui/BottomSheet'
 import { Button } from './ui/Button'
@@ -41,6 +43,17 @@ export function SecaoClientesEntrega({ barraca }: { barraca: Barraca }) {
   const [excluindo, setExcluindo] = useState(false)
   const [erroExcluir, setErroExcluir] = useState<string | null>(null)
   const [recarga, setRecarga] = useState(0)
+
+  // Exportar pra prospecção: mesma regra de plano do Histórico (Essencial não exporta;
+  // trial nasce 'pro').
+  const { assinatura } = useAssinaturaBarraca(barraca.slug)
+  const planoEssencial = assinatura?.plano === 'essencial'
+  const [exportando, setExportando] = useState(false)
+  const [abrirExportar, setAbrirExportar] = useState(false)
+  const [filtroExportar, setFiltroExportar] = useState<FiltroExportar>('aceitaram')
+  const [formatoExportar, setFormatoExportar] = useState<FormatoExportar>('xlsx')
+  const [erroExportar, setErroExportar] = useState<string | null>(null)
+  const [resultadoExportar, setResultadoExportar] = useState<string | null>(null)
 
   const barracaId = barraca.id
   const usaEntrega = modosAtivos(barraca).includes('entrega')
@@ -99,6 +112,29 @@ export function SecaoClientesEntrega({ barraca }: { barraca: Barraca }) {
     }
   }
 
+  async function fazerExportacao() {
+    if (exportando) return
+    if (typeof navigator !== 'undefined' && navigator.onLine === false) {
+      setErroExportar(MSG_SEM_INTERNET)
+      return
+    }
+    setExportando(true)
+    setErroExportar(null)
+    setResultadoExportar(null)
+    try {
+      const total = await exportarClientes(barracaId, barraca.slug, filtroExportar, formatoExportar)
+      setResultadoExportar(
+        total === 0
+          ? 'Nenhum cliente nesse filtro: o arquivo saiu só com o cabeçalho.'
+          : `${total} ${total === 1 ? 'cliente exportado' : 'clientes exportados'}.`,
+      )
+    } catch (erro) {
+      setErroExportar(`Não foi possível exportar: ${erro instanceof Error ? erro.message : 'tente de novo'}`)
+    } finally {
+      setExportando(false)
+    }
+  }
+
   // Sem Entrega e sem nenhum cliente guardado não há o que gerir.
   if (!usaEntrega && !carregando && clientes.length === 0 && !busca.trim() && !erroLista) return null
 
@@ -110,6 +146,26 @@ export function SecaoClientesEntrega({ barraca }: { barraca: Barraca }) {
           Nome, telefone e endereço guardados pra preencher a entrega sozinho. Você pode excluir o
           cadastro de um cliente a qualquer momento.
         </p>
+
+        <div className="mt-3">
+          <Button
+            variant="outline"
+            size="sm"
+            icon={<Icone nome="download" size={16} />}
+            disabled={planoEssencial}
+            title={planoEssencial ? 'Exportar clientes é exclusivo do plano Pro' : undefined}
+            onClick={() => {
+              setErroExportar(null)
+              setResultadoExportar(null)
+              setAbrirExportar(true)
+            }}
+          >
+            Exportar
+          </Button>
+          {planoEssencial && (
+            <p className="mt-1.5 text-xs text-mesa-text-tertiary">Exportar clientes é exclusivo do plano Pro.</p>
+          )}
+        </div>
 
         <Input
           type="search"
@@ -164,6 +220,95 @@ export function SecaoClientesEntrega({ barraca }: { barraca: Barraca }) {
           </ul>
         )}
       </Card>
+
+      <BottomSheet open={abrirExportar} onClose={() => !exportando && setAbrirExportar(false)} aria-label="Exportar clientes de entrega">
+        <h2 className="text-lg font-semibold text-mesa-text-primary">Exportar clientes</h2>
+        <p className="mt-1 text-sm text-mesa-text-secondary">
+          Baixa uma planilha com nome, telefone, endereço, nº de pedidos, último pedido e ticket médio.
+          O app não envia mensagens: a lista é pra você usar.
+        </p>
+
+        <p className="mt-4 text-sm font-medium text-mesa-text-primary">Incluir</p>
+        <div className="mt-2 flex flex-col gap-2" role="radiogroup" aria-label="Quem incluir">
+          {(
+            [
+              ['aceitaram', 'Só quem aceitou contato comercial (recomendado)'],
+              ['todos', 'Todos os clientes'],
+            ] as [FiltroExportar, string][]
+          ).map(([valor, rotulo]) => (
+            <button
+              key={valor}
+              type="button"
+              role="radio"
+              aria-checked={filtroExportar === valor}
+              onClick={() => setFiltroExportar(valor)}
+              className={
+                filtroExportar === valor
+                  ? 'min-h-11 rounded-mesa-md border-2 border-mesa-neutral-900 bg-mesa-neutral-100 px-3 text-left text-sm font-semibold text-mesa-text-primary dark:border-mesa-neutral-50 dark:bg-mesa-neutral-800'
+                  : 'min-h-11 rounded-mesa-md border-2 border-mesa-border-subtle bg-mesa-surface px-3 text-left text-sm font-semibold text-mesa-text-secondary'
+              }
+            >
+              {rotulo}
+            </button>
+          ))}
+        </div>
+        {filtroExportar === 'todos' && (
+          <p className="mt-2 rounded-mesa-md border-l-[3px] border-mesa-warning-500 bg-mesa-warning-50 p-3 text-sm font-medium text-mesa-warning-700 dark:bg-mesa-warning-500/15">
+            Atenção (LGPD): quem não aceitou contato comercial deu os dados só pra entrega. Mandar
+            ofertas a essas pessoas sem autorização pode violar a lei. Use "todos" apenas para
+            organizar a base, não para disparar mensagens.
+          </p>
+        )}
+
+        <p className="mt-4 text-sm font-medium text-mesa-text-primary">Formato</p>
+        <div className="mt-2 grid grid-cols-2 gap-2" role="radiogroup" aria-label="Formato do arquivo">
+          {(
+            [
+              ['xlsx', 'Excel (.xlsx)'],
+              ['csv', 'CSV (.csv)'],
+            ] as [FormatoExportar, string][]
+          ).map(([valor, rotulo]) => (
+            <button
+              key={valor}
+              type="button"
+              role="radio"
+              aria-checked={formatoExportar === valor}
+              onClick={() => setFormatoExportar(valor)}
+              className={
+                formatoExportar === valor
+                  ? 'min-h-11 rounded-mesa-md border-2 border-mesa-neutral-900 bg-mesa-neutral-100 px-3 text-sm font-semibold text-mesa-text-primary dark:border-mesa-neutral-50 dark:bg-mesa-neutral-800'
+                  : 'min-h-11 rounded-mesa-md border-2 border-mesa-border-subtle bg-mesa-surface px-3 text-sm font-semibold text-mesa-text-secondary'
+              }
+            >
+              {rotulo}
+            </button>
+          ))}
+        </div>
+
+        {erroExportar && (
+          <p role="alert" className="mt-3 text-sm font-medium text-mesa-error-500">
+            {erroExportar}
+          </p>
+        )}
+        {resultadoExportar && (
+          <p className="mt-3 text-sm font-semibold text-mesa-success-700 dark:text-mesa-success-500">{resultadoExportar}</p>
+        )}
+        <div className="mt-5 flex flex-col gap-2">
+          <Button
+            variant="outline"
+            size="xl"
+            icon={<Icone nome="download" size={20} />}
+            loading={exportando}
+            onClick={() => void fazerExportacao()}
+            className="w-full"
+          >
+            Baixar
+          </Button>
+          <Button variant="ghost" size="md" disabled={exportando} onClick={() => setAbrirExportar(false)} className="w-full">
+            Fechar
+          </Button>
+        </div>
+      </BottomSheet>
 
       <BottomSheet
         open={paraExcluir !== null}

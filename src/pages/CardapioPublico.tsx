@@ -494,6 +494,7 @@ export function CardapioPublico() {
   const [bairroOutro, setBairroOutro] = useState(false)
   const [referenciaCliente, setReferenciaCliente] = useState('')
   const [consentimento, setConsentimento] = useState(false)
+  const [aceitaOfertas, setAceitaOfertas] = useState(false)
   const [bairrosPublicos, setBairrosPublicos] = useState<BairrosPublicos | null>(null)
   const aberturaCheckoutRef = useRef(0)
   const [copiado, setCopiado] = useState(false)
@@ -805,6 +806,7 @@ export function CardapioPublico() {
                 referencia: referenciaCliente.trim() || null,
               },
               consentimento_lgpd: true,
+              consentimento_marketing: aceitaOfertas,
             }
           : {}),
         observacao: observacao.trim() || null,
@@ -1306,6 +1308,17 @@ export function CardapioPublico() {
                   <span>
                     Autorizo a barraca a guardar meu nome, telefone e endereço para entregar este pedido
                     e agilizar os próximos. Posso pedir a exclusão a qualquer momento.
+                  </span>
+                </label>
+                <label className="flex min-h-11 cursor-pointer items-start gap-3 text-sm text-mesa-text-secondary">
+                  <Checkbox
+                    checked={aceitaOfertas}
+                    onChange={() => setAceitaOfertas((v) => !v)}
+                    aria-label="Aceito receber ofertas e novidades desta loja por WhatsApp"
+                  />
+                  <span>
+                    (Opcional) Aceito receber ofertas e novidades desta loja por WhatsApp. Posso parar de
+                    receber quando quiser.
                   </span>
                 </label>
               </>
