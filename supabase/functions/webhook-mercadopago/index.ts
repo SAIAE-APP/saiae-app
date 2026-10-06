@@ -33,6 +33,7 @@ type EntregaPendente = {
   bairro: string
   referencia: string | null
   consentimento_lgpd_em?: string | null
+  consentimento_marketing_em?: string | null
 }
 
 Deno.serve(async (req: Request) => {
@@ -192,6 +193,7 @@ Deno.serve(async (req: Request) => {
             referencia: entrega.referencia,
             origem: 'cardapio',
             consentimento_lgpd_em: entrega.consentimento_lgpd_em,
+            ...(entrega.consentimento_marketing_em ? { consentimento_marketing_em: entrega.consentimento_marketing_em } : {}),
           },
           { onConflict: 'barraca_id,telefone' },
         )

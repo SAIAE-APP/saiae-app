@@ -82,9 +82,12 @@ Deno.serve(async (req: Request) => {
       referencia?: string | null
       /** Aceito aqui também (contrato do Pix com Entrega); vale o de cima ou este. */
       consentimento_lgpd?: boolean
+      consentimento_marketing?: boolean
     } | null
     /** Cliente aceitou o aviso de LGPD (obrigatório com `entrega`). */
     consentimento_lgpd?: boolean
+    /** Aceite OPCIONAL de ofertas por WhatsApp (separado do consentimento de entrega). */
+    consentimento_marketing?: boolean
     /** Honeypot: campo oculto no formulário; humano nunca preenche. */
     website?: string
     /** Tempo entre abrir o checkout e enviar (medido no navegador). */
@@ -299,6 +302,8 @@ Deno.serve(async (req: Request) => {
     return jsonResponse({ erro: 'Não foi possível enviar o pedido agora. Tente de novo.' }, 500)
   }
 
+  const aceitaMarketing = body.consentimento_marketing === true || entregaBruta?.consentimento_marketing === true
+
   // Cadastro do cliente (LGPD: só com consentimento explícito, origem 'cardapio').
   // Best-effort: falha aqui NUNCA derruba um pedido já criado.
   if (entregaEstruturada) {
@@ -318,6 +323,8 @@ Deno.serve(async (req: Request) => {
           referencia: entregaEstruturada.referencia,
           origem: 'cardapio',
           consentimento_lgpd_em: new Date().toISOString(),
+          // Só grava quando marcado: pedido sem o aceite NÃO apaga um aceite anterior.
+          ...(aceitaMarketing ? { consentimento_marketing_em: new Date().toISOString() } : {}),
         },
         { onConflict: 'barraca_id,telefone' },
       )

@@ -44,6 +44,7 @@ type EntregaBody = {
   bairro?: string
   referencia?: string | null
   consentimento_lgpd?: boolean
+  consentimento_marketing?: boolean
 }
 
 type TaxaEntregaRow = { permitido: boolean; taxa_centavos: number; origem: string }
@@ -242,7 +243,7 @@ Deno.serve(async (req: Request) => {
     const e = body.entrega ?? {}
     const texto = (valor: unknown, max: number) => String(valor ?? '').trim().slice(0, max)
     const nome = texto(e.nome, 60)
-    const telefone = String(e.telefone ?? '').replace(/D/g, '')
+    const telefone = String(e.telefone ?? '').replace(/\D/g, '')
     const rua = texto(e.rua, 120)
     const numero = texto(e.numero, 20)
     const bairro = texto(e.bairro, 80)
@@ -290,6 +291,8 @@ Deno.serve(async (req: Request) => {
       bairro,
       referencia,
       consentimento_lgpd_em: new Date().toISOString(),
+      // Contato comercial é consentimento SEPARADO e opcional (só quando marcou).
+      ...(e.consentimento_marketing === true ? { consentimento_marketing_em: new Date().toISOString() } : {}),
     }
   }
 

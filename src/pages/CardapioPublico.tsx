@@ -506,6 +506,7 @@ export function CardapioPublico() {
   const [formaEntrega, setFormaEntrega] = useState<'na_entrega' | 'pix'>('na_entrega')
   // Taxa que o servidor disse valer pra um bairro (quando difere do preview local).
   const [taxaServidor, setTaxaServidor] = useState<{ bairro: string; centavos: number } | null>(null)
+  const [aceitaOfertas, setAceitaOfertas] = useState(false)
   const [bairrosPublicos, setBairrosPublicos] = useState<BairrosPublicos | null>(null)
   const aberturaCheckoutRef = useRef(0)
   const [copiado, setCopiado] = useState(false)
@@ -820,6 +821,7 @@ export function CardapioPublico() {
                 referencia: referenciaCliente.trim() || null,
               },
               consentimento_lgpd: true,
+              consentimento_marketing: aceitaOfertas,
             }
           : {}),
         observacao: observacao.trim() || null,
@@ -931,7 +933,7 @@ export function CardapioPublico() {
     if (previaTaxa && !previaTaxa.permitido) return 'Não entregamos nesse bairro.'
     if (!consentimento) return 'Marque a autorização para usarmos seus dados na entrega.'
     if (nomeCliente.trim().length < 2) return 'Informe seu nome.'
-    const telefone = telefoneCliente.replace(/D/g, '')
+    const telefone = telefoneCliente.replace(/\D/g, '')
     if (telefone.length < 10 || telefone.length > 13) return 'Informe seu telefone com DDD.'
     return null
   }
@@ -958,12 +960,13 @@ export function CardapioPublico() {
         total_esperado_centavos: totalPixEntregaCentavos,
         entrega: {
           nome: nomeCliente.trim(),
-          telefone: telefoneCliente.replace(/D/g, ''),
+          telefone: telefoneCliente.replace(/\D/g, ''),
           rua: ruaCliente.trim(),
           numero: numeroCliente.trim(),
           bairro: bairroCliente.trim(),
           referencia: referenciaCliente.trim() || null,
           consentimento_lgpd: true,
+          consentimento_marketing: aceitaOfertas,
         },
       },
     })
@@ -1439,6 +1442,17 @@ export function CardapioPublico() {
                   <span>
                     Autorizo a barraca a guardar meu nome, telefone e endereço para entregar este pedido
                     e agilizar os próximos. Posso pedir a exclusão a qualquer momento.
+                  </span>
+                </label>
+                <label className="flex min-h-11 cursor-pointer items-start gap-3 text-sm text-mesa-text-secondary">
+                  <Checkbox
+                    checked={aceitaOfertas}
+                    onChange={() => setAceitaOfertas((v) => !v)}
+                    aria-label="Aceito receber ofertas e novidades desta loja por WhatsApp"
+                  />
+                  <span>
+                    (Opcional) Aceito receber ofertas e novidades desta loja por WhatsApp. Posso parar de
+                    receber quando quiser.
                   </span>
                 </label>
               </>
