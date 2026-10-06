@@ -26,6 +26,8 @@ export type EstadoParaConfirmar = {
   observacaoPorItem?: ObservacaoPorItem
   /** Dados do cliente (só no modo Entrega); preenchidos em ConfirmarPedido. */
   entrega?: DadosEntrega
+  /** Nome do cliente digitado em Confirmar (modos sem formulário de Entrega). */
+  clienteNome?: string
 }
 
 /** ConfirmarPedido → LancarPedido, ao clicar "Voltar e editar". */
@@ -39,6 +41,7 @@ export type EstadoParaEditar = {
   observacaoPorItem?: ObservacaoPorItem
   /** Devolvido intacto pra não perder o que foi digitado em ConfirmarPedido. */
   entrega?: DadosEntrega
+  clienteNome?: string
 }
 
 /** ConfirmarPedido → LancarPedido, depois de enviar com sucesso — LancarPedido

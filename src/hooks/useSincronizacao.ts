@@ -48,19 +48,29 @@ function salvarClienteDoPedido(payload: Record<string, unknown>) {
 async function executarOperacao(op: OperacaoPendente): Promise<void> {
   switch (op.tipo) {
     case 'criar_pedido': {
-      let { data, error } = await supabase.rpc('criar_pedido', op.payload).single()
+      let payload = op.payload
+      let { data, error } = await supabase.rpc('criar_pedido', payload).single()
+      // Banco ainda sem a v7 (p_cliente_nome): reenvia sem o nome. O nome é
+      // opcional, então o pedido entra normalmente e a fila não trava (na
+      // Entrega o nome continua indo em p_entrega).
+      if (error?.code === 'PGRST202' && 'p_cliente_nome' in payload) {
+        const { p_cliente_nome: _semNome, ...semNome } = payload
+        void _semNome
+        payload = semNome
+        ;({ data, error } = await supabase.rpc('criar_pedido', payload).single())
+      }
       // PGRST202 = função não existe com esses argumentos. Com o app novo
       // publicado antes da migration de modos_atendimento, o banco ainda só
       // conhece criar_pedido de 7 args; sem esta volta, o pedido novo falharia
       // pra sempre e (por causa do break abaixo) travaria toda a fila atrás
       // dele. Reenvia sem o campo novo: o pedido entra com tipo_atendimento
       // NULL, e o app deriva de mesa/viagem (tipoDoPedido).
-      if (error?.code === 'PGRST202' && 'p_tipo_atendimento' in op.payload) {
+      if (error?.code === 'PGRST202' && 'p_tipo_atendimento' in payload) {
         // Pedido com dados de entrega ou taxa NÃO cai pra assinatura antiga:
         // entraria no banco sem endereço e sem taxa. Fica adiado na fila (a
         // fila reenvia sozinha depois que a migration da v6 entrar) e NÃO
         // trava os pedidos seguintes, que não dependem dele.
-        if (pedidoPrecisaDaV6(op.payload)) {
+        if (pedidoPrecisaDaV6(payload)) {
           throw new OperacaoAdiadaError(
             'Pedido de Entrega aguardando a atualização do servidor (criar_pedido v6)',
           )
@@ -70,7 +80,7 @@ async function executarOperacao(op: OperacaoPendente): Promise<void> {
             p_entrega: _semEntrega,
             p_taxa_entrega_centavos: _semTaxa,
             ...payloadAntigo
-          } = op.payload
+          } = payload
           void _semTipo
           void _semEntrega
           void _semTaxa

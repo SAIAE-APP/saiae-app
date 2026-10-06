@@ -5,7 +5,7 @@ import { useBarracaAtual } from '../layouts/contextoBarraca'
 import { useTheme } from '../hooks/useTheme'
 import { MOTIVOS_CANCELAMENTO } from '../lib/cancelamento'
 import { formatarPrecoBR } from '../lib/preco'
-import { ROTULO_MODO, rotuloAtendimento, tipoDoPedido } from '../lib/atendimento'
+import { ROTULO_MODO, nomeDoCliente, rotuloAtendimento, tipoDoPedido } from '../lib/atendimento'
 import { corMetodo, humanizarMetodo, METODOS_DISPONIVEIS } from '../lib/metodoPagamento'
 import { hojeISO } from '../lib/datas'
 import { calcularIntervalosRelatorio, calcularTotalPedido, ehEntregaDireta } from '../lib/relatorio'
@@ -243,6 +243,9 @@ function CardHistorico({
           >
             {formatarPrecoBR(calcularTotalPedido(pedido))}
           </p>
+          {nomeDoCliente(pedido) && (
+            <p className="mt-1 text-sm font-semibold text-mesa-text-primary">{nomeDoCliente(pedido)}</p>
+          )}
           {(pedido.viagem || pedido.mesa) && (
             <p className="mt-1 text-sm text-mesa-text-secondary">
               {rotuloAtendimento(pedido)}
@@ -436,7 +439,8 @@ export function Historico() {
     ? pedidosPorMetodo.filter(
         (p) =>
           String(p.senha).includes(buscaNormalizada) ||
-          (p.mesa ?? '').toLowerCase().includes(buscaNormalizada),
+          (p.mesa ?? '').toLowerCase().includes(buscaNormalizada) ||
+          (nomeDoCliente(p) ?? '').toLowerCase().includes(buscaNormalizada),
       )
     : pedidosPorMetodo
 
@@ -624,8 +628,8 @@ export function Historico() {
           value={busca}
           onChange={(e) => setBusca(e.target.value)}
           onClear={() => setBusca('')}
-          placeholder="Buscar por senha ou mesa"
-          aria-label="Buscar por senha ou mesa"
+          placeholder="Buscar por senha, mesa ou nome"
+          aria-label="Buscar por senha, mesa ou nome"
           className="mt-3"
         />
 

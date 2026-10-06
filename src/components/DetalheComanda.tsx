@@ -4,7 +4,7 @@ import clsx from 'clsx'
 import { BottomSheet } from './ui/BottomSheet'
 import { Button } from './ui/Button'
 import { Icone } from './ui/Icone'
-import { iconeAtendimento, rotuloAtendimento } from '../lib/atendimento'
+import { iconeAtendimento, nomeDoCliente, rotuloAtendimento } from '../lib/atendimento'
 import type { Barraca, ItemDoPedido, PedidoComItens } from '../types/database'
 
 const DURACAO_LONGO_TOQUE_MS = 1000
@@ -267,6 +267,11 @@ export function DetalheComanda({
             <Icone nome={iconeAtendimento(pedido)} size={14} />
             {rotuloAtendimento(pedido)}
           </div>
+          {nomeDoCliente(pedido) && (
+            <p className="mt-1 truncate text-sm font-semibold text-mesa-neutral-200">
+              {nomeDoCliente(pedido)}
+            </p>
+          )}
 
           <p className="mt-4 text-sm text-mesa-neutral-400">Marque os itens conforme forem saindo</p>
 
