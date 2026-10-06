@@ -170,9 +170,18 @@ aparelho Android 7–11 e 12+ antes de publicar.
   Excluir conta já descrevem isso. Telefone guardado só com dígitos e SEM o
   55 do país (`normalizarTelefone`: tira o 55 só com 12/13 dígitos, porque
   com 10/11 o 55 é o DDD de Santa Maria/RS), no app e por trigger no banco.
+- Nome do cliente (2026-10-06): campo OPCIONAL "Nome do cliente" em
+  Confirmar Pedido nos modos Mesa/Balcão/Retirada (na Entrega vale o nome
+  do formulário). `pedidos.cliente_nome` (nullable); aparece na comanda
+  impressa (`Cliente: ...`), card da Cozinha/Detalhe, Chamada, Histórico
+  (e na busca). `nomeDoCliente` (`src/lib/atendimento.ts`) cai em
+  `entrega_nome` p/ pedido de Entrega da v6. `criar_pedido` v7 (migration
+  `20261006120000`) = v6 + `p_cliente_nome text default null` (11 args,
+  chamada antiga de 10 resolve pelo default); sem a v7 no banco a fila
+  reenvia sem o nome (PGRST202), nunca trava.
 - `criar_pedido` está na v6 (migration `20261004140000`): 10 args, os 3
   últimos opcionais (`p_tipo_atendimento`, `p_entrega`,
-  `p_taxa_entrega_centavos`). Cada versão derruba a assinatura anterior pra
+  `p_taxa_entrega_centavos`) — a v7 acima só soma o 11º. Cada versão derruba a assinatura anterior pra
   não ficar sobrecarga ambígua; arquivo-fonte em
   `supabase/functions/criar_pedido.sql`. Fila (`useSincronizacao`): se o
   banco não conhece os args novos (PGRST202), pedido comum reenvia sem eles,

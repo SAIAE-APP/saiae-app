@@ -144,6 +144,8 @@ export type Pedido = {
   /** NULL em pedido antigo / cardápio digital — derivar com `tipoDoPedido()`. */
   tipo_atendimento: TipoAtendimento | null
   /** Dados de entrega (só em pedido de Entrega) e taxa cobrada, em centavos. */
+  /** Nome do cliente, opcional em qualquer modo (criar_pedido v7). */
+  cliente_nome?: string | null
   entrega_nome?: string | null
   entrega_telefone?: string | null
   entrega_rua?: string | null

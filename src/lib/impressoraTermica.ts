@@ -263,6 +263,8 @@ export type DadosComanda = {
   senha: number | null
   criadoEm: string
   mesa: string | null
+  /** Nome do cliente (opcional, qualquer modo). Na Entrega já sai em "ENTREGAR PARA". */
+  clienteNome?: string | null
   viagem: boolean
   /** Opcional: sem ele deriva de mesa/viagem (pedido antigo, cardápio digital). */
   tipo?: TipoAtendimento | null
@@ -327,6 +329,10 @@ export function montarComanda(dados: DadosComanda, largura: LarguraPapel): Uint8
       .bold(true)
       .line(dados.mesa ? semAcento(`Mesa ${dados.mesa}`) : 'BALCAO')
       .bold(false)
+  }
+  const nomeCliente = dados.entrega ? '' : (dados.clienteNome ?? '').trim()
+  if (nomeCliente) {
+    encoder = encoder.bold(true).line(semAcento(`Cliente: ${nomeCliente}`)).bold(false)
   }
   encoder = encoder.align('left').rule()
 
