@@ -13,6 +13,7 @@ import { useOcultarAoRolar } from '../hooks/useOcultarAoRolar'
 import { useAssinaturaBarraca } from '../hooks/useAssinaturaBarraca'
 import type { TipoFiltroRelatorio } from '../lib/relatorio'
 import { GateSenhaAdmin } from '../components/GateSenhaAdmin'
+import { BotoesLinkEntregador } from '../components/BotoesLinkEntregador'
 import { Badge } from '../components/ui/Badge'
 import { BotaoHome } from '../components/ui/BotaoHome'
 import { BottomSheet } from '../components/ui/BottomSheet'
@@ -347,6 +348,10 @@ function CardHistorico({
         <p className="mt-2 text-xs text-mesa-text-secondary">
           Motivo: {motivoHumanizado(pedido.motivo_cancelamento)}
         </p>
+      )}
+
+      {pedido.entrega_token && pedido.status !== 'entregue' && !cancelado && (
+        <BotoesLinkEntregador token={pedido.entrega_token} senha={pedido.senha} compacto />
       )}
 
       {pedido.observacao && (

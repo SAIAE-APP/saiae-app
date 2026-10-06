@@ -164,6 +164,9 @@ export type Pedido = {
   entrega_bairro?: string | null
   entrega_referencia?: string | null
   taxa_entrega_centavos?: number
+  /** Link do entregador (/e/:token): só pedido de Entrega novo; NULL nos antigos. */
+  entrega_token?: string | null
+  entrega_confirmada_em?: string | null
   cliente_final_id?: string | null
   observacao: string | null
   status: StatusPedido

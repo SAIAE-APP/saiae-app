@@ -174,6 +174,13 @@ export function Privacidade() {
               destino</strong>. O operador escolhe o contato e envia. O Sai aê não envia mensagem, não se
               conecta ao WhatsApp e não recebe cópia dela.
             </ItemLista>
+            <ItemLista>
+              <strong>Link do entregador:</strong> a barraca pode enviar ao entregador um link (por
+              exemplo pelo WhatsApp) que mostra, sem login, os itens do pedido e o nome, telefone e
+              endereço de entrega do cliente, para o entregador confirmar a entrega e a forma de
+              pagamento. O link é único e difícil de adivinhar, deixa de mostrar esses dados assim que a
+              entrega é confirmada e expira em 24 horas. Não há cadastro do entregador.
+            </ItemLista>
           </ul>
           <p>
             A barraca é quem decide coletar esses dados e para que usá-los; o Sai aê só os armazena e

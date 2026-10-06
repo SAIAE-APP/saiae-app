@@ -9,6 +9,7 @@ import { usePedidosAtual } from '../layouts/contextoPedidos'
 import { enfileirar } from '../lib/fila'
 import { classesBotaoIcone } from '../lib/estiloBotaoIcone'
 import { tocarSomPedidoCritico, tocarSomPedidoNaCozinha } from '../lib/sons'
+import { BotoesLinkEntregador } from '../components/BotoesLinkEntregador'
 import { Badge } from '../components/ui/Badge'
 import { BotaoHome } from '../components/ui/BotaoHome'
 import { BottomSheet } from '../components/ui/BottomSheet'
@@ -349,6 +350,10 @@ function CardPedido({
             </>
           )}
         </div>
+
+        {pedido.entrega_token && (
+          <BotoesLinkEntregador token={pedido.entrega_token} senha={pedido.senha} compacto />
+        )}
 
         <div className="mt-2 flex justify-center gap-2">
           {podeImprimir && (
