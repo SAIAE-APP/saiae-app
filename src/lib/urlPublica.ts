@@ -10,7 +10,7 @@ const URL_PUBLICA_PADRAO = 'https://app.saiae.com.br'
 
 function baseUrlPublica(): string {
   if (Capacitor.isNativePlatform()) {
-    return import.meta.env.VITE_PUBLIC_APP_URL ?? URL_PUBLICA_PADRAO
+    return import.meta.env?.VITE_PUBLIC_APP_URL ?? URL_PUBLICA_PADRAO
   }
   return window.location.origin
 }
