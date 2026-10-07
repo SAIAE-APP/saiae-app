@@ -205,6 +205,15 @@ aparelho Android 7–11 e 12+ antes de publicar.
   ao `criar_pedido` e faz upsert best-effort em `clientes_finais`
   (`origem='cardapio'`, `consentimento_lgpd_em`). Sem `entrega` segue o modo
   antigo (nome/telefone/endereço livre). A taxa continua FORA da NFC-e.
+- Bairros no cardápio público (correção 2026-10-09): a lista de bairros é buscada
+  de novo sempre que o checkout ou o formulário de Entrega abrem, o modo muda, a
+  aba volta ao foco e no "Tentar de novo" (antes só no load, e ficava velha se o dono
+  cadastrasse o bairro com a aba aberta: o campo caía em texto livre com a taxa
+  padrão). Falha ao buscar não é mais silenciosa (console.warn + aviso "valor final
+  confirmado ao enviar"). O "Pagar na entrega" estruturado agora manda
+  `total_esperado_centavos` e o servidor devolve 409 com o novo total se a taxa
+  divergir (Pix já fazia); a prévia passa a usar o valor do servidor. Regras puras de
+  bairro em `src/lib/bairrosTaxa.ts` (testadas em `tests/bairros.test.ts`, `npm test`).
 - Provedores de Pix (2026-10-09, Sprint 5 Story A, migration
   `20261009120000`): o Pix online passa por uma interface `ProvedorPix`
   (`supabase/functions/_shared/pagamento/`: `tipos.ts`, `registro.ts`,
