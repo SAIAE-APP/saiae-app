@@ -106,6 +106,25 @@ export type Item = {
   unidade_comercial: string | null
   esgotado: boolean
   popular: boolean
+  /** Saldo do estoque; NULL = não controla estoque. Opcional: cache/linha antiga não tem. */
+  estoque_qtd?: number | null
+  /** true quando o `esgotado` foi ligado pelo sistema (saldo <= 0), não pelo dono. */
+  estoque_esgotado_auto?: boolean
+}
+
+export type MotivoMovimentoEstoque = 'venda' | 'cancelamento' | 'remocao' | 'ajuste'
+
+export type MovimentoEstoque = {
+  id: string
+  barraca_id: string
+  item_id: string
+  item_pedido_id: string | null
+  pedido_id: string | null
+  delta: number
+  motivo: MotivoMovimentoEstoque
+  saldo_apos: number | null
+  observacao: string | null
+  criado_em: string
 }
 
 export type BannerCardapio = {

@@ -6,7 +6,8 @@ import { supabase } from '../lib/supabase'
 import { classesBotaoIcone } from '../lib/estiloBotaoIcone'
 import { useBarracaAtual, useSincronizacaoAtual } from '../layouts/contextoBarraca'
 import { useTheme } from '../hooks/useTheme'
-import { aoConcluirCriacaoPedido } from '../lib/fila'
+import { aoConcluirCriacaoPedido, aoCriarPedidoLocal } from '../lib/fila'
+import { textoRestam } from '../lib/estoque'
 import { formatarPrecoBR } from '../lib/preco'
 import { linkWhatsAppSemNumero, montarMensagemEntregador } from '../lib/entrega'
 import { tocarSomPedidoCriado } from '../lib/sons'
@@ -167,6 +168,11 @@ function CardItemCardapio({
         <p className="mt-1 font-mesa-display text-sm font-semibold text-mesa-text-primary">
           {item.preco_centavos > 0 ? formatarPrecoBR(item.preco_centavos) : 'Sem preço'}
         </p>
+        {!item.esgotado && textoRestam(item) && (
+          <p className="mt-0.5 text-xs font-semibold text-mesa-warning-700 dark:text-mesa-warning-500">
+            {textoRestam(item)}
+          </p>
+        )}
 
         {selecionado && (
           <div className="mt-2 flex items-center justify-between gap-2">
@@ -246,6 +252,11 @@ function CardItemCardapioGrade({
       <p className="mt-1 font-mesa-display text-sm font-semibold text-mesa-text-primary">
         {item.preco_centavos > 0 ? formatarPrecoBR(item.preco_centavos) : 'Sem preço'}
       </p>
+      {!item.esgotado && textoRestam(item) && (
+        <p className="mt-0.5 text-xs font-semibold text-mesa-warning-700 dark:text-mesa-warning-500">
+          {textoRestam(item)}
+        </p>
+      )}
 
       <div className="mt-3">
         {item.esgotado ? (
@@ -532,6 +543,37 @@ export function LancarPedido() {
 
     return () => {
       cancelado = true
+    }
+  }, [barraca.id])
+
+  // Estoque (Sprint 6): o saldo/esgotado muda no banco a cada venda (deste e de outros
+  // aparelhos, cardápio, Pix). Não há Realtime de itens, então relê o cardápio ao voltar
+  // pro app/aba, quando um pedido deste aparelho sincroniza e a cada 60 s. Silencioso: não
+  // pisca a lista nem mexe no carrinho.
+  useEffect(() => {
+    let cancelado = false
+    function recarregar() {
+      if (document.visibilityState === 'hidden') return
+      supabase
+        .from('itens')
+        .select('*')
+        .eq('barraca_id', barraca.id)
+        .eq('ativo', true)
+        .order('ordem')
+        .then(({ data, error }) => {
+          if (!cancelado && !error && data) setItens(data as Item[])
+        })
+    }
+    document.addEventListener('visibilitychange', recarregar)
+    window.addEventListener('focus', recarregar)
+    const cancelarLocal = aoCriarPedidoLocal(() => recarregar())
+    const timer = window.setInterval(recarregar, 60_000)
+    return () => {
+      cancelado = true
+      document.removeEventListener('visibilitychange', recarregar)
+      window.removeEventListener('focus', recarregar)
+      cancelarLocal()
+      window.clearInterval(timer)
     }
   }, [barraca.id])
 
