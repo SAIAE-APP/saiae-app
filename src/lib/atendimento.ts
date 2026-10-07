@@ -52,15 +52,19 @@ export function modosAtivos(barraca: Pick<Barraca, 'modos_atendimento'> | null):
 
 /** Modos que o cardápio digital público oferece ao CONSUMIDOR: só Retirada e
  * Entrega (Mesa/Balcão saíram da UI pública em 2026-10-07; o servidor segue
- * aceitando os tipos antigos). Retirada sempre existe: barraca que só ligou
- * Mesa/Balcão (ou resposta antiga da função, sem o campo) cai em Retirada.
- * Entrega só entra se a barraca ligou Entrega E o cardápio tem como finalizá-la
- * (`entregaDisponivel`: "Pagar na entrega" ligado ou pagamento online). */
+ * aceitando os tipos antigos). Respeita o que a barraca ligou: Retirada se
+ * ligou Retirada; Entrega se ligou Entrega E o cardápio tem como finalizá-la
+ * (`entregaDisponivel`: "Pagar na entrega" ligado ou pagamento online).
+ * Se nenhum passou (só Mesa/Balcão, resposta antiga sem o campo, ou Entrega
+ * ligada sem como finalizar), cai em Retirada. */
 export function modosDoCardapioPublico(
   salvos: TipoAtendimento[] | null | undefined,
   entregaDisponivel = false,
 ): ('retirada' | 'entrega')[] {
-  return salvos?.includes('entrega') && entregaDisponivel ? ['retirada', 'entrega'] : ['retirada']
+  const modos: ('retirada' | 'entrega')[] = []
+  if (salvos?.includes('retirada')) modos.push('retirada')
+  if (salvos?.includes('entrega') && entregaDisponivel) modos.push('entrega')
+  return modos.length > 0 ? modos : ['retirada']
 }
 
 /** `pedidos.viagem` = "não consome no local" (Retirada ou Entrega). */

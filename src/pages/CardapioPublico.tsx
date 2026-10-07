@@ -570,7 +570,7 @@ export function CardapioPublico() {
     const entregaDisponivel = Boolean(primeira?.barraca_whatsapp_pedidos) || Boolean(primeira?.pagamento_online_habilitado)
     return modosDoCardapioPublico(primeira?.barraca_modos_atendimento, entregaDisponivel)
   }, [estado])
-  const modoEfetivo: ModoConsumo = modosPublicos.includes(modoConsumo) ? modoConsumo : 'retirada'
+  const modoEfetivo: ModoConsumo = modosPublicos.includes(modoConsumo) ? modoConsumo : modosPublicos[0]
   const [mostrarAvisoBalcao, setMostrarAvisoBalcao] = useState(false)
   const clientUuidRef = useRef(crypto.randomUUID())
 
@@ -623,7 +623,7 @@ export function CardapioPublico() {
     if (!entregaOfertada) return
     // eslint-disable-next-line react-hooks/set-state-in-effect -- busca de dados: o setState acontece depois do await
     void carregarBairros()
-  }, [entregaOfertada, checkoutAberto, formularioEntregaAberto, modoConsumo, carregarBairros])
+  }, [entregaOfertada, checkoutAberto, formularioEntregaAberto, modoEfetivo, carregarBairros])
 
   useEffect(() => {
     if (!entregaOfertada) return
@@ -1336,11 +1336,13 @@ export function CardapioPublico() {
               ))}
             </div>
 
-            {modosPublicos.length > 1 && (
-              <p className="text-sm text-mesa-text-secondary">
-                Como receber: <span className="font-semibold text-mesa-text-primary">{ROTULO_MODO[modoEfetivo]}</span>
-              </p>
-            )}
+            <p className="text-sm text-mesa-text-secondary">
+              {modosPublicos.length > 1 ? 'Como receber' : 'Só ' + ROTULO_MODO[modoEfetivo].toLowerCase()}
+              {modosPublicos.length > 1 && ': '}
+              {modosPublicos.length > 1 && (
+                <span className="font-semibold text-mesa-text-primary">{ROTULO_MODO[modoEfetivo]}</span>
+              )}
+            </p>
 
             <Textarea
               value={observacao}

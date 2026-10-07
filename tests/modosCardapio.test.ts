@@ -6,13 +6,13 @@ import { modosDoCardapioPublico } from '../src/lib/atendimento.ts'
 test('nunca oferece Mesa nem Balcão', () => {
   for (const salvos of [['mesa', 'balcao', 'retirada', 'entrega'], ['mesa'], ['balcao'], ['mesa', 'balcao']] as const) {
     for (const entrega of [true, false]) {
-      const modos = modosDoCardapioPublico([...salvos], entrega)
-      assert.ok(!modos.some((m) => (m as string) === 'mesa' || (m as string) === 'balcao'), String(modos))
+      const modos: string[] = modosDoCardapioPublico([...salvos], entrega)
+      assert.ok(!modos.includes('mesa') && !modos.includes('balcao'), String(modos))
     }
   }
 })
 
-test('barraca só com Mesa/Balcão cai em Retirada', () => {
+test('só Mesa/Balcão cai em Retirada', () => {
   assert.deepEqual(modosDoCardapioPublico(['mesa', 'balcao'], true), ['retirada'])
   assert.deepEqual(modosDoCardapioPublico(['mesa'], false), ['retirada'])
 })
@@ -23,9 +23,17 @@ test('resposta antiga (sem o campo) ou vazia: Retirada', () => {
   assert.deepEqual(modosDoCardapioPublico([], true), ['retirada'])
 })
 
-test('Entrega só com a barraca tendo ligado E o cardápio conseguindo finalizar', () => {
+test('barraca só com Entrega (finalizável) oferece só Entrega', () => {
+  assert.deepEqual(modosDoCardapioPublico(['entrega'], true), ['entrega'])
+  assert.deepEqual(modosDoCardapioPublico(['mesa', 'entrega'], true), ['entrega'])
+})
+
+test('Entrega ligada sem como finalizar, sem Retirada: fallback Retirada', () => {
+  assert.deepEqual(modosDoCardapioPublico(['entrega'], false), ['retirada'])
+})
+
+test('Retirada desligada é respeitada; ambos ligados oferece os dois na ordem', () => {
   assert.deepEqual(modosDoCardapioPublico(['retirada', 'entrega'], true), ['retirada', 'entrega'])
-  assert.deepEqual(modosDoCardapioPublico(['mesa', 'entrega'], true), ['retirada', 'entrega'])
   assert.deepEqual(modosDoCardapioPublico(['retirada', 'entrega'], false), ['retirada'])
   assert.deepEqual(modosDoCardapioPublico(['retirada'], true), ['retirada'])
 })
