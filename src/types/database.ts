@@ -209,6 +209,8 @@ export type Pedido = {
   nfce_serie: string | null
   nfce_protocolo: string | null
   nfce_qrcode_url: string | null
+  /** Ambiente em que a nota foi emitida; NULL em nota anterior à migration — usar `ambienteDaNota`. */
+  nfce_ambiente?: AmbienteFiscal | null
   nfce_cpf_consumidor?: string | null
   nfce_tributos_centavos?: number | null
 }

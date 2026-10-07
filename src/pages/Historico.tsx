@@ -25,7 +25,7 @@ import { Icone } from '../components/ui/Icone'
 import { Input } from '../components/ui/Input'
 import { SegmentedControl } from '../components/ui/SegmentedControl'
 import { useToast } from '../components/ui/Toast'
-import { cpfValido, formatarCpf } from '../lib/fiscal'
+import { ambienteDaNota, cpfValido, formatarCpf } from '../lib/fiscal'
 import { descreverErroImpressao, imprimirCupomFiscal, impressoraSuportada } from '../lib/impressoraTermica'
 import type { Item, PedidoComItens } from '../types/database'
 
@@ -165,6 +165,8 @@ function BotaoEmitirNota({ pedido }: { pedido: PedidoComItens }) {
   const [status, setStatus] = useState(pedido.nfce_status)
   const [mensagem, setMensagem] = useState(pedido.nfce_mensagem)
   const [chave, setChave] = useState(pedido.nfce_chave)
+  // Ambiente da emissão feita agora nesta tela (o card ainda não tem nfce_ambiente).
+  const [ambienteEmitidoAgora, setAmbienteEmitidoAgora] = useState<'homologacao' | 'producao' | null>(null)
   const [emitindo, setEmitindo] = useState(false)
   const [imprimindo, setImprimindo] = useState(false)
   const [cpf, setCpf] = useState('')
@@ -229,6 +231,7 @@ function BotaoEmitirNota({ pedido }: { pedido: PedidoComItens }) {
     setStatus(statusRecebido)
     setMensagem(data?.mensagem ?? data?.erro ?? null)
     setChave(data?.chave ?? null)
+    if (statusRecebido === 'autorizado') setAmbienteEmitidoAgora(barraca.fiscal_ambiente)
 
     if (statusRecebido === 'autorizado') {
       mostrarToast('Nota fiscal emitida.', { variante: 'sucesso' })
@@ -244,6 +247,11 @@ function BotaoEmitirNota({ pedido }: { pedido: PedidoComItens }) {
           <Icone nome="task_alt" size={14} />
           Nota fiscal emitida{chave ? ` — final ${chave.slice(-8)}` : ''}
         </p>
+        {(ambienteEmitidoAgora ?? ambienteDaNota(pedido.nfce_ambiente, barraca.fiscal_ambiente)) === 'homologacao' && (
+          <Badge variant="warning" className="mt-1.5">
+            Homologação · sem valor fiscal
+          </Badge>
+        )}
         {podeImprimir && (
           <Button variant="outline" size="md" loading={imprimindo} onClick={imprimirCupom} className="mt-2 w-full">
             <Icone nome="print" size={18} />

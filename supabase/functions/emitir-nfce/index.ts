@@ -349,6 +349,9 @@ Deno.serve(async (req: Request) => {
       nfce_numero: resultado?.numero ?? null,
       nfce_mensagem: resultado?.mensagem_sefaz ?? null,
       nfce_emitida_em: autorizado ? new Date().toISOString() : null,
+      // Ambiente USADO nesta chamada (mesma regra do baseUrl acima). O cupom e o
+      // Histórico leem isto, nunca o fiscal_ambiente atual da barraca.
+      nfce_ambiente: barraca.fiscal_ambiente === 'producao' ? 'producao' : 'homologacao',
       // Nomes de campo conforme documentação da FocusNFe — ainda não
       // confirmados numa emissão real (nenhuma nota emitida de verdade até
       // agora), por isso aceita variantes prováveis em vez de travar num só.
