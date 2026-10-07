@@ -352,8 +352,8 @@ aparelho Android 7–11 e 12+ antes de publicar.
   toggle esgotado"). Decisões do dono: controle POR ITEM e opcional
   (`itens.estoque_qtd`, NULL = não controla, comportamento de sempre); ESGOTA
   sozinho quando o saldo chega a 0 (`esgotado = true` + `estoque_esgotado_auto`);
-  PODE NEGATIVAR (venda além do saldo, p.ex. operador offline, nunca é
-  bloqueada: erro de contabilidade vira WARNING e o pedido segue); DEVOLVE ao
+  PODE NEGATIVAR (venda além do saldo, p.ex. operador offline; só é
+  bloqueada se o dono ligar o bloqueio opcional, ver abaixo: erro de contabilidade vira WARNING e o pedido segue); DEVOLVE ao
   cancelar o pedido ou remover o item. A baixa vive no BANCO (triggers
   SECURITY DEFINER em `itens_do_pedido`/`pedidos`), então vale para o app
   online/offline, cardápio digital e Pix (todos passam por `criar_pedido`).
@@ -368,6 +368,22 @@ aparelho Android 7–11 e 12+ antes de publicar.
   ao sincronizar um pedido e a cada 60 s (dois operadores podem vender o
   último item quase juntos e o saldo fica negativo, como combinado). Vale para
   todos os planos (não gatear por Essencial/Pro).
+  BLOQUEIO OPCIONAL (2026-10-07, PR #31, migration
+  `20261011100000_estoque_bloqueia.sql`): o dono escolhe em Ajustes > Estoque
+  ("Bloquear venda acima do estoque", `barracas.estoque_bloqueia`, padrão
+  false). DESLIGADO (padrão): vende além do saldo como antes, mas AVISA ("Passa
+  do estoque: restam N", toast ao tocar no + e aviso fixo no card). LIGADO:
+  Lançar Pedido não passa do saldo conhecido pelo aparelho (+ para em "Restam
+  N"/"Sem estoque") e barra o envio se o carrinho passou do saldo; o cardápio
+  digital recusa no SERVIDOR (422 "Sem estoque suficiente", em
+  `criar-pedido-cardapio` e `criar-pagamento-pix`, soma por item). REGRA DE
+  OURO: o bloqueio só vale na hora de adicionar/enviar; pedido já criado, na
+  fila offline, retry de Pix já emitido e pagamento aprovado no webhook NUNCA
+  são recusados por estoque (a venda já aconteceu; o saldo negativa). Nenhuma
+  função do banco mudou: `criar_pedido` e os triggers do #29 seguem iguais.
+  Limite conhecido: com o bloqueio ligado, dois operadores ainda podem vender o
+  último item quase juntos (saldo só atualiza ao voltar ao app, ao sincronizar
+  ou a cada 60 s).
 - Observação existe em DOIS níveis (regra mudou em 2026-09-18,
   decisão do dono do produto): `pedidos.observacao` é o recado geral
   do pedido inteiro (ex.: "cliente com pressa"), e
@@ -648,7 +664,16 @@ nenhum item daqui sozinho, só quando for pedido explicitamente.
     sem policy de select, só via função SECURITY DEFINER — mesmo
     padrão de `barracas_senha_admin`/PIN admin), regime, ambiente
     (Homologação/Produção, default Homologação) e campos NCM/CFOP/
-    unidade por item do cardápio. **Emissão de verdade implementada e
+    unidade por item do cardápio. **Aviso de homologação** (2026-10-07, PR #22,
+    migration `20261008130000_nfce_ambiente.sql`): `emitir-nfce` grava
+    `pedidos.nfce_ambiente` (o ambiente USADO na chamada) e o cupom imprime
+    "EMITIDA EM AMBIENTE DE HOMOLOGACAO - SEM VALOR FISCAL" no topo e antes do
+    corte; o Histórico mostra o selo "Homologação · sem valor fiscal". Vale o
+    ambiente GRAVADO na nota, nunca o `fiscal_ambiente` atual da barraca. Nota
+    antiga (coluna NULL): conta como produção só se a barraca está HOJE em
+    produção, senão homologação (`ambienteDaNota` em `src/lib/fiscal.ts`; em
+    dúvida avisa a mais). `emitir-nfce` devolve cedo se o pedido já está
+    autorizado: testar produção exige pedido novo. **Emissão de verdade implementada e
     no ar** (2026-09-26): Edge Function `emitir-nfce` (deployada via
     `supabase functions deploy`, usa a service role key, nunca a
     anon) valida fiscal habilitado → CNPJ → token → itens com NCM/
