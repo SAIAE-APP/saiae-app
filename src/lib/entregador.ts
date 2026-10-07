@@ -1,5 +1,8 @@
 import { supabase } from './supabase'
 import { linkWhatsAppSemNumero } from './entrega'
+import { linkDoEntregador, mensagemLinkEntregador } from './linkEntregador'
+
+export { linkDoEntregador, mensagemLinkEntregador }
 
 export type MetodoEntregador = 'dinheiro' | 'debito' | 'credito' | 'pix'
 
@@ -61,16 +64,6 @@ export async function confirmarEntrega(
   })
   if (error) throw error
   return data as ResultadoConfirmacao
-}
-
-/** Link público que o motoboy abre (mesma origem do app). */
-export function linkDoEntregador(token: string): string {
-  return `${window.location.origin}/e/${token}`
-}
-
-export function mensagemLinkEntregador(senha: number | null, token: string): string {
-  const titulo = senha !== null ? `*Entrega - Pedido #${senha}*` : '*Entrega*'
-  return `${titulo}\nAbra o link pra ver o pedido e confirmar a entrega:\n${linkDoEntregador(token)}`
 }
 
 export function whatsappLinkEntregador(senha: number | null, token: string): string {
