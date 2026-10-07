@@ -28,6 +28,12 @@ export const DESCRICAO_MODO: Record<TipoAtendimento, string> = {
   entrega: 'O motoboy leva até o cliente',
 }
 
+/** Texto curto pro cliente final no cardápio público (o de cima é pro operador). */
+export const DESCRICAO_CARDAPIO_MODO: Record<'retirada' | 'entrega', string> = {
+  retirada: 'Você busca no local',
+  entrega: 'Levamos até você',
+}
+
 export const ICONE_MODO: Record<TipoAtendimento, string> = {
   mesa: 'table_restaurant',
   balcao: 'storefront',
@@ -44,18 +50,21 @@ export function modosAtivos(barraca: Pick<Barraca, 'modos_atendimento'> | null):
   return ativos.length > 0 ? ativos : MODOS_PADRAO
 }
 
-/** Modos que o cardápio digital público pode oferecer: os ligados pela barraca.
- * Entrega só entra se a barraca ligou Entrega E o cardápio tem como finalizá-la
- * (`entregaDisponivel`: "Pagar na entrega" ligado ou pagamento online). Resposta
- * antiga da função (sem o campo), ou barraca que só tem Entrega ligada, cai no
- * padrão em vez de deixar o cliente sem opção. */
+/** Modos que o cardápio digital público oferece ao CONSUMIDOR: só Retirada e
+ * Entrega (Mesa/Balcão saíram da UI pública em 2026-10-07; o servidor segue
+ * aceitando os tipos antigos). Respeita o que a barraca ligou: Retirada se
+ * ligou Retirada; Entrega se ligou Entrega E o cardápio tem como finalizá-la
+ * (`entregaDisponivel`: "Pagar na entrega" ligado ou pagamento online).
+ * Se nenhum passou (só Mesa/Balcão, resposta antiga sem o campo, ou Entrega
+ * ligada sem como finalizar), cai em Retirada. */
 export function modosDoCardapioPublico(
   salvos: TipoAtendimento[] | null | undefined,
   entregaDisponivel = false,
-): TipoAtendimento[] {
-  if (!salvos || salvos.length === 0) return MODOS_PADRAO
-  const oferecidos = TODOS_OS_MODOS.filter((m) => (m !== 'entrega' || entregaDisponivel) && salvos.includes(m))
-  return oferecidos.length > 0 ? oferecidos : MODOS_PADRAO
+): ('retirada' | 'entrega')[] {
+  const modos: ('retirada' | 'entrega')[] = []
+  if (salvos?.includes('retirada')) modos.push('retirada')
+  if (salvos?.includes('entrega') && entregaDisponivel) modos.push('entrega')
+  return modos.length > 0 ? modos : ['retirada']
 }
 
 /** `pedidos.viagem` = "não consome no local" (Retirada ou Entrega). */
