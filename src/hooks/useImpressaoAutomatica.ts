@@ -48,7 +48,7 @@ function marcarImpressa(ids: IdsDoPedido) {
 
 type ConfigImpressora = Pick<
   Barraca,
-  'nome' | 'cnpj' | 'impressora_habilitada' | 'impressora_endereco' | 'impressora_largura_papel'
+  'nome' | 'cnpj' | 'procon_endereco' | 'impressora_habilitada' | 'impressora_endereco' | 'impressora_largura_papel'
 >
 
 /** Config da impressora na hora de imprimir. A barraca do layout pode vir
@@ -59,12 +59,18 @@ async function carregarConfigImpressora(
   barracaId: string,
   conhecida: Barraca | null,
 ): Promise<ConfigImpressora | null> {
-  if (conhecida?.id === barracaId && conhecida.impressora_habilitada && conhecida.impressora_endereco) {
+  // `procon_endereco` undefined = cache de antes da coluna: relê do servidor pra a comanda levar a sede.
+  if (
+    conhecida?.id === barracaId &&
+    conhecida.impressora_habilitada &&
+    conhecida.impressora_endereco &&
+    conhecida.procon_endereco !== undefined
+  ) {
     return conhecida
   }
   const { data, error } = await supabase
     .from('barracas')
-    .select('nome, cnpj, impressora_habilitada, impressora_endereco, impressora_largura_papel')
+    .select('nome, cnpj, procon_endereco, impressora_habilitada, impressora_endereco, impressora_largura_papel')
     .eq('id', barracaId)
     .single()
   if (error || !data) return conhecida?.id === barracaId ? conhecida : null
@@ -91,11 +97,12 @@ function dadosEntregaDoPedido(pedido: Pedido): DadosEntrega | null {
  * cardápio digital. */
 export function dadosComandaDoPedido(
   pedido: PedidoComItens,
-  barraca: Pick<Barraca, 'nome' | 'cnpj'>,
+  barraca: Pick<Barraca, 'nome' | 'cnpj' | 'procon_endereco'>,
 ): DadosComanda {
   return {
     nomeBarraca: barraca.nome,
     cnpj: barraca.cnpj,
+    proconEndereco: barraca.procon_endereco,
     senha: pedido.senha,
     criadoEm: pedido.criado_em,
     mesa: pedido.mesa,
@@ -246,6 +253,7 @@ export function useImpressaoAutomatica(barraca: Barraca | null) {
       const montarDados = (cfg: ConfigImpressora): DadosComanda => ({
         nomeBarraca: cfg.nome,
         cnpj: cfg.cnpj,
+        proconEndereco: cfg.procon_endereco,
         senha: pedido.senha,
         criadoEm: pedido.enviadoEm,
         mesa: (p.p_mesa as string | null) ?? null,
