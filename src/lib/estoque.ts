@@ -22,6 +22,53 @@ export function nivelDeEstoque(item: ComEstoque): NivelEstoque | null {
   return 'ok'
 }
 
+export type VerificacaoEstoque = { ok: true; aviso?: string } | { ok: false; mensagem: string }
+
+/**
+ * Posso somar +1 deste item ao carrinho? Só olha item que CONTROLA estoque (os
+ * outros nunca mudam). Com o bloqueio LIGADO não passa do saldo (saldo <= 0 = não
+ * adiciona; mensagem "Restam N"). Com o bloqueio DESLIGADO (padrão) deixa passar,
+ * mas devolve o aviso "Passa do estoque: restam N" pra tela mostrar na hora.
+ * Usa o saldo que o aparelho conhece (nunca bloqueia por falta de rede).
+ */
+export function verificarAdicao(item: ComEstoque, quantidadeNoCarrinho: number, bloqueia: boolean): VerificacaoEstoque {
+  if (!controlaEstoque(item)) return { ok: true }
+  const saldo = item.estoque_qtd
+  if (quantidadeNoCarrinho + 1 <= saldo) return { ok: true }
+  const restam = Math.max(0, saldo)
+  if (bloqueia) return { ok: false, mensagem: saldo <= 0 ? 'Sem estoque' : `Restam ${restam}` }
+  return { ok: true, aviso: `Passa do estoque: restam ${restam}` }
+}
+
+/** Aviso fixo no card quando a quantidade do carrinho já passa do saldo (item controlado). */
+export function avisoPassaDoEstoque(item: ComEstoque, quantidade: number): string | null {
+  if (!controlaEstoque(item) || quantidade <= item.estoque_qtd) return null
+  return `Passa do estoque: restam ${Math.max(0, item.estoque_qtd)}`
+}
+
+export type ExcessoEstoque = { nome: string; quantidade: number; restam: number }
+
+/** Itens do carrinho que passam do saldo conhecido (só item que controla estoque). */
+export function excessosDoCarrinho(
+  itens: { id: string; nome: string; estoque_qtd?: number | null }[],
+  carrinho: Record<string, number>,
+): ExcessoEstoque[] {
+  const excessos: ExcessoEstoque[] = []
+  for (const item of itens) {
+    const quantidade = carrinho[item.id] ?? 0
+    if (quantidade <= 0 || !controlaEstoque(item)) continue
+    if (quantidade > item.estoque_qtd) {
+      excessos.push({ nome: item.nome, quantidade, restam: Math.max(0, item.estoque_qtd) })
+    }
+  }
+  return excessos
+}
+
+/** Mensagem do bloqueio ao enviar: "Item: restam N; Outro: sem estoque". */
+export function mensagemExcessos(excessos: ExcessoEstoque[]): string {
+  return excessos.map((e) => (e.restam <= 0 ? `${e.nome}: sem estoque` : `${e.nome}: restam ${e.restam}`)).join('; ')
+}
+
 /** "Restam N" no Lançar Pedido: só com saldo baixo e positivo (zero/negativo já é "Esgotado"). */
 export function textoRestam(item: ComEstoque): string | null {
   return nivelDeEstoque(item) === 'baixo' ? `Restam ${item.estoque_qtd}` : null

@@ -57,6 +57,7 @@ type ItemCadastroRow = {
   preco_centavos: number
   ativo: boolean
   esgotado: boolean
+  estoque_qtd: number | null
 }
 
 Deno.serve(async (req: Request) => {
@@ -172,7 +173,7 @@ Deno.serve(async (req: Request) => {
   const idsItens = itens.map((i) => i.item_id)
   const { data: itensCadastro, error: erroItens } = await supabase
     .from('itens')
-    .select('id, nome, preco_centavos, ativo, esgotado')
+    .select('id, nome, preco_centavos, ativo, esgotado, estoque_qtd')
     .eq('barraca_id', barraca_id)
     .in('id', idsItens)
 
@@ -204,6 +205,26 @@ Deno.serve(async (req: Request) => {
 
   if (indisponiveis.length > 0) {
     return jsonResponse({ erro: `Item(ns) indisponível(is): ${indisponiveis.join(', ')}` }, 422)
+  }
+
+  // Estoque: com a opção ligada pelo dono, quantidade acima do saldo é recusada ANTES de
+  // gerar o Pix (o retry de um Pix já emitido volta lá em cima, sem passar por aqui, e o
+  // webhook nunca recusa por estoque: pagamento aprovado vira pedido, mesmo negativando).
+  // Soma por item (o carrinho pode repetir o mesmo item em linhas diferentes).
+  if (barraca.estoque_bloqueia === true) {
+    const somaPorItem = new Map<string, { nome: string; quantidade: number }>()
+    for (const i of itensResolvidos) {
+      const atual = somaPorItem.get(i.item_id)
+      somaPorItem.set(i.item_id, { nome: i.nome_item, quantidade: (atual?.quantidade ?? 0) + i.quantidade })
+    }
+    const acima: string[] = []
+    for (const [id, { nome, quantidade }] of somaPorItem) {
+      const saldo = cadastroPorId.get(id)?.estoque_qtd ?? null
+      if (saldo !== null && quantidade > saldo) acima.push(saldo <= 0 ? `${nome}: sem estoque` : `${nome}: restam ${saldo}`)
+    }
+    if (acima.length > 0) {
+      return jsonResponse({ erro: `Sem estoque suficiente — ${acima.join('; ')}` }, 422)
+    }
   }
 
   const totalCentavos = itensResolvidos.reduce(
