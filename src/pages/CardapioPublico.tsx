@@ -3,7 +3,7 @@ import { useParams } from 'react-router'
 import clsx from 'clsx'
 import { supabase } from '../lib/supabase'
 import { formatarPrecoBR } from '../lib/preco'
-import { ROTULO_MODO, modoInicial, modosDoCardapioPublico } from '../lib/atendimento'
+import { DESCRICAO_CARDAPIO_MODO, ICONE_MODO, ROTULO_MODO, modosDoCardapioPublico } from '../lib/atendimento'
 import type { TipoAtendimento } from '../types/database'
 import { Button } from '../components/ui/Button'
 import { BottomSheet } from '../components/ui/BottomSheet'
@@ -11,7 +11,6 @@ import { Checkbox } from '../components/ui/Checkbox'
 import { Chip } from '../components/ui/Chip'
 import { Icone } from '../components/ui/Icone'
 import { Input } from '../components/ui/Input'
-import { SegmentedControl } from '../components/ui/SegmentedControl'
 import { Textarea } from '../components/ui/Textarea'
 import { statusFuncionamento, type HorarioPublico } from '../lib/horarioFuncionamento'
 import { montarMensagemPagarNaEntrega, urlWhatsappDono } from '../lib/pagarNaEntrega'
@@ -52,7 +51,7 @@ type Estado =
   | { status: 'pronto'; linhas: LinhaCardapioPublico[] }
 
 type Carrinho = Record<string, number>
-type ModoConsumo = 'mesa' | 'balcao' | 'retirada' | 'entrega'
+type ModoConsumo = 'retirada' | 'entrega'
 
 // Fase 2+3 do Cardápio Digital (CLAUDE.md, roadmap): o pedido de verdade
 // só nasce depois do pagamento confirmado (ver edge functions
@@ -475,6 +474,53 @@ function CardItemHorizontal({
   )
 }
 
+/** Escolha grande e visível de como o cliente quer receber (Retirada x Entrega). */
+function EscolhaModo({
+  modos,
+  valor,
+  onChange,
+}: {
+  modos: ModoConsumo[]
+  valor: ModoConsumo
+  onChange: (modo: ModoConsumo) => void
+}) {
+  return (
+    <section className="mb-5 px-6" aria-labelledby="titulo-escolha-modo">
+      <h2 id="titulo-escolha-modo" className="mb-2 text-base font-bold text-mesa-text-primary">
+        Como você quer receber?
+      </h2>
+      <div role="radiogroup" aria-labelledby="titulo-escolha-modo" className="grid grid-cols-2 gap-3">
+        {modos.map((modo) => {
+          const ativo = modo === valor
+          return (
+            <button
+              key={modo}
+              type="button"
+              role="radio"
+              aria-checked={ativo}
+              onClick={() => onChange(modo)}
+              className={`flex min-h-20 flex-col items-start justify-center gap-1 rounded-mesa-xl border-2 p-3 text-left transition-colors active:scale-[0.99] ${
+                ativo
+                  ? 'border-mesa-neutral-900 bg-mesa-orange-500 text-mesa-neutral-900 shadow-mesa-1'
+                  : 'border-mesa-border-subtle bg-mesa-surface text-mesa-text-primary'
+              }`}
+            >
+              <span className="flex items-center gap-2 text-base font-bold">
+                <Icone nome={ICONE_MODO[modo]} size={24} preenchido={ativo} />
+                {ROTULO_MODO[modo]}
+                {ativo && <Icone nome="check_circle" size={18} preenchido className="ml-auto" />}
+              </span>
+              <span className={`text-xs ${ativo ? 'text-mesa-neutral-900/80' : 'text-mesa-text-secondary'}`}>
+                {DESCRICAO_CARDAPIO_MODO[modo]}
+              </span>
+            </button>
+          )
+        })}
+      </div>
+    </section>
+  )
+}
+
 export function CardapioPublico() {
   const { slug } = useParams<{ slug: string }>()
   const [estado, setEstado] = useState<Estado>(() =>
@@ -487,8 +533,7 @@ export function CardapioPublico() {
 
   const [carrinho, setCarrinho] = useState<Carrinho>({})
   const [mostrarCheckout, setMostrarCheckout] = useState(false)
-  const [modoConsumo, setModoConsumo] = useState<ModoConsumo>('balcao')
-  const [mesa, setMesa] = useState('')
+  const [modoConsumo, setModoConsumo] = useState<ModoConsumo>('retirada')
   const [observacao, setObservacao] = useState('')
   const [pagamento, setPagamento] = useState<EstadoPagamento>({ fase: 'formulario' })
   const [nomeCliente, setNomeCliente] = useState('')
@@ -524,8 +569,8 @@ export function CardapioPublico() {
     const primeira = estado.status === 'pronto' ? estado.linhas[0] : undefined
     const entregaDisponivel = Boolean(primeira?.barraca_whatsapp_pedidos) || Boolean(primeira?.pagamento_online_habilitado)
     return modosDoCardapioPublico(primeira?.barraca_modos_atendimento, entregaDisponivel)
-  }, [estado]) as ModoConsumo[]
-  const modoEfetivo: ModoConsumo = modosPublicos.includes(modoConsumo) ? modoConsumo : (modoInicial(modosPublicos) as ModoConsumo)
+  }, [estado])
+  const modoEfetivo: ModoConsumo = modosPublicos.includes(modoConsumo) ? modoConsumo : 'retirada'
   const [mostrarAvisoBalcao, setMostrarAvisoBalcao] = useState(false)
   const clientUuidRef = useRef(crypto.randomUUID())
 
@@ -737,7 +782,6 @@ export function CardapioPublico() {
     if (pagamento.fase === 'aprovado' || pagamento.fase === 'entrega_enviada') {
       setTelefoneAviso('')
       setCarrinho({})
-      setMesa('')
       setObservacao('')
       clientUuidRef.current = crypto.randomUUID()
     }
@@ -753,7 +797,6 @@ export function CardapioPublico() {
     const { data, error } = await supabase.functions.invoke('criar-pagamento-pix', {
       body: {
         barraca_id: barracaId,
-        mesa: modoEfetivo === 'mesa' ? mesa.trim() || null : null,
         viagem: modoEfetivo === 'retirada',
         observacao: observacao.trim() || null,
         client_uuid: clientUuidRef.current,
@@ -1120,6 +1163,10 @@ export function CardapioPublico() {
         </div>
       </div>
 
+      {modosPublicos.length > 1 && (
+        <EscolhaModo modos={modosPublicos} valor={modoEfetivo} onChange={setModoConsumo} />
+      )}
+
       {!busca.trim() && <CarrosselBanners banners={banners} />}
 
       {!busca.trim() && itensPopulares.length > 0 && (
@@ -1290,24 +1337,9 @@ export function CardapioPublico() {
             </div>
 
             {modosPublicos.length > 1 && (
-              <p className="-mb-2 text-sm font-medium text-mesa-text-secondary">Como você quer receber?</p>
-            )}
-            {modosPublicos.length > 1 && (
-              <SegmentedControl
-                aria-label="Tipo de atendimento"
-                items={modosPublicos.map((modo) => ({ label: ROTULO_MODO[modo] }))}
-                activeIndex={modosPublicos.indexOf(modoEfetivo)}
-                onChange={(indice) => setModoConsumo(modosPublicos[indice])}
-              />
-            )}
-
-            {modoEfetivo === 'mesa' && (
-              <Input
-                value={mesa}
-                onChange={(e) => setMesa(e.target.value)}
-                placeholder="Número ou nome da mesa"
-                aria-label="Mesa"
-              />
+              <p className="text-sm text-mesa-text-secondary">
+                Como receber: <span className="font-semibold text-mesa-text-primary">{ROTULO_MODO[modoEfetivo]}</span>
+              </p>
             )}
 
             <Textarea

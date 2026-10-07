@@ -28,6 +28,12 @@ export const DESCRICAO_MODO: Record<TipoAtendimento, string> = {
   entrega: 'O motoboy leva até o cliente',
 }
 
+/** Texto curto pro cliente final no cardápio público (o de cima é pro operador). */
+export const DESCRICAO_CARDAPIO_MODO: Record<'retirada' | 'entrega', string> = {
+  retirada: 'Você busca no local',
+  entrega: 'Levamos até você',
+}
+
 export const ICONE_MODO: Record<TipoAtendimento, string> = {
   mesa: 'table_restaurant',
   balcao: 'storefront',
@@ -44,18 +50,17 @@ export function modosAtivos(barraca: Pick<Barraca, 'modos_atendimento'> | null):
   return ativos.length > 0 ? ativos : MODOS_PADRAO
 }
 
-/** Modos que o cardápio digital público pode oferecer: os ligados pela barraca.
+/** Modos que o cardápio digital público oferece ao CONSUMIDOR: só Retirada e
+ * Entrega (Mesa/Balcão saíram da UI pública em 2026-10-07; o servidor segue
+ * aceitando os tipos antigos). Retirada sempre existe: barraca que só ligou
+ * Mesa/Balcão (ou resposta antiga da função, sem o campo) cai em Retirada.
  * Entrega só entra se a barraca ligou Entrega E o cardápio tem como finalizá-la
- * (`entregaDisponivel`: "Pagar na entrega" ligado ou pagamento online). Resposta
- * antiga da função (sem o campo), ou barraca que só tem Entrega ligada, cai no
- * padrão em vez de deixar o cliente sem opção. */
+ * (`entregaDisponivel`: "Pagar na entrega" ligado ou pagamento online). */
 export function modosDoCardapioPublico(
   salvos: TipoAtendimento[] | null | undefined,
   entregaDisponivel = false,
-): TipoAtendimento[] {
-  if (!salvos || salvos.length === 0) return MODOS_PADRAO
-  const oferecidos = TODOS_OS_MODOS.filter((m) => (m !== 'entrega' || entregaDisponivel) && salvos.includes(m))
-  return oferecidos.length > 0 ? oferecidos : MODOS_PADRAO
+): ('retirada' | 'entrega')[] {
+  return salvos?.includes('entrega') && entregaDisponivel ? ['retirada', 'entrega'] : ['retirada']
 }
 
 /** `pedidos.viagem` = "não consome no local" (Retirada ou Entrega). */
