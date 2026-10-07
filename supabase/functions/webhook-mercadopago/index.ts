@@ -1,23 +1,28 @@
-// Recebe a notificação de pagamento do Mercado Pago (Payments API, type
-// "payment") — Fase 2+3 do Cardápio Digital (CLAUDE.md, roadmap). NUNCA
-// confia no corpo do webhook: confirma o status de verdade com um GET de
-// volta pra API do Mercado Pago, usando o token da barraca dona do
-// pagamento (prática recomendada na doc oficial), e confere que o
-// pagamento é mesmo daquele pendente (external_reference) e do valor certo.
+// Recebe a notificação de pagamento Pix de QUALQUER provedor (Mercado Pago,
+// Payments API type "payment", e os que vierem em ../_shared/pagamento) — Fase
+// 2+3 do Cardápio Digital (CLAUDE.md, roadmap). NUNCA confia no corpo do
+// webhook: confirma o status de verdade consultando o provedor de volta, com o
+// token da barraca dona do pagamento (prática recomendada na doc oficial), e
+// confere que o pagamento é mesmo daquele pendente (referência) e do valor
+// certo (itens + taxa do snapshot).
 //
 // A notification_url é montada por pagamento em criar-pagamento-pix com
-// `?pendente=<id>`, então a barraca (e o token dela) é achada pelo nosso
-// banco ANTES de falar com o MP — cada dono usa a própria conta MP e não há
-// webhook configurado no painel.
+// `?pendente=<id>&p=<provedor>`, então a barraca (e o token dela) é achada pelo
+// nosso banco ANTES de falar com o provedor — cada dono usa a própria conta e
+// não há webhook configurado no painel. SEM `p` (cobranças emitidas antes da
+// camada de provedores) vale Mercado Pago. O nome desta function é histórico e
+// continua sendo o único endpoint de notificação: não renomear (URLs já
+// emitidas apontam pra ele).
 //
-// Só quando o MP confirma "approved" o pedido de verdade nasce em
+// Só quando o provedor confirma "aprovado" o pedido de verdade nasce em
 // pedidos/itens_do_pedido — via criar_pedido (service role), que é
 // idempotente por client_uuid: notificação repetida ou concorrente não cria
 // dois pedidos. Pendentes órfãos (sem pagamento no MP) nunca recebem
 // notificação e portanto nunca viram pedido.
 import { createClient } from 'jsr:@supabase/supabase-js@2'
-
-const MERCADOPAGO_API_URL = 'https://api.mercadopago.com/v1/payments'
+import { chaveDoProvedor, obterProvedor } from '../_shared/pagamento/registro.ts'
+import { buscarTokenDoProvedor } from '../_shared/pagamento/token.ts'
+import { ErroProvedor, type ConsultaPagamento } from '../_shared/pagamento/tipos.ts'
 
 function jsonResponse(body: unknown, status = 200) {
   return new Response(JSON.stringify(body), { status, headers: { 'Content-Type': 'application/json' } })
@@ -42,21 +47,27 @@ Deno.serve(async (req: Request) => {
   }
 
   const url = new URL(req.url)
-  let pagamentoId = url.searchParams.get('data.id') ?? url.searchParams.get('id')
-  let tipo = url.searchParams.get('type') ?? url.searchParams.get('topic')
   const pendenteIdUrl = url.searchParams.get('pendente')
 
-  if (!pagamentoId || !tipo) {
-    const corpo = await req.json().catch(() => null)
-    pagamentoId = pagamentoId ?? (corpo?.data?.id != null ? String(corpo.data.id) : null)
-    tipo = tipo ?? corpo?.type ?? corpo?.topic ?? null
+  // Provedor da notificação: `p` na URL; sem `p` (cobrança antiga) = Mercado Pago.
+  const provedorChave = chaveDoProvedor(url.searchParams.get('p'))
+  const provedor = obterProvedor(provedorChave)
+  if (!provedor) {
+    return jsonResponse({ ok: true, aviso: 'provedor desconhecido' })
   }
 
-  // Mercado Pago exige 200/201 rápido — o que não é notificação de pagamento
-  // (ou não tem id) ainda assim é confirmado pra não gerar retry infinito.
-  if (!pagamentoId || (tipo && tipo !== 'payment')) {
+  // Assinatura/segredo, quando o provedor tiver (o corpo é lido de uma cópia).
+  if (provedor.validarNotificacao && !(await provedor.validarNotificacao(req.clone()))) {
+    return jsonResponse({ ok: true, aviso: 'notificação não autenticada' })
+  }
+
+  // O provedor exige 200 rápido — o que não é notificação de pagamento (ou não
+  // tem id) ainda assim é confirmado pra não gerar retry infinito.
+  const notificacao = await provedor.extrairIdDaNotificacao(url, () => req.json())
+  if (notificacao.ignorar) {
     return jsonResponse({ ok: true, aviso: 'notificação ignorada' })
   }
+  const pagamentoId = notificacao.idExterno
 
   const supabase = createClient(
     Deno.env.get('SUPABASE_URL') ?? '',
@@ -65,10 +76,8 @@ Deno.serve(async (req: Request) => {
 
   const consulta = supabase
     .from('pagamentos_pendentes')
-    .select(
-      'id, barraca_id, mesa, viagem, observacao, itens, status, client_uuid, mercadopago_order_id, ' +
-        'tipo_atendimento, entrega, taxa_entrega_centavos, cliente_nome, cliente_telefone',
-    )
+    // '*': tolera pendente de antes da coluna `provedor` (vale Mercado Pago).
+    .select('*')
   const { data: pendente, error: erroPendente } = pendenteIdUrl
     ? await consulta.eq('id', pendenteIdUrl).maybeSingle()
     : await consulta.eq('mercadopago_order_id', pagamentoId).maybeSingle()
@@ -77,7 +86,13 @@ Deno.serve(async (req: Request) => {
     return jsonResponse({ ok: true, aviso: 'pagamento pendente não encontrado' })
   }
 
-  // Já processado (retry do próprio Mercado Pago) — responde ok sem
+  // O pendente tem que ser DESTE provedor (notificação de um provedor não confirma
+  // cobrança de outro).
+  if (chaveDoProvedor(pendente.provedor) !== provedor.chave) {
+    return jsonResponse({ ok: true, aviso: 'provedor da notificação não confere com o pendente' })
+  }
+
+  // Já processado (retry do próprio provedor) — responde ok sem
   // reprocessar.
   if (pendente.status !== 'pendente') {
     return jsonResponse({ ok: true })
@@ -88,34 +103,30 @@ Deno.serve(async (req: Request) => {
     return jsonResponse({ ok: true, aviso: 'pagamento não pertence a este pendente' })
   }
 
-  const { data: tokenRow } = await supabase
-    .from('barracas_pagamento_token')
-    .select('access_token')
-    .eq('barraca_id', pendente.barraca_id)
-    .maybeSingle()
-
-  if (!tokenRow?.access_token) {
+  const tokenProvedor = await buscarTokenDoProvedor(supabase, pendente.barraca_id, provedor.chave)
+  if (!tokenProvedor) {
     return jsonResponse({ ok: true, aviso: 'token da barraca não encontrado' })
   }
 
-  // Confirmação de verdade: GET na API do Mercado Pago com o token da
-  // própria barraca, nunca confiando só no corpo do webhook.
-  const respostaMp = await fetch(`${MERCADOPAGO_API_URL}/${pagamentoId}`, {
-    headers: { Authorization: `Bearer ${tokenRow.access_token}` },
-  })
-  const pagamento = await respostaMp.json().catch(() => null)
-
-  if (!respostaMp.ok || !pagamento) {
-    return jsonResponse({ ok: true, aviso: 'falha ao confirmar status na API do Mercado Pago' })
+  // Confirmação de verdade: consulta o provedor com o token da própria barraca,
+  // nunca confiando só no corpo do webhook.
+  let leitura: ConsultaPagamento
+  try {
+    leitura = await provedor.consultarPagamento({ token: tokenProvedor, idExterno: pagamentoId })
+  } catch (erro) {
+    if (erro instanceof ErroProvedor && !erro.rede) {
+      return jsonResponse({ ok: true, aviso: erro.message })
+    }
+    // Sem rede até o provedor: 500 faz ele tentar de novo (nada foi processado).
+    console.error('webhook-mercadopago: provedor inacessível', String(erro))
+    return jsonResponse({ ok: false, aviso: 'provedor inacessível' }, 500)
   }
 
-  if (String(pagamento.external_reference ?? '') !== pendente.id) {
+  if (leitura.referencia !== pendente.id) {
     return jsonResponse({ ok: true, aviso: 'external_reference não confere' })
   }
 
-  const statusMp = pagamento.status as string
-
-  if (statusMp === 'approved') {
+  if (leitura.status === 'aprovado') {
     // Total esperado = itens + taxa de entrega DO SNAPSHOT do pendente (gravado
     // no momento da cobrança). A taxa NUNCA é recalculada aqui: se o dono
     // mudou a tabela de bairros depois, vale o que o cliente viu e pagou.
@@ -126,11 +137,11 @@ Deno.serve(async (req: Request) => {
       0,
     )
     const totalCentavos = itensCentavos + taxaEntregaCentavos
-    if (Math.round(Number(pagamento.transaction_amount) * 100) !== totalCentavos) {
+    if (leitura.valorCentavos !== totalCentavos) {
       // Pago mas não confere: NÃO cria pedido; fica registrado pra conferência manual.
       console.error('webhook-mercadopago: valor pago não confere', {
         pendente: pendente.id,
-        pago: pagamento.transaction_amount,
+        pago_centavos: leitura.valorCentavos,
         esperado_centavos: totalCentavos,
         taxa_entrega_centavos: taxaEntregaCentavos,
       })
@@ -209,17 +220,16 @@ Deno.serve(async (req: Request) => {
     return jsonResponse({ ok: true })
   }
 
-  if (statusMp === 'cancelled' || statusMp === 'expired') {
+  if (leitura.status === 'expirado') {
     await supabase.from('pagamentos_pendentes').update({ status: 'expirado' }).eq('id', pendente.id)
     return jsonResponse({ ok: true })
   }
 
-  if (statusMp === 'rejected') {
+  if (leitura.status === 'rejeitado') {
     await supabase.from('pagamentos_pendentes').update({ status: 'rejeitado' }).eq('id', pendente.id)
     return jsonResponse({ ok: true })
   }
 
-  // Ainda pendente do lado do Mercado Pago (pending / in_process) — não muda
-  // nada, espera a próxima notificação.
+  // Ainda pendente do lado do provedor — não muda nada, espera a próxima notificação.
   return jsonResponse({ ok: true })
 })

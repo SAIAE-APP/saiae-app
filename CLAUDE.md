@@ -205,6 +205,37 @@ aparelho Android 7–11 e 12+ antes de publicar.
   ao `criar_pedido` e faz upsert best-effort em `clientes_finais`
   (`origem='cardapio'`, `consentimento_lgpd_em`). Sem `entrega` segue o modo
   antigo (nome/telefone/endereço livre). A taxa continua FORA da NFC-e.
+- Provedores de Pix (2026-10-09, Sprint 5 Story A, migration
+  `20261009120000`): o Pix online passa por uma interface `ProvedorPix`
+  (`supabase/functions/_shared/pagamento/`: `tipos.ts`, `registro.ts`,
+  `token.ts`, um arquivo por provedor, hoje só `mercadopago.ts`) usada por
+  `criar-pagamento-pix` e `webhook-mercadopago`. NENHUM comportamento do
+  Mercado Pago mudou; só foi movido pra trás da interface. Provedor da barraca
+  = `barracas.pagamento_provedor` (padrão 'mercadopago', CHECK em mercadopago,
+  pagbank, asaas, woovi, abacatepay); a cobrança grava o provedor em
+  `pagamentos_pendentes.provedor`, então trocar depois não afeta cobranças já
+  emitidas. Token: `barracas_pagamento_token` agora é (barraca_id, provedor)
+  com PK composta; as linhas do Mercado Pago migram sozinhas (default), as RPCs
+  `definir_token_pagamento`/`token_pagamento_configurado` ganharam
+  `p_provedor` com default 'mercadopago' (chamada antiga continua valendo) e o
+  token continua sem policy de select. O webhook segue UM endpoint
+  (`webhook-mercadopago`, nome histórico mantido de propósito: URLs já emitidas
+  apontam pra ele; sem alias novo pra não precisar de outro deploy): a URL de
+  notificação agora é `?pendente=<id>&p=<provedor>` e, SEM `p`, vale Mercado
+  Pago. O webhook usa o provedor da URL, exige que seja o do pendente, consulta o
+  provedor de volta com o token da barraca, confere referência (id do
+  pendente) e valor em centavos inteiros = itens + taxa do snapshot, e só então
+  chama `criar_pedido` (idempotente por `client_uuid`). Erro de rede até o
+  provedor devolve 500 (ele reenvia); resposta de erro do provedor devolve 200.
+  A coluna `mercadopago_order_id` guarda o id externo de QUALQUER provedor
+  (nome histórico). As functions leem `pagamento_provedor`/`provedor` de forma
+  tolerante (linha sem a coluna = Mercado Pago), então subir antes da migration
+  não quebra. Ajustes (`SecaoPagamentoOnline`) lê o provedor de
+  `src/lib/provedoresPix.ts`: só o Mercado Pago está publicado (seletor
+  aparece sozinho quando houver mais de um); PagBank, Asaas e Woovi vêm nas
+  próximas stories, uma por PR. Testes das funções puras (status, centavos,
+  notificação, token):
+  `node --experimental-strip-types supabase/functions/_shared/pagamento/pagamento.test.ts`.
 - Avisar cliente "pedido pronto" (2026-10-08, Sprint 3, migration
   `20261008120000`): campo OPCIONAL "WhatsApp do cliente" em Confirmar Pedido
   (Mesa/Balcão/Retirada; na Entrega vale o telefone do formulário) e no

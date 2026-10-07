@@ -4,19 +4,21 @@
 // de `itens`, senão dava pra forjar o valor no DevTools.
 //
 // O pedido de verdade em `pedidos`/`itens_do_pedido` só nasce quando o
-// Mercado Pago confirma o pagamento (ver webhook-mercadopago) — até lá a
+// provedor confirma o pagamento (ver webhook-mercadopago) — até lá a
 // cobrança fica isolada em `pagamentos_pendentes`. Usa a service role
 // key: lê `barracas_pagamento_token` direto, sem passar pelas funções
 // SECURITY DEFINER pensadas pro client autenticado.
+//
+// Provedor Pix: `barracas.pagamento_provedor` (padrão 'mercadopago') escolhe o
+// adaptador em ../_shared/pagamento (interface ProvedorPix). A cobrança grava o
+// provedor no pendente, então trocar de provedor depois não afeta cobranças já
+// emitidas.
 import { createClient } from 'jsr:@supabase/supabase-js@2'
+import { chaveDoProvedor, obterProvedor, urlNotificacaoPagamento } from '../_shared/pagamento/registro.ts'
+import { buscarTokenDoProvedor } from '../_shared/pagamento/token.ts'
+import { ErroProvedor, ehProvedorValido, type QrPix } from '../_shared/pagamento/tipos.ts'
 
-// Payments API (não Orders): a Orders API rejeita `notification_url` no body
-// ("additionalProperties '$.notification_url' not allowed") e lá o webhook só
-// existe configurado no painel da aplicação MP. Como cada barraca usa o
-// PRÓPRIO token/app do Mercado Pago, depender do painel de cada dono é frágil
-// — em /v1/payments a notification_url vai por pagamento.
-const MERCADOPAGO_API_URL = 'https://api.mercadopago.com/v1/payments'
-// Mínimo aceito pelo MP é 30 min; 35 dá folga pra diferença de relógio.
+// Mínimo aceito pelo Mercado Pago é 30 min; 35 dá folga pra diferença de relógio.
 // Pedido de balcão, não faz sentido um QR que dure dias.
 const EXPIRACAO_PIX_MS = 35 * 60 * 1000
 
@@ -55,35 +57,6 @@ type ItemCadastroRow = {
   preco_centavos: number
   ativo: boolean
   esgotado: boolean
-}
-
-type MercadoPagoQr = {
-  ticket_url?: string
-  qr_code?: string
-  qr_code_base64?: string
-}
-
-function extrairQr(pagamento: unknown) {
-  const dados = (pagamento as { point_of_interaction?: { transaction_data?: MercadoPagoQr } } | null)
-    ?.point_of_interaction?.transaction_data
-  return {
-    qr_code: dados?.qr_code ?? null,
-    qr_code_base64: dados?.qr_code_base64 ?? null,
-    ticket_url: dados?.ticket_url ?? null,
-  }
-}
-
-async function buscarQrDoPagamento(pagamentoId: string, token: string) {
-  const resposta = await fetch(`${MERCADOPAGO_API_URL}/${pagamentoId}`, {
-    headers: { Authorization: `Bearer ${token}` },
-  })
-  return extrairQr(await resposta.json().catch(() => null))
-}
-
-// O MP pede date_of_expiration com offset (ex.: 2026-09-29T12:00:00.000-03:00).
-function dataExpiracao(): string {
-  const brasilia = new Date(Date.now() + EXPIRACAO_PIX_MS - 3 * 60 * 60 * 1000)
-  return brasilia.toISOString().replace('Z', '-03:00')
 }
 
 Deno.serve(async (req: Request) => {
@@ -127,7 +100,8 @@ Deno.serve(async (req: Request) => {
   // Idempotência: duplo toque / retry de rede não gera duas cobranças.
   const { data: pendenteExistente } = await supabase
     .from('pagamentos_pendentes')
-    .select('id, barraca_id, mercadopago_order_id, itens, taxa_entrega_centavos')
+    // '*': tolera pendente de antes da coluna `provedor` (vale Mercado Pago).
+    .select('*')
     .eq('client_uuid', client_uuid)
     .maybeSingle()
 
@@ -147,21 +121,30 @@ Deno.serve(async (req: Request) => {
       }
     }
 
-    const { data: tokenRow } = await supabase
-      .from('barracas_pagamento_token')
-      .select('access_token')
-      .eq('barraca_id', pendenteExistente.barraca_id)
-      .maybeSingle()
+    // O QR é recuperado no MESMO provedor em que a cobrança foi emitida.
+    const provedorEmitido = obterProvedor(chaveDoProvedor(pendenteExistente.provedor))
+    const tokenEmitido = provedorEmitido
+      ? await buscarTokenDoProvedor(supabase, pendenteExistente.barraca_id, provedorEmitido.chave)
+      : null
 
-    if (tokenRow?.access_token) {
-      const qr = await buscarQrDoPagamento(pendenteExistente.mercadopago_order_id, tokenRow.access_token)
-      return jsonResponse({ pendente_id: pendenteExistente.id, ...qr })
+    if (provedorEmitido && tokenEmitido) {
+      const qr = await provedorEmitido.recuperarQr({
+        token: tokenEmitido,
+        idExterno: pendenteExistente.mercadopago_order_id,
+      })
+      return jsonResponse({
+        pendente_id: pendenteExistente.id,
+        qr_code: qr.copiaECola,
+        qr_code_base64: qr.qrCodeBase64,
+        ticket_url: qr.ticketUrl ?? null,
+      })
     }
   }
 
   const { data: barraca, error: erroBarraca } = await supabase
     .from('barracas')
-    .select('id, pagamento_online_habilitado, modos_atendimento')
+    // '*': tolera barraca de antes da coluna `pagamento_provedor` (vale Mercado Pago).
+    .select('*')
     .eq('id', barraca_id)
     .single()
 
@@ -173,14 +156,15 @@ Deno.serve(async (req: Request) => {
     return jsonResponse({ erro: 'Pagamento online não habilitado para esta barraca' }, 422)
   }
 
-  const { data: tokenRow, error: erroToken } = await supabase
-    .from('barracas_pagamento_token')
-    .select('access_token')
-    .eq('barraca_id', barraca_id)
-    .maybeSingle()
+  const provedorChave = chaveDoProvedor(barraca.pagamento_provedor)
+  const provedor = ehProvedorValido(provedorChave) ? obterProvedor(provedorChave) : null
+  if (!provedor) {
+    return jsonResponse({ erro: 'Provedor de pagamento não disponível para esta barraca' }, 422)
+  }
 
-  if (erroToken || !tokenRow?.access_token) {
-    return jsonResponse({ erro: 'Token do Mercado Pago não configurado' }, 422)
+  const tokenProvedor = await buscarTokenDoProvedor(supabase, barraca_id, provedor.chave)
+  if (!tokenProvedor) {
+    return jsonResponse({ erro: `Token do ${provedor.nome} não configurado` }, 422)
   }
 
   // Preço SEMPRE resolvido aqui a partir do cardápio real — o que o
@@ -324,7 +308,7 @@ Deno.serve(async (req: Request) => {
     )
   }
 
-  // Retry depois de uma falha do MP (pendente já existe, sem pagamento no MP):
+  // Retry depois de uma falha do provedor (pendente já existe, sem pagamento nele):
   // reaproveita a linha em vez de estourar a unique de client_uuid. Só
   // reaproveita se ainda está pendente e é da mesma barraca.
   let pendente: { id: string } | null = null
@@ -347,6 +331,8 @@ Deno.serve(async (req: Request) => {
         cliente_nome: clienteNome,
         // Só quando informado: sem telefone o update é o de sempre.
         ...(clienteTelefone ? { cliente_telefone: clienteTelefone } : {}),
+        // Pendente sem cobrança emitida pode trocar de provedor (dono mudou a escolha).
+        ...(chaveDoProvedor(pendenteExistente.provedor) !== provedor.chave ? { provedor: provedor.chave } : {}),
       })
       .eq('id', pendenteExistente.id)
       .eq('status', 'pendente')
@@ -376,6 +362,8 @@ Deno.serve(async (req: Request) => {
             }
           : {}),
         ...(clienteTelefone ? { cliente_telefone: clienteTelefone } : {}),
+        // Mercado Pago = default da coluna: o insert dele é IDÊNTICO ao de antes.
+        ...(provedor.chave !== 'mercadopago' ? { provedor: provedor.chave } : {}),
       })
       .select('id')
       .single()
@@ -386,54 +374,38 @@ Deno.serve(async (req: Request) => {
     pendente = criado
   }
 
-  let respostaMp: Response
+  let cobranca: QrPix
   try {
-    respostaMp = await fetch(MERCADOPAGO_API_URL, {
-      method: 'POST',
-      headers: {
-        Authorization: `Bearer ${tokenRow.access_token}`,
-        'Content-Type': 'application/json',
-        // Um pagamento por pendente: retry do mesmo pendente devolve o mesmo
-        // pagamento em vez de cobrar duas vezes.
-        'X-Idempotency-Key': pendente.id,
-      },
-      body: JSON.stringify({
-        transaction_amount: totalCobradoCentavos / 100,
-        payment_method_id: 'pix',
-        description: ehEntrega ? 'Pedido com entrega no cardápio digital' : 'Pedido no cardápio digital',
-        external_reference: pendente.id,
-        date_of_expiration: dataExpiracao(),
-        // Mercado Pago exige um e-mail de pagador; o cardápio público não
-        // coleta e-mail do cliente final, então usa um endereço por pedido
-        // num domínio nosso.
-        payer: { email: `pedido-${pendente.id}@saiae.com.br` },
-        // O id do pendente vai na URL: o webhook precisa saber de qual barraca
-        // é o token pra consultar o pagamento, e só o MP guarda o dono do
-        // pagamento — sem isso seria preciso adivinhar o token.
-        notification_url: `${Deno.env.get('SUPABASE_URL')}/functions/v1/webhook-mercadopago?pendente=${pendente.id}`,
-      }),
+    cobranca = await provedor.criarCobranca({
+      token: tokenProvedor,
+      valorCentavos: totalCobradoCentavos,
+      referencia: pendente.id,
+      descricao: ehEntrega ? 'Pedido com entrega no cardápio digital' : 'Pedido no cardápio digital',
+      expiraEm: new Date(Date.now() + EXPIRACAO_PIX_MS),
+      urlNotificacao: urlNotificacaoPagamento(Deno.env.get('SUPABASE_URL') ?? '', pendente.id, provedor.chave),
     })
-  } catch (erroRede) {
-    return jsonResponse({ erro: 'Falha ao contatar o Mercado Pago', detalhe: String(erroRede) }, 502)
+  } catch (erro) {
+    if (erro instanceof ErroProvedor) {
+      return jsonResponse(
+        { erro: erro.message, detalhe: erro.detalhe },
+        502,
+      )
+    }
+    throw erro
   }
 
-  const resultadoMp = await respostaMp.json().catch(() => null)
-
-  if (!respostaMp.ok || !resultadoMp?.id) {
-    const mensagem = resultadoMp?.message ?? resultadoMp?.error ?? 'Erro desconhecido no Mercado Pago'
-    return jsonResponse({ erro: mensagem, detalhe: resultadoMp }, 502)
-  }
-
-  // A coluna se chama mercadopago_order_id por herança da Orders API; guarda o
-  // id do pagamento (Payments API).
+  // A coluna se chama mercadopago_order_id por herança da Orders API do MP; guarda o
+  // id externo do pagamento em QUALQUER provedor (renomear fica pra depois, sem risco agora).
   await supabase
     .from('pagamentos_pendentes')
-    .update({ mercadopago_order_id: String(resultadoMp.id) })
+    .update({ mercadopago_order_id: cobranca.idExterno })
     .eq('id', pendente.id)
 
   return jsonResponse({
     pendente_id: pendente.id,
-    ...extrairQr(resultadoMp),
+    qr_code: cobranca.copiaECola,
+    qr_code_base64: cobranca.qrCodeBase64,
+    ticket_url: cobranca.ticketUrl ?? null,
     total_centavos: totalCobradoCentavos,
     taxa_entrega_centavos: taxaEntregaCentavos,
   })
