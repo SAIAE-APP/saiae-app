@@ -115,7 +115,14 @@ export async function montarLinhasClientes(barracaId: string, filtro: FiltroExpo
         ultimoPedido: formatarData(est?.ultimo),
         // Ticket médio dos itens (a taxa de entrega fica à parte, como no resto do app).
         ticketMedio: est && est.qtd > 0 ? formatarPrecoBR(Math.round(est.total / est.qtd)) : '',
-        origem: c.origem === 'cardapio' ? 'Cardápio digital' : c.origem === 'app' ? 'App' : 'Não informado',
+        origem:
+          c.origem === 'cardapio'
+            ? 'Cardápio digital'
+            : c.origem === 'app'
+              ? 'App'
+              : c.origem === 'importacao'
+                ? 'Importação'
+                : 'Não informado',
         cadastro: formatarData(c.criado_em),
         contatoComercial: c.consentimento_marketing_em ? 'sim' : 'não informado',
       }

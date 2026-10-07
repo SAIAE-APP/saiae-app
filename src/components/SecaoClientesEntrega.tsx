@@ -6,6 +6,7 @@ import { modosAtivos } from '../lib/atendimento'
 import { exportarClientes, type FiltroExportar, type FormatoExportar } from '../lib/exportarClientes'
 import { useAssinaturaBarraca } from '../hooks/useAssinaturaBarraca'
 import { MSG_SEM_INTERNET, mensagemErroSalvar } from '../hooks/useSalvarBarraca'
+import { ImportarClientesSheet } from './ImportarClientesSheet'
 import { BottomSheet } from './ui/BottomSheet'
 import { Button } from './ui/Button'
 import { Card } from './ui/Card'
@@ -50,6 +51,7 @@ export function SecaoClientesEntrega({ barraca }: { barraca: Barraca }) {
   const planoEssencial = assinatura?.plano === 'essencial'
   const [exportando, setExportando] = useState(false)
   const [abrirExportar, setAbrirExportar] = useState(false)
+  const [abrirImportar, setAbrirImportar] = useState(false)
   const [filtroExportar, setFiltroExportar] = useState<FiltroExportar>('aceitaram')
   const [formatoExportar, setFormatoExportar] = useState<FormatoExportar>('xlsx')
   const [erroExportar, setErroExportar] = useState<string | null>(null)
@@ -147,7 +149,15 @@ export function SecaoClientesEntrega({ barraca }: { barraca: Barraca }) {
           cadastro de um cliente a qualquer momento.
         </p>
 
-        <div className="mt-3">
+        <div className="mt-3 flex flex-wrap gap-2">
+          <Button
+            variant="outline"
+            size="sm"
+            icon={<Icone nome="description" size={16} />}
+            onClick={() => setAbrirImportar(true)}
+          >
+            Importar
+          </Button>
           <Button
             variant="outline"
             size="sm"
@@ -162,10 +172,10 @@ export function SecaoClientesEntrega({ barraca }: { barraca: Barraca }) {
           >
             Exportar
           </Button>
-          {planoEssencial && (
-            <p className="mt-1.5 text-xs text-mesa-text-tertiary">Exportar clientes é exclusivo do plano Pro.</p>
-          )}
         </div>
+        {planoEssencial && (
+          <p className="mt-1.5 text-xs text-mesa-text-tertiary">Exportar clientes é exclusivo do plano Pro.</p>
+        )}
 
         <Input
           type="search"
@@ -220,6 +230,13 @@ export function SecaoClientesEntrega({ barraca }: { barraca: Barraca }) {
           </ul>
         )}
       </Card>
+
+      <ImportarClientesSheet
+        aberto={abrirImportar}
+        barracaId={barracaId}
+        onFechar={() => setAbrirImportar(false)}
+        aoImportar={() => setRecarga((n) => n + 1)}
+      />
 
       <BottomSheet open={abrirExportar} onClose={() => !exportando && setAbrirExportar(false)} aria-label="Exportar clientes de entrega">
         <h2 className="text-lg font-semibold text-mesa-text-primary">Exportar clientes</h2>

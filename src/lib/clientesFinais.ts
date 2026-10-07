@@ -1,6 +1,7 @@
 import { supabase } from './supabase'
 import { normalizarTelefone, somenteDigitos, type DadosEntrega } from './entrega'
 import type { ClienteFinal } from '../types/database'
+import { emLotes, type ClienteImportado } from './importarClientes'
 
 const COLUNAS = 'id, barraca_id, nome, telefone, rua, numero, bairro, referencia, criado_em, atualizado_em'
 const LIMITE_BUSCA = 5
@@ -107,3 +108,82 @@ export function clienteParaDadosEntrega(c: ClienteFinal): DadosEntrega {
     referencia: c.referencia,
   }
 }
+
+/** Telefones já cadastrados na barraca (normalizados), pra prévia da importação. */
+export async function listarTelefonesDaBarraca(barracaId: string): Promise<Set<string>> {
+  const PAGINA = 1000
+  const telefones = new Set<string>()
+  for (let de = 0; ; de += PAGINA) {
+    const { data, error } = await supabase
+      .from('clientes_finais')
+      .select('telefone')
+      .eq('barraca_id', barracaId)
+      .order('id')
+      .range(de, de + PAGINA - 1)
+    if (error) throw error
+    for (const linha of data ?? []) telefones.add(linha.telefone as string)
+    if ((data ?? []).length < PAGINA) break
+  }
+  return telefones
+}
+
+export type ResumoImportacao = {
+  inseridos: number
+  atualizados: number
+  semMudanca: number
+  ignorados: number
+}
+
+type RespostaImportar = {
+  estado: 'ok' | 'nao_autenticado' | 'sem_acesso' | 'dados_invalidos' | 'lote_grande'
+  inseridos?: number
+  atualizados?: number
+  sem_mudanca?: number
+  ignorados?: number
+}
+
+/**
+ * Importa em lotes pela RPC `importar_clientes_finais` (idempotente: repetir um
+ * lote não duplica nem sobrescreve). Para no primeiro erro e lança com o que já
+ * foi gravado em `parcial`. `marketing` só vale para clientes NOVOS.
+ */
+export async function importarClientesFinais(
+  barracaId: string,
+  clientes: ClienteParaImportar[],
+  marketing: boolean,
+  aoProgredir?: (feitos: number, total: number) => void,
+): Promise<ResumoImportacao> {
+  const resumo: ResumoImportacao = { inseridos: 0, atualizados: 0, semMudanca: 0, ignorados: 0 }
+  let feitos = 0
+  for (const lote of emLotes(clientes)) {
+    const { data, error } = await supabase.rpc('importar_clientes_finais', {
+      p_barraca_id: barracaId,
+      p_clientes: lote,
+      p_marketing: marketing,
+    })
+    const resposta = data as RespostaImportar | null
+    if (error || !resposta || resposta.estado !== 'ok') {
+      throw new ErroImportacao(
+        error?.message ?? `Importação recusada (${resposta?.estado ?? 'sem resposta'}).`,
+        { ...resumo },
+      )
+    }
+    resumo.inseridos += resposta.inseridos ?? 0
+    resumo.atualizados += resposta.atualizados ?? 0
+    resumo.semMudanca += resposta.sem_mudanca ?? 0
+    resumo.ignorados += resposta.ignorados ?? 0
+    feitos += lote.length
+    aoProgredir?.(feitos, clientes.length)
+  }
+  return resumo
+}
+
+export class ErroImportacao extends Error {
+  parcial: ResumoImportacao
+  constructor(mensagem: string, parcial: ResumoImportacao) {
+    super(mensagem)
+    this.parcial = parcial
+  }
+}
+
+export type ClienteParaImportar = Pick<ClienteImportado, 'nome' | 'telefone' | 'rua' | 'numero' | 'bairro' | 'referencia'>
