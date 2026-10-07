@@ -103,6 +103,8 @@ Deno.serve(async (req: Request) => {
     entrega?: EntregaBody | null
     /** Nome opcional do cliente (fora da Entrega, onde vale o nome do formulário). */
     cliente_nome?: string | null
+    /** WhatsApp opcional (fora da Entrega) só pra avisar "pedido pronto". */
+    cliente_telefone?: string | null
     /** Total que o cliente viu na tela (itens + taxa). Se o servidor calcular outro, não cobra. */
     total_esperado_centavos?: number | null
   }
@@ -234,6 +236,15 @@ Deno.serve(async (req: Request) => {
   let taxaEntregaCentavos = 0
   let clienteNome: string | null = String(body.cliente_nome ?? '').trim().slice(0, 60) || null
 
+  // Telefone só pro aviso "pedido pronto" (fora da Entrega, onde vale o do
+  // formulário). Mesma normalização do banco; inválido é IGNORADO, nunca recusa.
+  let clienteTelefone: string | null = null
+  if (body.tipo_atendimento !== 'entrega') {
+    let d = String(body.cliente_telefone ?? '').replace(/\D/g, '')
+    if ((d.length === 12 || d.length === 13) && d.startsWith('55')) d = d.slice(2)
+    if (d.length >= 8 && d.length <= 15) clienteTelefone = d
+  }
+
   if (ehEntrega) {
     const modos = (barraca.modos_atendimento ?? []) as string[]
     if (!modos.includes('entrega')) {
@@ -334,6 +345,8 @@ Deno.serve(async (req: Request) => {
         entrega: entregaSnapshot,
         taxa_entrega_centavos: taxaEntregaCentavos,
         cliente_nome: clienteNome,
+        // Só quando informado: sem telefone o update é o de sempre.
+        ...(clienteTelefone ? { cliente_telefone: clienteTelefone } : {}),
       })
       .eq('id', pendenteExistente.id)
       .eq('status', 'pendente')
@@ -362,6 +375,7 @@ Deno.serve(async (req: Request) => {
               cliente_nome: clienteNome,
             }
           : {}),
+        ...(clienteTelefone ? { cliente_telefone: clienteTelefone } : {}),
       })
       .select('id')
       .single()

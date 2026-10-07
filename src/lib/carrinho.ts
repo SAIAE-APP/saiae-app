@@ -28,6 +28,8 @@ export type EstadoParaConfirmar = {
   entrega?: DadosEntrega
   /** Nome do cliente digitado em Confirmar (modos sem formulário de Entrega). */
   clienteNome?: string
+  /** WhatsApp opcional (só pra avisar "pedido pronto"). */
+  clienteTelefone?: string
 }
 
 /** ConfirmarPedido → LancarPedido, ao clicar "Voltar e editar". */
@@ -42,6 +44,7 @@ export type EstadoParaEditar = {
   /** Devolvido intacto pra não perder o que foi digitado em ConfirmarPedido. */
   entrega?: DadosEntrega
   clienteNome?: string
+  clienteTelefone?: string
 }
 
 /** ConfirmarPedido → LancarPedido, depois de enviar com sucesso — LancarPedido

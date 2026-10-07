@@ -9,6 +9,7 @@ import { usePedidosAtual } from '../layouts/contextoPedidos'
 import { enfileirar } from '../lib/fila'
 import { classesBotaoIcone } from '../lib/estiloBotaoIcone'
 import { tocarSomPedidoCritico, tocarSomPedidoNaCozinha } from '../lib/sons'
+import { BotaoAvisarCliente } from '../components/BotaoAvisarCliente'
 import { BotoesLinkEntregador } from '../components/BotoesLinkEntregador'
 import { Badge } from '../components/ui/Badge'
 import { BotaoHome } from '../components/ui/BotaoHome'
@@ -350,6 +351,8 @@ function CardPedido({
             </>
           )}
         </div>
+
+        {coluna === 'pronto' && <BotaoAvisarCliente pedido={pedido} barraca={barraca} compacto />}
 
         {pedido.entrega_token && (
           <BotoesLinkEntregador token={pedido.entrega_token} senha={pedido.senha} compacto />

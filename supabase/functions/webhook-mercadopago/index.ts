@@ -67,7 +67,7 @@ Deno.serve(async (req: Request) => {
     .from('pagamentos_pendentes')
     .select(
       'id, barraca_id, mesa, viagem, observacao, itens, status, client_uuid, mercadopago_order_id, ' +
-        'tipo_atendimento, entrega, taxa_entrega_centavos, cliente_nome',
+        'tipo_atendimento, entrega, taxa_entrega_centavos, cliente_nome, cliente_telefone',
     )
   const { data: pendente, error: erroPendente } = pendenteIdUrl
     ? await consulta.eq('id', pendenteIdUrl).maybeSingle()
@@ -163,6 +163,9 @@ Deno.serve(async (req: Request) => {
       argsPedido.p_taxa_entrega_centavos = taxaEntregaCentavos
       if (pendente.cliente_nome) argsPedido.p_cliente_nome = pendente.cliente_nome
     }
+    // Telefone do aviso "pedido pronto": só entra quando existe (sem ele a chamada
+    // é IDÊNTICA à de antes).
+    if (pendente.cliente_telefone) argsPedido.p_cliente_telefone = pendente.cliente_telefone
 
     const { data: resultadoPedido, error: erroPedido } = await supabase.rpc('criar_pedido', argsPedido).single()
 

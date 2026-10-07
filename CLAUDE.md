@@ -205,6 +205,27 @@ aparelho Android 7–11 e 12+ antes de publicar.
   ao `criar_pedido` e faz upsert best-effort em `clientes_finais`
   (`origem='cardapio'`, `consentimento_lgpd_em`). Sem `entrega` segue o modo
   antigo (nome/telefone/endereço livre). A taxa continua FORA da NFC-e.
+- Avisar cliente "pedido pronto" (2026-10-08, Sprint 3, migration
+  `20261008120000`): campo OPCIONAL "WhatsApp do cliente" em Confirmar Pedido
+  (Mesa/Balcão/Retirada; na Entrega vale o telefone do formulário) e no
+  checkout Pix do cardápio (fora da Entrega). `pedidos.cliente_telefone`
+  (só dígitos, sem o 55; CHECK 8–15 + trigger que normaliza/zera o inválido)
+  e `cliente_avisado_em`; `criar_pedido` v8 = v7 + `p_cliente_telefone` (12
+  args, o 12º com default); `pagamentos_pendentes.cliente_telefone` guarda o
+  snapshot do Pix e o webhook só repassa o arg quando existe (pedido sem
+  telefone = chamada idêntica à de antes). Sem a v8 no banco a fila reenvia sem
+  o telefone (PGRST202). Botão "Avisar cliente" (`BotaoAvisarCliente`) só com
+  telefone (`telefoneDoCliente`: `cliente_telefone` ou `entrega_telefone`),
+  pedido PRONTO e o aviso ligado: no card da coluna Pronto e no Histórico;
+  abre `wa.me/55<tel>?text=` (sem API, o operador toca em enviar), grava
+  `cliente_avisado_em` pela fila (best-effort, nunca bloqueia) e mostra
+  "Avisado às HH:MM" (dá pra avisar de novo). Mensagens por barraca em Ajustes
+  (`SecaoAvisoPronto`: `msg_pedido_pronto`, `msg_pedido_pronto_entrega`,
+  `aviso_pronto_habilitado`; variáveis {nome} {senha} {barraca}, variável sem
+  valor some da frase). LGPD: o telefone serve SÓ pra esse aviso, NÃO alimenta
+  `clientes_finais` nem o export de prospecção; a comanda não o imprime.
+  `criar-pedido-cardapio` (só Entrega) não mudou: o telefone dali já é o da
+  entrega.
 - Exportar clientes de entrega (2026-10-07, Story 3, migration
   `20261007140000`): botão "Exportar" em `SecaoClientesEntrega` (XLSX via
   `exceljs` por import dinâmico, ou CSV UTF-8 com BOM e `;`), mesma regra de

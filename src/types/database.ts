@@ -43,6 +43,10 @@ export type Barraca = {
   taxa_entrega_habilitada?: boolean
   taxa_entrega_centavos?: number
   taxa_entrega_editavel?: boolean
+  /** Aviso "pedido pronto" por WhatsApp: liga/desliga (padrão ligado) e mensagens com {nome} {senha} {barraca}. */
+  aviso_pronto_habilitado?: boolean
+  msg_pedido_pronto?: string | null
+  msg_pedido_pronto_entrega?: string | null
   /** Bairro fora da lista: cobra a taxa padrão ou bloqueia (cache antigo sem o campo = taxa padrão). */
   entrega_bairro_nao_listado?: PoliticaBairroNaoListado
 }
@@ -173,6 +177,9 @@ export type Pedido = {
   /** Dados de entrega (só em pedido de Entrega) e taxa cobrada, em centavos. */
   /** Nome do cliente, opcional em qualquer modo (criar_pedido v7). */
   cliente_nome?: string | null
+  /** WhatsApp opcional (só dígitos) só pra avisar "pedido pronto" (criar_pedido v8). */
+  cliente_telefone?: string | null
+  cliente_avisado_em?: string | null
   entrega_nome?: string | null
   entrega_telefone?: string | null
   entrega_rua?: string | null

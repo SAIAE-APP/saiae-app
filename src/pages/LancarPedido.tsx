@@ -484,6 +484,7 @@ export function LancarPedido() {
   // Não editável aqui: só guardado pra devolver pra ConfirmarPedido intacto.
   const [entregaHerdada] = useState(() => edicaoRecebida?.entrega)
   const [clienteNomeHerdado] = useState(() => edicaoRecebida?.clienteNome)
+  const [clienteTelefoneHerdado] = useState(() => edicaoRecebida?.clienteTelefone)
 
   const [senhaDemorando, setSenhaDemorando] = useState(false)
   const [senha, setSenha] = useState<SenhaConfirmada | null>(
@@ -738,6 +739,7 @@ export function LancarPedido() {
         observacaoPorItem,
         entrega: tipoEfetivo === 'entrega' ? entregaHerdada : undefined,
         clienteNome: clienteNomeHerdado,
+        clienteTelefone: clienteTelefoneHerdado,
       } satisfies EstadoParaConfirmar,
     })
   }

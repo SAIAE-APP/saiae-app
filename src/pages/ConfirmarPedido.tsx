@@ -153,6 +153,7 @@ export function ConfirmarPedido() {
   // Modos sem formulário de Entrega: nome opcional. Na Entrega o nome é o do
   // formulário (obrigatório lá), então este campo não aparece.
   const [clienteNome, setClienteNome] = useState(() => estado?.clienteNome ?? '')
+  const [clienteTelefone, setClienteTelefone] = useState(() => estado?.clienteTelefone ?? '')
   // Valor digitado à mão (taxa editável); null = segue a taxa do bairro.
   const [taxaEditada, setTaxaEditada] = useState<string | null>(null)
   const [mostrarErrosEntrega, setMostrarErrosEntrega] = useState(false)
@@ -184,6 +185,8 @@ export function ConfirmarPedido() {
   )
 
   const errosEntrega = ehEntrega ? validarDadosEntrega(entrega) : {}
+  const digitosAviso = normalizarTelefone(clienteTelefone)
+  const telefoneAvisoValido = digitosAviso.length >= 8 && digitosAviso.length <= 15
   // Taxa do bairro digitado (mesma regra do servidor). Bairro "bloqueado" não
   // trava o operador: usa a taxa padrão, que ele pode ajustar se for editável.
   const taxaBairro = taxaDoBairro(configBairros, bairrosTaxa, entrega.bairro)
@@ -217,6 +220,7 @@ export function ConfirmarPedido() {
         observacaoPorItem,
         entrega: ehEntrega ? entrega : undefined,
         clienteNome,
+        clienteTelefone,
       } satisfies EstadoParaEditar,
     })
   }
@@ -269,6 +273,9 @@ export function ConfirmarPedido() {
       // Nome opcional: só vai no payload quando preenchido (pedido sem nome
       // segue idêntico ao do app antigo). Na Entrega o nome já está em p_entrega.
       ...(!ehEntrega && clienteNome.trim() ? { p_cliente_nome: clienteNome.trim() } : {}),
+      // WhatsApp opcional só pra avisar "pronto" (Entrega usa o telefone do formulário).
+      // Número inválido é ignorado: nunca bloqueia o envio.
+      ...(!ehEntrega && telefoneAvisoValido ? { p_cliente_telefone: normalizarTelefone(clienteTelefone) } : {}),
       ...(ehEntrega
         ? {
             p_entrega: {
@@ -372,6 +379,23 @@ export function ConfirmarPedido() {
             maxLength={60}
             value={clienteNome}
             onChange={(e) => setClienteNome(e.target.value)}
+            className="mt-3"
+          />
+        )}
+
+        {!ehEntrega && (
+          <Input
+            label="WhatsApp do cliente (opcional)"
+            type="text"
+            inputMode="tel"
+            autoComplete="off"
+            value={clienteTelefone}
+            onChange={(e) => setClienteTelefone(e.target.value)}
+            helpText={
+              clienteTelefone.trim() && !telefoneAvisoValido
+                ? 'Número incompleto: o pedido segue sem aviso por WhatsApp.'
+                : 'Só para avisar quando o pedido ficar pronto.'
+            }
             className="mt-3"
           />
         )}
