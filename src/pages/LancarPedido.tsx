@@ -7,7 +7,7 @@ import { classesBotaoIcone } from '../lib/estiloBotaoIcone'
 import { useBarracaAtual, useSincronizacaoAtual } from '../layouts/contextoBarraca'
 import { useTheme } from '../hooks/useTheme'
 import { aoConcluirCriacaoPedido, aoCriarPedidoLocal } from '../lib/fila'
-import { textoRestam } from '../lib/estoque'
+import { avisoPassaDoEstoque, excessosDoCarrinho, mensagemExcessos, textoRestam, verificarAdicao } from '../lib/estoque'
 import { formatarPrecoBR } from '../lib/preco'
 import { linkWhatsAppSemNumero, montarMensagemEntregador } from '../lib/entrega'
 import { tocarSomPedidoCriado } from '../lib/sons'
@@ -32,6 +32,7 @@ import { Icone } from '../components/ui/Icone'
 import { Input } from '../components/ui/Input'
 import { SegmentedControl } from '../components/ui/SegmentedControl'
 import { Textarea } from '../components/ui/Textarea'
+import { useToast } from '../components/ui/Toast'
 import { ROTULO_MODO, ehViagem, modoInicial, modosAtivos, tipoDoPedido } from '../lib/atendimento'
 import type { Categoria, Item, TipoAtendimento } from '../types/database'
 
@@ -173,6 +174,11 @@ function CardItemCardapio({
             {textoRestam(item)}
           </p>
         )}
+        {selecionado && avisoPassaDoEstoque(item, quantidade) && (
+          <p role="alert" className="mt-0.5 text-xs font-semibold text-mesa-error-500">
+            {avisoPassaDoEstoque(item, quantidade)}
+          </p>
+        )}
 
         {selecionado && (
           <div className="mt-2 flex items-center justify-between gap-2">
@@ -255,6 +261,11 @@ function CardItemCardapioGrade({
       {!item.esgotado && textoRestam(item) && (
         <p className="mt-0.5 text-xs font-semibold text-mesa-warning-700 dark:text-mesa-warning-500">
           {textoRestam(item)}
+        </p>
+      )}
+      {selecionado && avisoPassaDoEstoque(item, quantidade) && (
+        <p role="alert" className="mt-0.5 text-xs font-semibold text-mesa-error-500">
+          {avisoPassaDoEstoque(item, quantidade)}
         </p>
       )}
 
@@ -379,6 +390,7 @@ function ehEstadoPedidoEnviado(estado: unknown): estado is EstadoPedidoEnviado {
 
 export function LancarPedido() {
   const barraca = useBarracaAtual()
+  const { mostrarToast } = useToast()
   const navigate = useNavigate()
   const location = useLocation()
   const { pendentes, online } = useSincronizacaoAtual()
@@ -716,6 +728,17 @@ export function LancarPedido() {
   )
 
   function incrementar(itemId: string) {
+    // Estoque: com o bloqueio ligado não passa do saldo conhecido; desligado deixa passar
+    // e avisa na hora. Item sem controle de estoque nunca é afetado.
+    const item = itens.find((i) => i.id === itemId)
+    if (item) {
+      const verificacao = verificarAdicao(item, carrinho[itemId] ?? 0, Boolean(barraca.estoque_bloqueia))
+      if (!verificacao.ok) {
+        mostrarToast(`${item.nome}: ${verificacao.mensagem}`, { variante: 'aviso', icone: 'error' })
+        return
+      }
+      if (verificacao.aviso) mostrarToast(`${item.nome}: ${verificacao.aviso}`, { variante: 'aviso', icone: 'error' })
+    }
     setCarrinho((atual) => ({ ...atual, [itemId]: (atual[itemId] ?? 0) + 1 }))
   }
 
@@ -769,6 +792,15 @@ export function LancarPedido() {
 
   function verNota() {
     if (totalItens === 0) return
+    // Bloqueio ligado: o carrinho pode ter ficado acima do saldo (saldo atualizado depois
+    // de adicionar). Só com o saldo que este aparelho conhece, nunca por rede.
+    if (barraca.estoque_bloqueia) {
+      const excessos = excessosDoCarrinho(itens, carrinho)
+      if (excessos.length > 0) {
+        mostrarToast(`Passa do estoque — ${mensagemExcessos(excessos)}`, { variante: 'aviso', icone: 'error', duracaoMs: 6000 })
+        return
+      }
+    }
     navigate(`/${barraca.slug}/confirmar`, {
       state: {
         carrinho,

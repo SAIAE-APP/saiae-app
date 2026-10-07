@@ -29,6 +29,8 @@ export type Barraca = {
   /** WhatsApp do dono (só dígitos) e liga/desliga do "Pagar na entrega" no cardápio. */
   whatsapp_pedidos?: string | null
   pagar_na_entrega_habilitado?: boolean
+  /** Estoque: true = bloqueia a venda acima do saldo; false/ausente = só avisa (padrão). */
+  estoque_bloqueia?: boolean
   imagem_capa_url: string | null
   mostrar_horario_pedido: boolean
   /** Emitente fiscal e PROCON (cupom da NFC-e). Opcionais: cache local anterior à migration não tem. */

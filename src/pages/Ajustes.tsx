@@ -33,6 +33,7 @@ import { SecaoTaxaEntrega } from '../components/SecaoTaxaEntrega'
 import { SecaoBairrosEntrega } from '../components/SecaoBairrosEntrega'
 import { SecaoClientesEntrega } from '../components/SecaoClientesEntrega'
 import { SecaoPagarNaEntrega } from '../components/SecaoPagarNaEntrega'
+import { SecaoEstoque } from '../components/SecaoEstoque'
 import {
   PROVEDORES_PIX_DISPONIVEIS,
   provedorPixDaBarraca,
@@ -2682,6 +2683,9 @@ export function Ajustes({ categoria = 'conta' }: { categoria?: CategoriaAjustes 
           </SecaoDaCategoria>
           <SecaoDaCategoria categoria="cardapio" atual={categoria}>
             <SecaoClientesEntrega barraca={barraca} />
+          </SecaoDaCategoria>
+          <SecaoDaCategoria categoria="cardapio" atual={categoria}>
+            <SecaoEstoque barraca={barraca} />
           </SecaoDaCategoria>
           <SecaoDaCategoria categoria="cardapio" atual={categoria}>
             <SecaoPagarNaEntrega barraca={barraca} />
