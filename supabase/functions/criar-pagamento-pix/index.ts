@@ -15,7 +15,7 @@
 // emitidas.
 import { createClient } from 'jsr:@supabase/supabase-js@2'
 import { chaveDoProvedor, obterProvedor, urlNotificacaoPagamento } from '../_shared/pagamento/registro.ts'
-import { buscarTokenDoProvedor } from '../_shared/pagamento/token.ts'
+import { buscarCredenciaisDoProvedor, buscarTokenDoProvedor } from '../_shared/pagamento/token.ts'
 import { ErroProvedor, ehProvedorValido, type QrPix } from '../_shared/pagamento/tipos.ts'
 
 // Mínimo aceito pelo Mercado Pago é 30 min; 35 dá folga pra diferença de relógio.
@@ -129,10 +129,18 @@ Deno.serve(async (req: Request) => {
       : null
 
     if (provedorEmitido && tokenEmitido) {
-      const qr = await provedorEmitido.recuperarQr({
-        token: tokenEmitido,
-        idExterno: pendenteExistente.mercadopago_order_id,
-      })
+      // Provedor que não devolve o QR de uma cobrança emitida (Asaas): vale o que ficou guardado.
+      const guardado = pendenteExistente.qr_payload as
+        | { qr_code?: string | null; qr_code_base64?: string | null }
+        | null
+        | undefined
+      const qr =
+        provedorEmitido.qrRecuperavel === false
+          ? { copiaECola: guardado?.qr_code ?? null, qrCodeBase64: guardado?.qr_code_base64 ?? null, ticketUrl: null }
+          : await provedorEmitido.recuperarQr({
+              token: tokenEmitido,
+              idExterno: pendenteExistente.mercadopago_order_id,
+            })
       return jsonResponse({
         pendente_id: pendenteExistente.id,
         qr_code: qr.copiaECola,
@@ -163,9 +171,15 @@ Deno.serve(async (req: Request) => {
     return jsonResponse({ erro: 'Provedor de pagamento não disponível para esta barraca' }, 422)
   }
 
-  const tokenProvedor = await buscarTokenDoProvedor(supabase, barraca_id, provedor.chave)
-  if (!tokenProvedor) {
+  const credenciais = await buscarCredenciaisDoProvedor(supabase, barraca_id, provedor.chave)
+  if (!credenciais) {
     return jsonResponse({ erro: `Token do ${provedor.nome} não configurado` }, 422)
+  }
+  const tokenProvedor = credenciais.token
+  for (const chave of provedor.configExtraObrigatoria ?? []) {
+    if (!credenciais.configExtra[chave]) {
+      return jsonResponse({ erro: `Configuração do ${provedor.nome} incompleta (falta a chave Pix)` }, 422)
+    }
   }
 
   // Preço SEMPRE resolvido aqui a partir do cardápio real — o que o
@@ -399,6 +413,8 @@ Deno.serve(async (req: Request) => {
   try {
     cobranca = await provedor.criarCobranca({
       token: tokenProvedor,
+      barracaId: barraca_id,
+      configExtra: credenciais.configExtra,
       valorCentavos: totalCobradoCentavos,
       referencia: pendente.id,
       descricao: ehEntrega ? 'Pedido com entrega no cardápio digital' : 'Pedido no cardápio digital',
@@ -419,7 +435,13 @@ Deno.serve(async (req: Request) => {
   // id externo do pagamento em QUALQUER provedor (renomear fica pra depois, sem risco agora).
   await supabase
     .from('pagamentos_pendentes')
-    .update({ mercadopago_order_id: cobranca.idExterno })
+    .update({
+      mercadopago_order_id: cobranca.idExterno,
+      // Provedor sem como recuperar o QR depois: guarda o emitido pro retry do mesmo client_uuid.
+      ...(provedor.qrRecuperavel === false
+        ? { qr_payload: { qr_code: cobranca.copiaECola, qr_code_base64: cobranca.qrCodeBase64 } }
+        : {}),
+    })
     .eq('id', pendente.id)
 
   return jsonResponse({

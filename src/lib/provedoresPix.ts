@@ -18,6 +18,10 @@ export type ProvedorPixInfo = {
   descricaoConta: string
   /** Onde achar a credencial, no texto da folha de colar o token. */
   ondeAcharToken: string
+  /** Segundo dado guardado junto do token (hoje só o Asaas: a chave Pix do dono). */
+  campoExtra?: { rotulo: string; ajuda: string }
+  /** Custo que o dono deve conhecer antes de escolher, só com o que está na doc oficial. */
+  avisoCusto?: string
 }
 
 export const PROVEDOR_PIX_PADRAO: ChaveProvedorPix = 'mercadopago'
@@ -35,7 +39,23 @@ export const PROVEDORES_PIX: ProvedorPixInfo[] = [
   },
   // Próximas stories (adaptador + instrução conferida na doc oficial de cada um):
   { chave: 'pagbank', nome: 'PagBank', disponivel: false, rotuloToken: 'Token', descricaoConta: '', ondeAcharToken: '' },
-  { chave: 'asaas', nome: 'Asaas', disponivel: false, rotuloToken: 'Chave de API', descricaoConta: '', ondeAcharToken: '' },
+  {
+    chave: 'asaas',
+    nome: 'Asaas',
+    disponivel: true,
+    rotuloToken: 'Chave de API',
+    descricaoConta:
+      'Use a sua conta Asaas, com uma chave Pix cadastrada nela. Cole abaixo a chave de API e a chave Pix',
+    ondeAcharToken:
+      'A chave de API é gerada na sua conta Asaas (confira o caminho na documentação do Asaas).',
+    campoExtra: {
+      rotulo: 'Chave Pix cadastrada no Asaas',
+      ajuda:
+        'A chave Pix que recebe os pagamentos na sua conta Asaas. A documentação do Asaas informa a chave no formato UUID (chave aleatória). Na primeira cobrança, o Sai aê cria na sua conta um webhook para ser avisado dos pagamentos.',
+    },
+    avisoCusto:
+      'Confira as tarifas de Pix no Asaas antes de escolher: a página de preços lista R$ 0,99 por Pix recebido nos 3 primeiros meses e R$ 1,99 depois, com franquia mensal de Pix grátis (chave ou QR estático) que pode mudar. Em pedidos pequenos esse valor fixo pesa mais que a taxa percentual do Mercado Pago.',
+  },
   { chave: 'woovi', nome: 'Woovi', disponivel: false, rotuloToken: 'AppID', descricaoConta: '', ondeAcharToken: '' },
   { chave: 'abacatepay', nome: 'AbacatePay', disponivel: false, rotuloToken: 'Chave de API', descricaoConta: '', ondeAcharToken: '' },
 ]

@@ -11,6 +11,15 @@ import {
 } from './mercadopago.ts'
 import { chaveDoProvedor, obterProvedor, urlNotificacaoPagamento } from './registro.ts'
 import { buscarTokenDoProvedor } from './token.ts'
+import {
+  extrairNotificacaoAsaas,
+  iguaisEmTempoConstante,
+  leituraDePagamentosAsaas,
+  montarCorpoQrEstaticoAsaas,
+  statusDoAsaas,
+  tokenWebhookAsaas,
+  urlWebhookAsaas,
+} from './asaas.ts'
 import { centavosParaDecimal, ehProvedorValido, valorDecimalParaCentavos } from './tipos.ts'
 
 const semCorpo = async () => null
@@ -45,6 +54,7 @@ assert.equal(dataExpiracaoMercadoPago(new Date('2026-09-29T15:00:00.000Z')), '20
 // --- corpo da cobrança MP (valor decimal vindo de centavos; e-mail por pedido; referência)
 const corpo = montarCorpoCobrancaMercadoPago({
   token: 'x',
+  barracaId: 'b1',
   valorCentavos: 4590,
   referencia: 'pend-1',
   descricao: 'Pedido no cardápio digital',
@@ -117,5 +127,77 @@ assert.equal(
   await buscarTokenDoProvedor({ from: () => ({ select: () => ({ eq: async () => ({ data: null, error: { message: 'x' } }) }) }) }, 'b', 'mercadopago'),
   null,
 )
+
+// ===== Asaas (QR Code Pix estático) =====
+
+// status: só RECEIVED/CONFIRMED aprovam
+assert.equal(statusDoAsaas('RECEIVED'), 'aprovado')
+assert.equal(statusDoAsaas('CONFIRMED'), 'aprovado')
+for (const st of ['PENDING', 'OVERDUE', 'REFUNDED', 'REFUND_REQUESTED', undefined, null]) {
+  assert.equal(statusDoAsaas(st), 'pendente')
+}
+
+// corpo do QR estático: valor fixo, uso único, referência = pendente, expiração em segundos
+const corpoAsaas = montarCorpoQrEstaticoAsaas(
+  {
+    token: 'x',
+    barracaId: 'b1',
+    valorCentavos: 2090,
+    referencia: 'pend-9',
+    descricao: 'Pedido no cardápio digital',
+    expiraEm: new Date(Date.now() + 35 * 60 * 1000),
+    urlNotificacao: 'https://x/functions/v1/webhook-mercadopago?pendente=pend-9&p=asaas',
+  },
+  'chave-uuid',
+)
+assert.equal(corpoAsaas.addressKey, 'chave-uuid')
+assert.equal(corpoAsaas.value, 20.9)
+assert.equal(corpoAsaas.allowsMultiplePayments, false)
+assert.equal(corpoAsaas.externalReference, 'pend-9')
+assert.ok(Number(corpoAsaas.expirationSeconds) >= 34 * 60 && Number(corpoAsaas.expirationSeconds) <= 35 * 60)
+
+// notificação: só pagamento recebido de QR estático; o corpo nunca é confiado (só o pixQrCodeId sai dele)
+const corpoNotif = (event: string, payment: Record<string, unknown>) => async () => ({ event, payment })
+assert.deepEqual(
+  await extrairNotificacaoAsaas(new URL('https://x/w?p=asaas&b=b1'), corpoNotif('PAYMENT_RECEIVED', { id: 'pay_1', pixQrCodeId: 'qr_1' })),
+  { idExterno: 'qr_1' },
+)
+assert.deepEqual(
+  await extrairNotificacaoAsaas(new URL('https://x/w'), corpoNotif('PAYMENT_CONFIRMED', { pixQrCodeId: 'qr_2' })),
+  { idExterno: 'qr_2' },
+)
+assert.deepEqual(await extrairNotificacaoAsaas(new URL('https://x/w'), corpoNotif('PAYMENT_CREATED', { pixQrCodeId: 'qr_3' })), { ignorar: true })
+assert.deepEqual(await extrairNotificacaoAsaas(new URL('https://x/w'), corpoNotif('PAYMENT_RECEIVED', { id: 'pay_4' })), { ignorar: true })
+assert.deepEqual(await extrairNotificacaoAsaas(new URL('https://x/w'), semCorpo), { ignorar: true })
+
+// leitura dos pagamentos do QR: valor em centavos inteiros, referência esperada quando o Asaas não a propaga
+assert.deepEqual(leituraDePagamentosAsaas([], 'pend-9'), { status: 'pendente', valorCentavos: 0, referencia: 'pend-9' })
+assert.deepEqual(leituraDePagamentosAsaas([{ status: 'RECEIVED', value: 20.9 }], 'pend-9'), {
+  status: 'aprovado',
+  valorCentavos: 2090,
+  referencia: 'pend-9',
+})
+assert.equal(leituraDePagamentosAsaas([{ status: 'RECEIVED', value: 19.9 + 0.1 }], 'p').valorCentavos, 2000)
+// referência divergente volta como veio (o webhook recusa)
+assert.equal(leituraDePagamentosAsaas([{ status: 'RECEIVED', value: 5, externalReference: 'outro' }], 'pend-9').referencia, 'outro')
+// o aprovado vale mais que um pendente da lista
+assert.equal(leituraDePagamentosAsaas([{ status: 'PENDING', value: 1 }, { status: 'CONFIRMED', value: 2 }], 'p').valorCentavos, 200)
+
+// webhook da conta: URL por barraca e authToken derivado (32+ caracteres, sem espaços), conferido em tempo constante
+assert.equal(
+  urlWebhookAsaas('https://proj.supabase.co/functions/v1/webhook-mercadopago?pendente=abc&p=asaas', 'b1'),
+  'https://proj.supabase.co/functions/v1/webhook-mercadopago?p=asaas&b=b1',
+)
+const tk = await tokenWebhookAsaas('segredo-do-projeto', 'b1')
+assert.match(tk, /^[0-9a-f]{64}$/)
+assert.equal(tk, await tokenWebhookAsaas('segredo-do-projeto', 'b1'))
+assert.notEqual(tk, await tokenWebhookAsaas('segredo-do-projeto', 'b2'))
+assert.notEqual(tk, await tokenWebhookAsaas('outro-segredo', 'b1'))
+assert.equal(iguaisEmTempoConstante(tk, tk), true)
+assert.equal(iguaisEmTempoConstante(tk, tk.slice(0, -1) + 'x'), false)
+assert.equal(iguaisEmTempoConstante('a', 'ab'), false)
+assert.equal(obterProvedor('asaas')?.chave, 'asaas')
+assert.deepEqual(obterProvedor('asaas')?.configExtraObrigatoria, ['chave_pix'])
+assert.equal(obterProvedor('asaas')?.qrRecuperavel, false)
 
 console.log('pagamento.test.ts: tudo certo')

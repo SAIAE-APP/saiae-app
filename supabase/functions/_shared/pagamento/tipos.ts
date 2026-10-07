@@ -26,6 +26,10 @@ export type StatusPagamento = 'aprovado' | 'pendente' | 'rejeitado' | 'expirado'
 export type ParamsCobranca = {
   /** Token (credencial) da conta do dono no provedor. */
   token: string
+  /** Barraca dona da cobrança (alguns provedores configuram webhook por conta). */
+  barracaId: string
+  /** Credenciais extras do provedor (ex.: Asaas `chave_pix`), lidas de barracas_pagamento_token. */
+  configExtra?: Record<string, string>
   /** Total em centavos INTEIROS (itens + taxa). */
   valorCentavos: number
   /** Id do pendente em `pagamentos_pendentes`: volta na consulta e é a chave de idempotência. */
@@ -77,6 +81,10 @@ export interface ProvedorPix {
   readonly chave: ProvedorChave
   /** Nome pra mensagens ao usuário ("Falha ao contatar o Mercado Pago"). */
   readonly nome: string
+  /** Chaves de `configExtra` sem as quais o provedor não cria cobrança (ex.: ['chave_pix']). */
+  readonly configExtraObrigatoria?: readonly string[]
+  /** false = o provedor não devolve o QR de uma cobrança já emitida: ele fica guardado no pendente. */
+  readonly qrRecuperavel?: boolean
 
   /** Cria a cobrança Pix. Idempotente por `referencia` quando o provedor permite. Lança ErroProvedor. */
   criarCobranca(params: ParamsCobranca): Promise<QrPix>
@@ -85,7 +93,7 @@ export interface ProvedorPix {
   recuperarQr(params: { token: string; idExterno: string }): Promise<Omit<QrPix, 'idExterno'>>
 
   /** Consulta o pagamento DE VOLTA no provedor (única fonte de verdade do status). Lança ErroProvedor. */
-  consultarPagamento(params: { token: string; idExterno: string }): Promise<ConsultaPagamento>
+  consultarPagamento(params: { token: string; idExterno: string; referenciaEsperada?: string }): Promise<ConsultaPagamento>
 
   /** Lê o id do pagamento da notificação. `lerCorpo` só é chamado se a URL não bastar (corpo lido uma vez). */
   extrairIdDaNotificacao(url: URL, lerCorpo: () => Promise<unknown>): Promise<Notificacao>

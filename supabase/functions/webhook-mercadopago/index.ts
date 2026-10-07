@@ -112,7 +112,11 @@ Deno.serve(async (req: Request) => {
   // nunca confiando só no corpo do webhook.
   let leitura: ConsultaPagamento
   try {
-    leitura = await provedor.consultarPagamento({ token: tokenProvedor, idExterno: pagamentoId })
+    leitura = await provedor.consultarPagamento({
+      token: tokenProvedor,
+      idExterno: pagamentoId,
+      referenciaEsperada: pendente.id,
+    })
   } catch (erro) {
     if (erro instanceof ErroProvedor && !erro.rede) {
       return jsonResponse({ ok: true, aviso: erro.message })

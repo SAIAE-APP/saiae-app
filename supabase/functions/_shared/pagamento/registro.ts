@@ -1,9 +1,11 @@
 // Registro dos provedores Pix por chave. Provedor novo = um arquivo seu + uma linha aqui.
+import { asaas } from './asaas.ts'
 import { mercadoPago } from './mercadopago.ts'
 import { PROVEDOR_PADRAO, ehProvedorValido, type ProvedorChave, type ProvedorPix } from './tipos.ts'
 
 const REGISTRO: Partial<Record<ProvedorChave, ProvedorPix>> = {
   mercadopago: mercadoPago,
+  asaas,
 }
 
 /** Provedor implementado, ou null (chave inválida ou ainda sem adaptador). */

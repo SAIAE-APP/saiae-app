@@ -227,6 +227,33 @@ aparelho Android 7–11 e 12+ antes de publicar.
   `total_esperado_centavos` e o servidor devolve 409 com o novo total se a taxa
   divergir (Pix já fazia); a prévia passa a usar o valor do servidor. Regras puras de
   bairro em `src/lib/bairrosTaxa.ts` (testadas em `tests/bairros.test.ts`, `npm test`).
+- Asaas como provedor de Pix (2026-10-12, Sprint 5 Story D, migration
+  `20261012110000`): adaptador `_shared/pagamento/asaas.ts` pelo QR Code Pix
+  ESTÁTICO (`POST /v3/pix/qrCodes/static`), porque a cobrança dinâmica exige
+  cadastrar o cliente com CPF/CNPJ e o cardápio não coleta isso. O dono informa
+  o token (chave de API) e a chave Pix cadastrada no Asaas (`addressKey`):
+  `barracas_pagamento_token.chave_pix`, via RPC `definir_chave_pix_pagamento`
+  (SECURITY DEFINER; `chave_pix_pagamento_configurada` devolve só boolean).
+  Cada pendente ganha um QR próprio (valor fixo, uso único, expira,
+  `externalReference` = id do pendente); o id do QR vai em
+  `mercadopago_order_id` e o QR emitido fica em `pagamentos_pendentes.qr_payload`
+  (o Asaas não devolve o QR depois; `qrRecuperavel: false`). O Asaas NÃO aceita
+  URL por pagamento: o webhook é da conta, então antes do primeiro QR o
+  adaptador cria na conta do dono (se faltar) um webhook para
+  `webhook-mercadopago?p=asaas&b=<barraca>` com authToken derivado
+  (HMAC da chave de serviço do projeto + barraca, sem nada a configurar); sem
+  webhook garantido NÃO cria QR. O webhook confere o header
+  `asaas-access-token`, e só usa o `pixQrCodeId` da notificação: o pagamento
+  é SEMPRE reconsultado em `GET /v3/payments?pixQrCodeId=` com o token da
+  barraca (RECEIVED/CONFIRMED = aprovado), conferindo valor em centavos e
+  referência. Pra testar no sandbox, defina o secret `ASAAS_API_URL`
+  (`https://api-sandbox.asaas.com/v3`) nas functions e remova depois;
+  `ASAAS_WEBHOOK_EMAIL` (opcional) troca o e-mail do webhook. Custo: a página
+  de preços do Asaas lista R$ 0,99 por Pix recebido nos 3 primeiros meses e R$
+  1,99 depois, com franquia mensal de Pix grátis por chave/QR estático (100 no
+  blog, 30 na página de preços; as fontes discordam): em ticket de R$ 20 pesa
+  mais que o Mercado Pago. PagBank e Pagar.me NÃO foram implementados: a doc
+  exige CPF do pagador e a taxa do PagBank não é menor que a do Mercado Pago.
 - Provedores de Pix (2026-10-09, Sprint 5 Story A, migration
   `20261009120000`): o Pix online passa por uma interface `ProvedorPix`
   (`supabase/functions/_shared/pagamento/`: `tipos.ts`, `registro.ts`,

@@ -1984,22 +1984,28 @@ function SecaoFiscal({ barraca }: { barraca: Barraca }) {
 function BottomSheetTokenPagamento({
   barracaId,
   provedor,
+  tokenJaConfigurado,
   open,
   onClose,
   onSucesso,
 }: {
   barracaId: string
   provedor: ProvedorPixInfo
+  /** Já há token salvo: pode trocar só o dado extra (ex.: chave Pix) sem recolar o token. */
+  tokenJaConfigurado: boolean
   open: boolean
   onClose: () => void
   onSucesso: () => void
 }) {
   const [token, setToken] = useState('')
+  const [dadoExtra, setDadoExtra] = useState('')
   const [processando, setProcessando] = useState(false)
   const [erro, setErro] = useState<string | null>(null)
+  const exigeToken = !(provedor.campoExtra && tokenJaConfigurado)
 
   function fechar() {
     setToken('')
+    setDadoExtra('')
     setErro(null)
     onClose()
   }
@@ -2008,8 +2014,12 @@ function BottomSheetTokenPagamento({
     e.preventDefault()
     if (processando) return
 
-    if (!token.trim()) {
+    if (exigeToken && !token.trim()) {
       setErro(`Cole o ${provedor.rotuloToken} gerado no painel do ${provedor.nome}`)
+      return
+    }
+    if (provedor.campoExtra && !dadoExtra.trim()) {
+      setErro(`Informe: ${provedor.campoExtra.rotulo}`)
       return
     }
 
@@ -2021,16 +2031,28 @@ function BottomSheetTokenPagamento({
     setProcessando(true)
     setErro(null)
 
-    const { error } = await supabase.rpc('definir_token_pagamento', {
-      p_barraca_id: barracaId,
-      p_token: token.trim(),
-      p_provedor: provedor.chave,
-    })
+    let falha = null
+    if (token.trim()) {
+      const { error } = await supabase.rpc('definir_token_pagamento', {
+        p_barraca_id: barracaId,
+        p_token: token.trim(),
+        p_provedor: provedor.chave,
+      })
+      falha = error
+    }
+    if (!falha && provedor.campoExtra) {
+      const { error } = await supabase.rpc('definir_chave_pix_pagamento', {
+        p_barraca_id: barracaId,
+        p_provedor: provedor.chave,
+        p_chave: dadoExtra.trim(),
+      })
+      falha = error
+    }
 
     setProcessando(false)
 
-    if (error) {
-      setErro(mensagemErroSalvar(error))
+    if (falha) {
+      setErro(mensagemErroSalvar(falha))
       return
     }
 
@@ -2050,13 +2072,26 @@ function BottomSheetTokenPagamento({
 
       <form onSubmit={salvar} className="mt-4 flex flex-col gap-4">
         <Input
-          label={provedor.rotuloToken}
+          label={exigeToken ? provedor.rotuloToken : `${provedor.rotuloToken} (deixe em branco para manter)`}
           type="password"
           autoComplete="off"
           autoFocus
           value={token}
           onChange={(e) => setToken(e.target.value)}
         />
+        {provedor.campoExtra && (
+          <div>
+            <Input
+              label={provedor.campoExtra.rotulo}
+              type="text"
+              autoComplete="off"
+              maxLength={140}
+              value={dadoExtra}
+              onChange={(e) => setDadoExtra(e.target.value)}
+            />
+            <p className="mt-1 text-xs text-mesa-text-secondary">{provedor.campoExtra.ajuda}</p>
+          </div>
+        )}
         {erro && <p className="text-sm font-medium text-mesa-error-500">{erro}</p>}
         <Button
           type="submit"
@@ -2086,6 +2121,7 @@ function SecaoPagamentoOnline({ barraca }: { barraca: Barraca }) {
   const provedor = provedorPixDaBarraca(provedorR.valor)
   const salvarProvedor = useSalvarBarraca(barraca)
   const [tokenConfigurado, setTokenConfigurado] = useState<boolean | null>(null)
+  const [tokenJaSalvo, setTokenJaSalvo] = useState(false)
   const [erroToken, setErroToken] = useState<string | null>(null)
   const [recargaToken, setRecargaToken] = useState(0)
   const [mostrarSheetToken, setMostrarSheetToken] = useState(false)
@@ -2094,17 +2130,24 @@ function SecaoPagamentoOnline({ barraca }: { barraca: Barraca }) {
   useEffect(() => {
     let cancelado = false
 
-    supabase
-      .rpc('token_pagamento_configurado', { p_barraca_id: barraca.id, p_provedor: provedor.chave })
-      .then(({ data, error }) => {
-        if (cancelado) return
-        if (error) {
-          setErroToken(mensagemErroSalvar(error).replace('salvar', 'verificar o token'))
-          return
-        }
-        setErroToken(null)
-        setTokenConfigurado(Boolean(data))
-      })
+    const verificarToken = supabase.rpc('token_pagamento_configurado', {
+      p_barraca_id: barraca.id,
+      p_provedor: provedor.chave,
+    })
+    const verificarExtra = provedor.campoExtra
+      ? supabase.rpc('chave_pix_pagamento_configurada', { p_barraca_id: barraca.id, p_provedor: provedor.chave })
+      : Promise.resolve({ data: true, error: null })
+    Promise.all([verificarToken, verificarExtra]).then(([token, extra]) => {
+      if (cancelado) return
+      const error = token.error ?? extra.error
+      if (error) {
+        setErroToken(mensagemErroSalvar(error).replace('salvar', 'verificar o token'))
+        return
+      }
+      setErroToken(null)
+      setTokenJaSalvo(Boolean(token.data))
+      setTokenConfigurado(Boolean(token.data) && Boolean(extra.data))
+    })
 
     return () => {
       cancelado = true
@@ -2133,6 +2176,12 @@ function SecaoPagamentoOnline({ barraca }: { barraca: Barraca }) {
           nem repassa esse valor. Só depois do pagamento confirmado o pedido feito no cardápio digital
           cai na Cozinha.
         </p>
+
+        {provedor.avisoCusto && (
+          <p className="mt-3 rounded-mesa-md border-l-[3px] border-mesa-warning-500 bg-mesa-warning-50 p-3 text-sm font-medium text-mesa-warning-700 dark:bg-mesa-warning-500/15">
+            {provedor.avisoCusto}
+          </p>
+        )}
 
         {PROVEDORES_PIX_DISPONIVEIS.length > 1 && (
           <div className="mt-4">
@@ -2194,6 +2243,7 @@ function SecaoPagamentoOnline({ barraca }: { barraca: Barraca }) {
       <BottomSheetTokenPagamento
         barracaId={barraca.id}
         provedor={provedor}
+        tokenJaConfigurado={tokenJaSalvo}
         open={mostrarSheetToken}
         onClose={() => setMostrarSheetToken(false)}
         onSucesso={() => setRecargaToken((n) => n + 1)}
