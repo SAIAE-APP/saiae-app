@@ -98,6 +98,13 @@ RISCO NÃO VALIDADO EM APARELHO: se o plugin mantiver o socket aberto depois de
 imprimir, o 2º celular falha mesmo com as retentativas (a correção seria o
 plugin desconectar após cada impressão). Plugin só fala SPP clássico;
 impressoras só-BLE não são suportadas.
+A COMANDA impressa (não fiscal) também leva o rodapé "PROCON 151" + "Sede:
+<barracas.procon_endereco>" (sem toggle; sem endereço cadastrado sai só o 151),
+por exigência da autuação do PROCON (decisão do João, 2026-10-07, PR #37): o
+cliente imprime a comanda, não só o cupom fiscal. Texto sem acento, quebrado na
+largura do papel (32 colunas no 58mm, 48 no 80mm) em `src/lib/rodapeProcon.ts`,
+usado também pelo cupom fiscal. A impressão automática relê a barraca do
+servidor se o cache não tiver `procon_endereco` (`carregarConfigImpressora`).
 
 **Fichas antigas (2026-10-04, relato do cliente: aparelho antigo imprimiu
 senha 32 estando na 50):** causa mais provável era operação velha da fila
@@ -109,17 +116,32 @@ imprime sozinho, marca como tratado e mostra aviso tocável "Toque para
 imprimir" (nunca em silêncio). É hipótese, não foi reproduzida nem testada
 no aparelho.
 
-**Android / Bluetooth (2026-10-04) — NÃO foi gerada build nova.** O repo já
+**Android / Bluetooth (2026-10-04; atualizado em 2026-10-07).** O repo já
 tem, em `main`, `minSdkVersion = 24` (não dá pra descer: o Cordova que o
 `@capacitor/android` 8 traz exige 24), permissões `BLUETOOTH`/
 `BLUETOOTH_ADMIN` (até o Android 11) e `BLUETOOTH_CONNECT` no manifest, e o
 patch do plugin térmico (`patches/@devlas+capacitor-thermal-printer+0.8.0.patch`,
 `bluetoothConcedido()`: antes do Android 12 conta como concedido — sem isso
 `list`/`print` davam sempre `permission_denied` em Android 7–11). Decisão do
-dono do produto (2026-10-05): **o APK/AAB em produção fica como está** e
-nada disso foi testado em aparelho. Quem gerar a próxima build leva essas
-mudanças sem teste: rodar `npm install` (aplica o patch) e validar em
-aparelho Android 7–11 e 12+ antes de publicar.
+dono do produto (2026-10-05): o APK/AAB em produção ficou como estava até a
+build 1.9. **Build 1.9 (2026-10-07)**: `versionName 1.9`; o `.aab` versionCode 11
+abriu em TELA BRANCA e foi descartado; o versionCode 12 corrigiu e abre
+(teste fechado na Play Console). A impressão por aparelho e o Bluetooth em
+Android 7–11 e 12+ continuam SEM validação em aparelho.
+
+**Build Android: o `.env` de produção é obrigatório (PR #35).** O Vite grava
+`VITE_SUPABASE_URL`/`VITE_SUPABASE_ANON_KEY` dentro do JS no momento do build e
+`src/lib/supabase.ts` lança erro ao carregar se faltarem: um build numa cópia
+limpa do `main` (sem `.env`, que não vai pro git) gera um app que abre em tela
+branca. `npm run android:sync` agora roda `scripts/verificar-env-build.mjs` e
+aborta se a URL (`https://<ref>.supabase.co`) ou a chave faltarem. Para gerar
+o `.aab`: copiar o env de PRODUÇÃO para `.env.local` na pasta do build (o
+projeto de produção é `vimjwzumjggrlvlxdejr`; cuidado com env antigo apontando
+para outro projeto), `npm run android:sync`, conferir que `dist/assets/index-*.js`
+contém a URL de produção, e `gradlew bundleRelease` assinado com a MESMA chave
+de upload da Play (`keystore.properties` fora do git). A Play não aceita
+repetir `versionCode`: subir a cada build. Validar em aparelho Android 7–11 e
+12+ antes de liberar ao cliente.
 
 ## Regras de produto
 - Senha sequencial por pedido, reinicia todo dia
@@ -132,6 +154,13 @@ aparelho Android 7–11 e 12+ antes de publicar.
   (Retirada OU Entrega), então relatórios/Cozinha antigos seguem valendo —
   Relatório/Faturamento e Histórico (2026-10-05) já SEPARAM Retirada de
   Entrega ("Tipo de atendimento", filtros e coluna "Tipo" na planilha).
+  Cardápio digital PÚBLICO (2026-10-07, PR #38): só oferece Retirada e Entrega ao
+  consumidor (Mesa/Balcão saíram da UI pública; o servidor segue aceitando os
+  tipos antigos). Respeita o que a barraca ligou: Retirada se ligada; Entrega se
+  ligada E finalizável (WhatsApp do dono ou pagamento online); nenhum dos dois =>
+  Retirada (`modosDoCardapioPublico`). Com 2 modos aparece o bloco grande
+  "Como você quer receber?" no topo (`EscolhaModo`); com 1 só, o resumo do
+  carrinho mostra "Só entrega"/"Só retirada".
   `tipo_atendimento` NULL (pedido antigo, cardápio digital) é
   derivado de mesa/viagem (`tipoDoPedido`, `src/lib/atendimento.ts`).
   Cardápio digital público (2026-10-05) só oferece os modos que a barraca
@@ -177,7 +206,7 @@ aparelho Android 7–11 e 12+ antes de publicar.
   servidor; NULL nos antigos) e `entrega_confirmada_em`. Rota pública
   `/e/:token` (`Entregador.tsx`, fora do layout da barraca, sem login): o
   motoboy vê cliente/telefone/endereço/itens/taxa/total, escolhe como o
-  cliente pagou (dinheiro/Pix/débito/crédito, SEM troco) e confirma. RPCs
+  cliente pagou (dinheiro/Pix/débito/crédito, SEM troco) e confirma. O link é montado por `urlPublica` (`src/lib/linkEntregador.ts`, PR #36): no app Android nativo `window.location.origin` é `https://localhost`, então NUNCA monte link público com origin (use `urlPublica`: no nativo vira `VITE_PUBLIC_APP_URL` ou https://app.saiae.com.br). RPCs
   SECURITY DEFINER liberadas pra `anon`: `entregador_pedido(p_token)` e
   `entregador_confirmar(p_token, p_metodo)`, que devolvem `estado` (ok,
   ja_confirmado, cancelado, expirado, invalido, bloqueado...). O método só
@@ -294,6 +323,23 @@ aparelho Android 7–11 e 12+ antes de publicar.
   quem aceitou; "todos" mostra aviso de LGPD. Células que começam com = + - @
   recebem apóstrofo (sem injeção de fórmula). O app não envia mensagem em massa.
   Política de Privacidade (seção 4) descreve finalidade, revogação e exclusão.
+- Importar clientes de entrega (2026-10-07, PR #39, migration
+  `20261012100000_importar_clientes_finais.sql`): botão "Importar" em
+  `SecaoClientesEntrega` (`ImportarClientesSheet`; .csv/.xlsx, mesmo formato do
+  export, 1ª aba; prévia com erros por linha; máx. 2000 linhas e 5 MB; lotes de
+  200). RPC `importar_clientes_finais(p_barraca_id, p_clientes, p_marketing)`,
+  SECURITY DEFINER, só `authenticated` com `usuario_tem_acesso_barraca` (anon sem
+  execute); estados `ok`, `nao_autenticado`, `sem_acesso`, `dados_invalidos`,
+  `lote_grande` (>500 por chamada). Telefone normalizado (só dígitos, sem o 55,
+  10–15 dígitos), nome vazio/telefone inválido = linha ignorada, telefone repetido
+  no lote vale a 1ª ocorrência. DEDUPE por (barraca, telefone): cliente existente
+  NUNCA é sobrescrito, só completa campos VAZIOS; repetir o lote é idempotente
+  (0 inseridos/0 atualizados). Validado no banco real com rollback. LGPD: checkbox
+  OBRIGATÓRIO de autorização do dono; contatos novos entram com origem
+  'importacao' e SEM consentimento de marketing, salvo 2º checkbox (grava
+  `consentimento_marketing_em` só nas linhas NOVAS, nunca altera cadastro
+  existente); `consentimento_lgpd_em` fica NULL (é do próprio cliente, a
+  importação não inventa). Funções puras em `src/lib/importarClientes.ts`.
 - Clientes de entrega (2026-10-04): tabela `clientes_finais` (um endereço
   por cliente, único por `barraca_id`+`telefone`, RLS por
   `usuario_tem_acesso_barraca` com WITH CHECK). Salvo/atualizado em segundo
