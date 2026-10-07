@@ -23,6 +23,7 @@ import { DetalheComanda } from '../components/DetalheComanda'
 import { useToast } from '../components/ui/Toast'
 import { dadosComandaDoPedido } from '../hooks/useImpressaoAutomatica'
 import { descreverErroImpressao, imprimirComanda, impressoraSuportada } from '../lib/impressoraTermica'
+import { comRetentativaDeImpressao } from '../lib/politicaImpressao'
 import type { MotivoCancelamento } from '../lib/cancelamento'
 import type { Barraca, ItemDoPedido, PedidoComItens } from '../types/database'
 import type { StatusConexao } from '../hooks/useRealtimePedidos'
@@ -186,14 +187,18 @@ function CardPedido({
     impressoraSuportada() && barraca.impressora_habilitada && Boolean(barraca.impressora_endereco)
 
   async function imprimirManual() {
-    if (!barraca.impressora_endereco || imprimindo) return
+    const endereco = barraca.impressora_endereco
+    if (!endereco || imprimindo) return
     setImprimindo(true)
     try {
-      await imprimirComanda({
-        endereco: barraca.impressora_endereco,
-        largura: barraca.impressora_largura_papel,
-        dados: dadosComandaDoPedido(pedido, barraca),
-      })
+      // Mesma retentativa da impressão automática: os aparelhos dividem a impressora.
+      await comRetentativaDeImpressao(() =>
+        imprimirComanda({
+          endereco,
+          largura: barraca.impressora_largura_papel,
+          dados: dadosComandaDoPedido(pedido, barraca),
+        }),
+      )
       mostrarToast(`Comanda ${pedido.senha ?? ''} impressa.`, { variante: 'sucesso', icone: 'print' })
     } catch (erro) {
       console.error('[impressora] reimpressão falhou', erro)
