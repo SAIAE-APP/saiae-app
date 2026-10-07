@@ -175,6 +175,13 @@ export function Privacidade() {
               conecta ao WhatsApp e não recebe cópia dela.
             </ItemLista>
             <ItemLista>
+              <strong>WhatsApp para avisar "pedido pronto" (opcional):</strong> o cliente pode informar o
+              número ao fazer o pedido (na barraca ou no cardápio digital). Ele serve <strong>somente</strong>{' '}
+              para a barraca avisar que aquele pedido ficou pronto, abrindo o WhatsApp do aparelho dela. Não
+              entra no cadastro de clientes de entrega, não é usado para ofertas e fica guardado junto do
+              pedido, sendo apagado quando o pedido é apagado (Apagar período ou exclusão da barraca).
+            </ItemLista>
+            <ItemLista>
               <strong>Contato comercial (opcional):</strong> no cardápio digital, quem pede entrega pode
               marcar, em uma caixa separada, que aceita receber ofertas e novidades da loja por WhatsApp.
               Sem essa marcação os dados servem só para entregar o pedido. A barraca pode exportar uma

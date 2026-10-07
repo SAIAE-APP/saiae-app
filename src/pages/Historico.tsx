@@ -13,6 +13,7 @@ import { useOcultarAoRolar } from '../hooks/useOcultarAoRolar'
 import { useAssinaturaBarraca } from '../hooks/useAssinaturaBarraca'
 import type { TipoFiltroRelatorio } from '../lib/relatorio'
 import { GateSenhaAdmin } from '../components/GateSenhaAdmin'
+import { BotaoAvisarCliente } from '../components/BotaoAvisarCliente'
 import { BotoesLinkEntregador } from '../components/BotoesLinkEntregador'
 import { Badge } from '../components/ui/Badge'
 import { BotaoHome } from '../components/ui/BotaoHome'
@@ -284,6 +285,7 @@ function CardHistorico({
   pedido: PedidoComItens
   onRestaurar: (pedido: PedidoComItens) => void
 }) {
+  const barraca = useBarracaAtual()
   const tempoTotal = pedido.entregue_em ? minutosEntre(pedido.criado_em, pedido.entregue_em) : null
   const cancelado = pedido.status === 'cancelado'
   const itensAtivos = pedido.itens_do_pedido.filter((item) => !item.removido)
@@ -349,6 +351,8 @@ function CardHistorico({
           Motivo: {motivoHumanizado(pedido.motivo_cancelamento)}
         </p>
       )}
+
+      <BotaoAvisarCliente pedido={pedido} barraca={barraca} compacto />
 
       {pedido.entrega_token && pedido.status !== 'entregue' && !cancelado && (
         <BotoesLinkEntregador token={pedido.entrega_token} senha={pedido.senha} compacto />

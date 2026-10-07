@@ -50,6 +50,14 @@ async function executarOperacao(op: OperacaoPendente): Promise<void> {
     case 'criar_pedido': {
       let payload = op.payload
       let { data, error } = await supabase.rpc('criar_pedido', payload).single()
+      // Banco ainda sem a v8 (p_cliente_telefone): reenvia sem o telefone. Ele só serve
+      // pra avisar "pronto" (opcional), então o pedido entra normalmente.
+      if (error?.code === 'PGRST202' && 'p_cliente_telefone' in payload) {
+        const { p_cliente_telefone: _semTelefone, ...semTelefone } = payload
+        void _semTelefone
+        payload = semTelefone
+        ;({ data, error } = await supabase.rpc('criar_pedido', payload).single())
+      }
       // Banco ainda sem a v7 (p_cliente_nome): reenvia sem o nome. O nome é
       // opcional, então o pedido entra normalmente e a fila não trava (na
       // Entrega o nome continua indo em p_entrega).

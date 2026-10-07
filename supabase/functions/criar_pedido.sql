@@ -39,6 +39,9 @@
 -- v7 (2026-10-06): aceita p_cliente_nome (opcional, todos os modos) e grava em
 -- pedidos.cliente_nome — ver migração 20261006120000_criar_pedido_v7_cliente_nome.sql.
 -- Aquela migração derruba a assinatura de 10 args.
+-- v8 (2026-10-08): aceita p_cliente_telefone (opcional, só pra avisar "pedido pronto")
+-- e grava em pedidos.cliente_telefone — ver 20261008120000_aviso_pedido_pronto.sql.
+-- Aquela migração derruba a assinatura de 11 args.
 
 CREATE OR REPLACE FUNCTION public.criar_pedido(
   p_barraca_id uuid,
@@ -51,7 +54,8 @@ CREATE OR REPLACE FUNCTION public.criar_pedido(
   p_tipo_atendimento text default null,
   p_entrega jsonb default null,
   p_taxa_entrega_centavos integer default 0,
-  p_cliente_nome text default null
+  p_cliente_nome text default null,
+  p_cliente_telefone text default null
 )
 RETURNS TABLE(pedido_id uuid, senha integer)
 LANGUAGE plpgsql
@@ -65,6 +69,7 @@ declare
   v_total_itens int;
   v_itens_entrega_direta int;
   v_pedido_todo_entrega_direta boolean;
+  v_telefone text := public.normalizar_telefone_aviso(p_cliente_telefone);
 begin
   -- Idempotência via client_uuid (protege contra duplo toque)
   select p.id, p.senha into v_id, v_senha
@@ -97,6 +102,7 @@ begin
     entrega_referencia,
     taxa_entrega_centavos,
     cliente_nome,
+    cliente_telefone,
     observacao,
     client_uuid,
     metodo_pagamento,
@@ -117,6 +123,7 @@ begin
     nullif(trim(p_entrega->>'referencia'), ''),
     greatest(coalesce(p_taxa_entrega_centavos, 0), 0),
     coalesce(nullif(trim(p_cliente_nome), ''), nullif(trim(p_entrega->>'nome'), '')),
+    v_telefone,
     p_observacao,
     p_client_uuid,
     p_metodo_pagamento,

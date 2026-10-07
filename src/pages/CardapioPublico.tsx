@@ -495,6 +495,8 @@ export function CardapioPublico() {
   const [telefoneCliente, setTelefoneCliente] = useState('')
   const [enderecoCliente, setEnderecoCliente] = useState('')
   const [honeypot, setHoneypot] = useState('')
+  // WhatsApp opcional só pra avisar "pedido pronto" (Retirada/Balcão/Mesa com Pix).
+  const [telefoneAviso, setTelefoneAviso] = useState('')
   // Entrega estruturada (modo Entrega do cardápio)
   const [ruaCliente, setRuaCliente] = useState('')
   const [numeroCliente, setNumeroCliente] = useState('')
@@ -702,6 +704,7 @@ export function CardapioPublico() {
     // senão o servidor devolveria o QR antigo, com o endereço/taxa antigos.
     if (pagamento.fase === 'aguardando') clientUuidRef.current = crypto.randomUUID()
     if (pagamento.fase === 'aprovado' || pagamento.fase === 'entrega_enviada') {
+      setTelefoneAviso('')
       setCarrinho({})
       setMesa('')
       setObservacao('')
@@ -723,6 +726,8 @@ export function CardapioPublico() {
         viagem: modoEfetivo === 'retirada',
         observacao: observacao.trim() || null,
         client_uuid: clientUuidRef.current,
+        // Só quando preenchido; o servidor ignora número inválido.
+        ...(telefoneAviso.trim() ? { cliente_telefone: telefoneAviso.trim() } : {}),
         itens: itensCarrinho.map((l) => ({ item_id: l.item.item_id, quantidade: l.quantidade })),
       },
     })
@@ -1262,6 +1267,19 @@ export function CardapioPublico() {
               placeholder="Observação do pedido (opcional)"
               aria-label="Observação do pedido"
             />
+
+            {podeComprar && !entregaNoCardapio && (
+              <Input
+                label="Seu WhatsApp (opcional)"
+                type="text"
+                inputMode="tel"
+                autoComplete="tel"
+                maxLength={20}
+                value={telefoneAviso}
+                onChange={(e) => setTelefoneAviso(e.target.value)}
+                helpText="Só para avisar quando o pedido ficar pronto. Não usamos para outra finalidade."
+              />
+            )}
 
             <div className="flex items-center justify-between border-t border-mesa-border-subtle pt-3">
               <span className="text-sm text-mesa-text-secondary">Total</span>
