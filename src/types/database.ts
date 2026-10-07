@@ -24,6 +24,8 @@ export type Barraca = {
   impressora_nome: string | null
   impressora_largura_papel: LarguraPapel
   pagamento_online_habilitado: boolean
+  /** Provedor do Pix online ('mercadopago' = padrão; cache antigo sem o campo vale Mercado Pago). */
+  pagamento_provedor?: string
   /** WhatsApp do dono (só dígitos) e liga/desliga do "Pagar na entrega" no cardápio. */
   whatsapp_pedidos?: string | null
   pagar_na_entrega_habilitado?: boolean

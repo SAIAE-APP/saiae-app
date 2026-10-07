@@ -33,6 +33,12 @@ import { SecaoTaxaEntrega } from '../components/SecaoTaxaEntrega'
 import { SecaoBairrosEntrega } from '../components/SecaoBairrosEntrega'
 import { SecaoClientesEntrega } from '../components/SecaoClientesEntrega'
 import { SecaoPagarNaEntrega } from '../components/SecaoPagarNaEntrega'
+import {
+  PROVEDORES_PIX_DISPONIVEIS,
+  provedorPixDaBarraca,
+  type ChaveProvedorPix,
+  type ProvedorPixInfo,
+} from '../lib/provedoresPix'
 import { SecaoAvisoPronto } from '../components/SecaoAvisoPronto'
 import { EmitenteFiscal } from '../components/EmitenteFiscal'
 import { Button } from '../components/ui/Button'
@@ -1792,11 +1798,13 @@ function SecaoFiscal({ barraca }: { barraca: Barraca }) {
 
 function BottomSheetTokenPagamento({
   barracaId,
+  provedor,
   open,
   onClose,
   onSucesso,
 }: {
   barracaId: string
+  provedor: ProvedorPixInfo
   open: boolean
   onClose: () => void
   onSucesso: () => void
@@ -1816,7 +1824,7 @@ function BottomSheetTokenPagamento({
     if (processando) return
 
     if (!token.trim()) {
-      setErro('Cole o Access Token gerado no painel do Mercado Pago')
+      setErro(`Cole o ${provedor.rotuloToken} gerado no painel do ${provedor.nome}`)
       return
     }
 
@@ -1831,6 +1839,7 @@ function BottomSheetTokenPagamento({
     const { error } = await supabase.rpc('definir_token_pagamento', {
       p_barraca_id: barracaId,
       p_token: token.trim(),
+      p_provedor: provedor.chave,
     })
 
     setProcessando(false)
@@ -1845,16 +1854,18 @@ function BottomSheetTokenPagamento({
   }
 
   return (
-    <BottomSheet open={open} onClose={fechar} aria-label="Access Token do Mercado Pago">
-      <h2 className="text-lg font-semibold text-mesa-text-primary">Access Token do Mercado Pago</h2>
+    <BottomSheet open={open} onClose={fechar} aria-label={`${provedor.rotuloToken} do ${provedor.nome}`}>
+      <h2 className="text-lg font-semibold text-mesa-text-primary">
+        {provedor.rotuloToken} do {provedor.nome}
+      </h2>
       <p className="mt-1 text-sm text-mesa-text-secondary">
-        Gerado no painel de desenvolvedores da sua conta Mercado Pago ("Suas integrações" → credenciais
-        de produção). Fica guardado só pra uso do sistema, não é mostrado de novo depois de salvo.
+        {provedor.ondeAcharToken} Fica guardado só pra uso do sistema, não é mostrado de novo depois de
+        salvo.
       </p>
 
       <form onSubmit={salvar} className="mt-4 flex flex-col gap-4">
         <Input
-          label="Access Token"
+          label={provedor.rotuloToken}
           type="password"
           autoComplete="off"
           autoFocus
@@ -1884,6 +1895,11 @@ function SecaoPagamentoOnline({ barraca }: { barraca: Barraca }) {
   const habilitadoR = useRascunho(barraca.pagamento_online_habilitado)
   const habilitado = habilitadoR.valor
   const salvarHabilitado = useSalvarBarraca(barraca)
+  // Provedor do Pix. Hoje só o Mercado Pago está publicado; o seletor aparece sozinho
+  // quando houver mais de um disponível (próximas stories).
+  const provedorR = useRascunho(provedorPixDaBarraca(barraca.pagamento_provedor).chave)
+  const provedor = provedorPixDaBarraca(provedorR.valor)
+  const salvarProvedor = useSalvarBarraca(barraca)
   const [tokenConfigurado, setTokenConfigurado] = useState<boolean | null>(null)
   const [erroToken, setErroToken] = useState<string | null>(null)
   const [recargaToken, setRecargaToken] = useState(0)
@@ -1894,7 +1910,7 @@ function SecaoPagamentoOnline({ barraca }: { barraca: Barraca }) {
     let cancelado = false
 
     supabase
-      .rpc('token_pagamento_configurado', { p_barraca_id: barraca.id })
+      .rpc('token_pagamento_configurado', { p_barraca_id: barraca.id, p_provedor: provedor.chave })
       .then(({ data, error }) => {
         if (cancelado) return
         if (error) {
@@ -1908,7 +1924,14 @@ function SecaoPagamentoOnline({ barraca }: { barraca: Barraca }) {
     return () => {
       cancelado = true
     }
-  }, [barraca.id, recargaToken])
+  }, [barraca.id, provedor.chave, recargaToken])
+
+  async function trocarProvedor(chave: string) {
+    provedorR.definir(chave as ChaveProvedorPix)
+    setTokenConfigurado(null)
+    await salvarProvedor.salvar({ pagamento_provedor: chave })
+    provedorR.descartar()
+  }
 
   async function alternarHabilitado(valor: boolean) {
     habilitadoR.definir(valor)
@@ -1921,10 +1944,28 @@ function SecaoPagamentoOnline({ barraca }: { barraca: Barraca }) {
       <RotuloSecao icone="payments">Pagamento online</RotuloSecao>
       <Card>
         <p className="text-sm text-mesa-text-secondary">
-          Crie uma conta no Mercado Pago em nome da sua barraca e cole o Access Token de produção
-          abaixo — o dinheiro do Pix cai direto na sua conta, o Sai aê nunca guarda nem repassa esse
-          valor. Só depois do pagamento confirmado o pedido feito no cardápio digital cai na Cozinha.
+          {provedor.descricaoConta} — o dinheiro do Pix cai direto na sua conta, o Sai aê nunca guarda
+          nem repassa esse valor. Só depois do pagamento confirmado o pedido feito no cardápio digital
+          cai na Cozinha.
         </p>
+
+        {PROVEDORES_PIX_DISPONIVEIS.length > 1 && (
+          <div className="mt-4">
+            <p className="mb-2 text-sm font-medium text-mesa-text-primary">Provedor do Pix</p>
+            <div className="flex flex-wrap gap-2" role="radiogroup" aria-label="Provedor do Pix">
+              {PROVEDORES_PIX_DISPONIVEIS.map((p) => (
+                <Chip
+                  key={p.chave}
+                  checked={provedor.chave === p.chave}
+                  onClick={() => void trocarProvedor(p.chave)}
+                >
+                  {p.nome}
+                </Chip>
+              ))}
+            </div>
+            <ErroSalvar erro={salvarProvedor.erro} className="mt-2" />
+          </div>
+        )}
 
         <div className="mt-4 flex items-center justify-between gap-3">
           <span className="text-base text-mesa-text-primary">Pagamento online habilitado</span>
@@ -1937,7 +1978,9 @@ function SecaoPagamentoOnline({ barraca }: { barraca: Barraca }) {
         <ErroSalvar erro={salvarHabilitado.erro} className="mt-2" />
 
         <div className="mt-4">
-          <p className="mb-2 text-sm font-medium text-mesa-text-primary">Access Token do Mercado Pago</p>
+          <p className="mb-2 text-sm font-medium text-mesa-text-primary">
+            {provedor.rotuloToken} do {provedor.nome}
+          </p>
           <div className="flex min-w-[220px] flex-1 items-center justify-between gap-3 rounded-mesa-md border border-mesa-border-subtle p-3">
             <p className="text-xs text-mesa-text-secondary">
               {tokenConfigurado === null
@@ -1965,6 +2008,7 @@ function SecaoPagamentoOnline({ barraca }: { barraca: Barraca }) {
 
       <BottomSheetTokenPagamento
         barracaId={barraca.id}
+        provedor={provedor}
         open={mostrarSheetToken}
         onClose={() => setMostrarSheetToken(false)}
         onSucesso={() => setRecargaToken((n) => n + 1)}
