@@ -16,7 +16,7 @@ import type {
   EstadoParaEditar,
   EstadoPedidoEnviado,
 } from '../lib/carrinho'
-import { METODOS_DISPONIVEIS, humanizarMetodo } from '../lib/metodoPagamento'
+import { METODOS_DISPONIVEIS, METODO_NA_ENTREGA, OPCAO_PAGAR_NA_ENTREGA, humanizarMetodo } from '../lib/metodoPagamento'
 import type { MetodoPagamento } from '../lib/metodoPagamento'
 import { BotaoHome } from '../components/ui/BotaoHome'
 import { BottomSheet } from '../components/ui/BottomSheet'
@@ -127,8 +127,14 @@ export function ConfirmarPedido() {
     }
   }, [estado, barraca.slug, navigate])
 
+  const ehEntrega = estado?.tipoAtendimento === 'entrega'
   const metodosAtivos = barraca.metodos_pagamento_ativos ?? METODOS_PADRAO
-  const opcoesPagamento = METODOS_DISPONIVEIS.filter((m) => metodosAtivos.includes(m.chave))
+  // "Pagar na entrega" (o entregador define a forma real pelo link) só existe no
+  // modo Entrega e vale mesmo que a barraca não tenha método nenhum ativo.
+  const opcoesPagamento: { chave: MetodoPagamento | typeof METODO_NA_ENTREGA; label: string; icone: string }[] = [
+    ...METODOS_DISPONIVEIS.filter((m) => metodosAtivos.includes(m.chave)),
+    ...(ehEntrega ? [OPCAO_PAGAR_NA_ENTREGA] : []),
+  ]
 
   const [entregaDireta, setEntregaDireta] = useState<EntregaDiretaPorItem>(
     () => estado?.entregaDireta ?? {},
@@ -138,10 +144,9 @@ export function ConfirmarPedido() {
   // observação à cozinha". Precisa ser state (não só ler de `estado`) pra
   // dar pra editar nessa tela.
   const [observacao, setObservacao] = useState(() => estado?.observacao ?? '')
-  const [metodoSelecionado, setMetodoSelecionado] = useState<MetodoPagamento | null>(() =>
+  const [metodoSelecionado, setMetodoSelecionado] = useState<MetodoPagamento | typeof METODO_NA_ENTREGA | null>(() =>
     opcoesPagamento.length === 1 ? opcoesPagamento[0].chave : null,
   )
-  const ehEntrega = estado?.tipoAtendimento === 'entrega'
   const configTaxa = configTaxaEntrega(barraca)
   const bairrosTaxa = useBairrosEntrega(barraca.id)
   const configBairros = configBairrosDaBarraca(barraca)
@@ -236,6 +241,8 @@ export function ConfirmarPedido() {
 
   async function enviarPedido(forcarEntregaDiretaEmTudo: boolean) {
     if (enviandoRef.current || !metodoSelecionado) return
+    // "Pagar na entrega" só vale no modo Entrega (o link do entregador define o método).
+    if (metodoSelecionado === METODO_NA_ENTREGA && !ehEntrega) return
     if (ehEntrega && Object.keys(errosEntrega).length > 0) {
       setMostrarErrosEntrega(true)
       return

@@ -25,6 +25,7 @@ import { Icone } from '../components/ui/Icone'
 import { Input } from '../components/ui/Input'
 import { SegmentedControl } from '../components/ui/SegmentedControl'
 import { useToast } from '../components/ui/Toast'
+import { BotaoDefinirPagamento } from '../components/BotaoDefinirPagamento'
 import { ambienteDaNota, cpfValido, formatarCpf } from '../lib/fiscal'
 import { descreverErroImpressao, imprimirCupomFiscal, impressoraSuportada } from '../lib/impressoraTermica'
 import type { Item, PedidoComItens } from '../types/database'
@@ -289,9 +290,11 @@ function BotaoEmitirNota({ pedido }: { pedido: PedidoComItens }) {
 function CardHistorico({
   pedido,
   onRestaurar,
+  onMetodoDefinido,
 }: {
   pedido: PedidoComItens
   onRestaurar: (pedido: PedidoComItens) => void
+  onMetodoDefinido: (pedidoId: string, metodo: string) => void
 }) {
   const barraca = useBarracaAtual()
   const tempoTotal = pedido.entregue_em ? minutosEntre(pedido.criado_em, pedido.entregue_em) : null
@@ -381,6 +384,12 @@ function CardHistorico({
             </Chip>
           ))}
         </div>
+      )}
+
+      {/* Pedido "A definir na entrega" que o entregador não resolveu: sem forma real
+          a NFC-e não emite. O operador define aqui (só online). */}
+      {!cancelado && pedido.metodo_pagamento === 'na_entrega' && (
+        <BotaoDefinirPagamento pedidoId={pedido.id} onDefinido={(metodo) => onMetodoDefinido(pedido.id, metodo)} />
       )}
 
       {!cancelado && <BotaoEmitirNota pedido={pedido} />}
@@ -528,6 +537,10 @@ export function Historico() {
   )
 
   const intervaloAtual = calcularIntervalosRelatorio({ tipo: periodoEfetivo, dataInicio, dataFim }).atual
+
+  function metodoDefinido(pedidoId: string, metodo: string) {
+    setPedidos((atual) => atual.map((p) => (p.id === pedidoId ? { ...p, metodo_pagamento: metodo } : p)))
+  }
 
   async function restaurarPedido(pedido: PedidoComItens) {
     setPedidos((atual) => atual.filter((p) => p.id !== pedido.id))
@@ -798,7 +811,12 @@ export function Historico() {
         {!carregando && !erro && pedidosExibidos.length > 0 && (
           <div className="flex flex-col gap-4 md:grid md:grid-cols-2 md:items-start md:gap-4 xl:grid-cols-3">
             {pedidosExibidos.map((pedido) => (
-              <CardHistorico key={pedido.id} pedido={pedido} onRestaurar={restaurarPedido} />
+              <CardHistorico
+                key={pedido.id}
+                pedido={pedido}
+                onRestaurar={restaurarPedido}
+                onMetodoDefinido={metodoDefinido}
+              />
             ))}
           </div>
         )}

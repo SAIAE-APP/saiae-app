@@ -82,9 +82,21 @@ por ele que pedidos do cardápio digital (Pix) podem ser impressos hoje.
 **Pedidos do cardápio digital (Pix) JÁ imprimem sozinhos** (revisado
 2026-10-06): `useImpressaoAutomatica` tem dois caminhos — (a) pedido criado
 neste aparelho, ao receber a senha; (b) pedido novo que chega pelo Realtime
-(INSERT em `pedidos`), que cobre cardápio/Pix. Com 2+ aparelhos ouvindo, a
-RPC `reivindicar_impressao_comanda` (`pedidos.comanda_impressa_em`, UPDATE
-atômico) garante uma impressão só. Plugin só fala SPP clássico;
+(INSERT em `pedidos`), que cobre cardápio/Pix. UMA via por APARELHO (Sprint 6, 2026-10-07, PR #26): cada aparelho com
+impressora habilitada imprime a sua via de cada pedido, uma vez só; com 2
+aparelhos ligados saem 2 vias. NÃO existe mais trava global entre aparelhos:
+`reivindicar_impressao_comanda` virou só telemetria (grava
+`pedidos.comanda_impressa_em` depois de imprimir, resposta ignorada; a RPC e a
+coluna continuam no banco). A idempotência é POR APARELHO, pelo id E pelo
+`client_uuid` do pedido (Set em memória + localStorage), então o caminho (a),
+o Realtime (b) e reconexões nunca imprimem duas vezes no mesmo aparelho. Os
+dois celulares do cliente dividem a MESMA impressora Bluetooth (SPP aceita uma
+conexão por vez): erro de conexão/ocupada tenta de novo até 4 vezes, esperando
+1–3 s aleatórios (`src/lib/politicaImpressao.ts`, testes em `npm test`) antes
+do toast "Toque para reimprimir"; vale também para o botão manual da Cozinha.
+RISCO NÃO VALIDADO EM APARELHO: se o plugin mantiver o socket aberto depois de
+imprimir, o 2º celular falha mesmo com as retentativas (a correção seria o
+plugin desconectar após cada impressão). Plugin só fala SPP clássico;
 impressoras só-BLE não são suportadas.
 
 **Fichas antigas (2026-10-04, relato do cliente: aparelho antigo imprimiu
@@ -123,7 +135,8 @@ aparelho Android 7–11 e 12+ antes de publicar.
   `tipo_atendimento` NULL (pedido antigo, cardápio digital) é
   derivado de mesa/viagem (`tipoDoPedido`, `src/lib/atendimento.ts`).
   Cardápio digital público (2026-10-05) só oferece os modos que a barraca
-  ligou, sem Entrega (não coleta endereço/taxa): `cardapio_publico` devolve
+  ligou (Entrega com endereço e taxa por bairro desde 2026-10-07, ver "Taxa por
+  bairro e Entrega no cardápio"): `cardapio_publico` devolve
   `barraca_modos_atendimento` e `modosDoCardapioPublico` trata resposta
   antiga ou barraca só com Entrega como modos padrão.
   Comanda impressa traz `*** RETIRADA ***`/`*** ENTREGA ***` em 2x logo
@@ -151,8 +164,8 @@ aparelho Android 7–11 e 12+ antes de publicar.
   pedido (`pedidos.taxa_entrega_centavos`). Configurável em Ajustes
   (`SecaoTaxaEntrega`: liga/desliga, valor padrão, editável ou não no
   pedido; `barracas.taxa_entrega_*`, desligada por padrão). Sem controle do
-  que se paga ao motoboy (fora do escopo). Taxa única por barraca; por
-  bairro/distância é pergunta em aberto do backlog, não implementada.
+  que se paga ao motoboy (fora do escopo). Taxa padrão por barraca + taxa por BAIRRO (2026-10-07, ver "Taxa por bairro e
+  Entrega no cardápio"); por distância não existe.
   **Decisão do dono do produto (2026-10-05): a taxa fica POR FORA da
   NFC-e** — não entra em `emitir-nfce` nem em `montarCupomFiscal`, de
   propósito. Consequência assumida: nota de pedido com entrega sai com
@@ -205,6 +218,46 @@ aparelho Android 7–11 e 12+ antes de publicar.
   ao `criar_pedido` e faz upsert best-effort em `clientes_finais`
   (`origem='cardapio'`, `consentimento_lgpd_em`). Sem `entrega` segue o modo
   antigo (nome/telefone/endereço livre). A taxa continua FORA da NFC-e.
+- Bairros no cardápio público (correção 2026-10-09): a lista de bairros é buscada
+  de novo sempre que o checkout ou o formulário de Entrega abrem, o modo muda, a
+  aba volta ao foco e no "Tentar de novo" (antes só no load, e ficava velha se o dono
+  cadastrasse o bairro com a aba aberta: o campo caía em texto livre com a taxa
+  padrão). Falha ao buscar não é mais silenciosa (console.warn + aviso "valor final
+  confirmado ao enviar"). O "Pagar na entrega" estruturado agora manda
+  `total_esperado_centavos` e o servidor devolve 409 com o novo total se a taxa
+  divergir (Pix já fazia); a prévia passa a usar o valor do servidor. Regras puras de
+  bairro em `src/lib/bairrosTaxa.ts` (testadas em `tests/bairros.test.ts`, `npm test`).
+- Provedores de Pix (2026-10-09, Sprint 5 Story A, migration
+  `20261009120000`): o Pix online passa por uma interface `ProvedorPix`
+  (`supabase/functions/_shared/pagamento/`: `tipos.ts`, `registro.ts`,
+  `token.ts`, um arquivo por provedor, hoje só `mercadopago.ts`) usada por
+  `criar-pagamento-pix` e `webhook-mercadopago`. NENHUM comportamento do
+  Mercado Pago mudou; só foi movido pra trás da interface. Provedor da barraca
+  = `barracas.pagamento_provedor` (padrão 'mercadopago', CHECK em mercadopago,
+  pagbank, asaas, woovi, abacatepay); a cobrança grava o provedor em
+  `pagamentos_pendentes.provedor`, então trocar depois não afeta cobranças já
+  emitidas. Token: `barracas_pagamento_token` agora é (barraca_id, provedor)
+  com PK composta; as linhas do Mercado Pago migram sozinhas (default), as RPCs
+  `definir_token_pagamento`/`token_pagamento_configurado` ganharam
+  `p_provedor` com default 'mercadopago' (chamada antiga continua valendo) e o
+  token continua sem policy de select. O webhook segue UM endpoint
+  (`webhook-mercadopago`, nome histórico mantido de propósito: URLs já emitidas
+  apontam pra ele; sem alias novo pra não precisar de outro deploy): a URL de
+  notificação agora é `?pendente=<id>&p=<provedor>` e, SEM `p`, vale Mercado
+  Pago. O webhook usa o provedor da URL, exige que seja o do pendente, consulta o
+  provedor de volta com o token da barraca, confere referência (id do
+  pendente) e valor em centavos inteiros = itens + taxa do snapshot, e só então
+  chama `criar_pedido` (idempotente por `client_uuid`). Erro de rede até o
+  provedor devolve 500 (ele reenvia); resposta de erro do provedor devolve 200.
+  A coluna `mercadopago_order_id` guarda o id externo de QUALQUER provedor
+  (nome histórico). As functions leem `pagamento_provedor`/`provedor` de forma
+  tolerante (linha sem a coluna = Mercado Pago), então subir antes da migration
+  não quebra. Ajustes (`SecaoPagamentoOnline`) lê o provedor de
+  `src/lib/provedoresPix.ts`: só o Mercado Pago está publicado (seletor
+  aparece sozinho quando houver mais de um); PagBank, Asaas e Woovi vêm nas
+  próximas stories, uma por PR. Testes das funções puras (status, centavos,
+  notificação, token):
+  `node --experimental-strip-types supabase/functions/_shared/pagamento/pagamento.test.ts`.
 - Avisar cliente "pedido pronto" (2026-10-08, Sprint 3, migration
   `20261008120000`): campo OPCIONAL "WhatsApp do cliente" em Confirmar Pedido
   (Mesa/Balcão/Retirada; na Entrega vale o telefone do formulário) e no
@@ -271,6 +324,50 @@ aparelho Android 7–11 e 12+ antes de publicar.
   banco não conhece os args novos (PGRST202), pedido comum reenvia sem eles,
   e pedido de Entrega fica ADIADO na fila (`OperacaoAdiadaError`) sem travar
   os outros — não entra sem endereço/taxa.
+- "Pagar na entrega" lançado pelo operador (2026-10-07, PR #23): no modo
+  Entrega, Confirmar Pedido ganha a opção "Pagar na entrega"
+  (`metodo_pagamento = 'na_entrega'`); fora da Entrega ela não existe. A forma
+  real (dinheiro/débito/crédito/Pix) é definida depois, pelo entregador no link
+  (`entregador_confirmar`) ou pelo operador (próximo item). Sem migration (o
+  CHECK `pedidos_metodo_pagamento_check` aceita `na_entrega` desde a migration
+  `20261006160000`). Relatório/Faturamento mostram linha própria "A definir
+  na entrega"; o Caixa só soma `metodo_pagamento = 'dinheiro'`, então pedido
+  "a definir" NÃO entra como dinheiro no caixa. `emitir-nfce` recusa pedido
+  "a definir": só emitir depois de definir a forma.
+- Definir a forma de pagamento (2026-10-07, PR #25, migration
+  `20261010100000_definir_metodo_pagamento.sql`): botão "Definir forma de
+  pagamento" no card do Histórico para pedido "A definir na entrega" (entregador
+  que não abriu o link, ou link expirado em 24 h). RPC SECURITY DEFINER
+  `definir_metodo_pagamento(p_pedido_id, p_metodo)`, só `authenticated`
+  (anon sem acesso), exige `usuario_tem_acesso_barraca`; devolve JSON com
+  `estado`: `ok` (idempotente para o mesmo método), `ja_definido` (NUNCA
+  sobrescreve método já definido), `cancelado`, `metodo_invalido`,
+  `sem_acesso`, `nao_autenticado`. Grava `metodo_definido_em`/`_por`.
+  Online-only por decisão (ação de gestão): sem internet mostra "Sem internet".
+  `entregador_confirmar` também só grava quando o método atual é `na_entrega`.
+  O Caixa conta pelo método vigente no momento da consulta (igual ao link do
+  entregador).
+- Estoque por item com baixa automática (2026-10-07, PR #29, migration
+  `20261010110000_estoque_por_item.sql`; REVERTE a decisão de 2026-09-26 "só o
+  toggle esgotado"). Decisões do dono: controle POR ITEM e opcional
+  (`itens.estoque_qtd`, NULL = não controla, comportamento de sempre); ESGOTA
+  sozinho quando o saldo chega a 0 (`esgotado = true` + `estoque_esgotado_auto`);
+  PODE NEGATIVAR (venda além do saldo, p.ex. operador offline, nunca é
+  bloqueada: erro de contabilidade vira WARNING e o pedido segue); DEVOLVE ao
+  cancelar o pedido ou remover o item. A baixa vive no BANCO (triggers
+  SECURITY DEFINER em `itens_do_pedido`/`pedidos`), então vale para o app
+  online/offline, cardápio digital e Pix (todos passam por `criar_pedido`).
+  Histórico e idempotência em `movimentos_estoque` (venda/cancelamento/
+  remocao/ajuste; índice único parcial por `(item_pedido_id, motivo)`, nunca
+  devolve duas vezes). "Esgotado" marcado à mão (auto = false) NUNCA é
+  desmarcado pelo sistema. "Apagar período" não devolve estoque. Pedido feito
+  antes de ligar o controle no item não baixa nada.
+  Ajustes: controle, saldo inicial, repor/ajustar (RPC `ajustar_estoque`, só
+  `authenticated`) e últimas movimentações; Lançar Pedido mostra "Restam N"
+  com N <= 5. NÃO há Realtime de itens: o saldo é relido ao voltar para o app,
+  ao sincronizar um pedido e a cada 60 s (dois operadores podem vender o
+  último item quase juntos e o saldo fica negativo, como combinado). Vale para
+  todos os planos (não gatear por Essencial/Pro).
 - Observação existe em DOIS níveis (regra mudou em 2026-09-18,
   decisão do dono do produto): `pedidos.observacao` é o recado geral
   do pedido inteiro (ex.: "cliente com pressa"), e
@@ -391,7 +488,7 @@ aparelho Android 7–11 e 12+ antes de publicar.
   técnico pontual (`.timer`, `.step .n`); o app replica o caso do
   timer, que é o único com equivalente na UI do app. Não é uma volta
   geral da Mono — todo o resto continua Outfit.
-- Ícones: fonte PRÓPRIA (2026-10-06): subset de Material Symbols Rounded em `src/assets/fonts/material-symbols-rounded.ttf` (~29KB; FILL 0..1, wght 400..700, opsz 20..48), declarada em `src/index.css` e precacheada pelo service worker. Antes vinha do Google Fonts (1,2MB, `display=block`) e o ícone ficava invisível ~1s — NÃO era o Supabase. Ícone NOVO fora do subset aparece como texto: regerar o subset na API do Google Fonts com `icon_names=` (lista ordenada) incluindo o nome novo. Estilo: Material Symbols Rounded, peso 500, preenchido = estado
+- Ícones: fonte PRÓPRIA (2026-10-06): subset de Material Symbols Rounded em `src/assets/fonts/material-symbols-rounded.ttf` (~29KB; FILL 0..1, wght 400..700, opsz 20..48), declarada em `src/index.css` e precacheada pelo service worker. Antes vinha do Google Fonts (1,2MB, `display=block`) e o ícone ficava invisível ~1s — NÃO era o Supabase. Ícone NOVO fora do subset aparece como texto (ex.: LOCATION_ON). A lista fica em `src/assets/fonts/icones.txt`; acrescente o nome lá e rode `node scripts/gerar-fonte-icones.mjs` (precisa de internet). `npm test` (tests/icones.test.ts) FALHA se um ícone usado em `nome=`/`icone=`/`icon=` não estiver na lista. Estilo: Material Symbols Rounded, peso 500, preenchido = estado
   ativo (ver `src/components/ui/Icone.tsx`)
 - Onboarding (`src/pages/Onboarding.tsx`): carrossel de 4 telas
   mostrado só no primeiro acesso do aparelho (antes do login,
@@ -609,14 +706,15 @@ nenhum item daqui sozinho, só quando for pedido explicitamente.
     "Taxa de entrega" em Regras de produto): `emitir-nfce` e
     `montarCupomFiscal` seguem somando só os itens, nunca
     `pedidos.taxa_entrega_centavos`.
-  - Estoque: item mais delicado por reverter a regra mais antiga do
-    projeto. **Implementado** o mais simples definido em 2026-09-26 —
-    toggle "esgotado" por item (`itens.esgotado`, editável em Ajustes,
-    Lançar Pedido bloqueia adicionar item esgotado) — em vez de
-    controle completo com baixa automática por venda.
+  - Estoque: ver "Estoque por item com baixa automática" em Regras de
+    produto (2026-10-07). A decisão de 2026-09-26 ("só o toggle esgotado, sem
+    baixa por venda") foi REVERTIDA pelo dono do produto; o toggle `esgotado`
+    continua existindo e convive com o controle por quantidade.
   - WhatsApp pra leads (o concorrente tem, manda mensagem automática
-    pro cliente): fora de escopo por enquanto, avaliar depois que o
-    resto acima estiver de pé.
+    pro cliente): envio AUTOMÁTICO continua fora de escopo (exigiria a API
+    oficial do WhatsApp Business: custo por mensagem, templates aprovados,
+    opt-in). Existe só o botão MANUAL "Avisar cliente" (wa.me, o operador
+    toca em enviar) — ver "Avisar cliente".
 - Cadastro self-service e múltiplas barracas por conta: já
   implementado (v2) — qualquer usuário autenticado pode criar sua
   própria barraca e trocar entre as que tem acesso.

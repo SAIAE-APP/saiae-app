@@ -6,7 +6,8 @@ import { supabase } from '../lib/supabase'
 import { classesBotaoIcone } from '../lib/estiloBotaoIcone'
 import { useBarracaAtual, useSincronizacaoAtual } from '../layouts/contextoBarraca'
 import { useTheme } from '../hooks/useTheme'
-import { aoConcluirCriacaoPedido } from '../lib/fila'
+import { aoConcluirCriacaoPedido, aoCriarPedidoLocal } from '../lib/fila'
+import { avisoPassaDoEstoque, excessosDoCarrinho, mensagemExcessos, textoRestam, verificarAdicao } from '../lib/estoque'
 import { formatarPrecoBR } from '../lib/preco'
 import { linkWhatsAppSemNumero, montarMensagemEntregador } from '../lib/entrega'
 import { tocarSomPedidoCriado } from '../lib/sons'
@@ -31,6 +32,7 @@ import { Icone } from '../components/ui/Icone'
 import { Input } from '../components/ui/Input'
 import { SegmentedControl } from '../components/ui/SegmentedControl'
 import { Textarea } from '../components/ui/Textarea'
+import { useToast } from '../components/ui/Toast'
 import { ROTULO_MODO, ehViagem, modoInicial, modosAtivos, tipoDoPedido } from '../lib/atendimento'
 import type { Categoria, Item, TipoAtendimento } from '../types/database'
 
@@ -167,6 +169,16 @@ function CardItemCardapio({
         <p className="mt-1 font-mesa-display text-sm font-semibold text-mesa-text-primary">
           {item.preco_centavos > 0 ? formatarPrecoBR(item.preco_centavos) : 'Sem preço'}
         </p>
+        {!item.esgotado && textoRestam(item) && (
+          <p className="mt-0.5 text-xs font-semibold text-mesa-warning-700 dark:text-mesa-warning-500">
+            {textoRestam(item)}
+          </p>
+        )}
+        {selecionado && avisoPassaDoEstoque(item, quantidade) && (
+          <p role="alert" className="mt-0.5 text-xs font-semibold text-mesa-error-500">
+            {avisoPassaDoEstoque(item, quantidade)}
+          </p>
+        )}
 
         {selecionado && (
           <div className="mt-2 flex items-center justify-between gap-2">
@@ -246,6 +258,16 @@ function CardItemCardapioGrade({
       <p className="mt-1 font-mesa-display text-sm font-semibold text-mesa-text-primary">
         {item.preco_centavos > 0 ? formatarPrecoBR(item.preco_centavos) : 'Sem preço'}
       </p>
+      {!item.esgotado && textoRestam(item) && (
+        <p className="mt-0.5 text-xs font-semibold text-mesa-warning-700 dark:text-mesa-warning-500">
+          {textoRestam(item)}
+        </p>
+      )}
+      {selecionado && avisoPassaDoEstoque(item, quantidade) && (
+        <p role="alert" className="mt-0.5 text-xs font-semibold text-mesa-error-500">
+          {avisoPassaDoEstoque(item, quantidade)}
+        </p>
+      )}
 
       <div className="mt-3">
         {item.esgotado ? (
@@ -368,6 +390,7 @@ function ehEstadoPedidoEnviado(estado: unknown): estado is EstadoPedidoEnviado {
 
 export function LancarPedido() {
   const barraca = useBarracaAtual()
+  const { mostrarToast } = useToast()
   const navigate = useNavigate()
   const location = useLocation()
   const { pendentes, online } = useSincronizacaoAtual()
@@ -535,6 +558,37 @@ export function LancarPedido() {
     }
   }, [barraca.id])
 
+  // Estoque (Sprint 6): o saldo/esgotado muda no banco a cada venda (deste e de outros
+  // aparelhos, cardápio, Pix). Não há Realtime de itens, então relê o cardápio ao voltar
+  // pro app/aba, quando um pedido deste aparelho sincroniza e a cada 60 s. Silencioso: não
+  // pisca a lista nem mexe no carrinho.
+  useEffect(() => {
+    let cancelado = false
+    function recarregar() {
+      if (document.visibilityState === 'hidden') return
+      supabase
+        .from('itens')
+        .select('*')
+        .eq('barraca_id', barraca.id)
+        .eq('ativo', true)
+        .order('ordem')
+        .then(({ data, error }) => {
+          if (!cancelado && !error && data) setItens(data as Item[])
+        })
+    }
+    document.addEventListener('visibilitychange', recarregar)
+    window.addEventListener('focus', recarregar)
+    const cancelarLocal = aoCriarPedidoLocal(() => recarregar())
+    const timer = window.setInterval(recarregar, 60_000)
+    return () => {
+      cancelado = true
+      document.removeEventListener('visibilitychange', recarregar)
+      window.removeEventListener('focus', recarregar)
+      cancelarLocal()
+      window.clearInterval(timer)
+    }
+  }, [barraca.id])
+
   useEffect(() => {
     let cancelado = false
 
@@ -674,6 +728,17 @@ export function LancarPedido() {
   )
 
   function incrementar(itemId: string) {
+    // Estoque: com o bloqueio ligado não passa do saldo conhecido; desligado deixa passar
+    // e avisa na hora. Item sem controle de estoque nunca é afetado.
+    const item = itens.find((i) => i.id === itemId)
+    if (item) {
+      const verificacao = verificarAdicao(item, carrinho[itemId] ?? 0, Boolean(barraca.estoque_bloqueia))
+      if (!verificacao.ok) {
+        mostrarToast(`${item.nome}: ${verificacao.mensagem}`, { variante: 'aviso', icone: 'error' })
+        return
+      }
+      if (verificacao.aviso) mostrarToast(`${item.nome}: ${verificacao.aviso}`, { variante: 'aviso', icone: 'error' })
+    }
     setCarrinho((atual) => ({ ...atual, [itemId]: (atual[itemId] ?? 0) + 1 }))
   }
 
@@ -727,6 +792,15 @@ export function LancarPedido() {
 
   function verNota() {
     if (totalItens === 0) return
+    // Bloqueio ligado: o carrinho pode ter ficado acima do saldo (saldo atualizado depois
+    // de adicionar). Só com o saldo que este aparelho conhece, nunca por rede.
+    if (barraca.estoque_bloqueia) {
+      const excessos = excessosDoCarrinho(itens, carrinho)
+      if (excessos.length > 0) {
+        mostrarToast(`Passa do estoque — ${mensagemExcessos(excessos)}`, { variante: 'aviso', icone: 'error', duracaoMs: 6000 })
+        return
+      }
+    }
     navigate(`/${barraca.slug}/confirmar`, {
       state: {
         carrinho,

@@ -38,6 +38,7 @@ type ItemCadastroRow = {
   preco_centavos: number
   ativo: boolean
   esgotado: boolean
+  estoque_qtd: number | null
 }
 
 const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i
@@ -86,6 +87,8 @@ Deno.serve(async (req: Request) => {
     } | null
     /** Cliente aceitou o aviso de LGPD (obrigatório com `entrega`). */
     consentimento_lgpd?: boolean
+    /** Total que o cliente viu (itens + taxa). Se divergir do calculado aqui, não cria o pedido (409). */
+    total_esperado_centavos?: number | null
     /** Aceite OPCIONAL de ofertas por WhatsApp (separado do consentimento de entrega). */
     consentimento_marketing?: boolean
     /** Honeypot: campo oculto no formulário; humano nunca preenche. */
@@ -169,7 +172,8 @@ Deno.serve(async (req: Request) => {
 
   const { data: barraca } = await supabase
     .from('barracas')
-    .select('id, pagar_na_entrega_habilitado, whatsapp_pedidos, modos_atendimento')
+    // '*': tolera barraca de antes da coluna `estoque_bloqueia` (vale: não bloqueia).
+    .select('*')
     .eq('id', barracaId)
     .maybeSingle()
   if (!barraca) return jsonResponse({ erro: 'Barraca não encontrada' }, 404)
@@ -183,7 +187,7 @@ Deno.serve(async (req: Request) => {
   // Preço e disponibilidade SEMPRE do cadastro real.
   const { data: cadastro, error: erroItens } = await supabase
     .from('itens')
-    .select('id, nome, preco_centavos, ativo, esgotado')
+    .select('id, nome, preco_centavos, ativo, esgotado, estoque_qtd')
     .eq('barraca_id', barracaId)
     .in('id', [...quantidadePorItem.keys()])
   if (erroItens) return jsonResponse({ erro: 'Falha ao carregar o cardápio' }, 500)
@@ -247,6 +251,35 @@ Deno.serve(async (req: Request) => {
       return jsonResponse({ erro: 'Não entregamos nesse bairro.' }, 422)
     }
     taxaEntregaCentavos = Math.max(0, Math.floor(Number(taxa.taxa_centavos) || 0))
+
+    // O cliente confirmou um total na tela; se o servidor chegou a outro (lista de bairros
+    // velha no navegador, dono mexeu na taxa), NÃO cria o pedido sem ele ver o novo valor.
+    const esperado = body.total_esperado_centavos
+    if (esperado !== undefined && esperado !== null && esperado !== totalCentavos + taxaEntregaCentavos) {
+      return jsonResponse(
+        {
+          erro: 'O valor da entrega mudou. Confira o novo total antes de enviar.',
+          total_centavos: totalCentavos + taxaEntregaCentavos,
+          taxa_entrega_centavos: taxaEntregaCentavos,
+        },
+        409,
+      )
+    }
+  }
+
+  // Estoque: com a opção ligada pelo dono, quantidade acima do saldo é recusada AQUI, antes
+  // de criar o pedido. Fica DEPOIS da idempotência acima: pedido já criado nunca é
+  // recusado por estoque. Desligada (padrão), nunca recusa.
+  if (barraca.estoque_bloqueia === true) {
+    const acima = itensResolvidos
+      .map((i) => ({ nome: i.nome_item, quantidade: i.quantidade, saldo: porId.get(i.item_id)?.estoque_qtd ?? null }))
+      .filter((i) => i.saldo !== null && i.quantidade > i.saldo)
+    if (acima.length > 0) {
+      const detalhe = acima
+        .map((i) => ((i.saldo as number) <= 0 ? `${i.nome}: sem estoque` : `${i.nome}: restam ${i.saldo}`))
+        .join('; ')
+      return jsonResponse({ erro: `Sem estoque suficiente — ${detalhe}` }, 422)
+    }
   }
 
   // Teto anti-bot por IP (hash), janela deslizante. Sem limite por barraca.

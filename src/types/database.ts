@@ -24,9 +24,13 @@ export type Barraca = {
   impressora_nome: string | null
   impressora_largura_papel: LarguraPapel
   pagamento_online_habilitado: boolean
+  /** Provedor do Pix online ('mercadopago' = padrão; cache antigo sem o campo vale Mercado Pago). */
+  pagamento_provedor?: string
   /** WhatsApp do dono (só dígitos) e liga/desliga do "Pagar na entrega" no cardápio. */
   whatsapp_pedidos?: string | null
   pagar_na_entrega_habilitado?: boolean
+  /** Estoque: true = bloqueia a venda acima do saldo; false/ausente = só avisa (padrão). */
+  estoque_bloqueia?: boolean
   imagem_capa_url: string | null
   mostrar_horario_pedido: boolean
   /** Emitente fiscal e PROCON (cupom da NFC-e). Opcionais: cache local anterior à migration não tem. */
@@ -104,6 +108,25 @@ export type Item = {
   unidade_comercial: string | null
   esgotado: boolean
   popular: boolean
+  /** Saldo do estoque; NULL = não controla estoque. Opcional: cache/linha antiga não tem. */
+  estoque_qtd?: number | null
+  /** true quando o `esgotado` foi ligado pelo sistema (saldo <= 0), não pelo dono. */
+  estoque_esgotado_auto?: boolean
+}
+
+export type MotivoMovimentoEstoque = 'venda' | 'cancelamento' | 'remocao' | 'ajuste'
+
+export type MovimentoEstoque = {
+  id: string
+  barraca_id: string
+  item_id: string
+  item_pedido_id: string | null
+  pedido_id: string | null
+  delta: number
+  motivo: MotivoMovimentoEstoque
+  saldo_apos: number | null
+  observacao: string | null
+  criado_em: string
 }
 
 export type BannerCardapio = {

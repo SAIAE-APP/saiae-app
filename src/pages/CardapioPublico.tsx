@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useRef, useState } from 'react'
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { useParams } from 'react-router'
 import clsx from 'clsx'
 import { supabase } from '../lib/supabase'
@@ -16,7 +16,7 @@ import { Textarea } from '../components/ui/Textarea'
 import { statusFuncionamento, type HorarioPublico } from '../lib/horarioFuncionamento'
 import { montarMensagemPagarNaEntrega, urlWhatsappDono } from '../lib/pagarNaEntrega'
 import { formatarTelefoneBR } from '../lib/entrega'
-import { buscarBairrosPublicos, taxaDoBairro, type BairrosPublicos } from '../lib/bairros'
+import { bairroCanonico, buscarBairrosPublicos, taxaDoBairro, type BairrosPublicos } from '../lib/bairros'
 
 type LinhaCardapioPublico = {
   barraca_id: string
@@ -510,6 +510,9 @@ export function CardapioPublico() {
   const [taxaServidor, setTaxaServidor] = useState<{ bairro: string; centavos: number } | null>(null)
   const [aceitaOfertas, setAceitaOfertas] = useState(false)
   const [bairrosPublicos, setBairrosPublicos] = useState<BairrosPublicos | null>(null)
+  // Falhou a última busca da lista de bairros (não é silencioso: o formulário avisa).
+  const [erroBairros, setErroBairros] = useState(false)
+  const buscaBairrosRef = useRef(0)
   const aberturaCheckoutRef = useRef(0)
   const [copiado, setCopiado] = useState(false)
 
@@ -547,20 +550,48 @@ export function CardapioPublico() {
   }, [slug])
 
   const entregaOfertada = modosPublicos.includes('entrega')
-  useEffect(() => {
-    if (!slug || !entregaOfertada) return
-    let cancelado = false
-    buscarBairrosPublicos(slug)
-      .then((r) => {
-        if (!cancelado) setBairrosPublicos(r)
-      })
-      .catch(() => {
-        // Sem a lista o formulário cai em "bairro digitado"; o servidor decide a taxa.
-      })
-    return () => {
-      cancelado = true
+  // A lista de bairros muda no painel do dono a qualquer hora: busca de novo sempre
+  // que o checkout abre, o formulário de Entrega abre, a aba volta ao foco ou o
+  // cliente toca em "Tentar de novo" — não só no carregamento da página. Só vale a
+  // resposta da busca mais recente (resposta atrasada não sobrescreve a nova).
+  const carregarBairros = useCallback(async () => {
+    if (!slug) return
+    const minha = ++buscaBairrosRef.current
+    try {
+      const r = await buscarBairrosPublicos(slug)
+      if (minha !== buscaBairrosRef.current) return
+      setBairrosPublicos(r)
+      setErroBairros(false)
+      // Bairro digitado antes da lista chegar: se bate com um cadastrado (sem
+      // olhar acento/caixa), passa a usar o nome cadastrado.
+      setBairroCliente((atual) => bairroCanonico(atual, r.bairros) ?? atual)
+    } catch (erro) {
+      if (minha !== buscaBairrosRef.current) return
+      console.warn('Cardápio: não consegui carregar a lista de bairros', erro)
+      setErroBairros(true)
     }
-  }, [slug, entregaOfertada])
+  }, [slug])
+
+  const checkoutAberto = mostrarCheckout
+  const formularioEntregaAberto = pagamento.fase === 'dados_entrega' || pagamento.fase === 'enviando_entrega'
+  useEffect(() => {
+    if (!entregaOfertada) return
+    // eslint-disable-next-line react-hooks/set-state-in-effect -- busca de dados: o setState acontece depois do await
+    void carregarBairros()
+  }, [entregaOfertada, checkoutAberto, formularioEntregaAberto, modoConsumo, carregarBairros])
+
+  useEffect(() => {
+    if (!entregaOfertada) return
+    function aoVoltarAoFoco() {
+      if (document.visibilityState === 'visible') void carregarBairros()
+    }
+    document.addEventListener('visibilitychange', aoVoltarAoFoco)
+    window.addEventListener('focus', aoVoltarAoFoco)
+    return () => {
+      document.removeEventListener('visibilitychange', aoVoltarAoFoco)
+      window.removeEventListener('focus', aoVoltarAoFoco)
+    }
+  }, [entregaOfertada, carregarBairros])
 
   useEffect(() => {
     if (!slug) return
@@ -815,6 +846,9 @@ export function CardapioPublico() {
         nome,
         telefone,
         endereco: estruturada ? null : enderecoCliente.trim() || null,
+        // Total que o cliente viu (itens + taxa da prévia). Se o servidor chegar a outro
+        // valor, não cria o pedido e devolve o novo total (409).
+        ...(estruturada && previaTaxa?.permitido ? { total_esperado_centavos: totalCentavosCarrinho + previaTaxa.taxaCentavos } : {}),
         ...(estruturada
           ? {
               entrega: {
@@ -836,12 +870,24 @@ export function CardapioPublico() {
 
     if (error || !data || data.erro) {
       // Mesmo cuidado do Pix: com status não-2xx o corpo fica em error.context.
-      let corpo: { erro?: string } | null = data ?? null
+      let corpo: { erro?: string; total_centavos?: number; taxa_entrega_centavos?: number } | null = data ?? null
       const contexto = (error as { context?: unknown } | null)?.context
-      if (!corpo && contexto instanceof Response) {
-        corpo = await contexto.json().catch(() => null)
+      let status = 0
+      if (contexto instanceof Response) {
+        status = contexto.status
+        if (!corpo) corpo = await contexto.json().catch(() => null)
       }
       console.error('Falha ao enviar pedido (pagar na entrega):', error, corpo?.erro)
+      // 409 = o servidor calculou outra taxa que a da tela e NÃO criou o pedido: mostra o
+      // novo total e deixa o cliente decidir (a prévia passa a usar o valor do servidor).
+      if (status === 409 && typeof corpo?.taxa_entrega_centavos === 'number') {
+        setTaxaServidor({ bairro: bairroCliente.trim(), centavos: corpo.taxa_entrega_centavos })
+        setPagamento({
+          fase: 'dados_entrega',
+          erro: `O valor da entrega mudou. O novo total é ${formatarPrecoBR(corpo.total_centavos ?? 0)}. Confira e toque em "Enviar pedido" de novo.`,
+        })
+        return
+      }
       const recusaNossa = contexto instanceof Response && contexto.status < 500
       // Mantém o client_uuid: tentar de novo é idempotente, não duplica o pedido.
       setPagamento({
@@ -1244,6 +1290,9 @@ export function CardapioPublico() {
             </div>
 
             {modosPublicos.length > 1 && (
+              <p className="-mb-2 text-sm font-medium text-mesa-text-secondary">Como você quer receber?</p>
+            )}
+            {modosPublicos.length > 1 && (
               <SegmentedControl
                 aria-label="Tipo de atendimento"
                 items={modosPublicos.map((modo) => ({ label: ROTULO_MODO[modo] }))}
@@ -1446,6 +1495,21 @@ export function CardapioPublico() {
                   value={referenciaCliente}
                   onChange={(e) => setReferenciaCliente(e.target.value)}
                 />
+                {erroBairros && (
+                  <div
+                    role="alert"
+                    className="rounded-mesa-md border-l-[3px] border-mesa-warning-500 bg-mesa-warning-50 p-3 text-sm font-medium text-mesa-warning-700 dark:bg-mesa-warning-500/15"
+                  >
+                    Não consegui carregar os bairros. O valor final da entrega é confirmado ao enviar.
+                    <button
+                      type="button"
+                      onClick={() => void carregarBairros()}
+                      className="mt-1 block min-h-11 text-left font-semibold underline"
+                    >
+                      Tentar de novo
+                    </button>
+                  </div>
+                )}
                 {previaTaxa && !previaTaxa.permitido && (
                   <p role="alert" className="text-sm font-semibold text-mesa-error-700 dark:text-mesa-error-400">
                     Não entregamos nesse bairro.

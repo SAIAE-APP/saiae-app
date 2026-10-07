@@ -33,6 +33,13 @@ import { SecaoTaxaEntrega } from '../components/SecaoTaxaEntrega'
 import { SecaoBairrosEntrega } from '../components/SecaoBairrosEntrega'
 import { SecaoClientesEntrega } from '../components/SecaoClientesEntrega'
 import { SecaoPagarNaEntrega } from '../components/SecaoPagarNaEntrega'
+import { SecaoEstoque } from '../components/SecaoEstoque'
+import {
+  PROVEDORES_PIX_DISPONIVEIS,
+  provedorPixDaBarraca,
+  type ChaveProvedorPix,
+  type ProvedorPixInfo,
+} from '../lib/provedoresPix'
 import { SecaoAvisoPronto } from '../components/SecaoAvisoPronto'
 import { EmitenteFiscal } from '../components/EmitenteFiscal'
 import { Button } from '../components/ui/Button'
@@ -45,7 +52,15 @@ import { Textarea } from '../components/ui/Textarea'
 import { Toggle } from '../components/ui/Toggle'
 import { BottomSheet } from '../components/ui/BottomSheet'
 import { Badge } from '../components/ui/Badge'
-import type { AmbienteFiscal, Barraca, Categoria, Item, RegimeTributario } from '../types/database'
+import {
+  avisoDeEstoque,
+  controlaEstoque,
+  interpretarAjuste,
+  interpretarSaldoInicial,
+  mensagemAjusteEstoque,
+  rotuloMovimento,
+} from '../lib/estoque'
+import type { AmbienteFiscal, Barraca, Categoria, Item, MovimentoEstoque, RegimeTributario } from '../types/database'
 
 function textoPrecoInicial(centavos: number): string {
   return centavos > 0 ? centavosParaReais(centavos).toFixed(2).replace('.', ',') : ''
@@ -150,6 +165,13 @@ function BottomSheetItem({
   const [salvando, setSalvando] = useState(false)
   const [erro, setErro] = useState<string | null>(null)
   const inputArquivoRef = useRef<HTMLInputElement>(null)
+  // Estoque (Sprint 6): ligar/desligar o controle, saldo inicial e ajuste (+ repõe, - baixa).
+  const jaControla = existente ? controlaEstoque(existente) : false
+  const [controla, setControla] = useState(jaControla)
+  const [saldoInicial, setSaldoInicial] = useState('')
+  const [ajusteTexto, setAjusteTexto] = useState('')
+  const [movimentos, setMovimentos] = useState<MovimentoEstoque[] | null>(null)
+  const existenteId = existente?.id ?? null
 
   useEffect(() => {
     return () => {
@@ -157,7 +179,30 @@ function BottomSheetItem({
     }
   }, [previaPendente])
 
+  // Últimas movimentações do item (só com o controle ligado): barato e ajuda a conferir.
+  useEffect(() => {
+    if (!existenteId || !jaControla) return
+    let cancelado = false
+    supabase
+      .from('movimentos_estoque')
+      .select('*')
+      .eq('item_id', existenteId)
+      .order('criado_em', { ascending: false })
+      .limit(8)
+      .then(({ data, error }) => {
+        if (!cancelado && !error) setMovimentos((data ?? []) as MovimentoEstoque[])
+      })
+    return () => {
+      cancelado = true
+    }
+  }, [existenteId, jaControla])
+
   if (!item) return null
+
+  const ligandoControle = controla && !jaControla
+  const desligandoControle = !controla && jaControla
+  const ajusteValor = jaControla && controla ? interpretarAjuste(ajusteTexto) : null
+  const ajusteInvalido = jaControla && controla && ajusteTexto.trim() !== '' && ajusteValor === null
 
   const alterado = existente
     ? nome.trim() !== existente.nome ||
@@ -170,9 +215,17 @@ function BottomSheetItem({
       ncm.trim() !== (existente.ncm ?? '') ||
       cfop.trim() !== (existente.cfop ?? '') ||
       unidade.trim() !== (existente.unidade_comercial ?? '') ||
-      fotoUrl !== (existente.foto_url ?? null)
+      fotoUrl !== (existente.foto_url ?? null) ||
+      controla !== jaControla ||
+      ajusteValor !== null
     : true
-  const podeSalvar = nome.trim().length > 0 && alterado && !salvando && !enviandoFoto
+  const podeSalvar =
+    nome.trim().length > 0 &&
+    alterado &&
+    !salvando &&
+    !enviandoFoto &&
+    !(ligandoControle && saldoInicial.trim() !== '' && interpretarSaldoInicial(saldoInicial) === null) &&
+    !ajusteInvalido
 
   async function aoEscolherArquivo(e: ChangeEvent<HTMLInputElement>) {
     const arquivo = e.target.files?.[0]
@@ -220,7 +273,7 @@ function BottomSheetItem({
     setSalvando(true)
     setErro(null)
 
-    const campos = {
+    const campos: Record<string, unknown> = {
       nome: nome.trim(),
       preco_centavos: reaisParaCentavos(preco),
       categoria_id: categoriaId,
@@ -232,6 +285,15 @@ function BottomSheetItem({
       cfop: cfop.trim() || null,
       unidade_comercial: unidade.trim() || null,
       foto_url: fotoUrl,
+    }
+    // O dono mexeu no "Esgotado" à mão: deixa de ser esgotado automático (o sistema
+    // não o desmarca sozinho quando o saldo voltar).
+    if (existente && esgotado !== existente.esgotado) campos.estoque_esgotado_auto = false
+    // Desligou o controle: o saldo some e o esgotado que era automático também.
+    if (desligandoControle && existente) {
+      campos.estoque_qtd = null
+      campos.estoque_esgotado_auto = false
+      if (existente.estoque_esgotado_auto && esgotado === existente.esgotado) campos.esgotado = false
     }
 
     let salvoItem: Item | null = null
@@ -279,8 +341,44 @@ function BottomSheetItem({
     // Foto antiga só é apagada do Storage depois que o banco confirmou.
     if (existente?.foto_url && existente.foto_url !== fotoUrl) apagarFotoItem(existente.foto_url)
 
+    // Estoque: ligar o controle (saldo inicial) ou ajustar o saldo. É um segundo passo
+    // (RPC atômica no banco); se falhar o item já está salvo e o erro fica na tela.
+    let erroEstoque: string | null = null
+    if (ligandoControle || ajusteValor !== null) {
+      try {
+        if (ligandoControle && (interpretarSaldoInicial(saldoInicial) ?? 0) === 0) {
+          // Saldo 0 não é um "ajuste": liga o controle já zerado (e esgotado pelo sistema).
+          const { error } = await supabase
+            .from('itens')
+            .update({ estoque_qtd: 0, esgotado: true, estoque_esgotado_auto: !salvoItem.esgotado })
+            .eq('id', salvoItem.id)
+          if (error) erroEstoque = mensagemErroSalvar(error)
+        } else {
+          const delta = ligandoControle ? (interpretarSaldoInicial(saldoInicial) as number) : (ajusteValor as number)
+          const { data, error } = await supabase.rpc('ajustar_estoque', {
+            p_item_id: salvoItem.id,
+            p_delta: delta,
+            p_motivo: ligandoControle ? 'Saldo inicial' : 'Ajuste manual',
+          })
+          const estado = (data as { estado?: string } | null)?.estado
+          if (error) erroEstoque = mensagemErroSalvar(error)
+          else if (estado !== 'ok') erroEstoque = mensagemAjusteEstoque(estado)
+        }
+        if (!erroEstoque) {
+          const { data: atualizado } = await supabase.from('itens').select('*').eq('id', salvoItem.id).single()
+          if (atualizado) salvoItem = atualizado as Item
+        }
+      } catch (e) {
+        erroEstoque = mensagemErroSalvar(e instanceof Error ? e : null)
+      }
+    }
+
     setSalvando(false)
     onSalvo(salvoItem)
+    if (erroEstoque) {
+      setErro(`O item foi salvo, mas o estoque não foi atualizado. ${erroEstoque}`)
+      return
+    }
     onClose()
   }
 
@@ -398,6 +496,83 @@ function BottomSheetItem({
             checked={popular}
             onChange={() => setPopular((v) => !v)}
           />
+        </div>
+
+        <div className="rounded-mesa-md border border-mesa-border-default px-3 py-1">
+          <CampoToggle
+            rotulo="Controlar estoque"
+            descricao="Baixa sozinho a cada venda, devolve ao cancelar e marca Esgotado quando zerar"
+            checked={controla}
+            onChange={() => setControla((v) => !v)}
+          />
+          {ligandoControle && (
+            <div className="pb-3 pt-1">
+              <Input
+                label="Quantidade em estoque agora"
+                inputMode="numeric"
+                value={saldoInicial}
+                onChange={(e) => setSaldoInicial(e.target.value)}
+                placeholder="0"
+                className="w-full"
+              />
+              <p className="mt-1 text-xs text-mesa-text-secondary">
+                Pode vender além do saldo: o estoque fica negativo e o app avisa.
+              </p>
+            </div>
+          )}
+          {jaControla && controla && existente && (
+            <div className="pb-3 pt-1">
+              <p className="text-sm text-mesa-text-primary">
+                Saldo atual: <span className="font-mesa-display font-bold">{existente.estoque_qtd}</span>
+              </p>
+              {avisoDeEstoque(existente) && (
+                <p
+                  className={clsx(
+                    'mt-1 text-xs font-semibold',
+                    avisoDeEstoque(existente)?.destaque === 'erro'
+                      ? 'text-mesa-error-500'
+                      : 'text-mesa-warning-700 dark:text-mesa-warning-500',
+                  )}
+                >
+                  {avisoDeEstoque(existente)?.texto}
+                </p>
+              )}
+              <Input
+                label="Repor ou ajustar (10 repõe, -2 baixa)"
+                inputMode="text"
+                value={ajusteTexto}
+                onChange={(e) => setAjusteTexto(e.target.value)}
+                placeholder="Ex.: 10"
+                error={ajusteInvalido ? 'Use um número inteiro, como 10 ou -2.' : undefined}
+                className="mt-3 w-full"
+              />
+              {movimentos && movimentos.length > 0 && (
+                <div className="mt-3">
+                  <p className="mb-1 text-xs font-semibold text-mesa-text-secondary">Últimas movimentações</p>
+                  <ul className="flex flex-col gap-1">
+                    {movimentos.map((m) => (
+                      <li key={m.id} className="flex items-center justify-between gap-2 text-xs text-mesa-text-secondary">
+                        <span className="min-w-0 truncate">
+                          {rotuloMovimento(m.motivo)}
+                          {m.observacao ? ` · ${m.observacao}` : ''} ·{' '}
+                          {new Date(m.criado_em).toLocaleString('pt-BR', {
+                            day: '2-digit',
+                            month: '2-digit',
+                            hour: '2-digit',
+                            minute: '2-digit',
+                          })}
+                        </span>
+                        <span className="shrink-0 font-mesa-display font-semibold text-mesa-text-primary">
+                          {m.delta > 0 ? `+${m.delta}` : m.delta}
+                          {m.saldo_apos !== null ? ` → ${m.saldo_apos}` : ''}
+                        </span>
+                      </li>
+                    ))}
+                  </ul>
+                </div>
+              )}
+            </div>
+          )}
         </div>
 
         <details className="group rounded-mesa-md border border-mesa-border-default">
@@ -779,6 +954,22 @@ function SecaoCardapio({ barracaId }: { barracaId: string }) {
                         {!item.ativo && (
                           <Badge variant="neutral" className="px-2 py-0.5">
                             Inativo
+                          </Badge>
+                        )}
+                        {controlaEstoque(item) && (
+                          <Badge
+                            variant={
+                              avisoDeEstoque(item)?.destaque === 'erro'
+                                ? 'danger'
+                                : avisoDeEstoque(item)
+                                  ? 'warning'
+                                  : 'neutral'
+                            }
+                            className="px-2 py-0.5"
+                          >
+                            {avisoDeEstoque(item)?.nivel === 'negativo'
+                              ? `Estoque negativo (${item.estoque_qtd}): vendido além do saldo`
+                              : `Estoque: ${item.estoque_qtd}`}
                           </Badge>
                         )}
                       </span>
@@ -1792,11 +1983,13 @@ function SecaoFiscal({ barraca }: { barraca: Barraca }) {
 
 function BottomSheetTokenPagamento({
   barracaId,
+  provedor,
   open,
   onClose,
   onSucesso,
 }: {
   barracaId: string
+  provedor: ProvedorPixInfo
   open: boolean
   onClose: () => void
   onSucesso: () => void
@@ -1816,7 +2009,7 @@ function BottomSheetTokenPagamento({
     if (processando) return
 
     if (!token.trim()) {
-      setErro('Cole o Access Token gerado no painel do Mercado Pago')
+      setErro(`Cole o ${provedor.rotuloToken} gerado no painel do ${provedor.nome}`)
       return
     }
 
@@ -1831,6 +2024,7 @@ function BottomSheetTokenPagamento({
     const { error } = await supabase.rpc('definir_token_pagamento', {
       p_barraca_id: barracaId,
       p_token: token.trim(),
+      p_provedor: provedor.chave,
     })
 
     setProcessando(false)
@@ -1845,16 +2039,18 @@ function BottomSheetTokenPagamento({
   }
 
   return (
-    <BottomSheet open={open} onClose={fechar} aria-label="Access Token do Mercado Pago">
-      <h2 className="text-lg font-semibold text-mesa-text-primary">Access Token do Mercado Pago</h2>
+    <BottomSheet open={open} onClose={fechar} aria-label={`${provedor.rotuloToken} do ${provedor.nome}`}>
+      <h2 className="text-lg font-semibold text-mesa-text-primary">
+        {provedor.rotuloToken} do {provedor.nome}
+      </h2>
       <p className="mt-1 text-sm text-mesa-text-secondary">
-        Gerado no painel de desenvolvedores da sua conta Mercado Pago ("Suas integrações" → credenciais
-        de produção). Fica guardado só pra uso do sistema, não é mostrado de novo depois de salvo.
+        {provedor.ondeAcharToken} Fica guardado só pra uso do sistema, não é mostrado de novo depois de
+        salvo.
       </p>
 
       <form onSubmit={salvar} className="mt-4 flex flex-col gap-4">
         <Input
-          label="Access Token"
+          label={provedor.rotuloToken}
           type="password"
           autoComplete="off"
           autoFocus
@@ -1884,6 +2080,11 @@ function SecaoPagamentoOnline({ barraca }: { barraca: Barraca }) {
   const habilitadoR = useRascunho(barraca.pagamento_online_habilitado)
   const habilitado = habilitadoR.valor
   const salvarHabilitado = useSalvarBarraca(barraca)
+  // Provedor do Pix. Hoje só o Mercado Pago está publicado; o seletor aparece sozinho
+  // quando houver mais de um disponível (próximas stories).
+  const provedorR = useRascunho(provedorPixDaBarraca(barraca.pagamento_provedor).chave)
+  const provedor = provedorPixDaBarraca(provedorR.valor)
+  const salvarProvedor = useSalvarBarraca(barraca)
   const [tokenConfigurado, setTokenConfigurado] = useState<boolean | null>(null)
   const [erroToken, setErroToken] = useState<string | null>(null)
   const [recargaToken, setRecargaToken] = useState(0)
@@ -1894,7 +2095,7 @@ function SecaoPagamentoOnline({ barraca }: { barraca: Barraca }) {
     let cancelado = false
 
     supabase
-      .rpc('token_pagamento_configurado', { p_barraca_id: barraca.id })
+      .rpc('token_pagamento_configurado', { p_barraca_id: barraca.id, p_provedor: provedor.chave })
       .then(({ data, error }) => {
         if (cancelado) return
         if (error) {
@@ -1908,7 +2109,14 @@ function SecaoPagamentoOnline({ barraca }: { barraca: Barraca }) {
     return () => {
       cancelado = true
     }
-  }, [barraca.id, recargaToken])
+  }, [barraca.id, provedor.chave, recargaToken])
+
+  async function trocarProvedor(chave: string) {
+    provedorR.definir(chave as ChaveProvedorPix)
+    setTokenConfigurado(null)
+    await salvarProvedor.salvar({ pagamento_provedor: chave })
+    provedorR.descartar()
+  }
 
   async function alternarHabilitado(valor: boolean) {
     habilitadoR.definir(valor)
@@ -1921,10 +2129,28 @@ function SecaoPagamentoOnline({ barraca }: { barraca: Barraca }) {
       <RotuloSecao icone="payments">Pagamento online</RotuloSecao>
       <Card>
         <p className="text-sm text-mesa-text-secondary">
-          Crie uma conta no Mercado Pago em nome da sua barraca e cole o Access Token de produção
-          abaixo — o dinheiro do Pix cai direto na sua conta, o Sai aê nunca guarda nem repassa esse
-          valor. Só depois do pagamento confirmado o pedido feito no cardápio digital cai na Cozinha.
+          {provedor.descricaoConta} — o dinheiro do Pix cai direto na sua conta, o Sai aê nunca guarda
+          nem repassa esse valor. Só depois do pagamento confirmado o pedido feito no cardápio digital
+          cai na Cozinha.
         </p>
+
+        {PROVEDORES_PIX_DISPONIVEIS.length > 1 && (
+          <div className="mt-4">
+            <p className="mb-2 text-sm font-medium text-mesa-text-primary">Provedor do Pix</p>
+            <div className="flex flex-wrap gap-2" role="radiogroup" aria-label="Provedor do Pix">
+              {PROVEDORES_PIX_DISPONIVEIS.map((p) => (
+                <Chip
+                  key={p.chave}
+                  checked={provedor.chave === p.chave}
+                  onClick={() => void trocarProvedor(p.chave)}
+                >
+                  {p.nome}
+                </Chip>
+              ))}
+            </div>
+            <ErroSalvar erro={salvarProvedor.erro} className="mt-2" />
+          </div>
+        )}
 
         <div className="mt-4 flex items-center justify-between gap-3">
           <span className="text-base text-mesa-text-primary">Pagamento online habilitado</span>
@@ -1937,7 +2163,9 @@ function SecaoPagamentoOnline({ barraca }: { barraca: Barraca }) {
         <ErroSalvar erro={salvarHabilitado.erro} className="mt-2" />
 
         <div className="mt-4">
-          <p className="mb-2 text-sm font-medium text-mesa-text-primary">Access Token do Mercado Pago</p>
+          <p className="mb-2 text-sm font-medium text-mesa-text-primary">
+            {provedor.rotuloToken} do {provedor.nome}
+          </p>
           <div className="flex min-w-[220px] flex-1 items-center justify-between gap-3 rounded-mesa-md border border-mesa-border-subtle p-3">
             <p className="text-xs text-mesa-text-secondary">
               {tokenConfigurado === null
@@ -1965,6 +2193,7 @@ function SecaoPagamentoOnline({ barraca }: { barraca: Barraca }) {
 
       <BottomSheetTokenPagamento
         barracaId={barraca.id}
+        provedor={provedor}
         open={mostrarSheetToken}
         onClose={() => setMostrarSheetToken(false)}
         onSucesso={() => setRecargaToken((n) => n + 1)}
@@ -2454,6 +2683,9 @@ export function Ajustes({ categoria = 'conta' }: { categoria?: CategoriaAjustes 
           </SecaoDaCategoria>
           <SecaoDaCategoria categoria="cardapio" atual={categoria}>
             <SecaoClientesEntrega barraca={barraca} />
+          </SecaoDaCategoria>
+          <SecaoDaCategoria categoria="cardapio" atual={categoria}>
+            <SecaoEstoque barraca={barraca} />
           </SecaoDaCategoria>
           <SecaoDaCategoria categoria="cardapio" atual={categoria}>
             <SecaoPagarNaEntrega barraca={barraca} />
