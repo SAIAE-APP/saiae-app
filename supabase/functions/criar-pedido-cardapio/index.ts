@@ -86,6 +86,8 @@ Deno.serve(async (req: Request) => {
     } | null
     /** Cliente aceitou o aviso de LGPD (obrigatório com `entrega`). */
     consentimento_lgpd?: boolean
+    /** Total que o cliente viu (itens + taxa). Se divergir do calculado aqui, não cria o pedido (409). */
+    total_esperado_centavos?: number | null
     /** Aceite OPCIONAL de ofertas por WhatsApp (separado do consentimento de entrega). */
     consentimento_marketing?: boolean
     /** Honeypot: campo oculto no formulário; humano nunca preenche. */
@@ -247,6 +249,20 @@ Deno.serve(async (req: Request) => {
       return jsonResponse({ erro: 'Não entregamos nesse bairro.' }, 422)
     }
     taxaEntregaCentavos = Math.max(0, Math.floor(Number(taxa.taxa_centavos) || 0))
+
+    // O cliente confirmou um total na tela; se o servidor chegou a outro (lista de bairros
+    // velha no navegador, dono mexeu na taxa), NÃO cria o pedido sem ele ver o novo valor.
+    const esperado = body.total_esperado_centavos
+    if (esperado !== undefined && esperado !== null && esperado !== totalCentavos + taxaEntregaCentavos) {
+      return jsonResponse(
+        {
+          erro: 'O valor da entrega mudou. Confira o novo total antes de enviar.',
+          total_centavos: totalCentavos + taxaEntregaCentavos,
+          taxa_entrega_centavos: taxaEntregaCentavos,
+        },
+        409,
+      )
+    }
   }
 
   // Teto anti-bot por IP (hash), janela deslizante. Sem limite por barraca.
