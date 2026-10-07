@@ -18,7 +18,7 @@ import { faixaImpressao, tipoDoPedido } from './atendimento'
 import { formatarTelefoneBR, type DadosEntrega } from './entrega'
 import { formatarPrecoBR } from './preco'
 import { humanizarMetodo } from './metodoPagamento'
-import { TELEFONE_PROCON, formatarCpf } from './fiscal'
+import { AVISO_HOMOLOGACAO, TELEFONE_PROCON, ambienteDaNota, formatarCpf } from './fiscal'
 
 const COLUNAS_POR_LARGURA: Record<LarguraPapel, number> = {
   '58mm': 32,
@@ -159,6 +159,7 @@ export type DadosCupomFiscal = {
     | 'nome'
     | 'cnpj'
     | 'fiscal_regime_tributario'
+    | 'fiscal_ambiente'
     | 'emitente_razao_social'
     | 'emitente_inscricao_estadual'
     | 'emitente_telefone'
@@ -190,9 +191,13 @@ export function montarCupomFiscal({ barraca, pedido }: DadosCupomFiscal, largura
     0,
   )
   const labelRegime = labelRegimeTributario(barraca.fiscal_regime_tributario)
+  // Nota de homologação não tem valor fiscal: o aviso sai no topo e antes do corte.
+  const homologacao = ambienteDaNota(pedido.nfce_ambiente, barraca.fiscal_ambiente) === 'homologacao'
 
-  let encoder = novoEncoder(colunas)
-    .align('center')
+  let encoder = novoEncoder(colunas).align('center')
+  if (homologacao) encoder = encoder.rule().bold(true).line(AVISO_HOMOLOGACAO).bold(false).rule().newline()
+
+  encoder = encoder
     .bold(true)
     .line(semAcento(barraca.emitente_razao_social?.trim() || barraca.nome))
     .bold(false)
@@ -288,6 +293,10 @@ export function montarCupomFiscal({ barraca, pedido }: DadosCupomFiscal, largura
   encoder = encoder.newline().rule().bold(true).line(`PROCON ${TELEFONE_PROCON}`).bold(false)
   if (barraca.procon_endereco?.trim()) {
     encoder = encoder.line(semAcento(`Sede: ${barraca.procon_endereco.trim()}`))
+  }
+
+  if (homologacao) {
+    encoder = encoder.newline().align('center').rule().bold(true).line(AVISO_HOMOLOGACAO).bold(false).rule()
   }
 
   return encoder.newline(2).cut().encode()

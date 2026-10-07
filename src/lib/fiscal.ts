@@ -5,6 +5,23 @@
 /** Telefone do PROCON exigido nas notas/cupons — fixo, igual pra todo o país. */
 export const TELEFONE_PROCON = '151'
 
+/**
+ * Ambiente em que a NFC-e foi emitida. Usa o valor gravado na emissão
+ * (`pedidos.nfce_ambiente`); o ambiente ATUAL da barraca não serve, o dono pode
+ * trocá-lo depois. Nota antiga, sem a coluna, é conservadora: só conta como
+ * produção se a barraca está hoje em produção, senão trata como homologação
+ * (melhor avisar "sem valor fiscal" a mais do que passar por válida uma nota de teste).
+ */
+export function ambienteDaNota(
+  nfceAmbiente: 'homologacao' | 'producao' | null | undefined,
+  ambienteAtualDaBarraca: 'homologacao' | 'producao' | null | undefined,
+): 'homologacao' | 'producao' {
+  if (nfceAmbiente) return nfceAmbiente
+  return ambienteAtualDaBarraca === 'producao' ? 'producao' : 'homologacao'
+}
+
+export const AVISO_HOMOLOGACAO = 'EMITIDA EM AMBIENTE DE HOMOLOGACAO - SEM VALOR FISCAL'
+
 export function apenasDigitos(valor: string): string {
   return valor.replace(/\D/g, '')
 }
