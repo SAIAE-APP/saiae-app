@@ -18,7 +18,11 @@ import { faixaImpressao, tipoDoPedido } from './atendimento'
 import { formatarTelefoneBR, type DadosEntrega } from './entrega'
 import { formatarPrecoBR } from './preco'
 import { humanizarMetodo } from './metodoPagamento'
-import { AVISO_HOMOLOGACAO, TELEFONE_PROCON, ambienteDaNota, formatarCpf } from './fiscal'
+import { AVISO_HOMOLOGACAO, ambienteDaNota, formatarCpf } from './fiscal'
+import { linhasRodapeProcon } from './rodapeProcon'
+import { semAcento } from './semAcento'
+
+export { semAcento }
 
 const COLUNAS_POR_LARGURA: Record<LarguraPapel, number> = {
   '58mm': 32,
@@ -36,17 +40,6 @@ export async function dispositivosPareados(): Promise<PrinterDevice[]> {
   return devices
 }
 
-/** Impressoras térmicas genéricas (as "BlueTooth Printer" chinesas) quase
- * nunca têm a tabela de caracteres que o encoder assume — acento saía "?".
- * Tirar o acento é o único jeito garantido em qualquer modelo. */
-export function semAcento(texto: string): string {
-  return texto
-    .normalize('NFD')
-    .replace(/\p{M}/gu, '')
-    .replace(/×/g, 'x')
-    .replace(/[–—]/g, '-')
-    .replace(/[^\x20-\x7E]/g, '')
-}
 
 /** Reset no início de cada impressão: ESC @ (initialize), FS . (sai do modo
  * Kanji/chinês, que embaralha a 1ª linha em impressoras genéricas), fonte A,
@@ -290,10 +283,9 @@ export function montarCupomFiscal({ barraca, pedido }: DadosCupomFiscal, largura
   if (labelRegime) encoder = encoder.newline().line(semAcento(labelRegime))
 
   // PROCON: telefone 151 fixo + endereço da sede (texto livre da barraca).
-  encoder = encoder.newline().rule().bold(true).line(`PROCON ${TELEFONE_PROCON}`).bold(false)
-  if (barraca.procon_endereco?.trim()) {
-    encoder = encoder.line(semAcento(`Sede: ${barraca.procon_endereco.trim()}`))
-  }
+  const [linhaProcon, ...linhasSede] = linhasRodapeProcon(barraca.procon_endereco, colunas)
+  encoder = encoder.newline().rule().bold(true).line(linhaProcon).bold(false)
+  for (const linha of linhasSede) encoder = encoder.line(linha)
 
   if (homologacao) {
     encoder = encoder.newline().align('center').rule().bold(true).line(AVISO_HOMOLOGACAO).bold(false).rule()
@@ -318,6 +310,8 @@ export async function imprimirCupomFiscal({
 export type DadosComanda = {
   nomeBarraca: string
   cnpj?: string | null
+  /** Endereço da sede do PROCON (`barracas.procon_endereco`); vazio imprime só "PROCON 151". */
+  proconEndereco?: string | null
   senha: number | null
   criadoEm: string
   mesa: string | null
@@ -442,7 +436,12 @@ export function montarComanda(dados: DadosComanda, largura: LarguraPapel): Uint8
     encoder = encoder.line(semAcento(`Pagamento: ${humanizarMetodo(dados.metodoPagamento)}`))
   }
 
-  return encoder.newline().align('center').line('Obrigado! Sai ae').newline(3).cut().encode()
+  // PROCON: a autuação exige o 151 e a sede em tudo que é entregue ao consumidor.
+  const [linhaProcon, ...linhasSede] = linhasRodapeProcon(dados.proconEndereco, colunas)
+  encoder = encoder.newline().rule().align('center').bold(true).line(linhaProcon).bold(false)
+  for (const linha of linhasSede) encoder = encoder.line(linha)
+
+  return encoder.newline().line('Obrigado! Sai ae').newline(3).cut().encode()
 }
 
 export async function imprimirComanda({
