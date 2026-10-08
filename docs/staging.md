@@ -11,8 +11,9 @@ Projeto Supabase **`qzcqwovbbylqxljcrqhk`** ("Sai ae staging", sa-east-1). Tem o
 - **Atenção ao link da CLI:** a pasta `supabase/.temp` guarda o projeto "linkado" da CLI, e comandos com `--linked` usam ele. Num clone que já foi linkado à produção, `--linked` cai na **produção**. Por isso nada aqui usa `--linked` sozinho.
 - Todo comando que escreve no Supabase passa pelos scripts `npm run staging:*` (`scripts/staging.mjs`). Eles:
   - passam `--project-ref qzcqwovbbylqxljcrqhk` explícito (nunca confiam no link local);
-  - **abortam** se `supabase/.temp/project-ref` ou `linked-project.json` apontarem para a produção (`supabase link --project-ref qzcqwovbbylqxljcrqhk` corrige).
-- O seed ainda aborta no próprio SQL se o banco tiver pedidos e não tiver a barraca de seed (não é um staging virgem).
+  - **abortam** se `supabase/.temp/project-ref` e `linked-project.json` não forem o de staging: produção, outro projeto, link ausente ou ilegível (`supabase link --project-ref qzcqwovbbylqxljcrqhk` corrige).
+  - **Cuidado:** `supabase link` muda o link da CLI **daquela pasta**. Em outra cópia do repositório (a pasta de trabalho do dono, por exemplo), isso troca o projeto padrão dos comandos `--linked`. Prefira um clone/worktree separado para staging.
+- O seed ainda aborta no próprio SQL se existir qualquer barraca diferente da de seed ou qualquer usuário com e-mail que não termine em `.invalid`. Consequência: o staging é só para dados fictícios; se alguém criar usuário com e-mail real lá, o re-seed passa a abortar.
 - O app em modo staging (`dev:staging`, `build:staging`) lê **`.env.staging.local`**, nunca `.env`. `scripts/verificar-env-staging.mjs` roda antes e **aborta** se a URL ou a chave anon (o `ref` dentro do JWT) forem da produção ou de outro projeto.
 - Não rode `npm run android:sync` com env de staging: o build Android exige o env de produção (`scripts/verificar-env-build.mjs`).
 - Nunca rode `supabase db push`, `migration repair` ou `functions deploy` "na mão" sem `--project-ref`; use os scripts.
@@ -23,7 +24,7 @@ Projeto Supabase **`qzcqwovbbylqxljcrqhk`** ("Sai ae staging", sa-east-1). Tem o
 3. `npm run dev:staging` (ou `npm run build:staging`).
 
 ## Preparar o banco de staging (uma vez)
-Precisa da CLI logada (`supabase login`).
+Precisa da CLI logada (`supabase login`), do executável `supabase` no PATH e do link da pasta no staging (`supabase link --project-ref qzcqwovbbylqxljcrqhk`).
 
 | Passo | Comando | O que faz |
 |---|---|---|

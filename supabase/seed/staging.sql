@@ -4,11 +4,14 @@
 -- Idempotente: pode rodar de novo sem duplicar.
 do $$
 begin
-  -- Defesa extra contra rodar na produção por engano: um staging "virgem" não tem
-  -- pedidos. Banco com pedidos e sem a barraca de seed não é o staging.
-  if exists (select 1 from public.pedidos)
-     and not exists (select 1 from public.barracas where slug = 'barraca-teste') then
-    raise exception 'Seed abortado: este banco tem pedidos reais e não parece ser o staging.';
+  -- Defesa extra contra rodar na produção por engano: o staging só tem dados
+  -- fictícios. Aborta se existir qualquer barraca que não seja a de seed, ou
+  -- qualquer usuário cujo e-mail não termine em .invalid.
+  if exists (select 1 from public.barracas where slug <> 'barraca-teste') then
+    raise exception 'Seed abortado: existe barraca que não é a de seed; este banco não parece ser o staging.';
+  end if;
+  if exists (select 1 from auth.users where email is null or email not like '%.invalid') then
+    raise exception 'Seed abortado: existe usuário com e-mail real; este banco não parece ser o staging.';
   end if;
 end $$;
 

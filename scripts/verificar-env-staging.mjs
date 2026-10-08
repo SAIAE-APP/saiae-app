@@ -2,15 +2,15 @@
 // projeto Supabase de STAGING e nunca para o de produção. Lê .env.staging e
 // .env.staging.local (gitignored). Roda antes de `dev:staging` e `build:staging`.
 import { loadEnv } from 'vite'
-import { REF_PRODUCAO, REF_STAGING, abortar, refDaChaveAnon } from './staging-guarda.mjs'
+import { RAIZ, REF_PRODUCAO, REF_STAGING, abortar, refDaChaveAnon } from './staging-guarda.mjs'
 
-const env = loadEnv('staging', process.cwd(), 'VITE_')
+const env = loadEnv('staging', RAIZ, 'VITE_')
 const url = (env.VITE_SUPABASE_URL ?? '').trim()
 const chave = (env.VITE_SUPABASE_ANON_KEY ?? '').trim()
 
 const erros = []
-if (!url) erros.push('VITE_SUPABASE_URL ausente em .env.staging.local')
-if (!chave) erros.push('VITE_SUPABASE_ANON_KEY ausente em .env.staging.local')
+if (!url) erros.push('VITE_SUPABASE_URL ausente')
+if (!chave) erros.push('VITE_SUPABASE_ANON_KEY ausente')
 
 if (url) {
   let ref = null
@@ -29,6 +29,6 @@ if (chave) {
 }
 
 if (erros.length > 0) {
-  abortar(`${erros.join('; ')}. Copie .env.staging.example para .env.staging.local`)
+  abortar(`${erros.join('; ')}. Defina em .env.staging.local (copie de .env.staging.example); o Vite lê .env, .env.local, .env.staging e .env.staging.local, nessa precedência`)
 }
 console.log(`Env de staging OK (projeto Supabase: ${REF_STAGING}).`)
