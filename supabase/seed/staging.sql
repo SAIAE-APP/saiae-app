@@ -1,7 +1,17 @@
 -- Seed FICTÍCIO do staging (projeto qzcqwovbbylqxljcrqhk). NUNCA rodar em produção.
--- Não rode direto: use `node scripts/seed-staging.mjs`, que gera a senha do
--- usuário de teste, troca o marcador __SENHA__ e só executa no projeto de staging.
+-- Não rode direto: use `npm run staging:seed`, que gera a senha do usuário de
+-- teste, troca o marcador __SENHA__ e só executa no projeto de staging.
 -- Idempotente: pode rodar de novo sem duplicar.
+do $$
+begin
+  -- Defesa extra contra rodar na produção por engano: um staging "virgem" não tem
+  -- pedidos. Banco com pedidos e sem a barraca de seed não é o staging.
+  if exists (select 1 from public.pedidos)
+     and not exists (select 1 from public.barracas where slug = 'barraca-teste') then
+    raise exception 'Seed abortado: este banco tem pedidos reais e não parece ser o staging.';
+  end if;
+end $$;
+
 do $$
 declare
   v_email constant text := 'dono@staging.saiae.invalid';

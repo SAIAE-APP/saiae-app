@@ -4,7 +4,7 @@ import clsx from 'clsx'
 import { Button } from '../components/ui/Button'
 import { Icone } from '../components/ui/Icone'
 
-import { marcarOnboardingVisto } from './onboardingStorage'
+import { marcarOnboardingVisto } from '../lib/onboardingStorage'
 
 const TOTAL_SLIDES = 4
 const ULTIMO_SLIDE = TOTAL_SLIDES - 1

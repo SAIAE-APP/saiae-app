@@ -15,8 +15,8 @@ Motivo: as 13 ocorrências são o padrão `setCarregando(true)` no início de um
 | `src/hooks/useRelatorio.ts` | 191 |
 | `src/pages/Assinar.tsx` | 30 |
 | `src/pages/Assinatura.tsx` | 72 |
-| `src/pages/Dashboard.tsx` | 125 |
+| `src/pages/Dashboard.tsx` | 126 |
 | `src/pages/Historico.tsx` | 454 |
 | `src/pages/LancarPedido.tsx` | 536 |
 
-Quando a lista chegar a zero, voltar a regra para `error`.
+O CI roda `eslint --max-warnings 13`: a dívida não pode crescer. Ao corrigir um arquivo, baixe o número em `package.json` (script `lint`) e remova a linha daqui. Quando chegar a zero, volte a regra para `error`.

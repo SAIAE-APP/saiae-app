@@ -16,7 +16,7 @@ import { Card } from '../components/ui/Card'
 import { Icone } from '../components/ui/Icone'
 import { BottomSheet } from '../components/ui/BottomSheet'
 import { TourGuiado, type PassoTour } from '../components/TourGuiado'
-import { marcarTourVisto, tourJaVisto } from '../components/tourStorage'
+import { marcarTourVisto, tourJaVisto } from '../lib/tourStorage'
 
 function formatarSenha(senha: number): string {
   return String(senha).padStart(3, '0')

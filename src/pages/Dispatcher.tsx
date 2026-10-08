@@ -3,7 +3,7 @@ import { useNavigate } from 'react-router'
 import { useAuth } from '../hooks/useAuth'
 import { useBarracasDoUsuario } from '../hooks/useBarracasDoUsuario'
 import { Button } from '../components/ui/Button'
-import { onboardingJaVisto } from './onboardingStorage'
+import { onboardingJaVisto } from '../lib/onboardingStorage'
 
 export function Dispatcher() {
   const navigate = useNavigate()
