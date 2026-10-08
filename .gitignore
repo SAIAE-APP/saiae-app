@@ -30,3 +30,7 @@ supabase/.temp
 
 # Config local do preview (cada máquina tem a sua)
 .claude/launch.json
+
+# Env de qualquer modo (staging, etc.): só os *.example entram no git
+.env.*
+!.env.*.example

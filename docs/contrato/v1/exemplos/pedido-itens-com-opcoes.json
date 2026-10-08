@@ -1,0 +1,22 @@
+{
+  "pedido_id": "99999999-9999-4999-8999-999999999999",
+  "senha": 12,
+  "status": "a_fazer",
+  "tipo_atendimento": "retirada",
+  "itens": [
+    {
+      "nome": "Yakisoba",
+      "quantidade": 2,
+      "preco_centavos": 3500,
+      "observacao": "sem cebola",
+      "opcoes": [
+        { "grupo_id": "22222222-2222-4222-8222-222222222222", "grupo_nome": "Tamanho", "tipo": "variacao", "opcao_id": "66666666-6666-4666-8666-666666666666", "nome": "Grande", "preco_centavos": 3200, "quantidade": 1 },
+        { "grupo_id": "33333333-3333-4333-8333-333333333333", "grupo_nome": "Adicionais", "tipo": "adicional", "opcao_id": "77777777-7777-4777-8777-777777777777", "nome": "Ovo", "preco_centavos": 300, "quantidade": 1 }
+      ]
+    },
+    { "nome": "Refrigerante lata", "quantidade": 1, "preco_centavos": 600 }
+  ],
+  "taxa_entrega_centavos": 0,
+  "total_centavos": 7600,
+  "metodo_pagamento": "pix"
+}

@@ -1,5 +1,5 @@
 import { useEffect, useRef } from 'react'
-import { useToast } from '../components/ui/Toast'
+import { useToast } from '../components/ui/useToast'
 import { aoCriarPedidoLocal } from '../lib/fila'
 import { supabase } from '../lib/supabase'
 import type { PedidoCriadoLocal } from '../lib/fila'

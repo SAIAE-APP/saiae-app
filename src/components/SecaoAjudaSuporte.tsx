@@ -1,6 +1,6 @@
 import { useState, type ReactNode } from 'react'
 import { supabase } from '../lib/supabase'
-import { useToast } from './ui/Toast'
+import { useToast } from './ui/useToast'
 import { Button } from './ui/Button'
 import { Card } from './ui/Card'
 import { Icone } from './ui/Icone'

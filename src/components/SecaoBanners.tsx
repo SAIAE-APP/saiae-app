@@ -6,7 +6,7 @@ import { Card } from './ui/Card'
 import { Icone } from './ui/Icone'
 import { Input } from './ui/Input'
 import { Toggle } from './ui/Toggle'
-import { useToast } from './ui/Toast'
+import { useToast } from './ui/useToast'
 import { MSG_SEM_INTERNET, mensagemErroSalvar } from '../hooks/useSalvarBarraca'
 import type { BannerCardapio } from '../types/database'
 
