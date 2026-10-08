@@ -82,3 +82,27 @@ export function decidirLimites(e: EntradaLimites): DecisaoLimite {
 export function sessaoValida(reg: { expira_em: string; revogada_em: string | null }, agora: number): boolean {
   return !reg.revogada_em && Date.parse(reg.expira_em) > agora
 }
+
+// --- Verificação: limites próprios (não consomem o limite de PEDIR código: o dono do telefone sempre
+// pode usar o código que já recebeu) ---
+export const LIMITE_VERIFICAR_TELEFONE_HORA = 20
+export const LIMITE_VERIFICAR_IP_HORA = 40
+
+export function decidirLimiteVerificar(e: { verificacoesTelefoneHora: number; verificacoesIpHora: number }): 'ok' | 'limite' {
+  return e.verificacoesTelefoneHora >= LIMITE_VERIFICAR_TELEFONE_HORA || e.verificacoesIpHora >= LIMITE_VERIFICAR_IP_HORA
+    ? 'limite'
+    : 'ok'
+}
+
+/** O código simulado (devolvido na resposta, sem WhatsApp) só vale no STAGING: lista branca pelo ref. */
+export const STAGING_REF = 'qzcqwovbbylqxljcrqhk'
+export function codigoSimuladoPermitido(flag: string | undefined, supabaseUrl: string | undefined): boolean {
+  return flag === '1' && String(supabaseUrl ?? '').includes(STAGING_REF)
+}
+
+/** `ultimo_uso_em` só é regravado 1x por hora (evita escrita a cada chamada). */
+export function precisaAtualizarUso(ultimoUsoEm: string | null | undefined, agora: number): boolean {
+  return !ultimoUsoEm || agora - Date.parse(ultimoUsoEm) >= 3600_000
+}
+
+export const MENSAGEM_CODIGO_INVALIDO = 'Código inválido ou expirado. Peça um novo.'

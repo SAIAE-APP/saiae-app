@@ -82,16 +82,13 @@ Deno.serve(async (req: Request) => {
       const nome = texto(d.nome, 80)
       if (nome.length < 2) return json({ erro: 'Informe seu nome' }, 422)
       const { data: atual } = await supabase.from('clientes_finais').select('consentimento_marketing_em').eq('id', clienteId).single()
-      const aceita = d.aceita_promocoes === true
-      const { error } = await supabase
-        .from('clientes_finais')
-        .update({
-          nome,
-          aceita_avisos_pedido: d.aceita_avisos_pedido !== false,
-          consentimento_marketing_em: aceita ? (atual?.consentimento_marketing_em ?? new Date().toISOString()) : null,
-          atualizado_em: new Date().toISOString(),
-        })
-        .eq('id', clienteId)
+      // Só mexe no que veio explicitamente como boolean; campo ausente mantém o valor atual.
+      const campos: Record<string, unknown> = { nome, atualizado_em: new Date().toISOString() }
+      if (typeof d.aceita_avisos_pedido === 'boolean') campos.aceita_avisos_pedido = d.aceita_avisos_pedido
+      if (typeof d.aceita_promocoes === 'boolean') {
+        campos.consentimento_marketing_em = d.aceita_promocoes ? (atual?.consentimento_marketing_em ?? new Date().toISOString()) : null
+      }
+      const { error } = await supabase.from('clientes_finais').update(campos).eq('id', clienteId)
       return error ? json({ erro: 'Não foi possível salvar.' }, 500) : json({ ok: true })
     }
 
@@ -111,31 +108,34 @@ Deno.serve(async (req: Request) => {
         if (error) return json({ erro: 'Não foi possível salvar.' }, 500)
         return json({ ok: true, id })
       }
-      const { count } = await supabase.from('cliente_enderecos').select('id', { count: 'exact', head: true }).eq('cliente_id', clienteId)
-      if ((count ?? 0) >= MAX_ENDERECOS) return json({ erro: `Você pode guardar até ${MAX_ENDERECOS} endereços.` }, 422)
-      const { data, error } = await supabase
-        .from('cliente_enderecos')
-        .insert({ ...campos, cliente_id: clienteId, barraca_id: barraca.id, padrao: (count ?? 0) === 0 })
-        .select('id')
-        .single()
-      return error || !data ? json({ erro: 'Não foi possível salvar.' }, 500) : json({ ok: true, id: data.id })
+      // Contagem, limite e "primeiro vira padrão" numa transação só (RPC trava a linha do cliente).
+      const { data, error } = await supabase.rpc('cliente_endereco_novo', {
+        p_cliente_id: clienteId,
+        p_apelido: campos.apelido,
+        p_rua: campos.rua,
+        p_numero: campos.numero,
+        p_bairro: campos.bairro,
+        p_referencia: campos.referencia,
+        p_max: MAX_ENDERECOS,
+      })
+      if (error?.message?.includes('limite_enderecos')) return json({ erro: `Você pode guardar até ${MAX_ENDERECOS} endereços.` }, 422)
+      return error || !data ? json({ erro: 'Não foi possível salvar.' }, 500) : json({ ok: true, id: data })
     }
 
     case 'endereco_padrao': {
       const id = texto(d.id, 40)
       if (!UUID.test(id)) return json({ erro: 'Endereço inválido' }, 400)
-      const { data: dele } = await supabase.from('cliente_enderecos').select('id').eq('id', id).eq('cliente_id', clienteId).maybeSingle()
-      if (!dele) return json({ erro: 'Endereço não encontrado' }, 404)
-      await supabase.from('cliente_enderecos').update({ padrao: false }).eq('cliente_id', clienteId)
-      await supabase.from('cliente_enderecos').update({ padrao: true }).eq('id', id)
-      return json({ ok: true })
+      const { data: achou, error } = await supabase.rpc('cliente_endereco_padrao', { p_cliente_id: clienteId, p_endereco_id: id })
+      if (error) return json({ erro: 'Não foi possível salvar.' }, 500)
+      return achou ? json({ ok: true }) : json({ erro: 'Endereço não encontrado' }, 404)
     }
 
     case 'endereco_excluir': {
       const id = texto(d.id, 40)
       if (!UUID.test(id)) return json({ erro: 'Endereço inválido' }, 400)
-      await supabase.from('cliente_enderecos').delete().eq('id', id).eq('cliente_id', clienteId)
-      return json({ ok: true })
+      // Se era o padrão, o banco promove o endereço mais antigo que sobrar.
+      const { error } = await supabase.rpc('cliente_endereco_excluir', { p_cliente_id: clienteId, p_endereco_id: id })
+      return error ? json({ erro: 'Não foi possível excluir.' }, 500) : json({ ok: true })
     }
 
     case 'sair': {
