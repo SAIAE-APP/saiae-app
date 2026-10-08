@@ -18,7 +18,7 @@
 // pertença à barraca do pedido (mesma checagem de `usuario_tem_acesso_barraca`
 // usada em todo o resto do app).
 import { createClient } from 'jsr:@supabase/supabase-js@2'
-import { ratearDesconto } from '../_shared/descontoNfce.ts'
+import { MENSAGEM_PEDIDO_GRATIS, ratearDesconto, totalDaNotaCentavos } from '../_shared/descontoNfce.ts'
 
 const FOCUSNFE_URL_HOMOLOGACAO = 'https://homologacao.focusnfe.com.br/v2'
 const FOCUSNFE_URL_PRODUCAO = 'https://api.focusnfe.com.br/v2'
@@ -202,6 +202,15 @@ Deno.serve(async (req: Request) => {
     return jsonResponse({ erro: 'Pedido sem itens para emitir' }, 422)
   }
 
+  // Cupom: desconto do pedido (só nos itens), lido à parte para não quebrar antes da migration dos cupons.
+  const { data: descontoRow } = await supabase.from('pedidos').select('desconto_cupom_centavos').eq('id', pedidoId).maybeSingle()
+  const descontoCupomCentavos = Math.max(0, Math.floor(Number((descontoRow as { desconto_cupom_centavos?: number } | null)?.desconto_cupom_centavos ?? 0)))
+
+  // Pedido grátis (cupom de 100%): total R$ 0,00, nada a faturar. Sem nota e SEM chamar a FocusNFe.
+  if (totalDaNotaCentavos(itensAtivos.map((i) => i.preco_centavos_unitario * i.quantidade), descontoCupomCentavos) === 0) {
+    return jsonResponse({ erro: MENSAGEM_PEDIDO_GRATIS, codigo: 'pedido_gratis' }, 422)
+  }
+
   // "Pagar na entrega": o método real só existe depois que o entregador
   // confirma (grava o final em pedidos.metodo_pagamento). Antes disso a nota
   // sairia com forma de pagamento errada, e NFC-e autorizada não se corrige.
@@ -265,8 +274,6 @@ Deno.serve(async (req: Request) => {
   // pagou; a taxa de entrega continua FORA. Lido à parte para não quebrar antes da migration dos cupons.
   // ATENÇÃO: nenhuma nota com desconto foi emitida ainda; na primeira emissão real conferir a nota e o
   // `resultado` bruto da FocusNFe (valor_total = soma dos brutos − descontos).
-  const { data: descontoRow } = await supabase.from('pedidos').select('desconto_cupom_centavos').eq('id', pedidoId).maybeSingle()
-  const descontoCupomCentavos = Math.max(0, Math.floor(Number((descontoRow as { desconto_cupom_centavos?: number } | null)?.desconto_cupom_centavos ?? 0)))
   const descontosPorItem = ratearDesconto(
     itensAtivos.map((i) => i.preco_centavos_unitario * i.quantidade),
     descontoCupomCentavos,
