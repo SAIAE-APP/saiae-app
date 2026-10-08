@@ -20,6 +20,7 @@
 // dois pedidos. Pendentes órfãos (sem pagamento no MP) nunca recebem
 // notificação e portanto nunca viram pedido.
 import { createClient } from 'jsr:@supabase/supabase-js@2'
+import { desfechoDaCriacao } from '../_shared/pagamento/corrida.ts'
 import { chaveDoProvedor, obterProvedor } from '../_shared/pagamento/registro.ts'
 import { buscarSegredoWebhook, buscarTokenDoProvedor } from '../_shared/pagamento/token.ts'
 import { ErroProvedor, type ConsultaPagamento } from '../_shared/pagamento/tipos.ts'
@@ -230,16 +231,28 @@ Deno.serve(async (req: Request) => {
 
     const { data: resultadoPedido, error: erroPedido } = await supabase.rpc('criar_pedido', argsPedido).single()
 
-    if (erroPedido || !resultadoPedido) {
+    // Corrida de notificações: se outra já criou o pedido (23505 em pedidos_client_uuid_key), busca-o
+    // e segue como sucesso idempotente. Qualquer outro erro continua sendo falha.
+    const desfecho = await desfechoDaCriacao(resultadoPedido as { pedido_id?: string } | null, erroPedido, async () => {
+      const { data } = await supabase
+        .from('pedidos')
+        .select('id')
+        .eq('barraca_id', pendente.barraca_id)
+        .eq('client_uuid', pendente.client_uuid)
+        .maybeSingle()
+      return (data as { id: string } | null)?.id ?? null
+    })
+
+    if (desfecho.acao === 'falha') {
       // 500 faz o MP tentar de novo depois — o pagamento já foi aprovado e o
       // pedido ainda não existe, então NÃO pode ser engolido como sucesso.
       // Fica também registrado, pra o dinheiro não ficar invisível se o provedor
       // desistir de reenviar.
-      await registrarConciliacao('pedido_nao_criado', { detalhe: String(erroPedido?.message ?? 'sem resposta').slice(0, 300) })
-      return jsonResponse({ ok: false, aviso: `falha ao criar pedido: ${erroPedido?.message}` }, 500)
+      await registrarConciliacao('pedido_nao_criado', { detalhe: desfecho.detalhe.slice(0, 300) })
+      return jsonResponse({ ok: false, aviso: `falha ao criar pedido: ${desfecho.detalhe}` }, 500)
     }
 
-    const pedidoId = (resultadoPedido as { pedido_id: string }).pedido_id
+    const pedidoId = desfecho.pedidoId
     await supabase
       .from('pagamentos_pendentes')
       .update({ status: 'aprovado', pedido_id: pedidoId })
