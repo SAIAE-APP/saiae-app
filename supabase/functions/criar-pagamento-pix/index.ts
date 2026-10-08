@@ -20,7 +20,8 @@ import { minutosExpiracaoPix } from '../_shared/pagamento/expiracao.ts'
 import { ErroProvedor, ehProvedorValido, type QrPix } from '../_shared/pagamento/tipos.ts'
 import { hashIp, ipDoCliente, pareceBot } from '../_shared/antiabuso.ts'
 import { resolverPerfilDoPedido } from '../_shared/perfilNoPedido.ts'
-import { interpretarAvaliacao, mensagemDoErro, normalizarCodigo, totalCobrado } from '../_shared/cupom.ts'
+import { totalCobrado } from '../_shared/cupom.ts'
+import { avaliarCupomDoPedido, reservarCupomDoPedido } from '../_shared/cupomPedido.ts'
 import { MENSAGEM_FECHADO, foraDoHorarioBloqueado } from '../_shared/horario.ts'
 import { interpretarResolver, itensAcimaDoEstoque, montarLinhas, respostaDeErros } from '../_shared/carrinho.ts'
 
@@ -341,38 +342,16 @@ Deno.serve(async (req: Request) => {
 
   // ---- Cupom (só quando enviado; sem ele nada muda). Aqui só AVALIA (sem gravar) para o total esperado
   // ser conferido antes de criar a cobrança; a reserva real vem depois, com o id da cobrança. ----
-  let descontoCentavos = 0
-  let cupomCodigo: string | null = null
-  const cupomBruto = String(body.cupom_codigo ?? '').trim()
-  if (cupomBruto !== '') {
-    const codigo = normalizarCodigo(cupomBruto)
-    const ipCupom = await hashIp('cupom-validar', ipDoCliente(req), barraca_id)
-    const dentroDoLimite = await supabase.rpc('cupom_registrar_tentativa', {
-      p_barraca_id: barraca_id,
-      p_ip_hash: ipCupom,
-      p_valida: codigo !== null,
-    })
-    if (dentroDoLimite.error || dentroDoLimite.data === false) {
-      return jsonResponse({ erro: 'Muitas tentativas. Tente de novo em alguns minutos.', codigo: 'cupom_tentativas' }, 429)
-    }
-    if (!codigo) return jsonResponse({ erro: mensagemDoErro('invalido'), codigo: 'cupom_invalido' }, 422)
-    const { data: dadosCupom, error: erroCupom } = await supabase.rpc('cupom_avaliar', {
-      p_barraca_id: barraca_id,
-      p_codigo: codigo,
-      p_subtotal_centavos: totalCentavos,
-      p_cliente_id: perfil.clienteId,
-    })
-    if (erroCupom) {
-      console.error('criar-pagamento-pix: cupom_avaliar falhou')
-      return jsonResponse({ erro: 'Não foi possível validar o cupom agora. Tente de novo.' }, 500)
-    }
-    const avaliacao = interpretarAvaliacao(dadosCupom)
-    if (!avaliacao.ok) {
-      return jsonResponse({ erro: mensagemDoErro(avaliacao.erro, avaliacao.minimo_centavos), codigo: 'cupom_invalido' }, 422)
-    }
-    descontoCentavos = avaliacao.desconto_centavos
-    cupomCodigo = codigo
-  }
+  const avCupom = await avaliarCupomDoPedido(supabase, {
+    barracaId: barraca_id,
+    codigoBruto: body.cupom_codigo,
+    subtotalCentavos: totalCentavos,
+    clienteId: perfil.clienteId,
+    ipHash: await hashIp('cupom-validar', ipDoCliente(req), barraca_id),
+  })
+  if (!avCupom.ok) return jsonResponse(avCupom.corpo, avCupom.status)
+  const descontoCentavos = avCupom.desconto
+  const cupomCodigo = avCupom.codigo
 
   // Tudo em centavos INTEIROS; só vira reais na última linha (MP).
   const totalCobradoCentavos = totalCobrado(totalCentavos, descontoCentavos, taxaEntregaCentavos)
@@ -466,23 +445,16 @@ Deno.serve(async (req: Request) => {
   // Cupom: reserva ATÔMICA no banco, ligada a esta cobrança, vigente até o Pix vencer. Sem cupom, uma
   // reserva antiga da mesma cobrança (cliente tirou o código) é liberada.
   if (cupomCodigo) {
-    const { data: dadosReserva, error: erroReserva } = await supabase.rpc('cupom_reservar', {
-      p_barraca_id: barraca_id,
-      p_codigo: cupomCodigo,
-      p_subtotal_centavos: totalCentavos,
-      p_cliente_id: perfil.clienteId,
-      p_pendente_id: pendente.id,
-      p_reservado_ate: expiraEm.toISOString(),
+    const res = await reservarCupomDoPedido(supabase, {
+      barracaId: barraca_id,
+      codigo: cupomCodigo,
+      subtotalCentavos: totalCentavos,
+      clienteId: perfil.clienteId,
+      pendenteId: pendente.id,
+      reservadoAte: expiraEm,
     })
-    if (erroReserva) {
-      console.error('criar-pagamento-pix: cupom_reservar falhou')
-      return jsonResponse({ erro: 'Não foi possível aplicar o cupom agora. Tente de novo.' }, 500)
-    }
-    const reserva = interpretarAvaliacao(dadosReserva)
-    if (!reserva.ok) {
-      // Perdeu a corrida (esgotou, venceu...) entre a conferência e a reserva: nada foi cobrado.
-      return jsonResponse({ erro: mensagemDoErro(reserva.erro, reserva.minimo_centavos), codigo: 'cupom_invalido' }, 422)
-    }
+    if (!res.ok) return jsonResponse(res.corpo, res.status)
+    const reserva = res.reserva
     if (reserva.desconto_centavos !== descontoCentavos) {
       // Desconto mudou no meio (dono editou o cupom): o cliente confirma o novo total antes de pagar.
       return jsonResponse(

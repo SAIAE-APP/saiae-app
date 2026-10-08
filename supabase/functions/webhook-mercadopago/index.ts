@@ -151,7 +151,12 @@ Deno.serve(async (req: Request) => {
     // mudou a tabela de bairros depois, vale o que o cliente viu e pagou.
     // Pendente sem entrega tem taxa 0 => conta idêntica à de antes.
     const taxaEntregaCentavos = Number(pendente.taxa_entrega_centavos ?? 0)
-    const totalCentavos = totalEsperadoDoPendente(pendente.itens as ItemPendente[], taxaEntregaCentavos)
+    // O valor cobrado no Pix já é o DESCONTADO (cupom): o pendente guarda o desconto da hora da cobrança.
+    const totalCentavos = totalEsperadoDoPendente(
+      pendente.itens as ItemPendente[],
+      taxaEntregaCentavos,
+      Number(pendente.desconto_cupom_centavos ?? 0),
+    )
 
     const decisao = decidirAprovado({
       statusPendente: pendente.status,
@@ -253,6 +258,16 @@ Deno.serve(async (req: Request) => {
     }
 
     const pedidoId = desfecho.pedidoId
+    // Cupom: o uso vira CONFIRMADO só com o pagamento aprovado (mesmo se a reserva já venceu ou foi liberada:
+    // pagamento aprovado vale mais que a validade). Idempotente: webhook duplicado não confirma de novo.
+    // Se falhar, 500 ANTES de marcar o pendente aprovado: o provedor reenvia e tentamos de novo.
+    if (pendente.cupom_uso_id) {
+      const { error: erroCupom } = await supabase.rpc('cupom_confirmar', { p_uso_id: pendente.cupom_uso_id, p_pedido_id: pedidoId })
+      if (erroCupom) {
+        console.error('webhook-mercadopago: cupom não confirmado', erroCupom.message)
+        return jsonResponse({ ok: false, aviso: 'falha ao confirmar o cupom' }, 500)
+      }
+    }
     // Vínculo com o perfil do cliente (a cobrança carrega o cliente_id). Best-effort.
     if (pendente.cliente_id) {
       const { error: erroVinculo } = await supabase.from('pedidos').update({ cliente_id: pendente.cliente_id }).eq('id', pedidoId)
@@ -327,11 +342,13 @@ Deno.serve(async (req: Request) => {
   // reportar como cancelado/rejeitado continua como está.
   if (leitura.status === 'expirado') {
     await supabase.from('pagamentos_pendentes').update({ status: 'expirado' }).eq('id', pendente.id).eq('status', 'pendente')
+    await supabase.rpc('cupom_liberar', { p_pendente_id: pendente.id }) // devolve a vaga do cupom (se houver)
     return jsonResponse({ ok: true })
   }
 
   if (leitura.status === 'rejeitado') {
     await supabase.from('pagamentos_pendentes').update({ status: 'rejeitado' }).eq('id', pendente.id).eq('status', 'pendente')
+    await supabase.rpc('cupom_liberar', { p_pendente_id: pendente.id }) // devolve a vaga do cupom (se houver)
     return jsonResponse({ ok: true })
   }
 
