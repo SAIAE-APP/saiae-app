@@ -83,10 +83,14 @@ export type ClienteFinal = {
   nome: string
   /** Só dígitos (DDD + número). */
   telefone: string
-  rua: string
-  numero: string
-  bairro: string
+  /** Null em perfil criado só por telefone (sem endereço ainda). */
+  rua: string | null
+  numero: string | null
+  bairro: string | null
   referencia: string | null
+  /** Perfil do cliente final: ausentes em banco/cache de antes da migration. */
+  telefone_confirmado_em?: string | null
+  consentimento_marketing_em?: string | null
   criado_em: string
   atualizado_em: string
 }

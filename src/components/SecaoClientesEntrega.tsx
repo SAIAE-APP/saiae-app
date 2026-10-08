@@ -9,6 +9,7 @@ import { MSG_SEM_INTERNET, mensagemErroSalvar } from '../hooks/useSalvarBarraca'
 import { ImportarClientesSheet } from './ImportarClientesSheet'
 import { BottomSheet } from './ui/BottomSheet'
 import { Button } from './ui/Button'
+import { Badge } from './ui/Badge'
 import { Card } from './ui/Card'
 import { Icone } from './ui/Icone'
 import { Input } from './ui/Input'
@@ -24,7 +25,9 @@ function RotuloSecao({ icone, children }: { icone?: string; children: ReactNode 
 }
 
 function enderecoDoCliente(c: ClienteFinal): string {
-  const base = `${c.rua}, ${c.numero} - ${c.bairro}`
+  // Perfil criado só por telefone (cardápio) ainda não tem endereço.
+  if (!c.rua && !c.numero && !c.bairro) return 'Sem endereço'
+  const base = `${c.rua ?? ''}, ${c.numero ?? ''} - ${c.bairro ?? ''}`
   return c.referencia ? `${base} (${c.referencia})` : base
 }
 
@@ -142,7 +145,7 @@ export function SecaoClientesEntrega({ barraca }: { barraca: Barraca }) {
 
   return (
     <section>
-      <RotuloSecao icone="contacts">Clientes de entrega</RotuloSecao>
+      <RotuloSecao icone="contacts">Clientes</RotuloSecao>
       <Card>
         <p className="text-sm text-mesa-text-secondary">
           Nome, telefone e endereço guardados pra preencher a entrega sozinho. Você pode excluir o
@@ -213,6 +216,12 @@ export function SecaoClientesEntrega({ barraca }: { barraca: Barraca }) {
                     {formatarTelefoneBR(cliente.telefone)}
                   </p>
                   <p className="line-clamp-2 text-xs text-mesa-text-tertiary">{enderecoDoCliente(cliente)}</p>
+                  {(cliente.telefone_confirmado_em || cliente.consentimento_marketing_em) && (
+                    <div className="mt-1 flex flex-wrap gap-1">
+                      {cliente.telefone_confirmado_em && <Badge variant="success">Telefone confirmado</Badge>}
+                      {cliente.consentimento_marketing_em && <Badge variant="info">Aceita promoções</Badge>}
+                    </div>
+                  )}
                 </div>
                 <button
                   type="button"
