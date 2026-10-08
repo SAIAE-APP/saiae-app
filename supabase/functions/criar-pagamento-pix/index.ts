@@ -22,6 +22,7 @@ import { hashIp, ipDoCliente, pareceBot } from '../_shared/antiabuso.ts'
 import { resolverPerfilDoPedido } from '../_shared/perfilNoPedido.ts'
 import { totalCobrado } from '../_shared/cupom.ts'
 import { avaliarCupomDoPedido, liberarReservasAbandonadas, reservarCupomDoPedido } from '../_shared/cupomPedido.ts'
+import { argsPedidoGratis, ehPedidoGratis, telefoneDoPedidoGratis } from '../_shared/pedidoGratis.ts'
 import { MENSAGEM_FECHADO, foraDoHorarioBloqueado } from '../_shared/horario.ts'
 import { interpretarResolver, itensAcimaDoEstoque, montarLinhas, respostaDeErros } from '../_shared/carrinho.ts'
 
@@ -126,6 +127,12 @@ Deno.serve(async (req: Request) => {
     .select('*')
     .eq('client_uuid', client_uuid)
     .maybeSingle()
+
+  // Pedido GRÁTIS já criado com este client_uuid (retry/duplo toque): devolve o mesmo pedido, sem criar outro.
+  if (pendenteExistente?.status === 'aprovado' && pendenteExistente.pedido_id && !pendenteExistente.mercadopago_order_id) {
+    const { data: jaCriado } = await supabase.from('pedidos').select('id, senha').eq('id', pendenteExistente.pedido_id).maybeSingle()
+    if (jaCriado) return jsonResponse({ pedido_gratis: true, senha: jaCriado.senha, pedido_id: jaCriado.id })
+  }
 
   if (pendenteExistente?.mercadopago_order_id) {
     // Retry do mesmo client_uuid devolve o QR já emitido. Se o cliente agora
@@ -379,6 +386,17 @@ Deno.serve(async (req: Request) => {
     )
   }
 
+  // Pedido grátis (cupom cobre tudo, sem taxa a pagar): exige telefone informado. O perfil confirmado, quando a
+  // loja usa perfil, já foi exigido lá em cima (`perfil.bloqueado`); o limite por IP também já valeu.
+  const gratis = ehPedidoGratis(totalCobradoCentavos)
+  const telefoneGratis = telefoneDoPedidoGratis({
+    telefoneEntrega: entregaSnapshot?.telefone,
+    telefoneAviso: clienteTelefone,
+  })
+  if (gratis && !telefoneGratis) {
+    return jsonResponse({ erro: 'Informe seu WhatsApp para finalizar o pedido grátis.', codigo: 'telefone_obrigatorio' }, 422)
+  }
+
   // Retry depois de uma falha do provedor (pendente já existe, sem pagamento nele):
   // reaproveita a linha em vez de estourar a unique de client_uuid. Só
   // reaproveita se ainda está pendente e é da mesma barraca.
@@ -485,6 +503,53 @@ Deno.serve(async (req: Request) => {
       .from('pagamentos_pendentes')
       .update({ cupom_id: null, desconto_cupom_centavos: 0, cupom_uso_id: null })
       .eq('id', pendente.id)
+  }
+
+  if (gratis) {
+    // O cupom é o que "paga": a reserva acima é obrigatória e o pedido nasce junto da confirmação do uso.
+    const { data: comUso } = await supabase.from('pagamentos_pendentes').select('cupom_uso_id').eq('id', pendente.id).single()
+    const usoId = (comUso as { cupom_uso_id?: string | null } | null)?.cupom_uso_id
+    if (!cupomCodigo || !usoId) {
+      return jsonResponse({ erro: 'Não foi possível finalizar o pedido grátis agora. Tente de novo.' }, 500)
+    }
+    const { data: criado, error: erroPedido } = await supabase
+      .rpc(
+        'criar_pedido_com_cupom',
+        argsPedidoGratis({
+          usoId,
+          barracaId: barraca_id,
+          mesa: ehEntrega ? null : body.mesa || null,
+          viagem: ehEntrega ? true : Boolean(body.viagem),
+          observacao: body.observacao || null,
+          clientUuid: client_uuid,
+          itens: itensResolvidos,
+          entrega: entregaSnapshot,
+          taxaEntregaCentavos,
+          clienteNome,
+          clienteTelefone: telefoneGratis,
+        }),
+      )
+      .single()
+    const resultado = criado as { pedido_id?: string; senha?: number } | null
+    if (erroPedido || !resultado?.pedido_id) {
+      await supabase.rpc('cupom_liberar', { p_pendente_id: pendente.id })
+      console.error('criar-pagamento-pix: falha ao criar pedido grátis')
+      return jsonResponse({ erro: 'Não foi possível finalizar o pedido agora. Tente de novo.' }, 500)
+    }
+    if (perfil.clienteId) {
+      const { error: erroVinculo } = await supabase.from('pedidos').update({ cliente_id: perfil.clienteId }).eq('id', resultado.pedido_id)
+      if (erroVinculo) console.error('criar-pagamento-pix: falha ao vincular cliente ao pedido grátis')
+    }
+    await supabase.from('pagamentos_pendentes').update({ status: 'aprovado', pedido_id: resultado.pedido_id }).eq('id', pendente.id)
+    return jsonResponse({
+      pedido_gratis: true,
+      senha: resultado.senha,
+      pedido_id: resultado.pedido_id,
+      pendente_id: pendente.id,
+      total_centavos: 0,
+      taxa_entrega_centavos: taxaEntregaCentavos,
+      desconto_cupom_centavos: descontoCentavos,
+    })
   }
 
   let cobranca: QrPix
