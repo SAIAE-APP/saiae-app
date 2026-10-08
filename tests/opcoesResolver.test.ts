@@ -34,6 +34,11 @@ const O_OUTRA_BARRACA = 'd2000000-0000-4000-8000-000000000001'
 // o nome de um papel do banco de teste), então o nome é montado.
 const SERVICO = ['service', 'role'].join('_')
 
+const VALIDAR = readFileSync(
+  new URL('../supabase/migrations/20261015101000_opcoes_validar_constraint.sql', import.meta.url),
+  'utf8',
+)
+
 let db: PGlite
 
 type Erro = { linha: number | null; item_id: string | null; codigo: string; mensagem: string }
@@ -90,6 +95,7 @@ before(async () => {
   await db.exec(MIGRATION)
   // Roda de novo: a migration precisa ser re-executável.
   await db.exec(MIGRATION)
+  await db.exec(VALIDAR)
   await db.exec(`grant select, insert, update, delete on all tables in schema public to authenticated`)
 
   await db.exec(`
@@ -212,6 +218,108 @@ describe('schema', () => {
     assert.deepEqual(o.rows.map((r) => r.barraca_id), [B1])
   })
 
+  test('constraint do snapshot foi validada pela migration própria', async () => {
+    const r = await db.query<{ convalidated: boolean }>(
+      `select convalidated from pg_constraint where conname = 'itens_do_pedido_opcoes_valido'`,
+    )
+    assert.equal(r.rows[0].convalidated, true)
+  })
+
+  test('RLS: usuário não escreve em outra barraca (INSERT/UPDATE/DELETE cruzando tenant)', async () => {
+    const GB2 = 'c2000000-0000-4000-8000-000000000001'
+    await db.exec(`select set_config('test.uid', '${U1}', false); set role authenticated;`)
+    try {
+      await assert.rejects(
+        db.query(`insert into public.grupos_opcoes (barraca_id, nome, tipo) values ($1, 'X', 'adicional')`, [B2]),
+        /row-level security/,
+      )
+      await assert.rejects(
+        db.query(`insert into public.opcoes (grupo_id, barraca_id, nome) values ($1, $2, 'x')`, [GB2, B2]),
+        /row-level security/,
+      )
+      await assert.rejects(
+        db.query(`insert into public.itens_grupos (item_id, grupo_id, barraca_id) values ($1, $2, $3)`, [ITEM_B2, GB2, B2]),
+        /row-level security|não encontrado nesta barraca/, // o trigger BEFORE age antes da RLS
+      )
+      // Linhas da outra barraca são invisíveis: UPDATE/DELETE afetam 0 linhas.
+      const up = await db.query(`update public.grupos_opcoes set nome = 'hack' where barraca_id = $1`, [B2])
+      assert.equal(up.affectedRows, 0)
+      const upO = await db.query(`update public.opcoes set preco_centavos = 1 where barraca_id = $1`, [B2])
+      assert.equal(upO.affectedRows, 0)
+      const del = await db.query(`delete from public.opcoes where barraca_id = $1`, [B2])
+      assert.equal(del.affectedRows, 0)
+      const delG = await db.query(`delete from public.grupos_opcoes where barraca_id = $1`, [B2])
+      assert.equal(delG.affectedRows, 0)
+      // Mover linha própria para outra barraca é recusado (WITH CHECK / FK / trigger).
+      await assert.rejects(db.query(`update public.opcoes set barraca_id = $1 where id = $2`, [B2, O_OVO]))
+      await assert.rejects(db.query(`update public.grupos_opcoes set barraca_id = $1 where id = $2`, [B2, G_ADIC]))
+      // Escrita na própria barraca continua funcionando.
+      await db.query(`update public.opcoes set ordem = ordem where id = $1`, [O_OVO])
+    } finally {
+      await db.exec('reset role')
+    }
+    const intacto = await db.query<{ n: number }>(`select count(*)::int as n from public.opcoes where barraca_id = $1`, [B2])
+    assert.equal(intacto.rows[0].n, 1)
+  })
+
+  test('anon: sem grant (revoke da migration) e, mesmo com grant, a RLS bloqueia leitura e escrita', async () => {
+    await db.exec('set role anon')
+    try {
+      await assert.rejects(db.query('select * from public.grupos_opcoes'), /permission denied/)
+      await assert.rejects(db.query('select * from public.itens_grupos'), /permission denied/)
+    } finally {
+      await db.exec('reset role')
+    }
+    // Reabre o grant (simula regressão) para provar a 2ª camada.
+    await db.exec('grant select, insert, update, delete on public.grupos_opcoes, public.opcoes, public.itens_grupos to anon')
+    await db.exec('set role anon')
+    try {
+      for (const t of ['grupos_opcoes', 'opcoes', 'itens_grupos']) {
+        const r = await db.query<{ n: number }>(`select count(*)::int as n from public.${t}`)
+        assert.equal(r.rows[0].n, 0, `anon não lê ${t}`)
+      }
+      await assert.rejects(
+        db.query(`insert into public.grupos_opcoes (barraca_id, nome, tipo) values ($1, 'X', 'adicional')`, [B1]),
+        /row-level security/,
+      )
+    } finally {
+      await db.exec('reset role')
+      await db.exec('revoke all on public.grupos_opcoes, public.opcoes, public.itens_grupos from anon')
+    }
+  })
+
+  test('tipo da ligação não pode ser forjado: trigger normaliza e a FK composta barra mesmo sem o trigger', async () => {
+    const g2 = 'c1000000-0000-4000-8000-0000000000f2'
+    await db.query(
+      `insert into public.grupos_opcoes (id, barraca_id, nome, tipo, min_escolhas, max_escolhas) values ($1, $2, 'Sabor2', 'variacao', 1, 1)`,
+      [g2, B1],
+    )
+    // Tentativa 1: gravar a ligação da 2ª variação declarando tipo 'adicional' -> trigger corrige -> índice barra.
+    await assert.rejects(
+      db.query(`insert into public.itens_grupos (item_id, grupo_id, barraca_id, tipo) values ($1, $2, $3, 'adicional')`, [ITEM, g2, B1]),
+      /itens_grupos_uma_variacao/,
+    )
+    // Tentativa 2: UPDATE do tipo da ligação existente -> continua 'variacao'.
+    await db.query(`update public.itens_grupos set tipo = 'adicional' where item_id = $1 and grupo_id = $2`, [ITEM, G_TAM])
+    const t = await db.query<{ tipo: string }>(`select tipo from public.itens_grupos where item_id = $1 and grupo_id = $2`, [ITEM, G_TAM])
+    assert.equal(t.rows[0].tipo, 'variacao')
+    // Sem o trigger, a FK (grupo_id, barraca_id, tipo) ainda impede a mentira.
+    await db.exec('alter table public.itens_grupos disable trigger itens_grupos_preencher')
+    try {
+      await assert.rejects(
+        db.query(`update public.itens_grupos set tipo = 'adicional' where item_id = $1 and grupo_id = $2`, [ITEM, G_TAM]),
+        /itens_grupos_grupo_fk/,
+      )
+      await assert.rejects(
+        db.query(`insert into public.itens_grupos (item_id, grupo_id, barraca_id, tipo) values ($1, $2, $3, 'adicional')`, [ITEM, g2, B1]),
+        /itens_grupos_grupo_fk/,
+      )
+    } finally {
+      await db.exec('alter table public.itens_grupos enable trigger itens_grupos_preencher')
+      await db.query(`delete from public.grupos_opcoes where id = $1`, [g2])
+    }
+  })
+
   test('resolver_carrinho não é executável por authenticated/anon', async () => {
     await db.exec(`set role authenticated`)
     await assert.rejects(db.query(`select public.resolver_carrinho($1, '[]'::jsonb)`, [B1]), /permission denied/)
@@ -278,6 +386,20 @@ describe('resolver_carrinho: preço e snapshot', () => {
     const r = await resolver(B1, [linha(ITEM2, [], 1, { observacao: longa }), linha(ITEM2, [], 1, { observacao: '   ' })])
     assert.equal(r.linhas![0].observacao!.length, 120)
     assert.equal(r.linhas![1].observacao, null)
+  })
+
+  test('quantidade: 99 passa, 100 e 0 não', async () => {
+    assert.equal((await resolver(B1, [linha(ITEM2, [], 99)])).ok, true)
+    assert.equal((await resolver(B1, [linha(ITEM2, [], 100)])).erros![0].codigo, 'quantidade_invalida')
+    assert.equal((await resolver(B1, [linha(ITEM2, [], 1000)])).erros![0].codigo, 'quantidade_invalida')
+  })
+
+  test('observação: sem caracteres de controle nem quebras de linha (vai para a comanda ESC/POS)', async () => {
+    const suja = 'sem\ncebola\r\n\tbem\u0007 passado\u2028fim\u2029!\u0001'
+    const r = await resolver(B1, [linha(ITEM2, [], 1, { observacao: suja })])
+    assert.equal(r.linhas![0].observacao, 'sem cebola bem passado fim !')
+    const so = await resolver(B1, [linha(ITEM2, [], 1, { observacao: '\n\t \u2028' })])
+    assert.equal(so.linhas![0].observacao, null)
   })
 
   test('loja com opcoes_habilitado = false: item plano segue pelo preço base e recusa opcao_ids', async () => {

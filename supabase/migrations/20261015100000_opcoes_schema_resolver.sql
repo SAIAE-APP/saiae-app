@@ -12,7 +12,9 @@
 --   * grupo obrigatório (min >= 1) sem nenhuma opção disponível => item NÃO pedível.
 --   * sem quantidade por opção (o snapshot reserva o campo, fixo em 1).
 --
--- Rollback (nada depende disto até a etapa 2):
+-- Rollback. ATENÇÃO: depois da etapa 2 (criar_pedido v9) existem pedidos com snapshot em
+-- itens_do_pedido.opcoes; dropar a coluna APAGA esses dados (o preço unitário final fica, mas
+-- o detalhe das escolhas some). Antes da etapa 2 não há nada dependente:
 --   drop function if exists public.resolver_carrinho(uuid, jsonb);
 --   drop table if exists public.itens_grupos, public.opcoes, public.grupos_opcoes cascade;
 --   drop function if exists public.itens_grupos_preencher(), public.grupos_opcoes_tipo_imutavel();
@@ -27,13 +29,14 @@ alter table public.barracas
 alter table public.itens_do_pedido
   add column if not exists opcoes jsonb not null default '[]'::jsonb;
 
--- NOT VALID + VALIDATE: não segura lock forte na tabela quente de pedidos.
+-- NOT VALID: a constraint já vale para linhas novas e o ADD é instantâneo (sem varrer a tabela).
+-- A validação das linhas antigas fica em migration própria (20261015101000): numa transação só,
+-- o lock do ADD persistiria até o commit e o VALIDATE não ajudaria.
 alter table public.itens_do_pedido
   drop constraint if exists itens_do_pedido_opcoes_valido;
 alter table public.itens_do_pedido
   add constraint itens_do_pedido_opcoes_valido
   check (jsonb_typeof(opcoes) = 'array' and jsonb_array_length(opcoes) <= 20) not valid;
-alter table public.itens_do_pedido validate constraint itens_do_pedido_opcoes_valido;
 
 -- 2) Grupos de opções (reutilizáveis entre itens).
 create table if not exists public.grupos_opcoes (
@@ -47,6 +50,8 @@ create table if not exists public.grupos_opcoes (
   ativo boolean not null default true,
   criado_em timestamptz not null default now(),
   constraint grupos_opcoes_id_barraca_unico unique (id, barraca_id),
+  -- Alvo da FK de itens_grupos: o tipo gravado na ligação não pode divergir do grupo.
+  constraint grupos_opcoes_id_barraca_tipo_unico unique (id, barraca_id, tipo),
   constraint grupos_opcoes_nome_valido check (btrim(nome) <> '' and length(nome) <= 60),
   constraint grupos_opcoes_limites_validos check (
     min_escolhas between 0 and 20
@@ -98,8 +103,9 @@ create table if not exists public.opcoes (
 
 create index if not exists idx_opcoes_grupo on public.opcoes (grupo_id);
 
--- 4) Ligação item <-> grupo. `tipo` é copiado do grupo (trigger) para o índice parcial
--- garantir, à prova de corrida, no máximo UMA variação por item.
+-- 4) Ligação item <-> grupo. `tipo` é copiado do grupo (trigger) e AMARRADO a ele por FK composta
+-- (grupo_id, barraca_id, tipo): o cliente não consegue forjá-lo, então o índice parcial
+-- garante, à prova de corrida e de adulteração, no máximo UMA variação por item.
 create table if not exists public.itens_grupos (
   item_id uuid not null references public.itens(id) on delete cascade,
   grupo_id uuid not null,
@@ -107,8 +113,8 @@ create table if not exists public.itens_grupos (
   tipo text not null,
   ordem integer not null default 0,
   primary key (item_id, grupo_id),
-  constraint itens_grupos_grupo_fk foreign key (grupo_id, barraca_id)
-    references public.grupos_opcoes (id, barraca_id) on delete cascade
+  constraint itens_grupos_grupo_fk foreign key (grupo_id, barraca_id, tipo)
+    references public.grupos_opcoes (id, barraca_id, tipo) on delete cascade
 );
 
 create index if not exists idx_itens_grupos_grupo on public.itens_grupos (grupo_id);
@@ -136,7 +142,7 @@ $$;
 
 drop trigger if exists itens_grupos_preencher on public.itens_grupos;
 create trigger itens_grupos_preencher
-  before insert or update of item_id, grupo_id, barraca_id on public.itens_grupos
+  before insert or update of item_id, grupo_id, barraca_id, tipo on public.itens_grupos
   for each row execute function public.itens_grupos_preencher();
 
 -- 5) RLS: mesmo padrão de taxas_entrega_bairro (dono/funcionário da barraca). Sem acesso
@@ -148,6 +154,8 @@ declare
 begin
   foreach t in array array['grupos_opcoes', 'opcoes', 'itens_grupos'] loop
     execute format('alter table public.%I enable row level security', t);
+    -- Defesa em profundidade: anon nem chega à RLS.
+    execute format('revoke all on public.%I from anon', t);
     execute format('drop policy if exists %I on public.%I', 'usuarios veem ' || t || ' de suas barracas', t);
     execute format('drop policy if exists %I on public.%I', 'usuarios inserem ' || t || ' em suas barracas', t);
     execute format('drop policy if exists %I on public.%I', 'usuarios editam ' || t || ' de suas barracas', t);
@@ -167,7 +175,7 @@ $$;
 -- 6) resolver_carrinho: fonte ÚNICA da regra de preço/validação (edge functions do cardápio
 -- e do Pix, com a chave de serviço). O cliente manda só ids; preço, nome e total saem daqui.
 --
--- Entrada: p_linhas = [{item_id, quantidade, opcao_ids: [uuid], observacao}] (1 a 40 linhas).
+-- Entrada: p_linhas = [{item_id, quantidade (1..99), opcao_ids: [uuid], observacao}] (1 a 40 linhas).
 -- Saída (nunca levanta erro de negócio):
 --   {"ok": true,  "linhas": [{item_id, nome_item, quantidade, preco_centavos_unitario,
 --                             opcoes: [snapshot], observacao}], "total_centavos": n}
@@ -233,7 +241,8 @@ begin
       v_cod := 'item_invalido'; v_msg := 'Item inválido.';
     else
       v_item_id := (v_linha ->> 'item_id')::uuid;
-      if coalesce(v_linha ->> 'quantidade', '') !~ '^[0-9]{1,5}$' or (v_linha ->> 'quantidade')::integer < 1 then
+      if coalesce(v_linha ->> 'quantidade', '') !~ '^[0-9]{1,3}$'
+         or (v_linha ->> 'quantidade')::integer not between 1 and 99 then
         v_cod := 'quantidade_invalida'; v_msg := 'Quantidade inválida.';
       else
         v_qtd := (v_linha ->> 'quantidade')::integer;
@@ -359,7 +368,10 @@ begin
       v_erros := v_erros || jsonb_build_object(
         'linha', v_idx, 'item_id', v_item_id, 'codigo', v_cod, 'mensagem', v_msg);
     else
-      v_obs := nullif(left(btrim(coalesce(v_linha ->> 'observacao', '')), 120), '');
+      -- A observação vai para a comanda ESC/POS: sem caracteres de controle nem quebras de linha.
+      v_obs := nullif(left(btrim(regexp_replace(
+        coalesce(v_linha ->> 'observacao', ''),
+        '[[:cntrl:][:space:]' || chr(8232) || chr(8233) || ']+', ' ', 'g')), 120), '');
       v_linhas := v_linhas || jsonb_build_object(
         'item_id', v_item.id,
         'nome_item', v_item.nome,
