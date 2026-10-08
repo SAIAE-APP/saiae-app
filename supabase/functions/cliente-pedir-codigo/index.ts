@@ -4,7 +4,7 @@
 //   supabase functions deploy cliente-pedir-codigo --no-verify-jwt --project-ref <ref>
 import { createClient } from 'jsr:@supabase/supabase-js@2'
 import { hashIp, ipDoCliente, pareceBot } from '../_shared/antiabuso.ts'
-import { VALIDADE_CODIGO_MS, decidirLimites, gerarCodigo, hashSegredo } from '../_shared/clienteCodigo.ts'
+import { VALIDADE_CODIGO_MS, codigoSimuladoPermitido, gerarCodigo, hashSegredo } from '../_shared/clienteCodigo.ts'
 import { enviarCodigoAoCrm } from '../_shared/codigoCrm.ts'
 import { normalizarTelefone, telefoneValido } from '../_shared/telefone.ts'
 
@@ -12,7 +12,6 @@ const CORS = {
   'Access-Control-Allow-Origin': '*',
   'Access-Control-Allow-Headers': 'authorization, x-client-info, apikey, content-type',
 }
-const PRODUCAO_REF = 'vimjwzumjggrlvlxdejr'
 
 function json(corpo: unknown, status = 200) {
   return new Response(JSON.stringify(corpo), { status, headers: { ...CORS, 'Content-Type': 'application/json' } })
@@ -50,46 +49,36 @@ Deno.serve(async (req: Request) => {
   if (!barraca) return json({ erro: 'Loja não encontrada' }, 404)
 
   const agora = Date.now()
-  const umaHora = new Date(agora - 3600_000).toISOString()
-  const vinteQuatroH = new Date(agora - 24 * 3600_000).toISOString()
   const ipHash = await hashIp('cliente-codigo', ipDoCliente(req), barraca.id)
+  const ipHashGlobal = await hashIp('cliente-codigo-global', ipDoCliente(req), 'global')
 
-  const [{ count: porTelefone }, { count: porIp }, { count: porLoja }, { data: ultimo }] = await Promise.all([
-    supabase.from('cliente_codigos').select('id', { count: 'exact', head: true }).eq('barraca_id', barraca.id).eq('telefone', telefone).gte('criado_em', umaHora),
-    supabase.from('cliente_codigos').select('id', { count: 'exact', head: true }).eq('ip_hash', ipHash).gte('criado_em', umaHora),
-    supabase.from('cliente_codigos').select('id', { count: 'exact', head: true }).eq('barraca_id', barraca.id).gte('criado_em', vinteQuatroH),
-    supabase.from('cliente_codigos').select('criado_em').eq('barraca_id', barraca.id).eq('telefone', telefone).order('criado_em', { ascending: false }).limit(1).maybeSingle(),
-  ])
-
-  const decisao = decidirLimites({
-    pedidosTelefoneHora: porTelefone ?? 0,
-    pedidosIpHora: porIp ?? 0,
-    enviosLoja24h: porLoja ?? 0,
-    tetoLoja: barraca.codigos_dia_max,
-    msDesdeUltimoEnvio: ultimo ? agora - Date.parse(ultimo.criado_em) : null,
-  })
-  if (decisao === 'muito_cedo') return json({ erro: 'Aguarde um minuto para pedir outro código.' }, 429)
-  if (decisao !== 'ok') return json({ erro: 'Muitas tentativas. Tente de novo em alguns minutos.' }, 429)
-
+  // Limites e inserção ATÔMICOS (lock por loja+telefone no banco): nada de contar e inserir em duas idas.
   const codigo = gerarCodigo()
-  const requestId = crypto.randomUUID()
-  const { error: erroInsert } = await supabase.from('cliente_codigos').insert({
-    id: requestId,
-    barraca_id: barraca.id,
-    telefone,
-    codigo_hash: await hashSegredo(pimenta, `codigo:${barraca.id}:${telefone}`, codigo),
-    expira_em: new Date(agora + VALIDADE_CODIGO_MS).toISOString(),
-    ip_hash: ipHash,
+  const { data: reserva, error: erroReserva } = await supabase.rpc('cliente_reservar_codigo', {
+    p_barraca_id: barraca.id,
+    p_telefone: telefone,
+    p_codigo_hash: await hashSegredo(pimenta, `codigo:${barraca.id}:${telefone}`, codigo),
+    p_expira_em: new Date(agora + VALIDADE_CODIGO_MS).toISOString(),
+    p_ip_hash: ipHash,
+    p_ip_hash_global: ipHashGlobal,
   })
-  if (erroInsert) {
-    console.error('cliente-pedir-codigo: falha ao gravar código')
+  const r = reserva as { decisao?: string; id?: string; enviosLoja24h?: number } | null
+  if (erroReserva || !r) {
+    console.error('cliente-pedir-codigo: falha ao reservar código')
     return json({ erro: 'Não conseguimos enviar o código agora. Tente de novo.' }, 500)
   }
+  if (r.decisao === 'muito_cedo') return json({ erro: 'Aguarde um minuto para pedir outro código.' }, 429)
+  if (r.decisao !== 'ok' || !r.id) {
+    // Mensagem neutra (não revela se foi telefone, IP ou teto da loja); log só com contagem.
+    if (r.decisao === 'limite_loja') console.warn('cliente-pedir-codigo: teto diário da loja atingido', r.enviosLoja24h ?? null)
+    return json({ erro: 'Muitas tentativas. Tente de novo em alguns minutos.' }, 429)
+  }
+  const requestId = r.id
 
-  // Simulação SÓ no staging (nunca na produção, mesmo que o secret exista por engano).
-  const simulado =
-    Deno.env.get('CODIGO_SIMULADO') === '1' && !(Deno.env.get('SUPABASE_URL') ?? '').includes(PRODUCAO_REF)
-  if (simulado) return json({ ok: true, reenvio_em_s: 60, codigo_simulado: codigo })
+  // Simulação SÓ no staging (lista branca pelo ref; nunca na produção, mesmo com o secret por engano).
+  if (codigoSimuladoPermitido(Deno.env.get('CODIGO_SIMULADO'), Deno.env.get('SUPABASE_URL'))) {
+    return json({ ok: true, reenvio_em_s: 60, codigo_simulado: codigo })
+  }
 
   const envio = await enviarCodigoAoCrm({
     url: Deno.env.get('CRM_CODIGO_URL') ?? '',
@@ -101,7 +90,9 @@ Deno.serve(async (req: Request) => {
   })
   if (!envio.ok) {
     console.error('cliente-pedir-codigo: envio falhou:', envio.motivo)
-    await supabase.from('cliente_codigos').delete().eq('id', requestId)
+    // Não apaga: a linha continua contando nos limites; marca como falha e inutiliza (nunca foi entregue).
+    const agoraIso = new Date().toISOString()
+    await supabase.from('cliente_codigos').update({ falhou_em: agoraIso, usado_em: agoraIso }).eq('id', requestId)
     return json({ erro: 'Não conseguimos enviar o código. Tente de novo.' }, 502)
   }
   return json({ ok: true, reenvio_em_s: 60 })
