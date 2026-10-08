@@ -61,6 +61,7 @@ function motivoEmMinusculo(chave: string): string {
 function labelMetodo(chave: MetodoOuNaoInformado): string {
   if (chave === 'nao_informado') return 'Método não informado'
   if (chave === 'na_entrega') return 'A definir na entrega'
+  if (chave === 'gratis') return 'Grátis (cupom)'
   const metodo = METODOS_DISPONIVEIS.find((m) => m.chave === chave)
   return metodo?.label ?? chave
 }
