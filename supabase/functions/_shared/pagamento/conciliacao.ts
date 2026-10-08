@@ -11,9 +11,11 @@ export const STATUS_PENDENTE_ABERTOS = ['pendente', 'expirado'] as const
 export function totalEsperadoDoPendente(
   itens: { quantidade: number; preco_centavos_unitario: number }[],
   taxaEntregaCentavos: number,
+  /** Cupom: desconto só nos itens, gravado no pendente na hora da cobrança. Sem cupom = 0 (conta de antes). */
+  descontoCupomCentavos = 0,
 ): number {
   const itensCentavos = itens.reduce((soma, item) => soma + item.preco_centavos_unitario * item.quantidade, 0)
-  return itensCentavos + taxaEntregaCentavos
+  return itensCentavos - descontoCupomCentavos + taxaEntregaCentavos
 }
 
 export type DecisaoAprovado =

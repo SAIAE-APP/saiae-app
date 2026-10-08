@@ -33,15 +33,26 @@ export function mensagemDoErro(erro: string, minimoCentavos?: number): string {
   }
 }
 
+/** Total cobrado: itens − desconto + taxa de entrega. A taxa nunca é descontada. Tudo em centavos inteiros. */
+export function totalCobrado(subtotalItensCentavos: number, descontoCentavos: number, taxaEntregaCentavos: number): number {
+  return subtotalItensCentavos - descontoCentavos + taxaEntregaCentavos
+}
+
 export type ResultadoAvaliacao =
-  | { ok: true; cupom_id: string; codigo: string; desconto_centavos: number }
+  | { ok: true; cupom_id: string; codigo: string; desconto_centavos: number; uso_id?: string }
   | { ok: false; erro: string; minimo_centavos?: number }
 
 /** Lê com segurança o jsonb devolvido por cupom_avaliar/cupom_reservar. Resposta estranha = inválido. */
 export function interpretarAvaliacao(data: unknown): ResultadoAvaliacao {
   const d = (data ?? {}) as Record<string, unknown>
   if (d.ok === true && typeof d.cupom_id === 'string' && Number.isInteger(d.desconto_centavos) && (d.desconto_centavos as number) >= 0) {
-    return { ok: true, cupom_id: d.cupom_id, codigo: String(d.codigo ?? ''), desconto_centavos: d.desconto_centavos as number }
+    return {
+      ok: true,
+      cupom_id: d.cupom_id,
+      codigo: String(d.codigo ?? ''),
+      desconto_centavos: d.desconto_centavos as number,
+      ...(typeof d.uso_id === 'string' ? { uso_id: d.uso_id } : {}),
+    }
   }
   return {
     ok: false,
