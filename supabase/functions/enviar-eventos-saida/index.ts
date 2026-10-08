@@ -9,10 +9,9 @@
 // Deploy: sem JWT (a autenticação é o x-worker-secret):
 //   supabase functions deploy enviar-eventos-saida --no-verify-jwt --project-ref <ref>
 import { createClient } from 'jsr:@supabase/supabase-js@2'
+import { processarFila } from '../_shared/filaEventos.ts'
 import { cabecalhosDoEvento, segredosIguais, urlPermitida } from '../_shared/eventosSaida.ts'
 
-const LIMITE_POR_RODADA = 20
-const RODADAS_MAX = 5
 const TIMEOUT_MS = 10_000
 
 type Reservado = { evento_id: string; url: string; segredo: string; corpo: Record<string, unknown> | null }
@@ -49,18 +48,13 @@ Deno.serve(async (req) => {
   }
 
   const supabase = createClient(Deno.env.get('SUPABASE_URL') ?? '', Deno.env.get('SUPABASE_SERVICE_ROLE_KEY') ?? '')
-  let enviados = 0
-  let falhas = 0
-
-  for (let rodada = 0; rodada < RODADAS_MAX; rodada++) {
-    const { data, error } = await supabase.rpc('reservar_eventos_saida', { p_limite: LIMITE_POR_RODADA })
-    if (error) return json({ erro: 'reservar', detalhe: error.message.slice(0, 200), enviados, falhas }, 500)
-    const lote = (data ?? []) as Reservado[]
-    if (lote.length === 0) break
-
-    // Um evento por vez: o banco já garante a ordem por pedido e o volume é baixo.
-    for (const ev of lote) {
-      const { ok, erro } = await enviar(ev)
+  const resultado = await processarFila<Reservado>({
+    reservar: async (limite) => {
+      const { data, error } = await supabase.rpc('reservar_eventos_saida', { p_limite: limite })
+      return { erro: error ? error.message.slice(0, 200) : null, lote: (data ?? []) as Reservado[] }
+    },
+    enviar,
+    concluir: async (ev, { ok, erro }) => {
       const { error: erroConcluir } = await supabase.rpc('concluir_evento_saida', {
         p_evento_id: ev.evento_id,
         p_ok: ok,
@@ -68,11 +62,10 @@ Deno.serve(async (req) => {
       })
       // Se não deu para registrar, o aluguel de 3 min do banco devolve o evento à fila sozinho.
       if (erroConcluir) console.warn('concluir_evento_saida falhou', erroConcluir.message)
-      if (ok) enviados++
-      else falhas++
-    }
-    if (lote.length < LIMITE_POR_RODADA) break
+    },
+  })
+  if (resultado.erroReservar) {
+    return json({ erro: 'reservar', detalhe: resultado.erroReservar, enviados: resultado.enviados, falhas: resultado.falhas }, 500)
   }
-
-  return json({ ok: true, enviados, falhas })
+  return json({ ok: true, enviados: resultado.enviados, falhas: resultado.falhas })
 })
