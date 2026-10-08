@@ -4,7 +4,7 @@ import assert from 'node:assert/strict'
 import { createHmac } from 'node:crypto'
 import { readFileSync } from 'node:fs'
 import { describe, test } from 'node:test'
-import { buscarConsumo, cabecalhosDoConsumo, interpretarConsumo, urlDoConsumo } from '../supabase/functions/_shared/iaConsumo.ts'
+import { buscarConsumo, cabecalhosDoConsumo, escolherLimite, interpretarConsumo, urlDoConsumo } from '../supabase/functions/_shared/iaConsumo.ts'
 
 const SEGREDO = 'segredo-de-teste-da-plataforma'
 const URL_CRM = 'https://crm.exemplo.com.br/api/integracao/comanda/v1/ia-consumo'
@@ -118,6 +118,25 @@ describe('buscarConsumo', () => {
   })
 })
 
+describe('escolherLimite', () => {
+  test('o limite da Comanda vence o do CRM; o do CRM é só reserva', () => {
+    assert.equal(escolherLimite(100, 50), 100)
+    assert.equal(escolherLimite(0, 50), 0, 'zero é limite válido (sem conversas), não "ausente"')
+    assert.equal(escolherLimite(null, 50), 50)
+    assert.equal(escolherLimite(undefined, 50), 50)
+  })
+  test('sem nenhum número válido, null (a tela diz "sem limite definido")', () => {
+    assert.equal(escolherLimite(null, null), null)
+    assert.equal(escolherLimite(undefined, undefined), null)
+  })
+  test('valor inválido (negativo, decimal, texto) nunca vira limite', () => {
+    assert.equal(escolherLimite(-1, null), null)
+    assert.equal(escolherLimite(1.5, 20), 20)
+    assert.equal(escolherLimite('100' as unknown as number, null), null)
+    assert.equal(escolherLimite(null, -5), null)
+  })
+})
+
 describe('ia-consumo (edge function, guardas estáticas)', () => {
   const fonte = readFileSync(new URL('../supabase/functions/ia-consumo/index.ts', import.meta.url), 'utf8').replace(/\r\n/g, '\n')
 
@@ -135,6 +154,12 @@ describe('ia-consumo (edge function, guardas estáticas)', () => {
   test('o erro do CRM nunca chega ao navegador e o log é só mensagem fixa', () => {
     assert.match(fonte, /return json\(\{ erro: 'Consumo indisponível' \}, 502\)/)
     for (const l of fonte.split('\n').filter((x) => /console\./.test(x))) assert.match(l.trim(), /^console\.error\('[^'$`]*'\)$/, l)
+  })
+
+  test('o limite sai do plano do dono na Comanda (ia_limites_plano), com o do CRM só de reserva', () => {
+    assert.match(fonte, /from\('ia_limites_plano'\)/)
+    assert.match(fonte, /escolherLimite\(limiteDaComanda, r\.consumo\.limite\)/)
+    assert.match(fonte, /cobranca === false \? 'pro'/)
   })
 
   test('segredos só por variável de ambiente', () => {

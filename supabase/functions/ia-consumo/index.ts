@@ -3,7 +3,7 @@
 // Segredos: IA_CONTEXTO_SEGREDO (o mesmo da rota ia-contexto), CRM_IA_CONSUMO_URL (URL da rota do CRM).
 //   supabase functions deploy ia-consumo --project-ref <ref>   (com JWT: quem chama é o dono logado)
 import { createClient } from 'jsr:@supabase/supabase-js@2'
-import { buscarConsumo } from '../_shared/iaConsumo.ts'
+import { buscarConsumo, escolherLimite } from '../_shared/iaConsumo.ts'
 
 const CORS = {
   'Access-Control-Allow-Origin': '*',
@@ -57,5 +57,25 @@ Deno.serve(async (req: Request) => {
     console.error('ia-consumo: consumo indisponível')
     return json({ erro: 'Consumo indisponível' }, 502)
   }
-  return json({ ok: true, ...r.consumo })
+
+  // O limite é da Comanda (plano do dono em ia_limites_plano; cobrança desligada = plano pro). O do CRM é só reserva.
+  const { data: dono } = await supabase
+    .from('usuarios_barracas')
+    .select('usuario_id')
+    .eq('barraca_id', barracaId)
+    .eq('papel', 'dono')
+    .limit(1)
+    .maybeSingle()
+  const { data: cobranca } = await supabase.rpc('cobranca_ativa')
+  let plano: string | null = cobranca === false ? 'pro' : null
+  if (!plano && dono?.usuario_id) {
+    const { data: assinatura } = await supabase.from('assinaturas').select('plan').eq('usuario_id', dono.usuario_id).maybeSingle()
+    plano = assinatura?.plan ?? null
+  }
+  let limiteDaComanda: number | null = null
+  if (plano) {
+    const { data: linha } = await supabase.from('ia_limites_plano').select('conversas_mes').eq('plano', plano).maybeSingle()
+    limiteDaComanda = linha?.conversas_mes ?? null
+  }
+  return json({ ok: true, ...r.consumo, limite: escolherLimite(limiteDaComanda, r.consumo.limite) })
 })
