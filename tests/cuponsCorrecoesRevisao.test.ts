@@ -74,3 +74,13 @@ describe('S2: log de tentativas', () => {
     assert.match(mig, /limpar-cupom-tentativas/)
   })
 })
+
+describe('Re-revisão: wrapper idempotente', () => {
+  const m2 = ler('supabase/migrations/20261018150000_cupons_wrapper_idempotente.sql')
+  test('reenvio libera o uso novo e uso inexistente vira erro', () => {
+    assert.match(m2, /raise exception 'Uso de cupom inexistente para esta loja'/)
+    assert.match(m2, /update public\.cupom_usos set estado = 'liberado' where id = p_uso_id and estado = 'reservado'/)
+    assert.match(m2, /perform public\.cupom_confirmar\(p_uso_id, v_pedido\)/)
+    assert.match(m2, /grant execute on function public\.criar_pedido_com_cupom\([^)]*\) to service_role/)
+  })
+})
