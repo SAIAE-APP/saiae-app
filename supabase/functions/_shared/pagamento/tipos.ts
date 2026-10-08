@@ -56,6 +56,13 @@ export type ConsultaPagamento = {
   referencia: string
 }
 
+/**
+ * valida: assinatura confere. invalida: veio assinatura e NÃO confere (rejeitar).
+ * sem_segredo: a barraca não cadastrou o segredo (segue só com a consulta).
+ * sem_assinatura: há segredo, mas a notificação veio sem cabeçalho de assinatura (segue só com a consulta).
+ */
+export type ResultadoAssinatura = 'valida' | 'invalida' | 'sem_segredo' | 'sem_assinatura'
+
 export type Notificacao =
   /** Não é notificação de pagamento (ou não traz id): responder 200 e ignorar. */
   | { ignorar: true }
@@ -90,8 +97,13 @@ export interface ProvedorPix {
   /** Lê o id do pagamento da notificação. `lerCorpo` só é chamado se a URL não bastar (corpo lido uma vez). */
   extrairIdDaNotificacao(url: URL, lerCorpo: () => Promise<unknown>): Promise<Notificacao>
 
-  /** Assinatura/segredo da notificação, quando o provedor tiver. Ausente = só a confirmação por consulta. */
-  validarNotificacao?(req: Request): Promise<boolean>
+  /**
+   * Assinatura da notificação, quando o provedor tiver. `segredo` é o segredo de assinatura da
+   * barraca (null = o dono ainda não cadastrou). Ausente = só a confirmação por consulta.
+   * A assinatura é uma camada EXTRA: a garantia de verdade continua sendo consultar o
+   * provedor de volta com o token da barraca.
+   */
+  validarNotificacao?(req: Request, segredo: string | null): Promise<ResultadoAssinatura>
 }
 
 /** "12.34" | 12.34 | "12" → 1234 (centavos inteiros, sem erro de ponto flutuante). */

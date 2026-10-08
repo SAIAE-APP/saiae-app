@@ -16,6 +16,22 @@ type ClienteSupabase = {
   }
 }
 
+/** Segredo de assinatura do webhook do provedor (opcional), ou null se o dono não cadastrou. */
+export async function buscarSegredoWebhook(
+  supabase: unknown,
+  barracaId: string,
+  provedor: ProvedorChave,
+): Promise<string | null> {
+  const { data, error } = await (supabase as ClienteSupabase)
+    .from('barracas_pagamento_token')
+    .select('*')
+    .eq('barraca_id', barracaId)
+  if (error || !data) return null
+  const linha = data.find((l) => String(l.provedor ?? PROVEDOR_PADRAO) === provedor)
+  const segredo = linha?.segredo_webhook
+  return typeof segredo === 'string' && segredo ? segredo : null
+}
+
 export async function buscarTokenDoProvedor(
   supabase: unknown,
   barracaId: string,

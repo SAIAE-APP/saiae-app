@@ -2074,6 +2074,97 @@ function BottomSheetTokenPagamento({
   )
 }
 
+/** Segredo de assinatura do webhook (opcional). Com ele cadastrado, notificação de
+ * pagamento com assinatura inválida é rejeitada. Fica guardado só no servidor. */
+function BottomSheetSegredoWebhook({
+  barracaId,
+  provedor,
+  open,
+  onClose,
+  onSucesso,
+}: {
+  barracaId: string
+  provedor: ProvedorPixInfo
+  open: boolean
+  onClose: () => void
+  onSucesso: () => void
+}) {
+  const [segredo, setSegredo] = useState('')
+  const [processando, setProcessando] = useState(false)
+  const [erro, setErro] = useState<string | null>(null)
+
+  function fechar() {
+    setSegredo('')
+    setErro(null)
+    onClose()
+  }
+
+  async function salvar(e: FormEvent) {
+    e.preventDefault()
+    if (processando) return
+
+    if (!segredo.trim()) {
+      setErro('Cole a assinatura secreta gerada no painel do ' + provedor.nome)
+      return
+    }
+    if (navigator.onLine === false) {
+      setErro(MSG_SEM_INTERNET)
+      return
+    }
+
+    setProcessando(true)
+    setErro(null)
+
+    const { error } = await supabase.rpc('definir_segredo_webhook_pagamento', {
+      p_barraca_id: barracaId,
+      p_segredo: segredo.trim(),
+      p_provedor: provedor.chave,
+    })
+
+    setProcessando(false)
+
+    if (error) {
+      setErro(mensagemErroSalvar(error))
+      return
+    }
+
+    fechar()
+    onSucesso()
+  }
+
+  return (
+    <BottomSheet open={open} onClose={fechar} aria-label={`Assinatura do webhook do ${provedor.nome}`}>
+      <h2 className="text-lg font-semibold text-mesa-text-primary">Assinatura do webhook do {provedor.nome}</h2>
+      <p className="mt-1 text-sm text-mesa-text-secondary">
+        Opcional. Se você ativou a assinatura das notificações no painel do {provedor.nome} (Webhooks → assinatura
+        secreta), cole aqui. Notificações com assinatura inválida passam a ser rejeitadas. Se não cadastrar, o
+        pagamento continua sendo confirmado direto no {provedor.nome}, como hoje.
+      </p>
+
+      <form onSubmit={salvar} className="mt-4 flex flex-col gap-4">
+        <Input
+          label="Assinatura secreta"
+          type="password"
+          autoComplete="off"
+          autoFocus
+          value={segredo}
+          onChange={(e) => setSegredo(e.target.value)}
+        />
+        {erro && <p className="text-sm font-medium text-mesa-error-500">{erro}</p>}
+        <Button
+          type="submit"
+          size="xl"
+          icon={<Icone nome="check" size={20} />}
+          loading={processando}
+          className="w-full"
+        >
+          Salvar
+        </Button>
+      </form>
+    </BottomSheet>
+  )
+}
+
 /** Pagamento online via Pix (CLAUDE.md, roadmap Cardápio Digital Fase
  * 2+3): cada barraca cria a própria conta no Mercado Pago e cola o
  * Access Token dela aqui — mesmo modelo do Fiscal (FocusNFe). O dinheiro
@@ -2094,6 +2185,23 @@ function SecaoPagamentoOnline({ barraca }: { barraca: Barraca }) {
   const [erroToken, setErroToken] = useState<string | null>(null)
   const [recargaToken, setRecargaToken] = useState(0)
   const [mostrarSheetToken, setMostrarSheetToken] = useState(false)
+  // Segredo de assinatura do webhook (opcional): só o servidor guarda; aqui só "configurado?".
+  const [segredoConfigurado, setSegredoConfigurado] = useState<boolean | null>(null)
+  const [recargaSegredo, setRecargaSegredo] = useState(0)
+  const [mostrarSheetSegredo, setMostrarSheetSegredo] = useState(false)
+
+  useEffect(() => {
+    let cancelado = false
+    supabase
+      .rpc('segredo_webhook_configurado', { p_barraca_id: barraca.id, p_provedor: provedor.chave })
+      .then(({ data, error }) => {
+        if (cancelado) return
+        setSegredoConfigurado(error ? null : Boolean(data))
+      })
+    return () => {
+      cancelado = true
+    }
+  }, [barraca.id, provedor.chave, recargaSegredo])
 
   // Mesmo princípio do Fiscal: "configurado" é o que o banco responde.
   useEffect(() => {
@@ -2219,7 +2327,35 @@ function SecaoPagamentoOnline({ barraca }: { barraca: Barraca }) {
             </div>
           )}
         </div>
+
+        <div className="mt-4">
+          <p className="mb-2 text-sm font-medium text-mesa-text-primary">Assinatura do webhook (opcional)</p>
+          <div className="flex min-w-[220px] flex-1 items-center justify-between gap-3 rounded-mesa-md border border-mesa-border-subtle p-3">
+            <p className="text-xs text-mesa-text-secondary">
+              {segredoConfigurado === null ? 'Não verificado' : segredoConfigurado ? 'Configurada' : 'Não configurada'}
+            </p>
+            <Button
+              variant="outline"
+              size="sm"
+              disabled={!tokenConfigurado}
+              onClick={() => setMostrarSheetSegredo(true)}
+            >
+              {segredoConfigurado ? 'Trocar' : 'Definir'}
+            </Button>
+          </div>
+          {!tokenConfigurado && (
+            <p className="mt-1 text-xs text-mesa-text-secondary">Defina o token antes.</p>
+          )}
+        </div>
       </Card>
+
+      <BottomSheetSegredoWebhook
+        barracaId={barraca.id}
+        provedor={provedor}
+        open={mostrarSheetSegredo}
+        onClose={() => setMostrarSheetSegredo(false)}
+        onSucesso={() => setRecargaSegredo((n) => n + 1)}
+      />
 
       <BottomSheetTokenPagamento
         barracaId={barraca.id}

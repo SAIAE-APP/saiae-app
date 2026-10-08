@@ -21,7 +21,7 @@
 // notificação e portanto nunca viram pedido.
 import { createClient } from 'jsr:@supabase/supabase-js@2'
 import { chaveDoProvedor, obterProvedor } from '../_shared/pagamento/registro.ts'
-import { buscarTokenDoProvedor } from '../_shared/pagamento/token.ts'
+import { buscarSegredoWebhook, buscarTokenDoProvedor } from '../_shared/pagamento/token.ts'
 import { ErroProvedor, type ConsultaPagamento } from '../_shared/pagamento/tipos.ts'
 import {
   STATUS_PENDENTE_ABERTOS,
@@ -60,11 +60,6 @@ Deno.serve(async (req: Request) => {
   const provedor = obterProvedor(provedorChave)
   if (!provedor) {
     return jsonResponse({ ok: true, aviso: 'provedor desconhecido' })
-  }
-
-  // Assinatura/segredo, quando o provedor tiver (o corpo é lido de uma cópia).
-  if (provedor.validarNotificacao && !(await provedor.validarNotificacao(req.clone()))) {
-    return jsonResponse({ ok: true, aviso: 'notificação não autenticada' })
   }
 
   // O provedor exige 200 rápido — o que não é notificação de pagamento (ou não
@@ -108,6 +103,22 @@ Deno.serve(async (req: Request) => {
   // O id da notificação tem que ser o do pagamento criado para este pendente.
   if (pendente.mercadopago_order_id && pendente.mercadopago_order_id !== pagamentoId) {
     return jsonResponse({ ok: true, aviso: 'pagamento não pertence a este pendente' })
+  }
+
+  // Assinatura da notificação (camada extra, só quando o dono cadastrou o segredo e o
+  // provedor assina). Assinatura PRESENTE e inválida = forjada: 401, sem consultar nada.
+  // Sem segredo ou sem cabeçalho segue só com a consulta de volta abaixo, que é a
+  // garantia de verdade (o Mercado Pago pode não assinar notificações por pagamento).
+  if (provedor.validarNotificacao) {
+    const segredo = await buscarSegredoWebhook(supabase, pendente.barraca_id, provedor.chave)
+    const assinatura = await provedor.validarNotificacao(req, segredo)
+    if (assinatura === 'invalida') {
+      console.warn('webhook-mercadopago: assinatura inválida', { pendente: pendente.id })
+      return jsonResponse({ ok: false, aviso: 'assinatura inválida' }, 401)
+    }
+    if (assinatura === 'sem_assinatura') {
+      console.warn('webhook-mercadopago: segredo cadastrado, mas a notificação veio sem assinatura', { pendente: pendente.id })
+    }
   }
 
   const tokenProvedor = await buscarTokenDoProvedor(supabase, pendente.barraca_id, provedor.chave)
