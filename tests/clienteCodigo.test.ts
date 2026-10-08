@@ -77,7 +77,14 @@ describe('decidirLimites', () => {
   test('muito cedo', () => assert.equal(decidirLimites({ ...e, msDesdeUltimoEnvio: REENVIO_MIN_MS - 1 }), 'muito_cedo'))
   test('após 60 s libera', () => assert.equal(decidirLimites({ ...e, msDesdeUltimoEnvio: REENVIO_MIN_MS }), 'ok'))
   test('telefone: 3 por hora', () => assert.equal(decidirLimites({ ...e, pedidosTelefoneHora: 3 }), 'limite_telefone'))
-  test('ip: 10 por hora', () => assert.equal(decidirLimites({ ...e, pedidosIpHora: 10 }), 'limite_ip'))
+  test('ip: 60 por hora por loja (feira: vários clientes no mesmo wifi)', () => {
+    assert.equal(decidirLimites({ ...e, pedidosIpHora: 59 }), 'ok')
+    assert.equal(decidirLimites({ ...e, pedidosIpHora: 60 }), 'limite_ip')
+  })
+  test('ip global: 200 por hora', () => {
+    assert.equal(decidirLimites({ ...e, pedidosIpGlobalHora: 199 }), 'ok')
+    assert.equal(decidirLimites({ ...e, pedidosIpGlobalHora: 200 }), 'limite_ip')
+  })
   test('loja: teto diário', () => assert.equal(decidirLimites({ ...e, enviosLoja24h: 100 }), 'limite_loja'))
   test('teto zero desliga o envio', () => assert.equal(decidirLimites({ ...e, tetoLoja: 0 }), 'limite_loja'))
 })
