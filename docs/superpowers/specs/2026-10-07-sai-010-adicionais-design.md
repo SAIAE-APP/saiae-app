@@ -14,7 +14,8 @@ Base auditada: `origin/main` (a863b91). Hoje o item é plano (`src/types/databas
 `criar_pedido` recebe `p_itens` como jsonb e ignora chaves desconhecidas. As escolhas do cliente viajam numa chave `opcoes` dentro de cada linha, **sem argumento novo**. A v9 mantém a assinatura de 12 argumentos da v8: sem `DROP`, sem PGRST202, sem degrau novo em `useSincronizacao`. Servidor velho com app novo ignora a chave. `pagamentos_pendentes.itens` já é jsonb e o webhook repassa `pendente.itens` ao `criar_pedido`, então o snapshot atravessa o Pix sem mudar o webhook.
 
 ## 1. Schema (tudo aditivo, `barraca_id` e RLS no padrão de `itens`)
-- `grupos_opcoes`: `id`, `barraca_id`, `nome`, `tipo` (`'variacao'` | `'adicional'`), `min_escolhas` int default 0, `max_escolhas` int null (null = sem limite), `ordem`, `ativo`. "Obrigatório" é derivado: `min_escolhas >= 1`. Variação = tipo `variacao` com min = max = 1.
+- `grupos_opcoes`: `id`, `barraca_id`, `nome`, `tipo` (`'variacao'` | `'adicional'`), `min_escolhas` int default 0, `max_escolhas` int null (null = sem limite), `ordem`, `ativo`. "Obrigatório" é derivado: `min_escolhas >= 1`. **Regra fixa na v1 (Frente A):** no máximo **um** grupo `tipo = variacao` por item e, nele, `min_escolhas = 1` e `max_escolhas = 1`; só `adicional` pode ter outros min/max. Garantida em três camadas: validação no cadastro (Ajustes), no `resolver_carrinho` e, como rede de segurança, por constraint/trigger no banco (`variacao` ⇒ min = max = 1; máximo de um grupo `variacao` por item em `itens_grupos`).
+- **Item não pedível:** se um grupo obrigatório (`min_escolhas >= 1`) do item tem **todas** as opções esgotadas ou inativas, o item não pode ser pedido. O cardápio público o mostra como indisponível, o `resolver_carrinho` o recusa e `GET /cardapio` do contrato o **omite**.
 - `opcoes`: `id`, `grupo_id`, `barraca_id`, `nome`, `preco_centavos >= 0`, `ordem`, `ativo`, `esgotado`. Em adicional o preço é **delta**; em variação é **absoluto** e substitui `itens.preco_centavos`, que vira "a partir de".
 - `itens_grupos` (`item_id`, `grupo_id`, `ordem`): um grupo reutilizável em vários itens.
 - `itens_do_pedido.opcoes jsonb not null default '[]'`: snapshot imutável `[{grupo_id, grupo_nome, tipo, opcao_id, nome, preco_centavos}]` (campo `quantidade` reservado, fixo em 1 na v1). `preco_centavos_unitario` continua sendo o preço **final** da unidade (variação ou base + adicionais), então totais, Pix, relatórios e NFC-e atuais seguem corretos. Opção renomeada ou removida depois não altera pedido antigo. Opção nunca é apagada: `ativo = false`.
@@ -24,7 +25,7 @@ Base auditada: `origin/main` (a863b91). Hoje o item é plano (`src/types/databas
 ## 2. Resolução de preço no servidor (fonte única)
 Função SQL `STABLE` `resolver_carrinho(p_barraca_id uuid, p_linhas jsonb)`.
 - Entrada: `[{item_id, quantidade, opcao_ids[], observacao}]`.
-- Valida: item ativo e não esgotado, grupos ligados ao item, opção ativa e não esgotada, min/max por grupo, sem duplicata, no máximo 20 opções por linha, observação até 120 caracteres.
+- Valida: item ativo e não esgotado, grupos ligados ao item, no máximo um grupo `variacao` por item e (nele) min = max = 1, grupo obrigatório com ao menos uma opção disponível, opção ativa e não esgotada, min/max por grupo, sem duplicata, no máximo 20 opções por linha, observação até 120 caracteres.
 - Saída: linhas resolvidas `{item_id, nome_item, quantidade, preco_centavos_unitario, opcoes[snapshot], observacao}`, ou erro por item.
 
 `criar-pedido-cardapio` e `criar-pagamento-pix` trocam o bloco "preço do cadastro" por uma chamada a essa RPC (service role). O cliente só manda ids; preço, nome e total nunca vêm dele. O `total_esperado_centavos` existente (409) já cobre mudança de preço de adicional entre a tela e o Pix.
@@ -51,7 +52,7 @@ Função SQL `STABLE` `resolver_carrinho(p_barraca_id uuid, p_linhas jsonb)`.
 **SAI-010a — modelo, cadastro, cardápio, pedido (~8 pts):**
 - migration das tabelas e colunas, RLS e flag;
 - `resolver_carrinho` e `criar_pedido` v9;
-- cadastro em Ajustes/Cardápio (grupos, opções, ligar a itens, copiar grupo, modelos prontos "Tamanho P/M/G" e "Adicionais");
+- cadastro em Ajustes/Cardápio (grupos, opções, ligar a itens, copiar grupo, modelos prontos "Tamanho P/M/G" e "Adicionais"), **recusando** variação com min/max diferentes de 1 e um segundo grupo de variação no mesmo item, e avisando quando um grupo obrigatório fica sem opção disponível;
 - seletor no cardápio público e a mesma tela no Lançar Pedido do operador (sem ela, item com grupo obrigatório não vende no balcão);
 - as 3 edge functions;
 - testes: regra min/max do resolvedor, 422 e 409 nas functions, snapshot imutável, payload antigo na fila.
@@ -67,6 +68,8 @@ Função SQL `STABLE` `resolver_carrinho(p_barraca_id uuid, p_linhas jsonb)`.
 
 ## 7. Contrato
 Mudança aditiva na v1, em PR próprio (aprovação das duas frentes): `order.*` ganha `itens[].opcoes[]`; `GET /cardapio` ganha `grupos[]` com `opcoes[]`. A SAI-050 (pedido conversacional) depende disso.
+
+Ajustes aprovados pela Frente A (CRM) no PR #45: a regra de variação única e o item não pedível (omitido de `GET /cardapio`); `opcao_escolhida.quantidade` é `integer >= 1`, "sempre 1 na v1", e o leitor deve tolerar valores maiores. Na v1.1 (`POST /rascunhos-pedido`) a resposta devolve o **preço final por linha e o `total_centavos` já resolvidos pela Comanda**, para a IA nunca somar sozinha (ADR-06). Os CIs validam os schemas e exemplos com Ajv draft 2020-12 (`ajv/dist/2020`) + `ajv-formats` (format `uuid`).
 
 ## 8. Fora de escopo
 Quantidade por opção, meio a meio, combos, estoque por opção.
