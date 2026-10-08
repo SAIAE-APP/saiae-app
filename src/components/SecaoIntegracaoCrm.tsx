@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useState } from 'react'
 import { supabase } from '../lib/supabase'
 import { MSG_SEM_INTERNET } from '../hooks/useSalvarBarraca'
+import { bancoSemRecurso } from '../lib/semMigration'
 import { Button } from './ui/Button'
 import { Card } from './ui/Card'
 import { Icone } from './ui/Icone'
@@ -32,6 +33,8 @@ function mensagemDeErro(erro: unknown): string {
  */
 export function SecaoIntegracaoCrm({ barraca }: { barraca: Barraca }) {
   const [estado, setEstado] = useState<Estado | null>(null)
+  // Banco sem a migration da SAI-013 (app no ar antes dela): a seção some, sem erro.
+  const [semBanco, setSemBanco] = useState(false)
   const [erro, setErro] = useState<string | null>(null)
   const [url, setUrl] = useState('')
   const [urlEditada, setUrlEditada] = useState(false)
@@ -42,7 +45,8 @@ export function SecaoIntegracaoCrm({ barraca }: { barraca: Barraca }) {
   const carregar = useCallback(async () => {
     const { data, error } = await supabase.rpc('integracao_crm_estado', { p_barraca_id: barraca.id })
     if (error) {
-      setErro(mensagemDeErro(error))
+      if (bancoSemRecurso(error)) setSemBanco(true)
+      else setErro(mensagemDeErro(error))
       return
     }
     setErro(null)
@@ -108,6 +112,8 @@ export function SecaoIntegracaoCrm({ barraca }: { barraca: Barraca }) {
       setErro('Não consegui copiar. Selecione o texto e copie à mão.')
     }
   }
+
+  if (semBanco) return null
 
   return (
     <section>
