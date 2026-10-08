@@ -354,7 +354,10 @@ Deno.serve(async (req: Request) => {
   }
 
   const { data: criado, error: erroPedido } = await supabase
-    .rpc('criar_pedido', {
+    // Com cupom, o pedido e a confirmação do uso acontecem na MESMA transação (criar_pedido_com_cupom):
+    // o desconto nunca fica de fora do pedido nem do evento do CRM.
+    .rpc(usoCupomId ? 'criar_pedido_com_cupom' : 'criar_pedido', {
+      ...(usoCupomId ? { p_uso_id: usoCupomId } : {}),
       p_barraca_id: barracaId,
       p_mesa: null,
       p_viagem: true,
@@ -379,16 +382,6 @@ Deno.serve(async (req: Request) => {
     if (usoCupomId) await supabase.rpc('cupom_liberar_uso', { p_uso_id: usoCupomId })
     console.error('criar-pedido-cardapio: falha em criar_pedido', erroPedido?.message)
     return jsonResponse({ erro: 'Não foi possível enviar o pedido agora. Tente de novo.' }, 500)
-  }
-
-  // Cupom: o uso vira CONFIRMADO e o pedido recebe código e desconto (cópias, imutáveis). Uma nova
-  // tentativa cobre falha passageira; se ainda assim falhar, o pedido já existe e fica só o log.
-  if (usoCupomId) {
-    const pedidoCriado = (criado as { pedido_id: string }).pedido_id
-    const confirmar = () => supabase.rpc('cupom_confirmar', { p_uso_id: usoCupomId, p_pedido_id: pedidoCriado })
-    let { error: erroConfirmar } = await confirmar()
-    if (erroConfirmar) ({ error: erroConfirmar } = await confirmar())
-    if (erroConfirmar) console.error('criar-pedido-cardapio: cupom não confirmado', erroConfirmar.message)
   }
 
   // Vínculo com o perfil (best-effort: nunca derruba um pedido já criado).

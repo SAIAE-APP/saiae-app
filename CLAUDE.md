@@ -515,7 +515,12 @@ repetir `versionCode`: subir a cada build. Validar em aparelho Android 7–11 e
   RISCO CONHECIDO (aceito pelo dono): quem gera dois Pix com o mesmo cupom e paga os DOIS leva o desconto duas
   vezes (cada Pix foi cobrado pelo valor que o cliente viu). Apagar os dados do cliente (LGPD) zera
   `cupom_usos.cliente_id`: o uso continua contando no limite total, e o "uma vez por cliente" daquele telefone
-  deixa de valer. Testes de banco/functions contra o staging: `tests/cupons*.staging.mjs` (rodar com as
+  deixa de valer. Também aceito: um Pix pago depois de a reserva expirar confirma o cupom mesmo que o último
+  uso já tenha sido de outra pessoa (pode passar de `limite_usos` em +1; pagamento aprovado nunca é recusado).
+  Revisão independente (2026-10-08) corrigida: tentativas de adivinhar código contam nos endpoints de pedido
+  (resultado real); excluir barraca/conta limpa cupons e usos; refazer o checkout libera a reserva antiga
+  (`pendente_anterior_id`, `cupom_liberar_abandonadas`); retry da mesma cobrança reavalia o desconto; "pagar na
+  entrega" cria o pedido e confirma o cupom na MESMA transação (`criar_pedido_com_cupom`). Testes de banco/functions contra o staging: `tests/cupons*.staging.mjs` (rodar com as
   variáveis do cabeçalho de cada script); o teste real do Pix fica para um Pix de valor baixo na loja de teste.
 
 ## Regras de tema

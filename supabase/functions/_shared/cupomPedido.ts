@@ -15,31 +15,35 @@ export async function avaliarCupomDoPedido(
   if (bruto === '') return { ok: true, codigo: null, desconto: 0 }
 
   const codigo = normalizarCodigo(bruto)
+  let av: ResultadoAvaliacao = { ok: false, erro: 'invalido' }
+  if (codigo) {
+    const { data, error } = await supabase.rpc('cupom_avaliar', {
+      p_barraca_id: a.barracaId,
+      p_codigo: codigo,
+      p_subtotal_centavos: a.subtotalCentavos,
+      p_cliente_id: a.clienteId,
+    })
+    if (error) {
+      console.error('cupom: cupom_avaliar falhou')
+      return { ok: false, status: 500, corpo: { erro: 'Não foi possível validar o cupom agora. Tente de novo.' } }
+    }
+    av = interpretarAvaliacao(data)
+  }
+
+  // Adivinhar código: registra o resultado REAL (só tentativa inválida conta), como o cupom-validar.
+  // Passou do limite => 429, mesmo que o palpite estivesse certo.
   const limite = await supabase.rpc('cupom_registrar_tentativa', {
     p_barraca_id: a.barracaId,
     p_ip_hash: a.ipHash,
-    p_valida: codigo !== null,
+    p_valida: av.ok,
   })
   if (limite.error || limite.data === false) {
     return { ok: false, status: 429, corpo: { erro: 'Muitas tentativas. Tente de novo em alguns minutos.', codigo: 'cupom_tentativas' } }
   }
-  if (!codigo) return { ok: false, status: 422, corpo: { erro: mensagemDoErro('invalido'), codigo: 'cupom_invalido' } }
-
-  const { data, error } = await supabase.rpc('cupom_avaliar', {
-    p_barraca_id: a.barracaId,
-    p_codigo: codigo,
-    p_subtotal_centavos: a.subtotalCentavos,
-    p_cliente_id: a.clienteId,
-  })
-  if (error) {
-    console.error('cupom: cupom_avaliar falhou')
-    return { ok: false, status: 500, corpo: { erro: 'Não foi possível validar o cupom agora. Tente de novo.' } }
-  }
-  const av = interpretarAvaliacao(data)
   if (!av.ok) {
     return { ok: false, status: 422, corpo: { erro: mensagemDoErro(av.erro, av.minimo_centavos), codigo: 'cupom_invalido' } }
   }
-  return { ok: true, codigo, desconto: av.desconto_centavos }
+  return { ok: true, codigo: codigo as string, desconto: av.desconto_centavos }
 }
 
 /** Reserva atômica no banco. `pendenteId` null = "pagar na entrega" (sem cobrança a esperar). */
@@ -72,4 +76,25 @@ export async function reservarCupomDoPedido(
     return { ok: false, status: 422, corpo: { erro: mensagemDoErro(r.erro, r.minimo_centavos), codigo: 'cupom_invalido' } }
   }
   return { ok: true, reserva: r }
+}
+
+const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i
+
+/** Checkout refeito: libera as reservas abertas do cliente logado e a dos Pix informados (o anterior que o
+ * próprio cliente recebeu e a cobrança desta mesma tentativa, em retry). Chamar ANTES de avaliar, senão um
+ * cupom de limite 1 "esgota" contra a própria reserva. Falha aqui nunca derruba o pedido. */
+export async function liberarReservasAbandonadas(
+  supabase: SupabaseClient,
+  a: { barracaId: string; clienteId: string | null; pendentesIds: Array<string | null | undefined> },
+): Promise<void> {
+  const ids = [...new Set(a.pendentesIds.filter((x): x is string => typeof x === 'string' && UUID.test(x)))]
+  const lista: Array<string | null> = ids.length ? ids : [null]
+  for (const id of lista) {
+    const { error } = await supabase.rpc('cupom_liberar_abandonadas', {
+      p_barraca_id: a.barracaId,
+      p_cliente_id: a.clienteId,
+      p_pendente_anterior_id: id,
+    })
+    if (error) console.error('cupom: cupom_liberar_abandonadas falhou')
+  }
 }

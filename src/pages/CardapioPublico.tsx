@@ -641,6 +641,7 @@ export function CardapioPublico() {
   const modoEfetivo: ModoConsumo = modosPublicos.includes(modoConsumo) ? modoConsumo : modosPublicos[0]
   const [mostrarAvisoBalcao, setMostrarAvisoBalcao] = useState(false)
   const clientUuidRef = useRef(crypto.randomUUID())
+  const pendenteAnteriorRef = useRef<string | null>(null)
 
   useEffect(() => {
     if (!slug) return
@@ -959,6 +960,11 @@ export function CardapioPublico() {
   function corpoCupom(): { cupom_codigo?: string } {
     return cupom.aplicado ? { cupom_codigo: cupom.aplicado.codigo } : {}
   }
+  /** Pix que ESTE aparelho gerou antes: refazer o checkout libera a reserva do cupom dele (o id é o que o
+   * próprio cliente recebeu; o servidor só libera reserva aberta da mesma loja). */
+  function corpoPixAnterior(): { pendente_anterior_id?: string } {
+    return pendenteAnteriorRef.current ? { pendente_anterior_id: pendenteAnteriorRef.current } : {}
+  }
 
   function quantidadeDoItem(itemId: string): number {
     return (carrinho[itemId] ?? 0) + linhasOpcoes.filter((l) => l.itemId === itemId).reduce((soma, l) => soma + l.quantidade, 0)
@@ -1021,6 +1027,7 @@ export function CardapioPublico() {
       body: {
         ...tokenCliente(),
         ...corpoCupom(),
+        ...corpoPixAnterior(),
         barraca_id: barracaId,
         viagem: modoEfetivo === 'retirada',
         observacao: observacao.trim() || null,
@@ -1056,6 +1063,7 @@ export function CardapioPublico() {
       return
     }
 
+    pendenteAnteriorRef.current = typeof data.pendente_id === "string" ? data.pendente_id : null
     setPagamento({
       fase: 'aguardando',
       pendenteId: data.pendente_id,
@@ -1283,6 +1291,7 @@ export function CardapioPublico() {
       body: {
         ...tokenCliente(),
         ...corpoCupom(),
+        ...corpoPixAnterior(),
         barraca_id: itensCarrinho[0].item.barraca_id,
         tipo_atendimento: 'entrega',
         observacao: observacao.trim() || null,
@@ -1349,6 +1358,7 @@ export function CardapioPublico() {
       return
     }
 
+    pendenteAnteriorRef.current = typeof data.pendente_id === "string" ? data.pendente_id : null
     setPagamento({
       fase: 'aguardando',
       pendenteId: data.pendente_id,

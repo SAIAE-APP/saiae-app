@@ -42,9 +42,10 @@ describe('pagar na entrega', () => {
   test('reserva curta sem cobrança, cria o pedido e confirma direto', () => {
     assert.match(entrega, /pendenteId: null/)
     const iReserva = entrega.indexOf('reservarCupomDoPedido(')
-    const iCria = entrega.indexOf("rpc('criar_pedido'")
-    const iConfirma = entrega.indexOf("rpc('cupom_confirmar'")
-    assert.ok(iReserva > 0 && iCria > iReserva && iConfirma > iCria)
+    const iCria = entrega.indexOf("'criar_pedido_com_cupom'")
+    assert.ok(iReserva > 0 && iCria > iReserva)
+    // A confirmação vai dentro da transação do pedido (criar_pedido_com_cupom), nunca em chamada separada.
+    assert.equal(entrega.indexOf("rpc('cupom_confirmar'"), -1)
   })
   test('falha em criar_pedido libera a reserva', () => {
     const bloco = entrega.slice(entrega.indexOf('if (erroPedido || !criado) {'))
