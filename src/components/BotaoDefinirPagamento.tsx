@@ -6,7 +6,7 @@ import { METODOS_DISPONIVEIS, humanizarMetodo, type MetodoPagamento } from '../l
 import { BottomSheet } from './ui/BottomSheet'
 import { Button } from './ui/Button'
 import { Icone } from './ui/Icone'
-import { useToast } from './ui/Toast'
+import { useToast } from './ui/useToast'
 
 const MSG_SEM_INTERNET = 'Sem internet. A forma de pagamento não foi definida.'
 

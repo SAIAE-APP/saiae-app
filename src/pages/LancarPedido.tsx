@@ -32,7 +32,7 @@ import { Icone } from '../components/ui/Icone'
 import { Input } from '../components/ui/Input'
 import { SegmentedControl } from '../components/ui/SegmentedControl'
 import { Textarea } from '../components/ui/Textarea'
-import { useToast } from '../components/ui/Toast'
+import { useToast } from '../components/ui/useToast'
 import { ROTULO_MODO, ehViagem, modoInicial, modosAtivos, tipoDoPedido } from '../lib/atendimento'
 import type { Categoria, Item, TipoAtendimento } from '../types/database'
 

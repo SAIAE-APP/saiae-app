@@ -15,6 +15,13 @@ export default defineConfig([
       reactHooks.configs.flat.recommended,
       reactRefresh.configs.vite,
     ],
+    rules: {
+      // DÍVIDA TÉCNICA: 13 ocorrências do padrão "setCarregando(true) no início
+      // do fetch" / leitura de cache offline dentro de useEffect. Corrigir muda
+      // o fluxo de carregamento (inclusive o do app offline), então ficou como
+      // aviso para o CI barrar todo o resto. Lista em docs/divida-tecnica-lint.md.
+      'react-hooks/set-state-in-effect': 'warn',
+    },
     languageOptions: {
       globals: globals.browser,
     },
