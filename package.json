@@ -29,6 +29,7 @@
     "clsx": "^2.1.1",
     "exceljs": "^4.4.0",
     "idb": "^8.0.3",
+    "qrcode-generator": "2.0.4",
     "react": "^19.2.8",
     "react-dom": "^19.2.8",
     "react-router": "^8.4.0",

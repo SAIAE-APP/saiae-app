@@ -15,6 +15,7 @@ import { Button } from './ui/Button'
 import { Card } from './ui/Card'
 import { Icone } from './ui/Icone'
 import { Input } from './ui/Input'
+import { QrCodeSvg } from './QrCodeSvg'
 import { Textarea } from './ui/Textarea'
 import { Toggle } from './ui/Toggle'
 import type { Barraca } from '../types/database'
@@ -174,6 +175,10 @@ export function SecaoAtendenteIa({ barraca }: { barraca: Barraca }) {
                 <Button variant="outline" size="md" className="mt-2" icon={<Icone nome="content_copy" size={16} />} onClick={() => void copiar()}>
                   {copiado ? 'Link copiado' : 'Copiar link'}
                 </Button>
+                <div className="mt-3 flex flex-col items-start gap-1">
+                  <QrCodeSvg texto={link} rotulo="QR code do link da sua loja no WhatsApp" />
+                  <p className="text-xs text-mesa-text-tertiary">QR code do mesmo link: imprima no cartaz ou na mesa.</p>
+                </div>
                 <p className="mt-2 text-xs text-mesa-text-tertiary">
                   Código da loja: {barraca.ia_codigo}. Ponha o link na bio, no cartaz ou no cardápio. {ligada ? '' : 'Só responde com a IA ligada.'}
                 </p>
