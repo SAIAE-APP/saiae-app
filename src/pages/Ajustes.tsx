@@ -12,6 +12,7 @@ import { useBarracaAtual } from '../layouts/contextoBarraca'
 import { useAuth } from '../hooks/useAuth'
 import { useTheme } from '../hooks/useTheme'
 import { useAssinaturaBarraca } from '../hooks/useAssinaturaBarraca'
+import { cobrancaAtiva } from '../lib/cobranca'
 import { MSG_SEM_INTERNET, mensagemErroSalvar, useRascunho, useSalvarBarraca } from '../hooks/useSalvarBarraca'
 import { centavosParaReais, filtrarEntradaPreco, formatarPrecoBR, reaisParaCentavos } from '../lib/preco'
 import { apagarFotoItem, enviarFotoItem } from '../lib/fotoItem'
@@ -2556,8 +2557,9 @@ function SecaoAssinatura({ slug }: { slug: string }) {
 
   if (!assinatura?.eh_dono) return null
 
-  const rotuloStatus =
-    assinatura.status === 'trialing'
+  const rotuloStatus = !cobrancaAtiva(assinatura)
+    ? 'Cobrança desativada por enquanto'
+    : assinatura.status === 'trialing'
       ? 'Teste grátis'
       : assinatura.status === 'active'
         ? 'Ativa'

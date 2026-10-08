@@ -11,6 +11,7 @@ import { Planos } from '../pages/Planos'
 import { BarraNavegacao } from '../components/BarraNavegacao'
 import { SidebarDesktop } from '../components/SidebarDesktop'
 import { BannerTrial } from '../components/BannerTrial'
+import { acessoBloqueadoPorAssinatura, mostraBannerDeTrial } from '../lib/cobranca'
 import { useToast } from '../components/ui/useToast'
 import { BarracaContext, SincronizacaoContext } from './contextoBarraca'
 import { PedidosContext } from './contextoPedidos'
@@ -116,15 +117,14 @@ export function LayoutBarraca() {
   // tela esperando rede — regra técnica inviolável do app): só barra
   // quando já sabemos de verdade que o acesso caiu. A escrita continua
   // protegida no servidor (RLS) mesmo nesse intervalo.
-  const acessoBloqueado = assinatura !== null && !assinatura.tem_acesso && !emPlanos
-  const mostraBannerTrial =
-    !emPlanos && !emCozinha && !emTelaDeChamada && assinatura?.eh_dono && assinatura.status === 'trialing'
+  const acessoBloqueado = acessoBloqueadoPorAssinatura(assinatura, emPlanos)
+  const mostraBannerTrial = mostraBannerDeTrial(assinatura, emPlanos || emCozinha || emTelaDeChamada)
 
   return (
     <BarracaContext.Provider value={barraca}>
       <SincronizacaoContext.Provider value={sincronizacao}>
         <PedidosContext.Provider value={estadoPedidos}>
-          {mostraBannerTrial && <BannerTrial assinatura={assinatura} />}
+          {mostraBannerTrial && assinatura && <BannerTrial assinatura={assinatura} />}
           {mostrarSidebar && !acessoBloqueado && <SidebarDesktop />}
           <div
             className={clsx(

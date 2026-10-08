@@ -3,6 +3,8 @@ import { useNavigate, useSearchParams } from 'react-router'
 import { useBarracaAtual } from '../layouts/contextoBarraca'
 import { supabase } from '../lib/supabase'
 import { PLANOS } from '../lib/planos'
+import { cobrancaAtiva } from '../lib/cobranca'
+import { useAssinaturaBarraca } from '../hooks/useAssinaturaBarraca'
 import { Button } from '../components/ui/Button'
 import { Icone } from '../components/ui/Icone'
 import { BottomSheet } from '../components/ui/BottomSheet'
@@ -83,6 +85,8 @@ export function Assinatura() {
     }
   }, [processando, buscar])
 
+  const { assinatura: statusBarraca } = useAssinaturaBarraca(barraca.slug)
+  const semCobranca = !cobrancaAtiva(statusBarraca)
   const plano = assinatura?.plan ? PLANOS[assinatura.plan] : null
   const aindaProcessando = processando && assinatura?.status !== 'active'
 
@@ -112,6 +116,17 @@ export function Assinatura() {
         </div>
       ) : (
         <>
+          {semCobranca ? (
+            <div className="rounded-mesa-2xl border border-mesa-border-default bg-mesa-surface p-5">
+              <div className="flex items-center gap-2">
+                <Icone nome="check_circle" size={20} className="text-mesa-success-700 dark:text-mesa-success-500" />
+                <span className="font-semibold text-mesa-text-primary">Acesso completo liberado</span>
+              </div>
+              <p className="mt-2 text-sm text-mesa-text-secondary">
+                A cobrança está desativada por enquanto: você usa todos os recursos do plano Pro sem pagar nada.
+              </p>
+            </div>
+          ) : (
           <div className="rounded-mesa-2xl border border-mesa-border-default bg-mesa-surface p-5">
             <div className="flex items-center gap-2">
               <Icone
@@ -151,6 +166,7 @@ export function Assinatura() {
               </p>
             )}
           </div>
+          )}
 
           <div className="rounded-mesa-2xl border border-mesa-border-default bg-mesa-surface p-5">
             <h2 className="text-base font-semibold text-mesa-text-primary">Trocar ou cancelar</h2>
