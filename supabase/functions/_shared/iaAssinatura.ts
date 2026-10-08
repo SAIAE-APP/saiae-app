@@ -29,7 +29,7 @@ export async function verificarAssinaturaIa(
   }
 }
 
-export type CorpoIa = { ok: true; codigo: string; telefone: string } | { ok: false }
+export type CorpoIa = { ok: true; codigo: string; telefone: string | null } | { ok: false }
 
 /** `{ codigo_loja, telefone }`: código de 6 caracteres [A-Z0-9] e telefone só dígitos (10 a 13). Só essas duas
  * chaves, de verdade strings; qualquer outra forma é recusada. */
@@ -43,8 +43,9 @@ export function validarCorpoIa(corpoBruto: string): CorpoIa {
   }
   if (typeof v !== 'object' || v === null || Array.isArray(v)) return { ok: false }
   const { codigo_loja: codigo, telefone } = v as Record<string, unknown>
-  if (typeof codigo !== 'string' || typeof telefone !== 'string') return { ok: false }
-  if (!/^[A-Z0-9]{6}$/.test(codigo)) return { ok: false }
-  if (!/^[0-9]{10,13}$/.test(telefone)) return { ok: false }
+  if (typeof codigo !== 'string' || !/^[A-Z0-9]{6}$/.test(codigo)) return { ok: false }
+  // Telefone ausente (o WhatsApp ocultou o número): o cliente é tratado como novo. Se vier, precisa ser válido.
+  if (telefone === undefined || telefone === null) return { ok: true, codigo, telefone: null }
+  if (typeof telefone !== 'string' || !/^[0-9]{10,13}$/.test(telefone)) return { ok: false }
   return { ok: true, codigo, telefone }
 }

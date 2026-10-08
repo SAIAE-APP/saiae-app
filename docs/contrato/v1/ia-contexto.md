@@ -16,7 +16,7 @@ Corpo (máx. **4 KB**; campos extras são ignorados):
 { "codigo_loja": "ABCD23", "telefone": "11977776655" }
 ```
 - `codigo_loja`: exatamente 6 caracteres `[A-Z0-9]` (o código do link/QR da loja).
-- `telefone`: só dígitos, 10 a 13 (com ou sem o 55 do país; a Comanda normaliza como no perfil).
+- `telefone`: só dígitos, 10 a 13 (com ou sem o 55 do país; a Comanda normaliza como no perfil). Pode ser omitido (ou `null`) quando o WhatsApp ocultou o número: a Comanda trata como cliente novo (`cliente: null`). Presente e inválido continua recusado (400).
 
 Segredo: `IA_CONTEXTO_SEGREDO` (Comanda) = `COMANDA_IA_SEGREDO` (CRM). **Segredo de plataforma**, gerado e colocado pelo dono; nunca em chat, repositório, log ou prompt. Rotação: trocar nos dois lados na mesma janela.
 
