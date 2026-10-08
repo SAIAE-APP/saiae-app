@@ -27,9 +27,13 @@ test('avaliar não grava nem trava', () => {
   assert.doesNotMatch(avaliar, /for update|insert into|update public/)
 })
 
-test('desconto: floor em inteiros e itens cobrados nunca abaixo de 100 centavos', () => {
+test('desconto: floor em inteiros; o piso de R$ 1,00 foi removido pela 20261019130000 (pedido grátis)', () => {
   assert.match(sql, /\(p_subtotal_centavos::bigint \* p_cupom\.valor\) \/ 100/)
+  // Esta é a definição ORIGINAL (com piso). A vigente está em 20261019130000_cupom_pedido_gratis.sql.
   assert.match(sql, /greatest\(0, least\(v_desc, p_subtotal_centavos - 100\)\)/)
+  const nova = readFileSync(new URL('../supabase/migrations/20261019130000_cupom_pedido_gratis.sql', import.meta.url), 'utf8')
+  assert.match(nova, /greatest\(0, least\(v_desc, p_subtotal_centavos\)\)/)
+  assert.doesNotMatch(nova, /p_subtotal_centavos - 100/)
 })
 
 test('reserva vencida não conta; confirmar vale mesmo liberada; liberar nunca toca em confirmado', () => {

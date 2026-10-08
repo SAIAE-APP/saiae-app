@@ -119,12 +119,12 @@ try {
     confere('percentual: 10% de 999 = 99 (floor)', r1.ok && r1.desconto_centavos === 99, JSON.stringify(r1))
     const fx = await novoCupom(BARRACA, { tipo: 'fixo', valor: 450 })
     const r2 = await rpc('cupom_avaliar', { p_barraca_id: BARRACA, p_codigo: fx.codigo, p_subtotal_centavos: 500, p_cliente_id: null })
-    confere('teto: fixo 450 em 500 => desconto 400 (sobra R$ 1,00)', r2.ok && r2.desconto_centavos === 400, JSON.stringify(r2))
+    confere('teto: fixo 450 em 500 => desconto 450 (sobra R$ 0,50)', r2.ok && r2.desconto_centavos === 450, JSON.stringify(r2))
     const cem = await novoCupom(BARRACA, { tipo: 'percentual', valor: 100 })
     const r3 = await rpc('cupom_avaliar', { p_barraca_id: BARRACA, p_codigo: cem.codigo, p_subtotal_centavos: 2000, p_cliente_id: null })
-    confere('teto: 100% de 2000 => 1900', r3.ok && r3.desconto_centavos === 1900, JSON.stringify(r3))
+    confere('pedido grátis: 100% de 2000 => 2000 (cobre os itens inteiros)', r3.ok && r3.desconto_centavos === 2000, JSON.stringify(r3))
     const r4 = await rpc('cupom_avaliar', { p_barraca_id: BARRACA, p_codigo: cem.codigo, p_subtotal_centavos: 80, p_cliente_id: null })
-    confere('teto: subtotal abaixo de R$ 1,00 => desconto 0', r4.ok && r4.desconto_centavos === 0, JSON.stringify(r4))
+    confere('pedido grátis: 100% de 80 => 80 (não há mais piso de R$ 1,00)', r4.ok && r4.desconto_centavos === 80, JSON.stringify(r4))
   }
 
   // 4) Uma vez por cliente: sem sessão, com reserva vigente, com confirmado.
