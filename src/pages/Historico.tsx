@@ -379,10 +379,14 @@ function CardHistorico({
       {itensAtivos.length > 0 && (
         <div className="mt-3 flex flex-wrap gap-1.5">
           {itensAtivos.map((item) => (
-            <Chip key={item.id} variant="plain">
+            // Não usa Chip (nowrap): com opções o texto é longo e precisa quebrar linha no celular.
+            <span
+              key={item.id}
+              className="max-w-full break-words rounded-mesa-md bg-mesa-neutral-100 px-3 py-2 text-sm font-medium text-mesa-neutral-700 dark:bg-mesa-neutral-700 dark:text-mesa-neutral-200"
+            >
               {item.quantidade}× {nomeComOpcoes(item.nome_item, item.opcoes)}
               {item.observacao && ` (${item.observacao})`}
-            </Chip>
+            </span>
           ))}
         </div>
       )}

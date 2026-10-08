@@ -165,7 +165,7 @@ function LinhaItemDetalhe({
           {item.nome_item}
         </span>
         {textoOpcoes(item.opcoes) && (
-          <span className="block truncate text-sm text-mesa-text-secondary">{textoOpcoes(item.opcoes)}</span>
+          <span className="block break-words text-sm text-mesa-text-secondary">{textoOpcoes(item.opcoes)}</span>
         )}
         {item.observacao && !item.removido && (
           // Mostarda intencional aqui (regra revista no redesign do card
