@@ -20,6 +20,7 @@ import { minutosExpiracaoPix } from '../_shared/pagamento/expiracao.ts'
 import { ErroProvedor, ehProvedorValido, type QrPix } from '../_shared/pagamento/tipos.ts'
 import { hashIp, ipDoCliente, pareceBot } from '../_shared/antiabuso.ts'
 import { MENSAGEM_FECHADO, foraDoHorarioBloqueado } from '../_shared/horario.ts'
+import { interpretarResolver, itensAcimaDoEstoque, montarLinhas, respostaDeErros } from '../_shared/carrinho.ts'
 
 // Teto anti-bot por IP: não é limite de volume (ver comentário no ponto de uso).
 const JANELA_RATE_LIMIT_MS = 5 * 60 * 1000
@@ -40,7 +41,11 @@ function jsonResponse(body: unknown, status = 200) {
   })
 }
 
-type ItemCarrinho = { item_id: string; quantidade: number }
+// Teto de linhas do carrinho (igual ao do "pagar na entrega" e ao do resolver_carrinho).
+const MAX_LINHAS = 40
+
+/** SAI-010a: `opcao_ids` e `observacao` por linha; preço, nome e total saem do resolver_carrinho. */
+type ItemCarrinho = { item_id: string; quantidade: number; opcao_ids?: string[]; observacao?: string | null }
 
 /** Entrega estruturada vinda do formulário do cardápio (tudo texto do cliente:
  * só é sanitizado aqui; a TAXA nunca vem do cliente). */
@@ -56,15 +61,6 @@ type EntregaBody = {
 }
 
 type TaxaEntregaRow = { permitido: boolean; taxa_centavos: number; origem: string }
-
-type ItemCadastroRow = {
-  id: string
-  nome: string
-  preco_centavos: number
-  ativo: boolean
-  esgotado: boolean
-  estoque_qtd: number | null
-}
 
 Deno.serve(async (req: Request) => {
   if (req.method === 'OPTIONS') {
@@ -207,69 +203,47 @@ Deno.serve(async (req: Request) => {
     return jsonResponse({ erro: `Token do ${provedor.nome} não configurado` }, 422)
   }
 
-  // Preço SEMPRE resolvido aqui a partir do cardápio real — o que o
-  // cliente manda é só item_id + quantidade.
-  const idsItens = itens.map((i) => i.item_id)
-  const { data: itensCadastro, error: erroItens } = await supabase
-    .from('itens')
-    .select('id, nome, preco_centavos, ativo, esgotado, estoque_qtd')
-    .eq('barraca_id', barraca_id)
-    .in('id', idsItens)
+  // Preço SEMPRE resolvido no banco (resolver_carrinho) a partir do cardápio real — o que o cliente
+  // manda é só item_id + opcao_ids + quantidade + observacao. Chamado imediatamente antes de gravar o
+  // pendente (docs/opcoes.md: janela residual). O preço fica congelado no pendente até o webhook.
+  const montada = montarLinhas(itens, { maxLinhas: MAX_LINHAS, maxQuantidade: null })
+  if (!montada.ok) return jsonResponse({ erro: montada.erro }, 400)
 
-  if (erroItens) {
+  const { data: dadosResolver, error: erroResolver } = await supabase.rpc('resolver_carrinho', {
+    p_barraca_id: barraca_id,
+    p_linhas: montada.linhas,
+  })
+  const resolvido = erroResolver ? null : interpretarResolver(dadosResolver)
+  if (!resolvido) {
+    console.error('criar-pagamento-pix: falha em resolver_carrinho', erroResolver?.message ?? 'resposta inesperada')
     return jsonResponse({ erro: 'Falha ao carregar o cardápio' }, 500)
   }
-
-  const cadastroPorId = new Map<string, ItemCadastroRow>(
-    ((itensCadastro ?? []) as ItemCadastroRow[]).map((item) => [item.id, item]),
-  )
-
-  const itensResolvidos: { item_id: string; nome_item: string; quantidade: number; preco_centavos_unitario: number }[] = []
-  const indisponiveis: string[] = []
-
-  for (const linha of itens) {
-    const quantidade = Math.max(1, Math.floor(Number(linha.quantidade) || 0))
-    const cadastro = cadastroPorId.get(linha.item_id)
-    if (!cadastro || !cadastro.ativo || cadastro.esgotado) {
-      indisponiveis.push(cadastro?.nome ?? linha.item_id)
-      continue
-    }
-    itensResolvidos.push({
-      item_id: cadastro.id,
-      nome_item: cadastro.nome,
-      quantidade,
-      preco_centavos_unitario: cadastro.preco_centavos,
-    })
+  if (!resolvido.ok) {
+    const { status, erro } = respostaDeErros(resolvido.erros)
+    return jsonResponse({ erro }, status)
   }
-
-  if (indisponiveis.length > 0) {
-    return jsonResponse({ erro: `Item(ns) indisponível(is): ${indisponiveis.join(', ')}` }, 422)
-  }
+  const itensResolvidos = resolvido.linhas
 
   // Estoque: com a opção ligada pelo dono, quantidade acima do saldo é recusada ANTES de
   // gerar o Pix (o retry de um Pix já emitido volta lá em cima, sem passar por aqui, e o
   // webhook nunca recusa por estoque: pagamento aprovado vira pedido, mesmo negativando).
   // Soma por item (o carrinho pode repetir o mesmo item em linhas diferentes).
   if (barraca.estoque_bloqueia === true) {
-    const somaPorItem = new Map<string, { nome: string; quantidade: number }>()
-    for (const i of itensResolvidos) {
-      const atual = somaPorItem.get(i.item_id)
-      somaPorItem.set(i.item_id, { nome: i.nome_item, quantidade: (atual?.quantidade ?? 0) + i.quantidade })
-    }
-    const acima: string[] = []
-    for (const [id, { nome, quantidade }] of somaPorItem) {
-      const saldo = cadastroPorId.get(id)?.estoque_qtd ?? null
-      if (saldo !== null && quantidade > saldo) acima.push(saldo <= 0 ? `${nome}: sem estoque` : `${nome}: restam ${saldo}`)
-    }
+    const { data: saldos } = await supabase
+      .from('itens')
+      .select('id, estoque_qtd')
+      .eq('barraca_id', barraca_id)
+      .in('id', [...new Set(itensResolvidos.map((i) => i.item_id))])
+    const saldoPorItem = new Map<string, number | null>(
+      ((saldos ?? []) as { id: string; estoque_qtd: number | null }[]).map((r) => [r.id, r.estoque_qtd]),
+    )
+    const acima = itensAcimaDoEstoque(itensResolvidos, saldoPorItem)
     if (acima.length > 0) {
       return jsonResponse({ erro: `Sem estoque suficiente — ${acima.join('; ')}` }, 422)
     }
   }
 
-  const totalCentavos = itensResolvidos.reduce(
-    (soma, item) => soma + item.preco_centavos_unitario * item.quantidade,
-    0,
-  )
+  const totalCentavos = resolvido.total_centavos
   if (totalCentavos <= 0) {
     return jsonResponse({ erro: 'Carrinho vazio' }, 422)
   }

@@ -5,6 +5,7 @@ import assert from 'node:assert/strict'
 import { readFileSync } from 'node:fs'
 import { after, before, describe, test } from 'node:test'
 import { PGlite } from '@electric-sql/pglite'
+import { interpretarResolver, respostaDeErros } from '../supabase/functions/_shared/carrinho.ts'
 
 const MIGRATION = readFileSync(
   new URL('../supabase/migrations/20261015100000_opcoes_schema_resolver.sql', import.meta.url),
@@ -499,6 +500,18 @@ describe('resolver_carrinho: regras de grupo', () => {
 })
 
 describe('resolver_carrinho: item e carrinho', () => {
+  test('contrato com as edge functions: a saída REAL do banco passa no interpretarResolver / respostaDeErros', async () => {
+    const ok = interpretarResolver(await resolver(B1, [linha(ITEM, [O_GRA, O_OVO], 2)]))
+    assert.ok(ok && ok.ok)
+    assert.equal(ok.total_centavos, 7000)
+    const nok = interpretarResolver(await resolver(B1, [linha(ITEM, [])]))
+    assert.ok(nok && !nok.ok)
+    assert.equal(respostaDeErros(nok.erros).status, 422)
+    const malformado = interpretarResolver(await resolver(B1, [linha(ITEM2, [], 0)]))
+    assert.ok(malformado && !malformado.ok)
+    assert.deepEqual(respostaDeErros(malformado.erros), { status: 400, erro: 'Itens inválidos' })
+  })
+
   test('item inativo, esgotado ou de outra barraca => item_indisponivel', async () => {
     await db.query(`update public.itens set ativo = false where id = $1`, [ITEM2])
     assert.equal((await resolver(B1, [linha(ITEM2)])).erros![0].codigo, 'item_indisponivel')

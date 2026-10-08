@@ -8,6 +8,12 @@
 // IP (hash) e por barraca numa janela de tempo; idempotente por client_uuid
 // (reenvio devolve a mesma senha). Usa a service role key.
 import { createClient } from 'jsr:@supabase/supabase-js@2'
+import {
+  interpretarResolver,
+  itensAcimaDoEstoque,
+  montarLinhas,
+  respostaDeErros,
+} from '../_shared/carrinho.ts'
 import { MENSAGEM_FECHADO, foraDoHorarioBloqueado } from '../_shared/horario.ts'
 
 // Anti-bot, NÃO limite de volume: barraca em evento recebe centenas de pedidos em
@@ -31,15 +37,6 @@ function jsonResponse(body: unknown, status = 200) {
     status,
     headers: { ...CORS_HEADERS, 'Content-Type': 'application/json' },
   })
-}
-
-type ItemCadastroRow = {
-  id: string
-  nome: string
-  preco_centavos: number
-  ativo: boolean
-  esgotado: boolean
-  estoque_qtd: number | null
 }
 
 const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i
@@ -72,7 +69,9 @@ Deno.serve(async (req: Request) => {
     telefone?: string
     endereco?: string | null
     observacao?: string | null
-    itens?: { item_id?: string; quantidade?: number }[]
+    /** `opcao_ids` e `observacao` (SAI-010a): o cliente manda só ids e texto; preço, nome e total saem do
+     * resolver_carrinho do banco. */
+    itens?: { item_id?: string; quantidade?: number; opcao_ids?: string[]; observacao?: string | null }[]
     /** Entrega com endereço estruturado (taxa por bairro). Sem isto vale o modo antigo
      * "só nome/telefone/endereço livre". */
     entrega?: {
@@ -162,14 +161,9 @@ Deno.serve(async (req: Request) => {
     Deno.env.get('SUPABASE_SERVICE_ROLE_KEY') ?? '',
   )
 
-  // Junta linhas repetidas e limita a quantidade.
-  const quantidadePorItem = new Map<string, number>()
-  for (const linha of body.itens) {
-    const id = String(linha.item_id ?? '')
-    const quantidade = Math.floor(Number(linha.quantidade) || 0)
-    if (!UUID.test(id) || quantidade < 1) return jsonResponse({ erro: 'Itens inválidos' }, 400)
-    quantidadePorItem.set(id, Math.min(MAX_QUANTIDADE, (quantidadePorItem.get(id) ?? 0) + quantidade))
-  }
+  // Junta linhas idênticas (mesmo item, opções e observação) e limita a quantidade.
+  const montada = montarLinhas(body.itens, { maxLinhas: MAX_LINHAS, maxQuantidade: MAX_QUANTIDADE })
+  if (!montada.ok) return jsonResponse({ erro: montada.erro }, 400)
 
   const { data: barraca } = await supabase
     .from('barracas')
@@ -185,39 +179,23 @@ Deno.serve(async (req: Request) => {
     return jsonResponse({ erro: 'Esta barraca não faz entrega pelo cardápio' }, 422)
   }
 
-  // Preço e disponibilidade SEMPRE do cadastro real.
-  const { data: cadastro, error: erroItens } = await supabase
-    .from('itens')
-    .select('id, nome, preco_centavos, ativo, esgotado, estoque_qtd')
-    .eq('barraca_id', barracaId)
-    .in('id', [...quantidadePorItem.keys()])
-  if (erroItens) return jsonResponse({ erro: 'Falha ao carregar o cardápio' }, 500)
-
-  const porId = new Map<string, ItemCadastroRow>(((cadastro ?? []) as ItemCadastroRow[]).map((i) => [i.id, i]))
-  const itensResolvidos: {
-    item_id: string
-    nome_item: string
-    quantidade: number
-    preco_centavos_unitario: number
-  }[] = []
-  const indisponiveis: string[] = []
-  for (const [id, quantidade] of quantidadePorItem) {
-    const item = porId.get(id)
-    if (!item || !item.ativo || item.esgotado || item.preco_centavos <= 0) {
-      indisponiveis.push(item?.nome ?? 'item')
-      continue
-    }
-    itensResolvidos.push({
-      item_id: item.id,
-      nome_item: item.nome,
-      quantidade,
-      preco_centavos_unitario: item.preco_centavos,
-    })
+  // Preço, nome, disponibilidade e regras de opções (mínimo/máximo, variação) SEMPRE do banco, pelo
+  // resolver_carrinho. Chamado aqui, imediatamente antes do criar_pedido (docs/opcoes.md: janela residual).
+  const { data: dadosResolver, error: erroResolver } = await supabase.rpc('resolver_carrinho', {
+    p_barraca_id: barracaId,
+    p_linhas: montada.linhas,
+  })
+  const resolvido = erroResolver ? null : interpretarResolver(dadosResolver)
+  if (!resolvido) {
+    console.error('criar-pedido-cardapio: falha em resolver_carrinho', erroResolver?.message ?? 'resposta inesperada')
+    return jsonResponse({ erro: 'Falha ao carregar o cardápio' }, 500)
   }
-  if (indisponiveis.length > 0) {
-    return jsonResponse({ erro: `Item(ns) indisponível(is): ${indisponiveis.join(', ')}` }, 422)
+  if (!resolvido.ok) {
+    const { status, erro } = respostaDeErros(resolvido.erros)
+    return jsonResponse({ erro }, status)
   }
-  const totalCentavos = itensResolvidos.reduce((s, i) => s + i.preco_centavos_unitario * i.quantidade, 0)
+  const itensResolvidos = resolvido.linhas
+  const totalCentavos = resolvido.total_centavos
 
   // Idempotência: reenvio do mesmo client_uuid devolve o pedido já criado (e
   // NÃO conta no limite — duplo toque/retry de rede não é spam).
@@ -278,14 +256,17 @@ Deno.serve(async (req: Request) => {
   // de criar o pedido. Fica DEPOIS da idempotência acima: pedido já criado nunca é
   // recusado por estoque. Desligada (padrão), nunca recusa.
   if (barraca.estoque_bloqueia === true) {
-    const acima = itensResolvidos
-      .map((i) => ({ nome: i.nome_item, quantidade: i.quantidade, saldo: porId.get(i.item_id)?.estoque_qtd ?? null }))
-      .filter((i) => i.saldo !== null && i.quantidade > i.saldo)
+    const { data: saldos } = await supabase
+      .from('itens')
+      .select('id, estoque_qtd')
+      .eq('barraca_id', barracaId)
+      .in('id', [...new Set(itensResolvidos.map((i) => i.item_id))])
+    const saldoPorItem = new Map<string, number | null>(
+      ((saldos ?? []) as { id: string; estoque_qtd: number | null }[]).map((r) => [r.id, r.estoque_qtd]),
+    )
+    const acima = itensAcimaDoEstoque(itensResolvidos, saldoPorItem)
     if (acima.length > 0) {
-      const detalhe = acima
-        .map((i) => ((i.saldo as number) <= 0 ? `${i.nome}: sem estoque` : `${i.nome}: restam ${i.saldo}`))
-        .join('; ')
-      return jsonResponse({ erro: `Sem estoque suficiente — ${detalhe}` }, 422)
+      return jsonResponse({ erro: `Sem estoque suficiente — ${acima.join('; ')}` }, 422)
     }
   }
 
