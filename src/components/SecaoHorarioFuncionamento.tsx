@@ -1,9 +1,13 @@
 import { useEffect, useState, type ReactNode } from 'react'
 import { supabase } from '../lib/supabase'
+import { useRascunho, useSalvarBarraca } from '../hooks/useSalvarBarraca'
+import { FUSOS_BARRACA, fusoDaBarraca } from '../lib/horarioFuncionamento'
+import { ErroSalvar } from './BotaoSalvarCampo'
 import { Card } from './ui/Card'
+import { Chip } from './ui/Chip'
 import { Icone } from './ui/Icone'
 import { Toggle } from './ui/Toggle'
-import type { HorarioFuncionamento } from '../types/database'
+import type { Barraca, HorarioFuncionamento } from '../types/database'
 
 type LinhaHorario = {
   dia_semana: number
@@ -52,7 +56,25 @@ function linhaPadrao(diaSemana: number): LinhaHorario {
  * sempre trabalha com as 7 linhas (Domingo–Sábado) via upsert, nunca
  * cria/apaga linha avulsa — dia sem registro no banco só significa
  * "fechado", mesmo espírito de outros toggles simples do app. */
-export function SecaoHorarioFuncionamento({ barracaId }: { barracaId: string }) {
+export function SecaoHorarioFuncionamento({ barraca }: { barraca: Barraca }) {
+  const barracaId = barraca.id
+  const bloquearR = useRascunho(Boolean(barraca.bloquear_fora_do_horario))
+  const salvarBloquear = useSalvarBarraca(barraca)
+  const fusoR = useRascunho(fusoDaBarraca(barraca.fuso))
+  const salvarFuso = useSalvarBarraca(barraca)
+
+  async function alternarBloqueio(valor: boolean) {
+    bloquearR.definir(valor)
+    await salvarBloquear.salvar({ bloquear_fora_do_horario: valor })
+    bloquearR.descartar()
+  }
+
+  async function trocarFuso(fuso: string) {
+    fusoR.definir(fuso)
+    await salvarFuso.salvar({ fuso })
+    fusoR.descartar()
+  }
+
   const [horarios, setHorarios] = useState<LinhaHorario[]>(() => DIAS.map((d) => linhaPadrao(d.valor)))
   const [carregando, setCarregando] = useState(true)
   const [erro, setErro] = useState<string | null>(null)
@@ -162,6 +184,36 @@ export function SecaoHorarioFuncionamento({ barracaId }: { barracaId: string }) 
         )}
 
         {erro && <p className="mt-3 text-sm font-medium text-mesa-error-500">{erro}</p>}
+
+        <div className="mt-4 border-t border-mesa-border-subtle pt-4">
+          <div className="flex items-center justify-between gap-3">
+            <span className="text-sm font-medium text-mesa-text-primary">
+              Não aceitar pedidos do cardápio fora do horário
+            </span>
+            <Toggle
+              checked={bloquearR.valor}
+              onChange={alternarBloqueio}
+              aria-label="Não aceitar pedidos do cardápio fora do horário"
+            />
+          </div>
+          <p className="mt-1 text-xs text-mesa-text-secondary">
+            Desligado, o cardápio só mostra "Aberto" ou "Fechado" e continua recebendo pedidos. Ligado, pedidos novos
+            fora do horário são recusados. Pedido já pago nunca é recusado.
+          </p>
+          <ErroSalvar erro={salvarBloquear.erro} className="mt-2" />
+        </div>
+
+        <div className="mt-4">
+          <p className="mb-2 text-sm font-medium text-mesa-text-primary">Fuso horário da barraca</p>
+          <div className="flex flex-wrap gap-2" role="radiogroup" aria-label="Fuso horário da barraca">
+            {FUSOS_BARRACA.map((f) => (
+              <Chip key={f.valor} checked={fusoR.valor === f.valor} onClick={() => void trocarFuso(f.valor)}>
+                {f.rotulo}
+              </Chip>
+            ))}
+          </div>
+          <ErroSalvar erro={salvarFuso.erro} className="mt-2" />
+        </div>
       </Card>
     </section>
   )

@@ -8,6 +8,7 @@
 // IP (hash) e por barraca numa janela de tempo; idempotente por client_uuid
 // (reenvio devolve a mesma senha). Usa a service role key.
 import { createClient } from 'jsr:@supabase/supabase-js@2'
+import { MENSAGEM_FECHADO, foraDoHorarioBloqueado } from '../_shared/horario.ts'
 
 // Anti-bot, NÃO limite de volume: barraca em evento recebe centenas de pedidos em
 // poucos minutos e vários consumidores saem do mesmo IP (wifi/NAT). Por isso não
@@ -234,6 +235,12 @@ Deno.serve(async (req: Request) => {
       total_centavos: totalCentavos + taxaExistente,
       itens: itensResolvidos,
     })
+  }
+
+  // Opcional por barraca (padrão desligado). Fica DEPOIS do retorno idempotente acima:
+  // retry de pedido que já existe nunca é recusado por horário.
+  if (await foraDoHorarioBloqueado(supabase, barraca)) {
+    return jsonResponse({ erro: MENSAGEM_FECHADO, codigo: 'fechado' }, 422)
   }
 
   // Taxa de entrega: SEMPRE calculada aqui pelo bairro (nunca vem do cliente).

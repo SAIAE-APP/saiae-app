@@ -5,6 +5,18 @@ export type HorarioPublico = {
   hora_fechamento: string | null
 }
 
+/** Fusos oferecidos em Ajustes (espelha o CHECK barracas_fuso_valido). */
+export const FUSOS_BARRACA = [
+  { valor: 'America/Sao_Paulo', rotulo: 'Brasília (UTC−3)' },
+  { valor: 'America/Manaus', rotulo: 'Manaus / Cuiabá (UTC−4)' },
+  { valor: 'America/Rio_Branco', rotulo: 'Acre (UTC−5)' },
+  { valor: 'America/Noronha', rotulo: 'Fernando de Noronha (UTC−2)' },
+] as const
+
+export function fusoDaBarraca(fuso: string | null | undefined): string {
+  return FUSOS_BARRACA.some((f) => f.valor === fuso) ? (fuso as string) : 'America/Sao_Paulo'
+}
+
 const DIAS_ABREV = ['domingo', 'segunda', 'terça', 'quarta', 'quinta', 'sexta', 'sábado']
 
 function paraMinutos(hora: string): number {

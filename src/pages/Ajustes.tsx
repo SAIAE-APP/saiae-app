@@ -2837,7 +2837,7 @@ export function Ajustes({ categoria = 'conta' }: { categoria?: CategoriaAjustes 
             <SecaoBanners barracaId={barraca.id} />
           </SecaoDaCategoria>
           <SecaoDaCategoria categoria="cardapio" atual={categoria}>
-            <SecaoHorarioFuncionamento barracaId={barraca.id} />
+            <SecaoHorarioFuncionamento barraca={barraca} />
           </SecaoDaCategoria>
           <SecaoDaCategoria categoria="cardapio" atual={categoria}>
             <SecaoModosAtendimento barraca={barraca} />
