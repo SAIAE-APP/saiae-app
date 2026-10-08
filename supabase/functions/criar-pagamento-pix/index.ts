@@ -17,6 +17,11 @@ import { createClient } from 'jsr:@supabase/supabase-js@2'
 import { chaveDoProvedor, obterProvedor, urlNotificacaoPagamento } from '../_shared/pagamento/registro.ts'
 import { buscarTokenDoProvedor } from '../_shared/pagamento/token.ts'
 import { ErroProvedor, ehProvedorValido, type QrPix } from '../_shared/pagamento/tipos.ts'
+import { hashIp, ipDoCliente, pareceBot } from '../_shared/antiabuso.ts'
+
+// Teto anti-bot por IP: não é limite de volume (ver comentário no ponto de uso).
+const JANELA_RATE_LIMIT_MS = 5 * 60 * 1000
+const LIMITE_COBRANCAS_POR_IP = 60
 
 // Mínimo aceito pelo Mercado Pago é 30 min; 35 dá folga pra diferença de relógio.
 // Pedido de balcão, não faz sentido um QR que dure dias.
@@ -81,6 +86,10 @@ Deno.serve(async (req: Request) => {
     cliente_telefone?: string | null
     /** Total que o cliente viu na tela (itens + taxa). Se o servidor calcular outro, não cobra. */
     total_esperado_centavos?: number | null
+    /** Honeypot: campo oculto no formulário; humano nunca preenche. */
+    website?: string
+    /** Tempo entre abrir o checkout e enviar (medido no navegador). Opcional (cliente antigo não manda). */
+    ms_no_checkout?: number
   }
   try {
     body = await req.json()
@@ -91,6 +100,12 @@ Deno.serve(async (req: Request) => {
   const { barraca_id, client_uuid, itens } = body
   if (!barraca_id || !client_uuid || !Array.isArray(itens) || itens.length === 0) {
     return jsonResponse({ erro: 'barraca_id, client_uuid e itens são obrigatórios' }, 400)
+  }
+
+  // Defesas baratas que não afetam cliente real: honeypot preenchido ou envio
+  // rápido demais. Resposta genérica, sem dizer qual regra pegou.
+  if (pareceBot(body)) {
+    return jsonResponse({ erro: 'Não foi possível gerar o Pix. Tente de novo.' }, 400)
   }
 
   const supabase = createClient(
@@ -141,6 +156,23 @@ Deno.serve(async (req: Request) => {
       })
     }
   }
+
+  // Teto anti-bot por IP (hash). Cada cobrança nova chama a API do provedor com o
+  // token DO DONO, então script em loop não pode gerar cobrança à vontade. Retry
+  // do mesmo client_uuid já voltou acima (não conta). Contador próprio do Pix
+  // (escopo no hash), separado do de "Pagar na entrega". Alto de propósito: evento
+  // tem muita gente no mesmo wifi/NAT; cliente real nunca chega perto.
+  const ipHash = await hashIp('pix', ipDoCliente(req), barraca_id)
+  const desde = new Date(Date.now() - JANELA_RATE_LIMIT_MS).toISOString()
+  const { count: cobrancasDoIp } = await supabase
+    .from('cardapio_pedidos_log')
+    .select('id', { count: 'exact', head: true })
+    .eq('ip_hash', ipHash)
+    .gte('criado_em', desde)
+  if ((cobrancasDoIp ?? 0) >= LIMITE_COBRANCAS_POR_IP) {
+    return jsonResponse({ erro: 'Muitas tentativas em pouco tempo. Aguarde um instante e tente de novo.' }, 429)
+  }
+  await supabase.from('cardapio_pedidos_log').insert({ barraca_id, ip_hash: ipHash, client_uuid })
 
   const { data: barraca, error: erroBarraca } = await supabase
     .from('barracas')
