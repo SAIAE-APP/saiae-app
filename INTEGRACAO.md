@@ -85,5 +85,12 @@ Fonte: `docs/superpowers/specs/2026-10-07-sai-010-adicionais-design.md`. Só cam
 - Comanda: outbox, worker, `integracao-v1`, cadastro/rotação de segredos em Ajustes.
 - Ambas: SSO (ver spec), staging e CI.
 
+### 5.1 Outbox de eventos (SAI-013, lado Comanda) — como ligar
+- Migration `20261016110000_eventos_saida.sql` (depende da `20261015100000`): tabelas `integracao_crm` (URL + segredo por barraca, sem leitura pela API) e `eventos_saida`, 4 triggers, `montar_evento_saida`, RPCs do worker (`reservar_eventos_saida`, `concluir_evento_saida`, só service role) e de Ajustes (`integracao_crm_*`).
+- Edge function `enviar-eventos-saida` (`--no-verify-jwt`): secret `EVENTOS_WORKER_SECRET`. O pg_cron (1/min) chama `disparar_worker_eventos()`, que faz o POST com o cabeçalho `x-worker-secret`. Para funcionar, preencher em `app_config`: `eventos_worker_url` (URL da function) e `eventos_worker_secret` (mesmo valor), ambos JSON string. Sem isso o cron não faz nada.
+- Por barraca (Ajustes > Cardápio & Operação > Integração com o CRM): URL do CRM (https), gerar segredo (mostrado uma vez; vai para `COMANDA_WEBHOOK_SECRETS` do CRM) e ligar. Sem integração ativa nada é gravado no outbox.
+- Disparos: `order.created` (INSERT em pedidos), `order.status_changed`/`order.ready`/`order.cancelled` (UPDATE OF status), `order.paid` (Pix: webhook liga a cobrança ao pedido; entrega: método deixa de ser `na_entrega`). `cliente_avisado_em` não gera evento. Retry 1 min, 5 min, 30 min, 2 h, 12 h; depois "com falha" (Ajustes mostra e reenvia). `sequence` crescente por pedido e um evento só sai depois dos anteriores do mesmo pedido.
+- Limites conhecidos: a guarda de SSRF do worker recusa http, hosts internos e IP privado literal, mas não DNS que resolva para IP privado; evento de pedido sem integração ativa na hora não é criado depois (sem backfill).
+
 ## 6. Estado do último teste de integração
 Nenhum ainda.
