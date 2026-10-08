@@ -1653,6 +1653,7 @@ export function CardapioPublico() {
                 aviso={cupom.aviso}
                 onAplicar={(c) => void cupom.aplicar(c)}
                 onRemover={cupom.remover}
+                onEditar={cupom.limparErro}
               />
             )}
 
@@ -1895,6 +1896,7 @@ export function CardapioPublico() {
                 aviso={cupom.aviso}
                 onAplicar={(c) => void cupom.aplicar(c)}
                 onRemover={cupom.remover}
+                onEditar={cupom.limparErro}
               />
             )}
             <div className="flex flex-col gap-1 border-t border-mesa-border-subtle pt-3">

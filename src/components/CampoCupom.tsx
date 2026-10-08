@@ -13,6 +13,7 @@ export function CampoCupom({
   aviso,
   onAplicar,
   onRemover,
+  onEditar,
 }: {
   aplicado: CupomAplicado | null
   validando: boolean
@@ -20,6 +21,8 @@ export function CampoCupom({
   aviso: string | null
   onAplicar: (codigo: string) => void
   onRemover: () => void
+  /** Chamado ao digitar: o pai limpa o erro do código anterior. */
+  onEditar?: () => void
 }) {
   const [aberto, setAberto] = useState(false)
   const [codigo, setCodigo] = useState('')
@@ -65,7 +68,10 @@ export function CampoCupom({
             <Input
               label="Código do cupom"
               value={codigo}
-              onChange={(e) => setCodigo(e.target.value.toUpperCase())}
+              onChange={(e) => {
+                setCodigo(e.target.value.toUpperCase())
+                onEditar?.()
+              }}
               maxLength={20}
               autoCapitalize="characters"
               autoComplete="off"
