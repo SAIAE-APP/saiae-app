@@ -12,6 +12,18 @@ import { Chip } from '../components/ui/Chip'
 import { Icone } from '../components/ui/Icone'
 import { Input } from '../components/ui/Input'
 import { Textarea } from '../components/ui/Textarea'
+import { SeletorOpcoes } from '../components/SeletorOpcoes'
+import {
+  agruparOpcoes,
+  chaveDaLinha,
+  itemPedivel,
+  precoAPartirDe,
+  precoUnitario,
+  resumoEscolhas,
+  temVariacao,
+  type GrupoItem,
+  type LinhaOpcaoPublica,
+} from '../lib/opcoes'
 import { statusFuncionamento, type HorarioPublico } from '../lib/horarioFuncionamento'
 import { montarMensagemPagarNaEntrega, urlWhatsappDono } from '../lib/pagarNaEntrega'
 import { formatarTelefoneBR } from '../lib/entrega'
@@ -36,6 +48,12 @@ type LinhaCardapioPublico = {
   item_popular: boolean
   categoria_nome: string | null
   pedidos_30d: number
+  /** Só no navegador (SAI-010a): item com variação/adicionais. Abre o seletor em vez de somar direto. */
+  com_opcoes?: boolean
+  /** Só no navegador: `item_preco_centavos` é o menor preço da variação ("a partir de"). */
+  a_partir_de?: boolean
+  /** Só no navegador: preço base real do cadastro (o `item_preco_centavos` pode ter virado "a partir de"). */
+  preco_base_centavos?: number
 }
 
 type BannerPublico = {
@@ -51,6 +69,8 @@ type Estado =
   | { status: 'pronto'; linhas: LinhaCardapioPublico[] }
 
 type Carrinho = Record<string, number>
+/** Linha do carrinho de item COM opções (item simples segue em `Carrinho`, como sempre foi). */
+type LinhaOpcoes = { chave: string; itemId: string; opcaoIds: string[]; quantidade: number; observacao: string }
 type ModoConsumo = 'retirada' | 'entrega'
 
 // Fase 2+3 do Cardápio Digital (CLAUDE.md, roadmap): o pedido de verdade
@@ -112,6 +132,7 @@ function BotaoAdicionar({
   variant,
   podeAdicionar,
   esgotado,
+  comOpcoes = false,
   quantidadeNoCarrinho,
   onAdicionar,
   onRemover,
@@ -119,6 +140,8 @@ function BotaoAdicionar({
   variant: 'sm' | 'md'
   podeAdicionar: boolean
   esgotado: boolean
+  /** Item com variação/adicionais: o botão abre o seletor; os ajustes de quantidade ficam no pedido. */
+  comOpcoes?: boolean
   quantidadeNoCarrinho: number
   onAdicionar: () => void
   onRemover: () => void
@@ -127,6 +150,20 @@ function BotaoAdicionar({
     return (
       <Button variant="outline" size={variant} disabled>
         Esgotado
+      </Button>
+    )
+  }
+
+  if (comOpcoes) {
+    return (
+      <Button
+        variant="outline"
+        size={variant}
+        icon={<Icone nome="add" size={16} />}
+        disabled={!podeAdicionar}
+        onClick={onAdicionar}
+      >
+        {quantidadeNoCarrinho > 0 ? `Escolher (${quantidadeNoCarrinho})` : 'Escolher'}
       </Button>
     )
   }
@@ -216,13 +253,19 @@ function CardItemPublico({
           <p className="mt-0.5 line-clamp-2 text-xs text-mesa-text-secondary">{item.item_descricao}</p>
         )}
         <div className="mt-2 flex items-center justify-between gap-2">
-          <span className="font-mesa-display text-sm font-semibold text-mesa-text-primary">
-            {item.item_preco_centavos > 0 ? formatarPrecoBR(item.item_preco_centavos) : 'Sob consulta'}
+          <span className="flex flex-col font-mesa-display text-sm font-semibold text-mesa-text-primary">
+            {item.a_partir_de && item.item_preco_centavos > 0 && (
+              <span className="text-xs font-normal text-mesa-text-secondary">a partir de</span>
+            )}
+            <span className="whitespace-nowrap">
+              {item.item_preco_centavos > 0 ? formatarPrecoBR(item.item_preco_centavos) : 'Sob consulta'}
+            </span>
           </span>
           <BotaoAdicionar
             variant="sm"
             podeAdicionar={!podeComprar || item.item_preco_centavos > 0}
             esgotado={item.item_esgotado}
+            comOpcoes={item.com_opcoes === true}
             quantidadeNoCarrinho={quantidadeNoCarrinho}
             onAdicionar={onAdicionar}
             onRemover={onRemover}
@@ -366,17 +409,19 @@ function CarrosselBanners({ banners }: { banners: BannerPublico[] }) {
 function BotaoAdicionarCompacto({
   podeAdicionar,
   esgotado,
+  comOpcoes = false,
   quantidadeNoCarrinho,
   onAdicionar,
   onRemover,
 }: {
   podeAdicionar: boolean
   esgotado: boolean
+  comOpcoes?: boolean
   quantidadeNoCarrinho: number
   onAdicionar: () => void
   onRemover: () => void
 }) {
-  if (quantidadeNoCarrinho > 0) {
+  if (quantidadeNoCarrinho > 0 && !comOpcoes) {
     return (
       <div className="flex items-center gap-0.5 rounded-mesa-full bg-mesa-neutral-900 px-1 py-1 text-white dark:bg-mesa-neutral-50 dark:text-mesa-neutral-900">
         <button
@@ -406,7 +451,7 @@ function BotaoAdicionarCompacto({
       type="button"
       disabled={esgotado || !podeAdicionar}
       onClick={onAdicionar}
-      aria-label="Adicionar ao carrinho"
+      aria-label={comOpcoes ? 'Escolher opções' : 'Adicionar ao carrinho'}
       className="flex size-8 shrink-0 items-center justify-center rounded-mesa-full border border-mesa-border-strong text-mesa-text-primary disabled:opacity-40"
     >
       <Icone nome="add" size={16} />
@@ -458,12 +503,18 @@ function CardItemHorizontal({
       <div className="p-2.5">
         <p className="line-clamp-1 text-sm font-semibold text-mesa-text-primary">{item.item_nome}</p>
         <div className="mt-1.5 flex items-center justify-between gap-1">
-          <span className="font-mesa-display text-xs font-semibold text-mesa-text-primary">
-            {item.item_preco_centavos > 0 ? formatarPrecoBR(item.item_preco_centavos) : 'Consulta'}
+          <span className="flex flex-col font-mesa-display text-xs font-semibold text-mesa-text-primary">
+            {item.a_partir_de && item.item_preco_centavos > 0 && (
+              <span className="text-[10px] font-normal text-mesa-text-secondary">a partir de</span>
+            )}
+            <span className="whitespace-nowrap">
+              {item.item_preco_centavos > 0 ? formatarPrecoBR(item.item_preco_centavos) : 'Consulta'}
+            </span>
           </span>
           <BotaoAdicionarCompacto
             podeAdicionar={!podeComprar || item.item_preco_centavos > 0}
             esgotado={item.item_esgotado}
+            comOpcoes={item.com_opcoes === true}
             quantidadeNoCarrinho={quantidadeNoCarrinho}
             onAdicionar={onAdicionar}
             onRemover={onRemover}
@@ -532,6 +583,10 @@ export function CardapioPublico() {
   const [filtroAtivo, setFiltroAtivo] = useState<string | null>(null)
 
   const [carrinho, setCarrinho] = useState<Carrinho>({})
+  const [linhasOpcoes, setLinhasOpcoes] = useState<LinhaOpcoes[]>([])
+  // Grupos/opções por item (vazio = loja sem opções habilitadas = tudo item simples, como sempre).
+  const [gruposPorItem, setGruposPorItem] = useState<Map<string, GrupoItem[]>>(() => new Map())
+  const [itemSeletor, setItemSeletor] = useState<LinhaCardapioPublico | null>(null)
   const [mostrarCheckout, setMostrarCheckout] = useState(false)
   const [modoConsumo, setModoConsumo] = useState<ModoConsumo>('retirada')
   const [observacao, setObservacao] = useState('')
@@ -588,6 +643,25 @@ export function CardapioPublico() {
         }
         setEstado({ status: 'pronto', linhas: data as LinhaCardapioPublico[] })
       })
+
+    return () => {
+      cancelado = true
+    }
+  }, [slug])
+
+  // Variações e adicionais (SAI-010a). Falha ou banco sem a RPC = item simples; o servidor revalida tudo.
+  useEffect(() => {
+    if (!slug) return
+
+    let cancelado = false
+    supabase.rpc('opcoes_publicas', { p_slug: slug }).then(({ data, error }) => {
+      if (cancelado) return
+      if (error) {
+        console.warn('Cardápio: não consegui carregar as opções dos itens', error.message)
+        return
+      }
+      setGruposPorItem(agruparOpcoes((data ?? []) as LinhaOpcaoPublica[]))
+    })
 
     return () => {
       cancelado = true
@@ -699,7 +773,23 @@ export function CardapioPublico() {
     }
   }, [pagamento])
 
-  const linhas = useMemo(() => (estado.status === 'pronto' ? estado.linhas : []), [estado])
+  // Item com opções: preço do card vira "a partir de" (menor variação), e item cujo grupo obrigatório
+  // ficou sem opção disponível aparece como esgotado (não dá para pedir).
+  const linhas = useMemo(() => {
+    const base = estado.status === 'pronto' ? estado.linhas : []
+    return base.map((l): LinhaCardapioPublico => {
+      const grupos = gruposPorItem.get(l.item_id)
+      if (!grupos || grupos.length === 0) return l
+      return {
+        ...l,
+        com_opcoes: true,
+        a_partir_de: temVariacao(grupos),
+        preco_base_centavos: l.item_preco_centavos,
+        item_preco_centavos: precoAPartirDe(l.item_preco_centavos, grupos),
+        item_esgotado: l.item_esgotado || !itemPedivel(grupos),
+      }
+    })
+  }, [estado, gruposPorItem])
 
   const status = useMemo(() => statusFuncionamento(horarios), [horarios])
 
@@ -747,24 +837,78 @@ export function CardapioPublico() {
       )
     : itensDoFiltro
 
-  const itensCarrinho = useMemo(
-    () =>
-      Object.entries(carrinho)
-        .map(([itemId, quantidade]) => ({ item: itemPorId.get(itemId), quantidade }))
-        .filter((l): l is { item: LinhaCardapioPublico; quantidade: number } => Boolean(l.item)),
-    [carrinho, itemPorId],
-  )
+  type ItemDoCarrinho = {
+    /** Item simples: o próprio item_id. Item com opções: identidade da linha (item + opções + observação). */
+    chave: string
+    item: LinhaCardapioPublico
+    quantidade: number
+    precoUnitario: number
+    opcaoIds: string[]
+    observacao: string
+    resumo: string
+  }
+  const itensCarrinho = useMemo(() => {
+    const simples: ItemDoCarrinho[] = []
+    for (const [itemId, quantidade] of Object.entries(carrinho)) {
+      const item = itemPorId.get(itemId)
+      if (item) simples.push({ chave: itemId, item, quantidade, precoUnitario: item.item_preco_centavos, opcaoIds: [], observacao: '', resumo: '' })
+    }
+    const comOpcoes: ItemDoCarrinho[] = []
+    for (const l of linhasOpcoes) {
+      const item = itemPorId.get(l.itemId)
+      if (!item) continue
+      const grupos = gruposPorItem.get(l.itemId) ?? []
+      comOpcoes.push({
+        chave: l.chave,
+        item,
+        quantidade: l.quantidade,
+        precoUnitario: precoUnitario(item.preco_base_centavos ?? item.item_preco_centavos, grupos, l.opcaoIds),
+        opcaoIds: l.opcaoIds,
+        observacao: l.observacao,
+        resumo: resumoEscolhas(grupos, l.opcaoIds),
+      })
+    }
+    return [...simples, ...comOpcoes]
+  }, [carrinho, linhasOpcoes, itemPorId, gruposPorItem])
   const totalItensCarrinho = itensCarrinho.reduce((soma, l) => soma + l.quantidade, 0)
-  const totalCentavosCarrinho = itensCarrinho.reduce(
-    (soma, l) => soma + l.item.item_preco_centavos * l.quantidade,
-    0,
-  )
+  const totalCentavosCarrinho = itensCarrinho.reduce((soma, l) => soma + l.precoUnitario * l.quantidade, 0)
+
+  // O que o navegador manda às edge functions: só ids e texto. Preço e total o servidor resolve.
+  function itensParaEnvio() {
+    return itensCarrinho.map((l) => ({
+      item_id: l.item.item_id,
+      quantidade: l.quantidade,
+      ...(l.opcaoIds.length > 0 ? { opcao_ids: l.opcaoIds } : {}),
+      ...(l.observacao ? { observacao: l.observacao } : {}),
+    }))
+  }
+
+  function quantidadeDoItem(itemId: string): number {
+    return (carrinho[itemId] ?? 0) + linhasOpcoes.filter((l) => l.itemId === itemId).reduce((soma, l) => soma + l.quantidade, 0)
+  }
+
+  function confirmarOpcoes(item: LinhaCardapioPublico, opcaoIds: string[], obs: string) {
+    const chave = chaveDaLinha(item.item_id, opcaoIds, obs)
+    setLinhasOpcoes((atual) =>
+      atual.some((l) => l.chave === chave)
+        ? atual.map((l) => (l.chave === chave ? { ...l, quantidade: l.quantidade + 1 } : l))
+        : [...atual, { chave, itemId: item.item_id, opcaoIds, quantidade: 1, observacao: obs }],
+    )
+    setItemSeletor(null)
+  }
 
   function adicionarAoCarrinho(itemId: string) {
     setCarrinho((atual) => ({ ...atual, [itemId]: (atual[itemId] ?? 0) + 1 }))
   }
 
   function alterarQuantidade(itemId: string, delta: number) {
+    // `itemId` é a chave da linha: o item_id (item simples) ou a identidade da linha com opções.
+    if (linhasOpcoes.some((l) => l.chave === itemId)) {
+      setLinhasOpcoes((atual) =>
+        atual.map((l) => (l.chave === itemId ? { ...l, quantidade: l.quantidade + delta } : l)).filter((l) => l.quantidade > 0),
+      )
+      return
+    }
     setCarrinho((atual) => {
       const nova = Math.max(0, (atual[itemId] ?? 0) + delta)
       const copia = { ...atual }
@@ -782,6 +926,7 @@ export function CardapioPublico() {
     if (pagamento.fase === 'aprovado' || pagamento.fase === 'entrega_enviada') {
       setTelefoneAviso('')
       setCarrinho({})
+      setLinhasOpcoes([])
       setObservacao('')
       clientUuidRef.current = crypto.randomUUID()
     }
@@ -803,7 +948,7 @@ export function CardapioPublico() {
         website: honeypot,
         // Só quando preenchido; o servidor ignora número inválido.
         ...(telefoneAviso.trim() ? { cliente_telefone: telefoneAviso.trim() } : {}),
-        itens: itensCarrinho.map((l) => ({ item_id: l.item.item_id, quantidade: l.quantidade })),
+        itens: itensParaEnvio(),
       },
     })
 
@@ -908,7 +1053,7 @@ export function CardapioPublico() {
             }
           : {}),
         observacao: observacao.trim() || null,
-        itens: itensCarrinho.map((l) => ({ item_id: l.item.item_id, quantidade: l.quantidade })),
+        itens: itensParaEnvio(),
       },
     })
 
@@ -1051,7 +1196,7 @@ export function CardapioPublico() {
         tipo_atendimento: 'entrega',
         observacao: observacao.trim() || null,
         client_uuid: clientUuidRef.current,
-        itens: itensCarrinho.map((l) => ({ item_id: l.item.item_id, quantidade: l.quantidade })),
+        itens: itensParaEnvio(),
         total_esperado_centavos: totalPixEntregaCentavos,
         website: honeypot,
         ms_no_checkout: Date.now() - aberturaCheckoutRef.current,
@@ -1182,8 +1327,8 @@ export function CardapioPublico() {
                 item={item}
                 destaque={null}
                 podeComprar={podeComprar}
-                quantidadeNoCarrinho={carrinho[item.item_id] ?? 0}
-                onAdicionar={() => adicionarAoCarrinho(item.item_id)}
+                quantidadeNoCarrinho={quantidadeDoItem(item.item_id)}
+                onAdicionar={() => (item.com_opcoes ? setItemSeletor(item) : adicionarAoCarrinho(item.item_id))}
                 onRemover={() => alterarQuantidade(item.item_id, -1)}
               />
             ))}
@@ -1201,8 +1346,8 @@ export function CardapioPublico() {
                 item={item}
                 destaque={indice === 0 ? 'top1' : 'popular'}
                 podeComprar={podeComprar}
-                quantidadeNoCarrinho={carrinho[item.item_id] ?? 0}
-                onAdicionar={() => adicionarAoCarrinho(item.item_id)}
+                quantidadeNoCarrinho={quantidadeDoItem(item.item_id)}
+                onAdicionar={() => (item.com_opcoes ? setItemSeletor(item) : adicionarAoCarrinho(item.item_id))}
                 onRemover={() => alterarQuantidade(item.item_id, -1)}
               />
             ))}
@@ -1259,8 +1404,8 @@ export function CardapioPublico() {
                 item={item}
                 posicaoPopular={indicePopular === -1 ? null : indicePopular}
                 podeComprar={podeComprar}
-                quantidadeNoCarrinho={carrinho[item.item_id] ?? 0}
-                onAdicionar={() => adicionarAoCarrinho(item.item_id)}
+                quantidadeNoCarrinho={quantidadeDoItem(item.item_id)}
+                onAdicionar={() => (item.com_opcoes ? setItemSeletor(item) : adicionarAoCarrinho(item.item_id))}
                 onRemover={() => alterarQuantidade(item.item_id, -1)}
               />
             )
@@ -1298,23 +1443,36 @@ export function CardapioPublico() {
         </div>
       )}
 
+      {itemSeletor && (
+        <SeletorOpcoes
+          key={itemSeletor.item_id}
+          nomeItem={itemSeletor.item_nome}
+          precoBaseCentavos={itemSeletor.preco_base_centavos ?? itemSeletor.item_preco_centavos}
+          grupos={gruposPorItem.get(itemSeletor.item_id) ?? []}
+          onClose={() => setItemSeletor(null)}
+          onConfirmar={(ids, obs) => confirmarOpcoes(itemSeletor, ids, obs)}
+        />
+      )}
+
       <BottomSheet open={mostrarCheckout} onClose={fecharCheckout} aria-label="Seu pedido">
         {pagamento.fase === 'formulario' && (
           <div className="flex flex-col gap-4">
             <h2 className="text-lg font-semibold text-mesa-text-primary">Seu pedido</h2>
 
             <div className="flex flex-col gap-2">
-              {itensCarrinho.map(({ item, quantidade }) => (
-                <div key={item.item_id} className="flex items-center justify-between gap-2">
+              {itensCarrinho.map(({ chave, item, quantidade, precoUnitario: precoLinha, resumo, observacao: obsLinha }) => (
+                <div key={chave} className="flex items-center justify-between gap-2">
                   <div className="min-w-0">
                     <p className="truncate text-sm font-medium text-mesa-text-primary">{item.item_nome}</p>
-                    <p className="text-xs text-mesa-text-secondary">{formatarPrecoBR(item.item_preco_centavos)}</p>
+                    {resumo && <p className="text-xs text-mesa-text-secondary">{resumo}</p>}
+                    {obsLinha && <p className="text-xs italic text-mesa-text-secondary">{obsLinha}</p>}
+                    <p className="text-xs text-mesa-text-secondary">{formatarPrecoBR(precoLinha)}</p>
                   </div>
                   <div className="flex shrink-0 items-center gap-2">
                     <button
                       type="button"
                       aria-label={`Diminuir ${item.item_nome}`}
-                      onClick={() => alterarQuantidade(item.item_id, -1)}
+                      onClick={() => alterarQuantidade(chave, -1)}
                       className="flex size-11 -m-1.5 items-center justify-center"
                     >
                       <span className="flex size-8 items-center justify-center rounded-mesa-full bg-mesa-neutral-100 text-mesa-text-primary dark:bg-mesa-neutral-700">
@@ -1327,7 +1485,7 @@ export function CardapioPublico() {
                     <button
                       type="button"
                       aria-label={`Aumentar ${item.item_nome}`}
-                      onClick={() => alterarQuantidade(item.item_id, 1)}
+                      onClick={() => alterarQuantidade(chave, 1)}
                       className="flex size-11 -m-1.5 items-center justify-center"
                     >
                       <span className="flex size-8 items-center justify-center rounded-mesa-full bg-mesa-neutral-900 text-white dark:bg-mesa-neutral-50 dark:text-mesa-neutral-900">
