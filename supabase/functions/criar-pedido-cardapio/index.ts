@@ -15,6 +15,7 @@ import {
   respostaDeErros,
 } from '../_shared/carrinho.ts'
 import { MENSAGEM_FECHADO, foraDoHorarioBloqueado } from '../_shared/horario.ts'
+import { resolverPerfilDoPedido } from '../_shared/perfilNoPedido.ts'
 
 // Anti-bot, NÃO limite de volume: barraca em evento recebe centenas de pedidos em
 // poucos minutos e vários consumidores saem do mesmo IP (wifi/NAT). Por isso não
@@ -64,6 +65,8 @@ Deno.serve(async (req: Request) => {
 
   let body: {
     barraca_id?: string
+    /** Sessão do perfil do cliente (obrigatória só se a barraca ligar perfil_cliente_obrigatorio). */
+    sessao_token?: string
     client_uuid?: string
     nome?: string
     telefone?: string
@@ -177,6 +180,11 @@ Deno.serve(async (req: Request) => {
   }
   if (entregaEstruturada && !((barraca.modos_atendimento as string[] | null) ?? []).includes('entrega')) {
     return jsonResponse({ erro: 'Esta barraca não faz entrega pelo cardápio' }, 422)
+  }
+
+  const perfil = await resolverPerfilDoPedido(supabase, Deno.env.get('CLIENTE_HASH_PEPPER') ?? '', barracaId, body.sessao_token)
+  if (perfil.bloqueado) {
+    return jsonResponse({ erro: 'Confirme seu telefone para finalizar o pedido.', codigo: 'perfil_obrigatorio' }, 401)
   }
 
   // Preço, nome, disponibilidade e regras de opções (mínimo/máximo, variação) SEMPRE do banco, pelo
@@ -323,6 +331,15 @@ Deno.serve(async (req: Request) => {
     return jsonResponse({ erro: 'Não foi possível enviar o pedido agora. Tente de novo.' }, 500)
   }
 
+  // Vínculo com o perfil (best-effort: nunca derruba um pedido já criado).
+  if (perfil.clienteId) {
+    const { error: erroVinculo } = await supabase
+      .from('pedidos')
+      .update({ cliente_id: perfil.clienteId })
+      .eq('id', (criado as { pedido_id: string }).pedido_id)
+    if (erroVinculo) console.error('criar-pedido-cardapio: falha ao vincular cliente', erroVinculo.message)
+  }
+
   const aceitaMarketing = body.consentimento_marketing === true || entregaBruta?.consentimento_marketing === true
 
   // Cadastro do cliente (LGPD: só com consentimento explícito, origem 'cardapio').
@@ -333,17 +350,25 @@ Deno.serve(async (req: Request) => {
       if ((telefoneCadastro.length === 12 || telefoneCadastro.length === 13) && telefoneCadastro.startsWith('55')) {
         telefoneCadastro = telefoneCadastro.slice(2)
       }
+      // Perfil já confirmado por código: o pedido anônimo NÃO sobrescreve nome nem aceite (só endereço).
+      const { data: existente } = await supabase
+        .from('clientes_finais')
+        .select('telefone_confirmado_em')
+        .eq('barraca_id', barracaId)
+        .eq('telefone', telefoneCadastro)
+        .maybeSingle()
+      const confirmado = Boolean((existente as { telefone_confirmado_em?: string | null } | null)?.telefone_confirmado_em)
       const { error: erroCliente } = await supabase.from('clientes_finais').upsert(
         {
           barraca_id: barracaId,
-          nome: entregaEstruturada.nome,
+          ...(confirmado ? {} : { nome: entregaEstruturada.nome }),
           telefone: telefoneCadastro,
           rua: entregaEstruturada.rua,
           numero: entregaEstruturada.numero,
           bairro: entregaEstruturada.bairro,
           referencia: entregaEstruturada.referencia,
           origem: 'cardapio',
-          consentimento_lgpd_em: new Date().toISOString(),
+          ...(confirmado ? {} : { consentimento_lgpd_em: new Date().toISOString() }),
           // Só grava quando marcado: pedido sem o aceite NÃO apaga um aceite anterior.
           ...(aceitaMarketing ? { consentimento_marketing_em: new Date().toISOString() } : {}),
         },
