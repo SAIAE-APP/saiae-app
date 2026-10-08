@@ -350,17 +350,25 @@ Deno.serve(async (req: Request) => {
       if ((telefoneCadastro.length === 12 || telefoneCadastro.length === 13) && telefoneCadastro.startsWith('55')) {
         telefoneCadastro = telefoneCadastro.slice(2)
       }
+      // Perfil já confirmado por código: o pedido anônimo NÃO sobrescreve nome nem aceite (só endereço).
+      const { data: existente } = await supabase
+        .from('clientes_finais')
+        .select('telefone_confirmado_em')
+        .eq('barraca_id', barracaId)
+        .eq('telefone', telefoneCadastro)
+        .maybeSingle()
+      const confirmado = Boolean((existente as { telefone_confirmado_em?: string | null } | null)?.telefone_confirmado_em)
       const { error: erroCliente } = await supabase.from('clientes_finais').upsert(
         {
           barraca_id: barracaId,
-          nome: entregaEstruturada.nome,
+          ...(confirmado ? {} : { nome: entregaEstruturada.nome }),
           telefone: telefoneCadastro,
           rua: entregaEstruturada.rua,
           numero: entregaEstruturada.numero,
           bairro: entregaEstruturada.bairro,
           referencia: entregaEstruturada.referencia,
           origem: 'cardapio',
-          consentimento_lgpd_em: new Date().toISOString(),
+          ...(confirmado ? {} : { consentimento_lgpd_em: new Date().toISOString() }),
           // Só grava quando marcado: pedido sem o aceite NÃO apaga um aceite anterior.
           ...(aceitaMarketing ? { consentimento_marketing_em: new Date().toISOString() } : {}),
         },

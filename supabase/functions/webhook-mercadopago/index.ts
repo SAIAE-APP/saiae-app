@@ -291,17 +291,25 @@ Deno.serve(async (req: Request) => {
     // existe e foi pago, então NADA aqui pode falhar a resposta ao MP.
     if (entrega?.consentimento_lgpd_em) {
       try {
+        // Perfil já confirmado por código: o pedido NÃO sobrescreve nome nem aceite (só endereço).
+        const { data: existente } = await supabase
+          .from('clientes_finais')
+          .select('telefone_confirmado_em')
+          .eq('barraca_id', pendente.barraca_id)
+          .eq('telefone', entrega.telefone)
+          .maybeSingle()
+        const confirmado = Boolean((existente as { telefone_confirmado_em?: string | null } | null)?.telefone_confirmado_em)
         const { error: erroCliente } = await supabase.from('clientes_finais').upsert(
           {
             barraca_id: pendente.barraca_id,
-            nome: entrega.nome,
+            ...(confirmado ? {} : { nome: entrega.nome }),
             telefone: entrega.telefone,
             rua: entrega.rua,
             numero: entrega.numero,
             bairro: entrega.bairro,
             referencia: entrega.referencia,
             origem: 'cardapio',
-            consentimento_lgpd_em: entrega.consentimento_lgpd_em,
+            ...(confirmado ? {} : { consentimento_lgpd_em: entrega.consentimento_lgpd_em }),
             ...(entrega.consentimento_marketing_em ? { consentimento_marketing_em: entrega.consentimento_marketing_em } : {}),
           },
           { onConflict: 'barraca_id,telefone' },
