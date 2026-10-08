@@ -61,24 +61,65 @@ function reaisValidos(texto: string): number | null {
   return reaisParaCentavos(limpo)
 }
 
-/** "AAAA-MM-DD" → início (00:00:00) ou fim (23:59:59.999) desse dia no fuso do navegador; null se inválida. */
-export function dataParaIso(texto: string, ponta: 'inicio' | 'fim'): string | null {
+/** Fuso padrão (o das barracas do Brasil). Cupom NUNCA usa o fuso do navegador: o dono pode estar viajando. */
+export const FUSO_PADRAO = 'America/Sao_Paulo'
+
+/** `barracas.fuso` quando for um fuso IANA conhecido; senão o padrão. */
+export function fusoDaLoja(fuso: string | null | undefined): string {
+  if (!fuso) return FUSO_PADRAO
+  try {
+    new Intl.DateTimeFormat('pt-BR', { timeZone: fuso })
+    return fuso
+  } catch {
+    return FUSO_PADRAO
+  }
+}
+
+/** Partes de data/hora de um instante vistas no fuso (ano, mês 1–12, dia, hora, minuto, segundo). */
+function partesNoFuso(ms: number, fuso: string) {
+  const f = new Intl.DateTimeFormat('en-US', {
+    timeZone: fuso, hourCycle: 'h23', year: 'numeric', month: '2-digit', day: '2-digit', hour: '2-digit', minute: '2-digit', second: '2-digit',
+  })
+  const p: Record<string, number> = {}
+  for (const x of f.formatToParts(new Date(ms))) if (x.type !== 'literal') p[x.type] = Number(x.value)
+  return { ano: p.year, mes: p.month, dia: p.day, hora: p.hour, min: p.minute, seg: p.second }
+}
+
+/** Diferença (ms) entre a hora de parede no fuso e o UTC naquele instante. */
+function deslocamento(ms: number, fuso: string): number {
+  const p = partesNoFuso(ms, fuso)
+  return Date.UTC(p.ano, p.mes - 1, p.dia, p.hora, p.min, p.seg) - Math.floor(ms / 1000) * 1000
+}
+
+/** "AAAA-MM-DD" → início (00:00:00) ou fim (23:59:59.999) desse dia NO FUSO da loja, em ISO; null se inválida. */
+export function dataParaIso(texto: string, ponta: 'inicio' | 'fim', fuso: string = FUSO_PADRAO): string | null {
   const m = /^(\d{4})-(\d{2})-(\d{2})$/.exec(texto.trim())
   if (!m) return null
   const [ano, mes, dia] = [Number(m[1]), Number(m[2]), Number(m[3])]
-  const d = ponta === 'inicio' ? new Date(ano, mes - 1, dia, 0, 0, 0, 0) : new Date(ano, mes - 1, dia, 23, 59, 59, 999)
-  // new Date() rola datas impossíveis (31/02 vira março): confere de volta.
-  if (d.getFullYear() !== ano || d.getMonth() !== mes - 1 || d.getDate() !== dia) return null
-  return d.toISOString()
+  const calendario = new Date(Date.UTC(ano, mes - 1, dia))
+  // Date.UTC rola datas impossíveis (31/02 vira março): confere de volta.
+  if (calendario.getUTCFullYear() !== ano || calendario.getUTCMonth() !== mes - 1 || calendario.getUTCDate() !== dia) return null
+  const z = fusoDaLoja(fuso)
+  const [h, mi, s, ms] = ponta === 'inicio' ? [0, 0, 0, 0] : [23, 59, 59, 999]
+  const parede = Date.UTC(ano, mes - 1, dia, h, mi, s, ms)
+  // Converte hora de parede em instante: aplica o deslocamento e confere de novo (virada de horário de verão).
+  let instante = parede - deslocamento(parede, z)
+  instante = parede - deslocamento(instante, z)
+  return new Date(instante).toISOString()
 }
 
+/** Dia "AAAA-MM-DD" de um instante, visto no fuso da loja. */
+export function isoParaDia(iso: string, fuso: string = FUSO_PADRAO): string {
+  const p = partesNoFuso(Date.parse(iso), fusoDaLoja(fuso))
+  return `${p.ano}-${String(p.mes).padStart(2, '0')}-${String(p.dia).padStart(2, '0')}`
+}
 export type ErrosCupom = Partial<Record<'codigo' | 'valor' | 'inicio' | 'fim' | 'limite' | 'minimo' | 'umaPorCliente', string>>
 
 /** Valida o formulário. `lojaUsaPerfil`: "uma vez por cliente" exige o perfil do cliente (sessão), então só vale
  * com `perfil_cliente_obrigatorio` ligado. Devolve os `dados` prontos para gravar só se não houver erro. */
 export function validarFormularioCupom(
   f: FormularioCupom,
-  opcoes: { lojaUsaPerfil: boolean },
+  opcoes: { lojaUsaPerfil: boolean; fuso?: string | null },
 ): { ok: true; dados: DadosCupom } | { ok: false; erros: ErrosCupom } {
   const erros: ErrosCupom = {}
 
@@ -96,8 +137,9 @@ export function validarFormularioCupom(
     else valor = centavos
   }
 
-  const inicio = f.inicioTexto.trim() ? dataParaIso(f.inicioTexto, 'inicio') : null
-  const fim = f.fimTexto.trim() ? dataParaIso(f.fimTexto, 'fim') : null
+  const fuso = fusoDaLoja(opcoes.fuso)
+  const inicio = f.inicioTexto.trim() ? dataParaIso(f.inicioTexto, 'inicio', fuso) : null
+  const fim = f.fimTexto.trim() ? dataParaIso(f.fimTexto, 'fim', fuso) : null
   if (f.inicioTexto.trim() && !inicio) erros.inicio = 'Data de início inválida.'
   if (f.fimTexto.trim() && !fim) erros.fim = 'Data de fim inválida.'
   if (inicio && fim && Date.parse(fim) <= Date.parse(inicio)) erros.fim = 'O fim deve ser depois do início.'
@@ -138,18 +180,14 @@ export function validarFormularioCupom(
   }
 }
 
-const dataCurta = (iso: string) => {
-  const d = new Date(iso)
-  return `${String(d.getDate()).padStart(2, '0')}/${String(d.getMonth() + 1).padStart(2, '0')}/${d.getFullYear()}`
+const dataCurta = (iso: string, fuso: string) => {
+  const [ano, mes, dia] = isoParaDia(iso, fuso).split('-')
+  return `${dia}/${mes}/${ano}`
 }
 
-/** Formulário preenchido a partir de um cupom salvo (editar). */
-export function formularioDoCupom(c: Cupom): FormularioCupom {
-  const dia = (iso: string | null) => {
-    if (!iso) return ''
-    const d = new Date(iso)
-    return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`
-  }
+/** Formulário preenchido a partir de um cupom salvo (editar); datas no fuso da loja. */
+export function formularioDoCupom(c: Cupom, fuso?: string | null): FormularioCupom {
+  const dia = (iso: string | null) => (iso ? isoParaDia(iso, fusoDaLoja(fuso)) : '')
   return {
     codigo: c.codigo,
     tipo: c.tipo,
@@ -180,10 +218,11 @@ export function textoDescontoDoCupom(c: Pick<Cupom, 'tipo' | 'valor'>): string {
 }
 
 /** "01/10/2026 a 31/10/2026", "a partir de 01/10/2026", "até 31/10/2026" ou "Sem prazo". */
-export function textoValidade(c: Pick<Cupom, 'inicio_em' | 'fim_em'>): string {
-  if (c.inicio_em && c.fim_em) return `${dataCurta(c.inicio_em)} a ${dataCurta(c.fim_em)}`
-  if (c.inicio_em) return `a partir de ${dataCurta(c.inicio_em)}`
-  if (c.fim_em) return `até ${dataCurta(c.fim_em)}`
+export function textoValidade(c: Pick<Cupom, 'inicio_em' | 'fim_em'>, fusoLoja?: string | null): string {
+  const fuso = fusoDaLoja(fusoLoja)
+  if (c.inicio_em && c.fim_em) return `${dataCurta(c.inicio_em, fuso)} a ${dataCurta(c.fim_em, fuso)}`
+  if (c.inicio_em) return `a partir de ${dataCurta(c.inicio_em, fuso)}`
+  if (c.fim_em) return `até ${dataCurta(c.fim_em, fuso)}`
   return 'Sem prazo'
 }
 
