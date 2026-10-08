@@ -1,6 +1,6 @@
 // Expiração do Pix por barraca. Espelhado em src/lib/pixExpiracao.ts (o front não
 // importa de supabase/functions); manter os dois iguais e o CHECK da migration
-// 20261013110000 (35..60).
+// 20261014110000 (35..60).
 
 /** Mínimo do Mercado Pago (30 min) + folga de relógio. Também é o padrão. */
 export const PIX_EXPIRACAO_MIN_MINUTOS = 35
