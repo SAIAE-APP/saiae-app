@@ -446,6 +446,23 @@ export function PainelRelatorio({
         </SecaoRelatorio>
       )}
 
+      {atual.descontosCupom.quantidade > 0 && (
+        <SecaoRelatorio titulo="Descontos de cupom" icone="receipt_long">
+          <p className="text-sm text-mesa-text-secondary">
+            Descontos de cupom:{' '}
+            <strong className="font-mesa-display text-mesa-text-primary">{formatarPrecoBR(atual.descontosCupom.valor)}</strong>{' '}
+            em {atual.descontosCupom.quantidade} pedido{atual.descontosCupom.quantidade === 1 ? '' : 's'}. Ficam à parte: o
+            faturamento acima é a soma dos itens.
+          </p>
+          <p className="mt-2 text-sm text-mesa-text-secondary">
+            Recebido nos itens (faturamento − descontos):{' '}
+            <strong className="font-mesa-display text-mesa-text-primary">
+              {formatarPrecoBR(atual.totalBruto - atual.descontosCupom.valor)}
+            </strong>
+          </p>
+        </SecaoRelatorio>
+      )}
+
       <SecaoCustoLucro
         barraca={barraca}
         intervalo={intervalos.atual}

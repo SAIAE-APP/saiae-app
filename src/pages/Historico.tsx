@@ -28,6 +28,7 @@ import { useToast } from '../components/ui/useToast'
 import { BotaoDefinirPagamento } from '../components/BotaoDefinirPagamento'
 import { ambienteDaNota, cpfValido, formatarCpf } from '../lib/fiscal'
 import { nomeComOpcoes } from '../lib/opcoes'
+import { textoCupomDoPedido } from '../lib/descontosCupom'
 import { descreverErroImpressao, imprimirCupomFiscal, impressoraSuportada } from '../lib/impressoraTermica'
 import type { Item, PedidoComItens } from '../types/database'
 
@@ -98,6 +99,8 @@ async function gerarPlanilha(pedidos: PedidoComItens[]): Promise<ArrayBuffer> {
     { header: 'Tempo total (min)', key: 'tempo', width: 16 },
     { header: 'Tipo', key: 'tipo', width: 12 },
     { header: 'Taxa de entrega', key: 'taxaEntrega', width: 16 },
+    { header: 'Cupom', key: 'cupom', width: 14 },
+    { header: 'Desconto do cupom', key: 'descontoCupom', width: 18 },
   ]
 
   const linhaCabecalho = planilha.getRow(1)
@@ -108,7 +111,7 @@ async function gerarPlanilha(pedidos: PedidoComItens[]): Promise<ArrayBuffer> {
   linhaCabecalho.alignment = { vertical: 'middle' }
   linhaCabecalho.height = 20
   planilha.views = [{ state: 'frozen', ySplit: 1 }]
-  planilha.autoFilter = { from: 'A1', to: 'L1' }
+  planilha.autoFilter = { from: 'A1', to: 'N1' }
 
   for (const pedido of pedidos) {
     const itensTexto = pedido.itens_do_pedido
@@ -131,6 +134,8 @@ async function gerarPlanilha(pedidos: PedidoComItens[]): Promise<ArrayBuffer> {
       tempo: pedido.entregue_em ? minutosEntre(pedido.criado_em, pedido.entregue_em) : '',
       tipo: ROTULO_MODO[tipoDoPedido(pedido)],
       taxaEntrega: (pedido.taxa_entrega_centavos ?? 0) > 0 ? formatarPrecoBR(pedido.taxa_entrega_centavos ?? 0) : '',
+      cupom: (pedido.desconto_cupom_centavos ?? 0) > 0 ? (pedido.cupom_codigo ?? '') : '',
+      descontoCupom: (pedido.desconto_cupom_centavos ?? 0) > 0 ? formatarPrecoBR(pedido.desconto_cupom_centavos ?? 0) : '',
     })
 
     linha.alignment = { vertical: 'middle', wrapText: false }
@@ -331,6 +336,7 @@ function CardHistorico({
               + {formatarPrecoBR(pedido.taxa_entrega_centavos ?? 0)} de taxa de entrega
             </p>
           )}
+          {textoCupomDoPedido(pedido) && <p className="text-xs text-mesa-text-tertiary">{textoCupomDoPedido(pedido)}</p>}
         </div>
         <div className="text-right text-sm text-mesa-text-secondary">
           <p>Entrada {formatarHora(pedido.criado_em)}</p>

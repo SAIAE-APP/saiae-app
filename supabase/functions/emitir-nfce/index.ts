@@ -18,6 +18,7 @@
 // pertença à barraca do pedido (mesma checagem de `usuario_tem_acesso_barraca`
 // usada em todo o resto do app).
 import { createClient } from 'jsr:@supabase/supabase-js@2'
+import { ratearDesconto } from '../_shared/descontoNfce.ts'
 
 const FOCUSNFE_URL_HOMOLOGACAO = 'https://homologacao.focusnfe.com.br/v2'
 const FOCUSNFE_URL_PRODUCAO = 'https://api.focusnfe.com.br/v2'
@@ -259,6 +260,18 @@ Deno.serve(async (req: Request) => {
     return jsonResponse({ erro: `Dados fiscais incompletos: ${faltando.join('; ')}` }, 422)
   }
 
+  // Cupom: o desconto do pedido (só nos itens) é rateado entre os itens, porque a FocusNFe recebe o
+  // desconto POR ITEM (`valor_desconto`, opcional, junto de `valor_bruto`). A nota reflete o que o cliente
+  // pagou; a taxa de entrega continua FORA. Lido à parte para não quebrar antes da migration dos cupons.
+  // ATENÇÃO: nenhuma nota com desconto foi emitida ainda; na primeira emissão real conferir a nota e o
+  // `resultado` bruto da FocusNFe (valor_total = soma dos brutos − descontos).
+  const { data: descontoRow } = await supabase.from('pedidos').select('desconto_cupom_centavos').eq('id', pedidoId).maybeSingle()
+  const descontoCupomCentavos = Math.max(0, Math.floor(Number((descontoRow as { desconto_cupom_centavos?: number } | null)?.desconto_cupom_centavos ?? 0)))
+  const descontosPorItem = ratearDesconto(
+    itensAtivos.map((i) => i.preco_centavos_unitario * i.quantidade),
+    descontoCupomCentavos,
+  )
+
   const itemsPayload = itensAtivos.map((item, indice) => {
     const cadastro = cadastroPorId.get(item.item_id as string) as ItemCadastroRow
     const valorUnitario = item.preco_centavos_unitario / 100
@@ -268,7 +281,7 @@ Deno.serve(async (req: Request) => {
     const tributosCentavos =
       barraca.tributos_aprox_bps === null || barraca.tributos_aprox_bps === undefined
         ? null
-        : Math.round((item.preco_centavos_unitario * item.quantidade * barraca.tributos_aprox_bps) / 10000)
+        : Math.round(((item.preco_centavos_unitario * item.quantidade - descontosPorItem[indice]) * barraca.tributos_aprox_bps) / 10000)
 
     return {
       tributosCentavos,
@@ -282,6 +295,7 @@ Deno.serve(async (req: Request) => {
       valor_unitario_comercial: valorUnitario,
       valor_unitario_tributavel: valorUnitario,
       valor_bruto: valorBruto,
+      ...(descontosPorItem[indice] > 0 ? { valor_desconto: descontosPorItem[indice] / 100 } : {}),
       unidade_comercial: cadastro.unidade_comercial,
       unidade_tributavel: cadastro.unidade_comercial,
       icms_origem: ICMS_ORIGEM,
@@ -294,7 +308,9 @@ Deno.serve(async (req: Request) => {
     ? null
     : itemsPayload.reduce((soma, i) => soma + (i.tributosCentavos ?? 0), 0)
 
-  const valorTotal = itemsPayload.reduce((soma, item) => soma + item.valor_bruto, 0)
+  // Em centavos inteiros (sem somar float): soma dos brutos − desconto do cupom.
+  const valorTotal =
+    (itensAtivos.reduce((soma, i) => soma + i.preco_centavos_unitario * i.quantidade, 0) - descontosPorItem.reduce((a, b) => a + b, 0)) / 100
 
   const payload = {
     cnpj_emitente: barraca.cnpj.replace(/\D/g, ''),

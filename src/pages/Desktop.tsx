@@ -128,6 +128,11 @@ export function Desktop() {
         ),
       })
       resumo.addRow({ metrica: 'Itens vendidos', valor: atual.itensVendidos })
+      if (atual.descontosCupom.quantidade > 0) {
+        // À parte: o faturamento segue sendo a soma dos itens; o recebido nos itens é faturamento − descontos.
+        resumo.addRow({ metrica: 'Descontos de cupom (à parte)', valor: formatarPrecoBR(atual.descontosCupom.valor) })
+        resumo.addRow({ metrica: 'Recebido nos itens (faturamento − descontos)', valor: formatarPrecoBR(atual.totalBruto - atual.descontosCupom.valor) })
+      }
       if (atual.estimativaLiquida) {
         resumo.addRow({
           metrica: 'Estimativa líquida recebida',

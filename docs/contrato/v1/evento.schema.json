@@ -65,7 +65,9 @@
           }
         },
         "taxa_entrega_centavos": { "type": "integer", "minimum": 0 },
-        "total_centavos": { "type": "integer", "minimum": 0 },
+        "total_centavos": { "type": "integer", "minimum": 0, "description": "Total do pedido. Com cupom é o que o cliente pagou (itens − desconto + taxa); sem cupom, itens + taxa." },
+        "cupom_codigo": { "type": "string", "description": "Aditivo v1 (cupons): código usado no pedido. Ausente se não houve cupom; o leitor deve tolerar." },
+        "desconto_cupom_centavos": { "type": "integer", "minimum": 1, "description": "Aditivo v1 (cupons): desconto dado só sobre os itens (a taxa de entrega nunca é descontada). Ausente se não houve cupom." },
         "metodo_pagamento": { "type": ["string", "null"] },
         "cliente": {
           "type": ["object", "null"],
