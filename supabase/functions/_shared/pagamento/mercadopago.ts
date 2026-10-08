@@ -69,7 +69,14 @@ export function montarCorpoCobrancaMercadoPago(p: ParamsCobranca): Record<string
     date_of_expiration: dataExpiracaoMercadoPago(p.expiraEm),
     // Mercado Pago exige um e-mail de pagador; o cardápio público não coleta e-mail
     // do cliente final, então usa um endereço por pedido num domínio nosso.
-    payer: { email: p.pagador?.email ?? `pedido-${p.referencia}@saiae.com.br` },
+    payer: {
+      email: p.pagador?.email ?? `pedido-${p.referencia}@saiae.com.br`,
+      // EXPERIMENTAL, só teste: com token de TESTE, `first_name: "APRO"` aprova o Pix
+      // sozinho na API Orders (documentado). Em /v1/payments isso NÃO é garantido pela
+      // documentação do Mercado Pago. Só entra quando a edge function recebe
+      // MERCADOPAGO_TESTE_NOME_PAGADOR; sem a variável o payload é o de sempre.
+      ...(p.pagador?.nome ? { first_name: p.pagador.nome } : {}),
+    },
     // O id do pendente vai na URL: o webhook precisa saber de qual barraca é o token
     // pra consultar o pagamento, e só o MP guarda o dono do pagamento.
     notification_url: p.urlNotificacao,

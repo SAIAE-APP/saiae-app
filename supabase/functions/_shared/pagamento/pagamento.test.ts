@@ -61,6 +61,23 @@ assert.equal(corpo.external_reference, 'pend-1')
 assert.deepEqual(corpo.payer, { email: 'pedido-pend-1@saiae.com.br' })
 assert.equal(corpo.notification_url, 'https://x/functions/v1/webhook-mercadopago?pendente=pend-1&p=mercadopago')
 
+// --- nome do pagador (experimental, só teste): ausente = payload de sempre; presente vai em payer.first_name
+const base = {
+  token: 'x',
+  valorCentavos: 600,
+  referencia: 'pend-2',
+  descricao: 'd',
+  expiraEm: new Date('2026-09-29T15:00:00.000Z'),
+  urlNotificacao: 'https://x/n',
+}
+assert.deepEqual(montarCorpoCobrancaMercadoPago(base).payer, { email: 'pedido-pend-2@saiae.com.br' })
+assert.deepEqual(montarCorpoCobrancaMercadoPago({ ...base, pagador: {} }).payer, { email: 'pedido-pend-2@saiae.com.br' })
+assert.deepEqual(montarCorpoCobrancaMercadoPago({ ...base, pagador: { nome: '' } }).payer, { email: 'pedido-pend-2@saiae.com.br' })
+assert.deepEqual(montarCorpoCobrancaMercadoPago({ ...base, pagador: { nome: 'APRO' } }).payer, {
+  email: 'pedido-pend-2@saiae.com.br',
+  first_name: 'APRO',
+})
+
 // --- notificação do MP
 assert.deepEqual(
   await extrairNotificacaoMercadoPago(new URL('https://x/w?pendente=p&data.id=123&type=payment'), semCorpo),

@@ -447,6 +447,10 @@ Deno.serve(async (req: Request) => {
       descricao: ehEntrega ? 'Pedido com entrega no cardápio digital' : 'Pedido no cardápio digital',
       expiraEm,
       urlNotificacao: urlNotificacaoPagamento(Deno.env.get('SUPABASE_URL') ?? '', pendente.id, provedor.chave),
+      // EXPERIMENTAL (só staging): ver montarCorpoCobrancaMercadoPago. Ausente em produção.
+      ...(Deno.env.get('MERCADOPAGO_TESTE_NOME_PAGADOR')
+        ? { pagador: { nome: Deno.env.get('MERCADOPAGO_TESTE_NOME_PAGADOR') as string } }
+        : {}),
     })
   } catch (erro) {
     if (erro instanceof ErroProvedor) {
