@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
-import { useParams } from 'react-router'
+import { Link, useParams } from 'react-router'
 import clsx from 'clsx'
 import { supabase } from '../lib/supabase'
 import { formatarPrecoBR } from '../lib/preco'
@@ -13,6 +13,11 @@ import { Icone } from '../components/ui/Icone'
 import { Input } from '../components/ui/Input'
 import { Textarea } from '../components/ui/Textarea'
 import { SeletorOpcoes } from '../components/SeletorOpcoes'
+import { ModalIdentificacao } from '../components/cliente/ModalIdentificacao'
+import { useClienteSessao } from '../hooks/useClienteSessao'
+import { usePerfilConfig } from '../hooks/usePerfilConfig'
+import { lerSessao, limparSessao } from '../lib/clienteApi'
+import { lerPedirDeNovo } from '../lib/clientePerfil'
 import {
   agruparOpcoes,
   chaveDaLinha,
@@ -584,6 +589,11 @@ export function CardapioPublico() {
 
   const [carrinho, setCarrinho] = useState<Carrinho>({})
   const [linhasOpcoes, setLinhasOpcoes] = useState<LinhaOpcoes[]>([])
+  // Perfil do cliente final (por loja). Só é exigido no fechamento quando o dono liga a flag.
+  const { sessao: sessaoCliente, entrar: entrarCliente } = useClienteSessao(slug)
+  const { disponivel: perfilDisponivel, obrigatorio: perfilObrigatorio } = usePerfilConfig(slug)
+  const [pedindoIdentificacao, setPedindoIdentificacao] = useState(false)
+  const resolverIdentificacao = useRef<((ok: boolean) => void) | null>(null)
   // Grupos/opções por item (vazio = loja sem opções habilitadas = tudo item simples, como sempre).
   const [gruposPorItem, setGruposPorItem] = useState<Map<string, GrupoItem[]>>(() => new Map())
   const [itemSeletor, setItemSeletor] = useState<LinhaCardapioPublico | null>(null)
@@ -873,6 +883,52 @@ export function CardapioPublico() {
   const totalItensCarrinho = itensCarrinho.reduce((soma, l) => soma + l.quantidade, 0)
   const totalCentavosCarrinho = itensCarrinho.reduce((soma, l) => soma + l.precoUnitario * l.quantidade, 0)
 
+  // "Pedir de novo" (página Meu perfil): soma ao carrinho, uma única vez, só o que ainda existe e não esgotou.
+  const pedirDeNovoFeito = useRef(false)
+  useEffect(() => {
+    if (!slug || pedirDeNovoFeito.current || linhas.length === 0) return
+    pedirDeNovoFeito.current = true
+    let itens: ReturnType<typeof lerPedirDeNovo> = []
+    try {
+      itens = lerPedirDeNovo(window.sessionStorage.getItem(`saiae:pedir-de-novo:${slug}`))
+      window.sessionStorage.removeItem(`saiae:pedir-de-novo:${slug}`)
+    } catch {
+      return
+    }
+    itens = itens.filter((i) => {
+      const linha = itemPorId.get(i.item_id)
+      return linha && !linha.item_esgotado && !linha.com_opcoes
+    })
+    if (itens.length === 0) return
+    // eslint-disable-next-line react-hooks/set-state-in-effect -- consome o que a página de perfil deixou, uma vez
+    setCarrinho((atual) => {
+      const copia = { ...atual }
+      for (const i of itens) copia[i.item_id] = Math.min(50, (copia[i.item_id] ?? 0) + i.quantidade)
+      return copia
+    })
+  }, [slug, linhas, itemPorId])
+
+  // Garante o perfil antes de finalizar quando a loja o exige: abre o modal e espera o resultado.
+  function garantirPerfil(): Promise<boolean> {
+    // Perfil indisponível (banco sem a RPC) nunca é obrigatório: fechamento como sempre foi.
+    if (!perfilDisponivel || !perfilObrigatorio || (slug && lerSessao(slug))) return Promise.resolve(true)
+    return new Promise((resolve) => {
+      resolverIdentificacao.current = resolve
+      setPedindoIdentificacao(true)
+    })
+  }
+
+  /** Token do cliente (só quando há sessão): o servidor vincula o pedido ao perfil. */
+  function tokenCliente(): { sessao_token?: string } {
+    const sessao = slug ? lerSessao(slug) : null
+    return sessao ? { sessao_token: sessao.token } : {}
+  }
+
+  /** Servidor recusou por perfil: a sessão venceu no meio. Apaga a local; o próximo toque reabre o código. */
+  function sessaoRecusada(corpo: { codigo?: string } | null) {
+    if (corpo?.codigo === 'perfil_obrigatorio' && slug) limparSessao(slug)
+  }
+
   // O que o navegador manda às edge functions: só ids e texto. Preço e total o servidor resolve.
   function itensParaEnvio() {
     return itensCarrinho.map((l) => ({
@@ -935,12 +991,14 @@ export function CardapioPublico() {
 
   async function pagar() {
     if (!slug || itensCarrinho.length === 0) return
+    if (!(await garantirPerfil())) return
     const barracaId = itensCarrinho[0].item.barraca_id
 
     setPagamento({ fase: 'processando' })
 
     const { data, error } = await supabase.functions.invoke('criar-pagamento-pix', {
       body: {
+        ...tokenCliente(),
         barraca_id: barracaId,
         viagem: modoEfetivo === 'retirada',
         observacao: observacao.trim() || null,
@@ -961,6 +1019,7 @@ export function CardapioPublico() {
         corpo = await contexto.json().catch(() => null)
       }
       console.error('Falha ao gerar pagamento Pix:', error, corpo?.erro, corpo?.detalhe)
+      sessaoRecusada(corpo as { codigo?: string } | null)
       // 4xx são recusas nossas com texto pensado pro cliente (ex.: item
       // esgotado); 5xx/502 carregam erro cru do Mercado Pago — esse não vai
       // pra tela.
@@ -1024,10 +1083,12 @@ export function CardapioPublico() {
       return
     }
 
+    if (!(await garantirPerfil())) return
     setPagamento({ fase: 'enviando_entrega' })
 
     const { data, error } = await supabase.functions.invoke('criar-pedido-cardapio', {
       body: {
+        ...tokenCliente(),
         barraca_id: itensCarrinho[0].item.barraca_id,
         client_uuid: clientUuidRef.current,
         website: honeypot,
@@ -1067,6 +1128,7 @@ export function CardapioPublico() {
         if (!corpo) corpo = await contexto.json().catch(() => null)
       }
       console.error('Falha ao enviar pedido (pagar na entrega):', error, corpo?.erro)
+      sessaoRecusada(corpo as { codigo?: string } | null)
       // 409 = o servidor calculou outra taxa que a da tela e NÃO criou o pedido: mostra o
       // novo total e deixa o cliente decidir (a prévia passa a usar o valor do servidor).
       if (status === 409 && typeof corpo?.taxa_entrega_centavos === 'number') {
@@ -1188,10 +1250,15 @@ export function CardapioPublico() {
       return
     }
 
+    if (!(await garantirPerfil())) {
+      setPagamento({ fase: 'dados_entrega' })
+      return
+    }
     setPagamento({ fase: 'processando' })
 
     const { data, error } = await supabase.functions.invoke('criar-pagamento-pix', {
       body: {
+        ...tokenCliente(),
         barraca_id: itensCarrinho[0].item.barraca_id,
         tipo_atendimento: 'entrega',
         observacao: observacao.trim() || null,
@@ -1227,6 +1294,7 @@ export function CardapioPublico() {
         if (!corpo) corpo = await contexto.json().catch(() => null)
       }
       console.error('Falha ao gerar Pix com entrega:', error, corpo?.erro, corpo?.detalhe)
+      sessaoRecusada(corpo as { codigo?: string } | null)
 
       // 409 = o servidor não cobrou (valor mudou ou cobrança antiga com outros dados):
       // a próxima tentativa é uma cobrança nova.
@@ -1296,6 +1364,15 @@ export function CardapioPublico() {
               ? 'Monte seu pedido e pague com Pix direto por aqui'
               : 'Monte sua lista aqui e finalize no caixa'}
           </p>
+          {perfilDisponivel && (
+          <Link
+            to={`/${slug}/perfil`}
+            className="mt-1 inline-flex min-h-11 items-center gap-1 rounded-mesa-full px-3 text-sm font-medium text-mesa-text-primary underline-offset-2 hover:underline"
+          >
+            <Icone nome="person" size={16} />
+            {sessaoCliente ? sessaoCliente.nome.split(' ')[0] : 'Entrar'}
+          </Link>
+          )}
           {status && (
             <span
               className={`mt-2 inline-flex items-center gap-1 rounded-mesa-balao px-2 py-0.5 text-xs font-bold ${
@@ -1441,6 +1518,25 @@ export function CardapioPublico() {
             </span>
           </button>
         </div>
+      )}
+
+      {pedindoIdentificacao && slug && (
+        <ModalIdentificacao
+          slug={slug}
+          nomeInicial={nomeCliente}
+          telefoneInicial={telefoneCliente}
+          onCancelar={() => {
+            setPedindoIdentificacao(false)
+            resolverIdentificacao.current?.(false)
+          }}
+          onConcluir={(sessao) => {
+            entrarCliente(sessao)
+            setNomeCliente(sessao.nome)
+            setTelefoneCliente(sessao.telefone)
+            setPedindoIdentificacao(false)
+            resolverIdentificacao.current?.(true)
+          }}
+        />
       )}
 
       {itemSeletor && (

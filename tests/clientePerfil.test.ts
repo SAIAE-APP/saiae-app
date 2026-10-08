@@ -1,44 +1,54 @@
-// "Pedir de novo": nunca monta carrinho errado em silêncio. Rodar: npm test
+// Perfil do cliente final: validação do formulário e "pedir de novo" (src/lib/clientePerfil.ts). Rodar: npm test
 import assert from 'node:assert/strict'
 import { describe, test } from 'node:test'
-import { classificarItensPedirDeNovo } from '../supabase/functions/_shared/pedirDeNovo.ts'
+import { lerPedirDeNovo, resumoPedirDeNovo, validarDadosIdentificacao } from '../src/lib/clientePerfil.ts'
 
-const antigo = (o: object) => ({ item_id: 'a', nome_item: 'X-Teste', quantidade: 2, preco_centavos_unitario: 1800, opcoes: [], ...o })
-const atual = (o: object) => ({ id: 'a', nome: 'X-Teste', ativo: true, esgotado: false, preco_centavos: 1800, ...o })
-
-describe('classificarItensPedirDeNovo', () => {
-  test('igual: ok com a quantidade original', () => {
-    const [l] = classificarItensPedirDeNovo([antigo({})], [atual({})])
-    assert.deepEqual(l, { item_id: 'a', nome: 'X-Teste', quantidade: 2, status: 'ok', preco_atual_centavos: 1800, preco_antigo_centavos: 1800 })
+describe('validarDadosIdentificacao', () => {
+  test('tudo certo: sem erros', () => {
+    assert.deepEqual(validarDadosIdentificacao({ nome: 'Ana Souza', telefone: '(61) 99953-1848', aceitouPrivacidade: true }), {})
   })
-  test('preço mudou', () => {
-    const [l] = classificarItensPedirDeNovo([antigo({})], [atual({ preco_centavos: 2000 })])
-    assert.equal(l.status, 'preco_mudou')
-    assert.equal(l.preco_atual_centavos, 2000)
+  test('nome curto, telefone sem DDD e privacidade não aceita', () => {
+    const e = validarDadosIdentificacao({ nome: 'A', telefone: '99953-1848', aceitouPrivacidade: false })
+    assert.ok(e.nome && e.telefone && e.privacidade)
   })
-  test('esgotado, inativo e removido do cardápio', () => {
-    assert.equal(classificarItensPedirDeNovo([antigo({})], [atual({ esgotado: true })])[0].status, 'esgotado')
-    assert.equal(classificarItensPedirDeNovo([antigo({})], [atual({ ativo: false })])[0].status, 'indisponivel')
-    assert.equal(classificarItensPedirDeNovo([antigo({})], [])[0].status, 'indisponivel')
+  test('aceita telefone com +55', () => {
+    assert.deepEqual(validarDadosIdentificacao({ nome: 'Ana', telefone: '+55 61 99953-1848', aceitouPrivacidade: true }), {})
   })
-  test('item que tinha adicionais precisa ser escolhido de novo', () => {
-    const [l] = classificarItensPedirDeNovo([antigo({ opcoes: [{ nome: 'Bacon' }] })], [atual({})])
-    assert.equal(l.status, 'refazer_opcoes')
+  test('DDD 55 (Santa Maria) com 10 ou 11 dígitos não é cortado', () => {
+    assert.deepEqual(validarDadosIdentificacao({ nome: 'Ana', telefone: '55 99953-1848', aceitouPrivacidade: true }), {})
   })
-  test('linha sem item_id (item apagado) é indisponível', () => {
-    assert.equal(classificarItensPedirDeNovo([antigo({ item_id: null })], [atual({})])[0].status, 'indisponivel')
+  test('telefone com letras ou comprido demais é recusado', () => {
+    assert.ok(validarDadosIdentificacao({ nome: 'Ana', telefone: 'abc', aceitouPrivacidade: true }).telefone)
+    assert.ok(validarDadosIdentificacao({ nome: 'Ana', telefone: '5561999531848999', aceitouPrivacidade: true }).telefone)
   })
 })
 
-import { decidirPerfil } from '../supabase/functions/_shared/perfilNoPedido.ts'
-
-describe('decidirPerfil', () => {
-  test('flag desligada: segue com ou sem sessão', () => {
-    assert.deepEqual(decidirPerfil(false, null), { clienteId: null, bloqueado: false })
-    assert.deepEqual(decidirPerfil(false, 'c1'), { clienteId: 'c1', bloqueado: false })
+describe('resumoPedirDeNovo', () => {
+  const l = (o: object) => ({ item_id: 'a', nome: 'X', quantidade: 1, status: 'ok', preco_atual_centavos: 1000, preco_antigo_centavos: 1000, ...o })
+  test('ok e preço novo entram; o resto fica de fora com aviso', () => {
+    const r = resumoPedirDeNovo([
+      l({ item_id: '1' }),
+      l({ item_id: '2', status: 'preco_mudou', preco_atual_centavos: 1200 }),
+      l({ item_id: '3', status: 'esgotado' }),
+      l({ item_id: '4', status: 'indisponivel' }),
+      l({ item_id: '5', status: 'refazer_opcoes' }),
+    ] as never)
+    assert.deepEqual(r.montar.map((x) => x.item_id), ['1', '2'])
+    assert.equal(r.bloqueados.length, 3)
+    assert.equal(r.avisos.length, 4)
+    assert.match(r.avisos.join(' '), /R\$ 12,00/)
   })
-  test('flag ligada: sem sessão válida bloqueia; com sessão segue', () => {
-    assert.deepEqual(decidirPerfil(true, null), { clienteId: null, bloqueado: true })
-    assert.deepEqual(decidirPerfil(true, 'c1'), { clienteId: 'c1', bloqueado: false })
+  test('nada utilizável: monta vazio', () => {
+    const r = resumoPedirDeNovo([l({ status: 'indisponivel' })] as never)
+    assert.equal(r.montar.length, 0)
+  })
+})
+
+describe('lerPedirDeNovo', () => {
+  test('lê itens válidos e descarta o resto', () => {
+    assert.deepEqual(lerPedirDeNovo(JSON.stringify([{ item_id: 'a', quantidade: 2 }, { item_id: 3, quantidade: 1 }, { item_id: 'b', quantidade: 0 }, { item_id: 'c', quantidade: 51 }, null])), [{ item_id: 'a', quantidade: 2 }])
+  })
+  test('JSON quebrado, vazio ou não-array viram lista vazia', () => {
+    for (const ruim of [null, '', '{quebrado', '{"a":1}', '"x"']) assert.deepEqual(lerPedirDeNovo(ruim), [])
   })
 })

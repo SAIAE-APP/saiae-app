@@ -1,5 +1,5 @@
 import type { Barraca } from '../types/database'
-import { formatarPrecoBR } from './preco'
+import { formatarPrecoBR } from './preco.ts'
 
 export type ConfigTaxaEntrega = {
   habilitada: boolean
@@ -65,9 +65,10 @@ export function validarDadosEntrega(dados: DadosEntrega): ErrosEntrega {
   if (!dados.nome.trim()) erros.nome = 'Informe o nome do cliente'
   const digitos = normalizarTelefone(dados.telefone)
   if (digitos.length < 8 || digitos.length > 15) erros.telefone = 'Informe um telefone válido'
-  if (!dados.rua.trim()) erros.rua = 'Informe a rua'
-  if (!dados.numero.trim()) erros.numero = 'Informe o número'
-  if (!dados.bairro.trim()) erros.bairro = 'Informe o bairro'
+  // Campos vazios ou nulos (cliente só com telefone) pedem preenchimento, nunca quebram.
+  if (!(dados.rua ?? '').trim()) erros.rua = 'Informe a rua'
+  if (!(dados.numero ?? '').trim()) erros.numero = 'Informe o número'
+  if (!(dados.bairro ?? '').trim()) erros.bairro = 'Informe o bairro'
   return erros
 }
 

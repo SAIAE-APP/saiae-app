@@ -2,8 +2,22 @@ import { supabase } from './supabase'
 import { normalizarTelefone, somenteDigitos, type DadosEntrega } from './entrega'
 import type { ClienteFinal } from '../types/database'
 import { emLotes, type ClienteImportado } from './importarClientes'
+import { bancoSemRecurso } from './semMigration'
+import { camposDeEndereco } from './enderecoCliente'
 
-const COLUNAS = 'id, barraca_id, nome, telefone, rua, numero, bairro, referencia, criado_em, atualizado_em'
+const COLUNAS_BASE = 'id, barraca_id, nome, telefone, rua, numero, bairro, referencia, criado_em, atualizado_em'
+const COLUNAS_PERFIL = `${COLUNAS_BASE}, telefone_confirmado_em, consentimento_marketing_em`
+let bancoComPerfil = true
+
+/** Roda a consulta com as colunas do perfil; banco sem a migration (coluna inexistente) cai nas antigas. */
+async function comColunas<T>(consulta: (colunas: string) => PromiseLike<{ data: T | null; error: unknown }>): Promise<{ data: T | null; error: unknown }> {
+  if (bancoComPerfil) {
+    const r = await consulta(COLUNAS_PERFIL)
+    if (!r.error || !bancoSemRecurso(r.error)) return r
+    bancoComPerfil = false
+  }
+  return consulta(COLUNAS_BASE)
+}
 const LIMITE_BUSCA = 5
 /** Menos que isso é ruído: não consulta o banco. */
 const MIN_CARACTERES_NOME = 2
@@ -28,26 +42,28 @@ export async function buscarClientesFinais(
   // "Parece telefone" = só dígitos e separadores comuns; senão é nome.
   const pareceTelefone = digitos.length > 0 && /^[\d\s()+-]+$/.test(texto)
 
-  let consulta = supabase.from('clientes_finais').select(COLUNAS).eq('barraca_id', barracaId)
+  // "Parece telefone" sem dígitos suficientes, ou nome curto demais, não consulta o banco.
+  if (pareceTelefone && digitos.length < MIN_DIGITOS_TELEFONE) return []
+  if (!pareceTelefone && texto.length < MIN_CARACTERES_NOME) return []
 
-  if (pareceTelefone) {
-    if (digitos.length < MIN_DIGITOS_TELEFONE) return []
-    // O banco guarda sem o 55 do país. Quem digita "5511..." (ainda incompleto,
-    // então normalizarTelefone não tira o 55) também acha o "11...": busca as
-    // duas formas. Só dígitos entram no filtro, nada a escapar.
-    const semPais = digitos.startsWith('55') ? digitos.slice(2) : null
-    consulta =
-      semPais && semPais.length >= MIN_DIGITOS_TELEFONE
-        ? consulta.or(`telefone.like.%${digitos}%,telefone.like.%${semPais}%`)
-        : consulta.like('telefone', `%${digitos}%`)
-  } else {
-    if (texto.length < MIN_CARACTERES_NOME) return []
-    consulta = consulta.ilike('nome', `%${escaparLike(texto)}%`)
-  }
-
-  const { data, error } = await consulta.order('nome').limit(limite)
+  const { data, error } = await comColunas((colunas) => {
+    let consulta = supabase.from('clientes_finais').select(colunas).eq('barraca_id', barracaId)
+    if (pareceTelefone) {
+      // O banco guarda sem o 55 do país. Quem digita "5511..." (ainda incompleto,
+      // então normalizarTelefone não tira o 55) também acha o "11...": busca as
+      // duas formas. Só dígitos entram no filtro, nada a escapar.
+      const semPais = digitos.startsWith('55') ? digitos.slice(2) : null
+      consulta =
+        semPais && semPais.length >= MIN_DIGITOS_TELEFONE
+          ? consulta.or(`telefone.like.%${digitos}%,telefone.like.%${semPais}%`)
+          : consulta.like('telefone', `%${digitos}%`)
+    } else {
+      consulta = consulta.ilike('nome', `%${escaparLike(texto)}%`)
+    }
+    return consulta.order('nome').limit(limite)
+  })
   if (error) throw error
-  return (data ?? []) as ClienteFinal[]
+  return (data ?? []) as unknown as ClienteFinal[]
 }
 
 const LIMITE_LISTA = 20
@@ -56,14 +72,16 @@ const LIMITE_LISTA = 20
  * com termo, a mesma busca de telefone/nome do pedido, só que mais longa. */
 export async function listarClientesFinais(barracaId: string, termo: string): Promise<ClienteFinal[]> {
   if (termo.trim()) return buscarClientesFinais(barracaId, termo, LIMITE_LISTA)
-  const { data, error } = await supabase
-    .from('clientes_finais')
-    .select(COLUNAS)
-    .eq('barraca_id', barracaId)
-    .order('atualizado_em', { ascending: false })
-    .limit(LIMITE_LISTA)
+  const { data, error } = await comColunas((colunas) =>
+    supabase
+      .from('clientes_finais')
+      .select(colunas)
+      .eq('barraca_id', barracaId)
+      .order('atualizado_em', { ascending: false })
+      .limit(LIMITE_LISTA),
+  )
   if (error) throw error
-  return (data ?? []) as ClienteFinal[]
+  return (data ?? []) as unknown as ClienteFinal[]
 }
 
 /** Cadastra ou atualiza (por barraca + telefone) o cliente de um pedido de entrega. */
@@ -82,7 +100,7 @@ export async function salvarClienteFinal(barracaId: string, dados: DadosEntrega)
       },
       { onConflict: 'barraca_id,telefone' },
     )
-    .select(COLUNAS)
+    .select(COLUNAS_BASE)
     .single()
   if (error) throw error
   return data as ClienteFinal
@@ -102,10 +120,7 @@ export function clienteParaDadosEntrega(c: ClienteFinal): DadosEntrega {
   return {
     nome: c.nome,
     telefone: c.telefone,
-    rua: c.rua,
-    numero: c.numero,
-    bairro: c.bairro,
-    referencia: c.referencia,
+    ...camposDeEndereco(c),
   }
 }
 

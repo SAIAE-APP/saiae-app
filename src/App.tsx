@@ -17,6 +17,7 @@ import { Caixa } from './pages/Caixa'
 import { TelaChamada } from './pages/TelaChamada'
 import { Ajustes } from './pages/Ajustes'
 import { CardapioPublico } from './pages/CardapioPublico'
+import { PerfilCliente } from './pages/PerfilCliente'
 import { Privacidade } from './pages/Privacidade'
 import { ExcluirConta } from './pages/ExcluirConta'
 import { NaoEncontrado } from './pages/NaoEncontrado'
@@ -86,6 +87,7 @@ function App() {
             {/* Pública, sem login — cardápio digital Fase 1 (só visualização).
                 Precisa vir antes do /:slug protegido pra ganhar a rota. */}
             <Route path="/:slug/cardapio" element={<CardapioPublico />} />
+            <Route path="/:slug/perfil" element={<PerfilCliente />} />
 
             <Route
               path="/:slug"
