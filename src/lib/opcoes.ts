@@ -136,3 +136,65 @@ export function resumoEscolhas(grupos: GrupoItem[], ids: string[]): string {
 export function chaveDaLinha(itemId: string, ids: string[], observacao: string): string {
   return JSON.stringify([itemId, [...ids].sort(), observacao.trim()])
 }
+
+/** Foto imutável de uma escolha, gravada em `itens_do_pedido.opcoes` (mesmas chaves que
+ * `sanear_opcoes_pedido` aceita no servidor). `quantidade` fica fixo em 1 na v1. */
+export type OpcaoSnapshot = {
+  grupo_id: string
+  grupo_nome: string
+  tipo: 'variacao' | 'adicional'
+  opcao_id: string
+  nome: string
+  preco_centavos: number
+  quantidade: 1
+}
+
+/** Snapshot das opções escolhidas, na ordem dos grupos. Usado pelo operador (Lançar Pedido): o
+ * servidor não revalida o pedido do balcão/fila offline, o snapshot do aparelho vale. */
+export function snapshotOpcoes(grupos: GrupoItem[], ids: string[]): OpcaoSnapshot[] {
+  return opcoesEscolhidas(grupos, ids).map(({ grupo, opcao }) => ({
+    grupo_id: grupo.id,
+    grupo_nome: grupo.nome,
+    tipo: grupo.tipo,
+    opcao_id: opcao.id,
+    nome: opcao.nome,
+    preco_centavos: opcao.precoCentavos,
+    quantidade: 1,
+  }))
+}
+
+export type GrupoLeitura = { id: string; nome: string; tipo: 'variacao' | 'adicional'; min_escolhas: number; max_escolhas: number | null; ordem: number; ativo: boolean }
+export type OpcaoLeitura = { id: string; grupo_id: string; nome: string; preco_centavos: number; ordem: number; ativo: boolean; esgotado: boolean }
+export type LigacaoLeitura = { item_id: string; grupo_id: string; ordem: number }
+
+/** Grupos de cada item como o OPERADOR os vê (Lançar Pedido). Só grupos e opções ativos. O operador
+ * nunca é travado por regra de catálogo: se um grupo obrigatório ficou sem opção disponível, o mínimo
+ * cai para o que existe (e grupo sem nenhuma opção some), em vez de impedir a venda no balcão. */
+export function montarGruposDoOperador(
+  grupos: GrupoLeitura[],
+  opcoes: OpcaoLeitura[],
+  ligacoes: LigacaoLeitura[],
+): Map<string, GrupoItem[]> {
+  const grupoPorId = new Map(grupos.filter((g) => g.ativo).map((g) => [g.id, g]))
+  const opcoesDoGrupo = new Map<string, OpcaoLeitura[]>()
+  for (const o of [...opcoes].filter((o) => o.ativo).sort((a, b) => a.ordem - b.ordem)) {
+    opcoesDoGrupo.set(o.grupo_id, [...(opcoesDoGrupo.get(o.grupo_id) ?? []), o])
+  }
+  const porItem = new Map<string, GrupoItem[]>()
+  for (const l of [...ligacoes].sort((a, b) => a.ordem - b.ordem)) {
+    const g = grupoPorId.get(l.grupo_id)
+    const ops = opcoesDoGrupo.get(l.grupo_id) ?? []
+    if (!g || ops.length === 0) continue
+    const livres = ops.filter((o) => !o.esgotado).length
+    const grupo: GrupoItem = {
+      id: g.id,
+      nome: g.nome,
+      tipo: g.tipo,
+      min: Math.min(g.min_escolhas, livres),
+      max: g.max_escolhas,
+      opcoes: ops.map((o) => ({ id: o.id, nome: o.nome, precoCentavos: o.preco_centavos, esgotado: o.esgotado })),
+    }
+    porItem.set(l.item_id, [...(porItem.get(l.item_id) ?? []), grupo])
+  }
+  return porItem
+}
