@@ -6,6 +6,7 @@ import { describe, test } from 'node:test'
 import { totalCobrado } from '../supabase/functions/_shared/cupom.ts'
 
 const pix = readFileSync(new URL('../supabase/functions/criar-pagamento-pix/index.ts', import.meta.url), 'utf8')
+const helper = readFileSync(new URL('../supabase/functions/_shared/cupomPedido.ts', import.meta.url), 'utf8')
 const mig = readFileSync(new URL('../supabase/migrations/20261018111000_cupons_mesmo_cliente.sql', import.meta.url), 'utf8')
 
 describe('totalCobrado', () => {
@@ -20,16 +21,18 @@ describe('criar-pagamento-pix com cupom', () => {
   test('aceita só o código; o desconto vem do banco', () => {
     assert.match(pix, /cupom_codigo\?: string \| null/)
     assert.doesNotMatch(pix, /body\.desconto|desconto_cupom_centavos\?:/)
-    assert.match(pix, /rpc\('cupom_avaliar'/)
-    assert.match(pix, /rpc\('cupom_reservar'/)
+    assert.match(helper, /rpc\('cupom_avaliar'/)
+    assert.match(helper, /rpc\('cupom_reservar'/)
+    assert.match(pix, /avaliarCupomDoPedido\(/)
+    assert.match(pix, /reservarCupomDoPedido\(/)
   })
   test('total esperado é conferido contra o total JÁ descontado', () => {
     assert.match(pix, /totalCobrado\(totalCentavos, descontoCentavos, taxaEntregaCentavos\)/)
-    assert.ok(pix.indexOf("rpc('cupom_avaliar'") < pix.indexOf('esperado !== totalCobradoCentavos'))
+    assert.ok(pix.indexOf('avaliarCupomDoPedido(') < pix.indexOf('esperado !== totalCobradoCentavos'))
   })
   test('reserva dura até o Pix vencer e é ligada à cobrança', () => {
-    assert.match(pix, /p_reservado_ate: expiraEm\.toISOString\(\)/)
-    assert.match(pix, /p_pendente_id: pendente\.id/)
+    assert.match(pix, /reservadoAte: expiraEm/)
+    assert.match(pix, /pendenteId: pendente\.id/)
   })
   test('falha da cobrança no provedor devolve a vaga', () => {
     const catchBloco = pix.slice(pix.indexOf('} catch (erro) {'))
@@ -39,12 +42,12 @@ describe('criar-pagamento-pix com cupom', () => {
     assert.match(pix, /Number\(pendenteExistente\.desconto_cupom_centavos \?\? 0\)/)
   })
   test('cupom conta tentativa (mesmo limite de adivinhação) e perda de corrida não cobra', () => {
-    assert.match(pix, /rpc\('cupom_registrar_tentativa'/)
-    assert.match(pix, /codigo: 'cupom_tentativas'/)
-    assert.match(pix, /Perdeu a corrida/)
+    assert.match(helper, /rpc\('cupom_registrar_tentativa'/)
+    assert.match(helper, /codigo: 'cupom_tentativas'/)
+    assert.match(helper, /Perdeu a corrida/)
   })
   test('sem cupom, o fluxo antigo segue (cupom só entra se enviado)', () => {
-    assert.match(pix, /if \(cupomBruto !== ''\)/)
+    assert.match(helper, /if \(bruto === ''\) return \{ ok: true, codigo: null, desconto: 0 \}/)
   })
 })
 

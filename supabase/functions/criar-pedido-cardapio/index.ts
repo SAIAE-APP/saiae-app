@@ -16,6 +16,8 @@ import {
 } from '../_shared/carrinho.ts'
 import { MENSAGEM_FECHADO, foraDoHorarioBloqueado } from '../_shared/horario.ts'
 import { resolverPerfilDoPedido } from '../_shared/perfilNoPedido.ts'
+import { totalCobrado } from '../_shared/cupom.ts'
+import { avaliarCupomDoPedido, reservarCupomDoPedido } from '../_shared/cupomPedido.ts'
 
 // Anti-bot, NÃO limite de volume: barraca em evento recebe centenas de pedidos em
 // poucos minutos e vários consumidores saem do mesmo IP (wifi/NAT). Por isso não
@@ -67,6 +69,8 @@ Deno.serve(async (req: Request) => {
     barraca_id?: string
     /** Sessão do perfil do cliente (obrigatória só se a barraca ligar perfil_cliente_obrigatorio). */
     sessao_token?: string
+    /** Cupom digitado pelo cliente. Só o CÓDIGO viaja: o desconto é calculado no banco. */
+    cupom_codigo?: string | null
     client_uuid?: string
     nome?: string
     telefone?: string
@@ -209,7 +213,7 @@ Deno.serve(async (req: Request) => {
   // NÃO conta no limite — duplo toque/retry de rede não é spam).
   const { data: existente } = await supabase
     .from('pedidos')
-    .select('id, senha, barraca_id, taxa_entrega_centavos')
+    .select('*')
     .eq('client_uuid', clientUuid)
     .maybeSingle()
   if (existente) {
@@ -218,7 +222,9 @@ Deno.serve(async (req: Request) => {
     return jsonResponse({
       senha: existente.senha,
       taxa_entrega_centavos: taxaExistente,
-      total_centavos: totalCentavos + taxaExistente,
+      // Pedido com cupom: o total é o JÁ descontado (o desconto fica gravado no pedido).
+      total_centavos: totalCobrado(totalCentavos, Number(existente.desconto_cupom_centavos ?? 0), taxaExistente),
+      desconto_cupom_centavos: Number(existente.desconto_cupom_centavos ?? 0),
       itens: itensResolvidos,
     })
   }
@@ -244,16 +250,32 @@ Deno.serve(async (req: Request) => {
       return jsonResponse({ erro: 'Não entregamos nesse bairro.' }, 422)
     }
     taxaEntregaCentavos = Math.max(0, Math.floor(Number(taxa.taxa_centavos) || 0))
+  }
 
-    // O cliente confirmou um total na tela; se o servidor chegou a outro (lista de bairros
-    // velha no navegador, dono mexeu na taxa), NÃO cria o pedido sem ele ver o novo valor.
+  // Cupom (só quando enviado). Aqui só AVALIA; a reserva vem logo antes do criar_pedido.
+  const avCupom = await avaliarCupomDoPedido(supabase, {
+    barracaId: barracaId,
+    codigoBruto: body.cupom_codigo,
+    subtotalCentavos: totalCentavos,
+    clienteId: perfil.clienteId,
+    ipHash: await hashIp('cupom-validar', ipDoCliente(req), barracaId),
+  })
+  if (!avCupom.ok) return jsonResponse(avCupom.corpo, avCupom.status)
+  const descontoCentavos = avCupom.desconto
+  const cupomCodigo = avCupom.codigo
+  const totalCobradoCentavos = totalCobrado(totalCentavos, descontoCentavos, taxaEntregaCentavos)
+
+  // O cliente confirmou um total na tela; se o servidor chegou a outro (lista de bairros
+  // velha no navegador, dono mexeu na taxa ou no cupom), NÃO cria o pedido sem ele ver o novo valor.
+  if (entregaEstruturada || cupomCodigo) {
     const esperado = body.total_esperado_centavos
-    if (esperado !== undefined && esperado !== null && esperado !== totalCentavos + taxaEntregaCentavos) {
+    if (esperado !== undefined && esperado !== null && esperado !== totalCobradoCentavos) {
       return jsonResponse(
         {
-          erro: 'O valor da entrega mudou. Confira o novo total antes de enviar.',
-          total_centavos: totalCentavos + taxaEntregaCentavos,
+          erro: 'O valor do pedido mudou. Confira o novo total antes de enviar.',
+          total_centavos: totalCobradoCentavos,
           taxa_entrega_centavos: taxaEntregaCentavos,
+          desconto_cupom_centavos: descontoCentavos,
         },
         409,
       )
@@ -304,6 +326,33 @@ Deno.serve(async (req: Request) => {
         .filter(Boolean)
         .join(' | ')
 
+  // "Pagar na entrega" não tem pagamento a esperar: reserva curta, cria o pedido e CONFIRMA direto.
+  let usoCupomId: string | null = null
+  if (cupomCodigo) {
+    const res = await reservarCupomDoPedido(supabase, {
+      barracaId: barracaId,
+      codigo: cupomCodigo,
+      subtotalCentavos: totalCentavos,
+      clienteId: perfil.clienteId,
+      pendenteId: null,
+      reservadoAte: new Date(Date.now() + 10 * 60 * 1000),
+    })
+    if (!res.ok) return jsonResponse(res.corpo, res.status)
+    if (res.reserva.desconto_centavos !== descontoCentavos) {
+      await supabase.rpc('cupom_liberar_uso', { p_uso_id: res.reserva.uso_id })
+      return jsonResponse(
+        {
+          erro: 'O valor do pedido mudou. Confira o novo total antes de enviar.',
+          total_centavos: totalCobrado(totalCentavos, res.reserva.desconto_centavos, taxaEntregaCentavos),
+          taxa_entrega_centavos: taxaEntregaCentavos,
+          desconto_cupom_centavos: res.reserva.desconto_centavos,
+        },
+        409,
+      )
+    }
+    usoCupomId = res.reserva.uso_id ?? null
+  }
+
   const { data: criado, error: erroPedido } = await supabase
     .rpc('criar_pedido', {
       p_barraca_id: barracaId,
@@ -327,8 +376,19 @@ Deno.serve(async (req: Request) => {
     .single()
 
   if (erroPedido || !criado) {
+    if (usoCupomId) await supabase.rpc('cupom_liberar_uso', { p_uso_id: usoCupomId })
     console.error('criar-pedido-cardapio: falha em criar_pedido', erroPedido?.message)
     return jsonResponse({ erro: 'Não foi possível enviar o pedido agora. Tente de novo.' }, 500)
+  }
+
+  // Cupom: o uso vira CONFIRMADO e o pedido recebe código e desconto (cópias, imutáveis). Uma nova
+  // tentativa cobre falha passageira; se ainda assim falhar, o pedido já existe e fica só o log.
+  if (usoCupomId) {
+    const pedidoCriado = (criado as { pedido_id: string }).pedido_id
+    const confirmar = () => supabase.rpc('cupom_confirmar', { p_uso_id: usoCupomId, p_pedido_id: pedidoCriado })
+    let { error: erroConfirmar } = await confirmar()
+    if (erroConfirmar) ({ error: erroConfirmar } = await confirmar())
+    if (erroConfirmar) console.error('criar-pedido-cardapio: cupom não confirmado', erroConfirmar.message)
   }
 
   // Vínculo com o perfil (best-effort: nunca derruba um pedido já criado).
@@ -383,7 +443,8 @@ Deno.serve(async (req: Request) => {
   return jsonResponse({
     senha: (criado as { senha: number }).senha,
     taxa_entrega_centavos: taxaEntregaCentavos,
-    total_centavos: totalCentavos + taxaEntregaCentavos,
+    total_centavos: totalCobradoCentavos,
+    desconto_cupom_centavos: descontoCentavos,
     itens: itensResolvidos,
   })
 })
