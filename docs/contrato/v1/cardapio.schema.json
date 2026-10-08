@@ -1,0 +1,64 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://app.saiae.com.br/contrato/v1/cardapio.schema.json",
+  "title": "Resposta de GET /cardapio (v1)",
+  "type": "object",
+  "required": ["itens"],
+  "properties": {
+    "itens": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "required": ["id", "nome", "preco_centavos"],
+        "properties": {
+          "id": { "type": "string", "format": "uuid" },
+          "nome": { "type": "string" },
+          "preco_centavos": {
+            "type": "integer",
+            "minimum": 0,
+            "description": "Preço base. Em item com variação é o 'a partir de'; o preço da unidade vem da opção escolhida."
+          },
+          "descricao": { "type": ["string", "null"] },
+          "categoria": { "type": ["string", "null"] },
+          "grupo_ids": {
+            "description": "Aditivo v1 (SAI-010). Ids de grupos (ordenados) ligados ao item; ausente ou vazio = item simples. No máximo UM grupo com tipo=variacao por item. Se algum grupo obrigatório (min_escolhas >= 1) do item tem todas as opções esgotadas, o item NÃO é devolvido (não pode ser pedido).",
+            "type": "array",
+            "items": { "type": "string", "format": "uuid" }
+          }
+        }
+      }
+    },
+    "grupos": {
+      "description": "Aditivo v1 (SAI-010). Só grupos e opções ativos; opção esgotada vem com esgotado=true. Ausente em loja sem opcoes_habilitado. Grupo tipo=variacao: sempre min_escolhas=1 e max_escolhas=1.",
+      "type": "array",
+      "items": {
+        "type": "object",
+        "required": ["id", "nome", "tipo", "min_escolhas", "max_escolhas", "opcoes"],
+        "properties": {
+          "id": { "type": "string", "format": "uuid" },
+          "nome": { "type": "string" },
+          "tipo": { "enum": ["variacao", "adicional"] },
+          "min_escolhas": { "type": "integer", "minimum": 0 },
+          "max_escolhas": { "type": ["integer", "null"], "minimum": 1, "description": "null = sem limite." },
+          "opcoes": {
+            "type": "array",
+            "items": {
+              "type": "object",
+              "required": ["id", "nome", "preco_centavos", "esgotado"],
+              "properties": {
+                "id": { "type": "string", "format": "uuid" },
+                "nome": { "type": "string" },
+                "preco_centavos": {
+                  "type": "integer",
+                  "minimum": 0,
+                  "description": "Variação: preço absoluto da unidade. Adicional: valor somado ao item."
+                },
+                "esgotado": { "type": "boolean" }
+              }
+            }
+          }
+        }
+      }
+    }
+  }
+}
