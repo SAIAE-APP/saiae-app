@@ -6,7 +6,10 @@ export const MAX_TENTATIVAS = 5
 export const REENVIO_MIN_MS = 60 * 1000
 export const VALIDADE_SESSAO_MS = 30 * 24 * 60 * 60 * 1000
 export const LIMITE_TELEFONE_HORA = 3
-export const LIMITE_IP_HORA = 10
+// IP é limite folgado de propósito: numa feira dezenas de clientes saem do mesmo wifi/NAT. O custo da Meta
+// é protegido pelo teto diário da loja (codigos_dia_max) e pelo limite por telefone.
+export const LIMITE_IP_HORA = 60
+export const LIMITE_IP_GLOBAL_HORA = 200
 
 const encoder = new TextEncoder()
 
@@ -64,6 +67,8 @@ export function avaliarCodigo(reg: RegistroCodigo, hashInformado: string, agora:
 export type EntradaLimites = {
   pedidosTelefoneHora: number
   pedidosIpHora: number
+  /** Pedidos do mesmo IP em qualquer loja na última hora (omitido = 0). */
+  pedidosIpGlobalHora?: number
   enviosLoja24h: number
   tetoLoja: number
   /** ms desde o último código enviado a este telefone nesta loja; null se nunca. */
@@ -75,7 +80,7 @@ export function decidirLimites(e: EntradaLimites): DecisaoLimite {
   if (e.tetoLoja <= 0 || e.enviosLoja24h >= e.tetoLoja) return 'limite_loja'
   if (e.msDesdeUltimoEnvio !== null && e.msDesdeUltimoEnvio < REENVIO_MIN_MS) return 'muito_cedo'
   if (e.pedidosTelefoneHora >= LIMITE_TELEFONE_HORA) return 'limite_telefone'
-  if (e.pedidosIpHora >= LIMITE_IP_HORA) return 'limite_ip'
+  if (e.pedidosIpHora >= LIMITE_IP_HORA || (e.pedidosIpGlobalHora ?? 0) >= LIMITE_IP_GLOBAL_HORA) return 'limite_ip'
   return 'ok'
 }
 
@@ -86,7 +91,7 @@ export function sessaoValida(reg: { expira_em: string; revogada_em: string | nul
 // --- Verificação: limites próprios (não consomem o limite de PEDIR código: o dono do telefone sempre
 // pode usar o código que já recebeu) ---
 export const LIMITE_VERIFICAR_TELEFONE_HORA = 20
-export const LIMITE_VERIFICAR_IP_HORA = 40
+export const LIMITE_VERIFICAR_IP_HORA = 200
 
 export function decidirLimiteVerificar(e: { verificacoesTelefoneHora: number; verificacoesIpHora: number }): 'ok' | 'limite' {
   return e.verificacoesTelefoneHora >= LIMITE_VERIFICAR_TELEFONE_HORA || e.verificacoesIpHora >= LIMITE_VERIFICAR_IP_HORA

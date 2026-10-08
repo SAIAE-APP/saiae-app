@@ -4,7 +4,15 @@
 //   supabase functions deploy cliente-pedir-codigo --no-verify-jwt --project-ref <ref>
 import { createClient } from 'jsr:@supabase/supabase-js@2'
 import { hashIp, ipDoCliente, pareceBot } from '../_shared/antiabuso.ts'
-import { VALIDADE_CODIGO_MS, codigoSimuladoPermitido, gerarCodigo, hashSegredo } from '../_shared/clienteCodigo.ts'
+import {
+  LIMITE_IP_GLOBAL_HORA,
+  LIMITE_IP_HORA,
+  LIMITE_TELEFONE_HORA,
+  VALIDADE_CODIGO_MS,
+  codigoSimuladoPermitido,
+  gerarCodigo,
+  hashSegredo,
+} from '../_shared/clienteCodigo.ts'
 import { enviarCodigoAoCrm } from '../_shared/codigoCrm.ts'
 import { normalizarTelefone, telefoneValido } from '../_shared/telefone.ts'
 
@@ -61,6 +69,9 @@ Deno.serve(async (req: Request) => {
     p_expira_em: new Date(agora + VALIDADE_CODIGO_MS).toISOString(),
     p_ip_hash: ipHash,
     p_ip_hash_global: ipHashGlobal,
+    p_limite_telefone: LIMITE_TELEFONE_HORA,
+    p_limite_ip: LIMITE_IP_HORA,
+    p_limite_ip_global: LIMITE_IP_GLOBAL_HORA,
   })
   const r = reserva as { decisao?: string; id?: string; enviosLoja24h?: number } | null
   if (erroReserva || !r) {

@@ -24,8 +24,8 @@ describe('B1 — tentativa atômica', () => {
   test('limite próprio da verificação (telefone e IP), com decisão pura', () => {
     assert.equal(decidirLimiteVerificar({ verificacoesTelefoneHora: 0, verificacoesIpHora: 0 }), 'ok')
     assert.equal(decidirLimiteVerificar({ verificacoesTelefoneHora: 20, verificacoesIpHora: 0 }), 'limite')
-    assert.equal(decidirLimiteVerificar({ verificacoesTelefoneHora: 0, verificacoesIpHora: 40 }), 'limite')
-    assert.equal(decidirLimiteVerificar({ verificacoesTelefoneHora: 19, verificacoesIpHora: 39 }), 'ok')
+    assert.equal(decidirLimiteVerificar({ verificacoesTelefoneHora: 0, verificacoesIpHora: 200 }), 'limite')
+    assert.equal(decidirLimiteVerificar({ verificacoesTelefoneHora: 19, verificacoesIpHora: 199 }), 'ok')
   })
 })
 
@@ -106,5 +106,15 @@ describe('segurança das novas funções', () => {
     assert.match(sql, /grant execute on function public\.%s to service_role/)
     assert.match(sql, /revoke all on table public\.cliente_verificacoes_log from anon, authenticated/)
     assert.doesNotMatch(sql, /drop table|truncate|drop column/i)
+  })
+})
+
+describe('limites de IP relaxados (feira)', () => {
+  test('valores no único lugar (clienteCodigo.ts) e passados à RPC; SQL sem número fixo', () => {
+    const novo = readFileSync(new URL('../supabase/migrations/20261017120000_perfil_cliente_limites_ip.sql', import.meta.url), 'utf8')
+    assert.match(novo, /v_ip >= p_limite_ip or v_ipg >= p_limite_ip_global/)
+    assert.doesNotMatch(novo, />= (10|30|60|200)\b/)
+    const f = ler('supabase/functions/cliente-pedir-codigo/index.ts')
+    for (const c of ['LIMITE_IP_HORA', 'LIMITE_IP_GLOBAL_HORA', 'LIMITE_TELEFONE_HORA']) assert.match(f, new RegExp(c))
   })
 })
