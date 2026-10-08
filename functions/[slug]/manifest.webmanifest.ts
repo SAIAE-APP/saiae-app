@@ -15,8 +15,8 @@ const COR_MARCA = '#FFC21A'
 // Fundo da splash screen (exibido antes do app carregar) — branco puro,
 // não a cor de marca, para consistência com o manifest estático de fallback.
 const COR_FUNDO_SPLASH = '#FFFFFF'
-const ICONE_192_PADRAO = '/icons/mesaagil-192.png'
-const ICONE_512_PADRAO = '/icons/mesaagil-512.png'
+const ICONE_192_PADRAO = '/icons/saiae-192.png'
+const ICONE_512_PADRAO = '/icons/saiae-512.png'
 
 async function buscarBarraca(env: Env, slug: string): Promise<Barraca | null> {
   try {

@@ -27,3 +27,6 @@ supabase/.temp
 *.njsproj
 *.sln
 *.sw?
+
+# Config local do preview (cada máquina tem a sua)
+.claude/launch.json
