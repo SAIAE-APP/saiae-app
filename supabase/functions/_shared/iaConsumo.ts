@@ -65,3 +65,13 @@ export async function buscarConsumo(
     return { ok: false, motivo: `erro de rede: ${e instanceof Error ? e.message : String(e)}`.slice(0, 200) }
   }
 }
+
+/** O limite de conversas é da Comanda (`ia_limites_plano`, plano do dono): é a fonte confiável. O do CRM é só o
+ * último valor visto numa conversa (em memória, some no reinício), então entra apenas como reserva quando a Comanda
+ * ainda não tem número para o plano. Nunca devolve valor inválido. */
+export function escolherLimite(daComanda: number | null | undefined, doCrm: number | null | undefined): number | null {
+  const valido = (n: unknown): n is number => typeof n === 'number' && Number.isInteger(n) && n >= 0
+  if (valido(daComanda)) return daComanda
+  if (valido(doCrm)) return doCrm
+  return null
+}
