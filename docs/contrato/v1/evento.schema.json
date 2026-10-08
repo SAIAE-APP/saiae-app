@@ -20,6 +20,23 @@
     "data": { "type": "object" }
   },
   "$defs": {
+    "opcao_escolhida": {
+      "type": "object",
+      "required": ["grupo_id", "grupo_nome", "tipo", "opcao_id", "nome", "preco_centavos"],
+      "properties": {
+        "grupo_id": { "type": "string", "format": "uuid" },
+        "grupo_nome": { "type": "string" },
+        "tipo": { "enum": ["variacao", "adicional"] },
+        "opcao_id": { "type": "string", "format": "uuid" },
+        "nome": { "type": "string" },
+        "preco_centavos": {
+          "type": "integer",
+          "minimum": 0,
+          "description": "Variação: preço absoluto da unidade. Adicional: valor somado."
+        },
+        "quantidade": { "type": "integer", "const": 1, "description": "Reservado; fixo em 1 na v1." }
+      }
+    },
     "pedido": {
       "type": "object",
       "required": ["pedido_id", "status", "tipo_atendimento", "itens", "total_centavos"],
@@ -37,7 +54,12 @@
               "nome": { "type": "string" },
               "quantidade": { "type": "integer", "minimum": 1 },
               "preco_centavos": { "type": "integer", "minimum": 0 },
-              "observacao": { "type": ["string", "null"] }
+              "observacao": { "type": ["string", "null"] },
+              "opcoes": {
+                "description": "Aditivo v1 (SAI-010). Escolhas do cliente na linha: snapshot imutável. Ausente ou vazio em item simples. preco_centavos do item já é o preço final da unidade (variação ou base + adicionais).",
+                "type": "array",
+                "items": { "$ref": "#/$defs/opcao_escolhida" }
+              }
             }
           }
         },
