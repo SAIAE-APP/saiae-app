@@ -292,6 +292,9 @@ export type AssinaturaBarraca = {
   trial_ends_at: string | null
   current_period_end: string | null
   eh_dono: boolean
+  /** `app_config.cobranca_ativa`. false = cobrança desligada (estado neutro active/pro).
+   * Ausente em servidor/cache antigo: vale como ativa (`cobrancaAtiva`, src/lib/cobranca.ts). */
+  cobranca_ativa?: boolean
 }
 
 export type OfertaPublica = {
