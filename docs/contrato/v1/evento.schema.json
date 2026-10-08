@@ -34,7 +34,7 @@
           "minimum": 0,
           "description": "Variação: preço absoluto da unidade. Adicional: valor somado."
         },
-        "quantidade": { "type": "integer", "const": 1, "description": "Reservado; fixo em 1 na v1." }
+        "quantidade": { "type": "integer", "minimum": 1, "description": "Sempre 1 na v1. O leitor deve tolerar valores maiores (reservado para versões futuras)." }
       }
     },
     "pedido": {

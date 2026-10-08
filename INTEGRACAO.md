@@ -66,11 +66,13 @@ Reservado para a v1.1 (Sprint 4): `POST /rascunhos-pedido` e `POST /pedidos` (co
 ### 3.1 Adicionais e variações (SAI-010) — aditivo na v1
 Fonte: `docs/superpowers/specs/2026-10-07-sai-010-adicionais-design.md`. Só campos novos e opcionais; consumidor v1 que os ignora continua válido.
 - **Modelo:** `grupos[]` (`id`, `nome`, `tipo` = `variacao` | `adicional`, `min_escolhas`, `max_escolhas` — null = sem limite) com `opcoes[]` (`id`, `nome`, `preco_centavos`, `esgotado`). Item aponta para seus grupos em `grupo_ids[]`. Obrigatório = `min_escolhas >= 1`.
+- **Regra fixa na v1 (variação):** no máximo **um** grupo `tipo = variacao` por item e, nele, `min_escolhas = 1` e `max_escolhas = 1`. Só `adicional` pode ter outros min/max. A Comanda valida isso no cadastro e no `resolver_carrinho`.
+- **Item não pedível:** se um grupo obrigatório (`min_escolhas >= 1`) do item tem **todas** as opções esgotadas, o item não pode ser pedido e a Comanda **omite** o item de `GET /cardapio`.
 - **Preço:** em `variacao` o `preco_centavos` da opção é o preço **absoluto** da unidade e substitui o preço base do item (que vira "a partir de"); em `adicional` é o valor **somado**. O preço final é sempre resolvido pela Comanda.
 - **Presença:** `grupos` e `grupo_ids` só vêm em loja com opções habilitadas. Loja sem isso continua devolvendo apenas `itens`.
-- **Eventos `order.*`:** `itens[].opcoes[]` é o snapshot das escolhas (`grupo_id`, `grupo_nome`, `tipo`, `opcao_id`, `nome`, `preco_centavos`, `quantidade` = 1 na v1). `itens[].preco_centavos` continua sendo o preço **final** da unidade; o `total_centavos` não muda de fórmula. Item simples: `opcoes` ausente ou vazio.
+- **Eventos `order.*`:** `itens[].opcoes[]` é o snapshot das escolhas (`grupo_id`, `grupo_nome`, `tipo`, `opcao_id`, `nome`, `preco_centavos`, `quantidade` — sempre 1 na v1; o leitor deve tolerar valores maiores). `itens[].preco_centavos` continua sendo o preço **final** da unidade; o `total_centavos` não muda de fórmula. Item simples: `opcoes` ausente ou vazio.
 - **Fora da v1:** quantidade por opção, meio a meio, combos, estoque por opção.
-- **Criar pedido pela IA** (`POST /rascunhos-pedido`, reservado): o cliente do CRM envia só `item_id`, `opcao_ids[]`, `quantidade` e `observacao`; preço e validação de min/max são da Comanda.
+- **Criar pedido pela IA** (`POST /rascunhos-pedido`, reservado): o cliente do CRM envia só `item_id`, `opcao_ids[]`, `quantidade` e `observacao`; preço e validação de min/max são da Comanda. A resposta devolve o **preço final por linha e o `total_centavos` já resolvidos pela Comanda**; a IA nunca soma sozinha (ADR-06).
 - Exemplos: `docs/contrato/v1/exemplos/cardapio-com-opcoes.json` e `pedido-itens-com-opcoes.json`.
 
 ## 4. Testes de contrato
