@@ -17,19 +17,10 @@ import { Icone } from '../components/ui/Icone'
 import { BottomSheet } from '../components/ui/BottomSheet'
 import { TourGuiado, type PassoTour } from '../components/TourGuiado'
 import { marcarTourVisto, tourJaVisto } from '../lib/tourStorage'
+import { calcularEsperaMediaFila } from '../lib/esperaMedia'
 
 function formatarSenha(senha: number): string {
   return String(senha).padStart(3, '0')
-}
-
-function calcularEsperaMediaMinutos(emFila: { criado_em: string }[]): number | null {
-  if (emFila.length === 0) return null
-  const agora = Date.now()
-  const somaMinutos = emFila.reduce(
-    (soma, p) => soma + (agora - new Date(p.criado_em).getTime()) / 60000,
-    0,
-  )
-  return Math.round(somaMinutos / emFila.length)
 }
 
 function IconeCard({ icone }: { icone: string }) {
@@ -201,7 +192,7 @@ export function Dashboard() {
   )
 
   const esperaMediaMinutos = useMemo(
-    () => calcularEsperaMediaMinutos(pedidos.filter((p) => p.status === 'a_fazer')),
+    () => calcularEsperaMediaFila(pedidos),
     [pedidos],
   )
 
