@@ -16,6 +16,7 @@ import {
   type ParamsCobranca,
   type ProvedorPix,
   type QrPix,
+  type ResultadoAssinatura,
   type StatusPagamento,
 } from './tipos.ts'
 
@@ -101,6 +102,58 @@ export async function extrairNotificacaoMercadoPago(
   return { idExterno }
 }
 
+function hex(bytes: ArrayBuffer): string {
+  return Array.from(new Uint8Array(bytes))
+    .map((b) => b.toString(16).padStart(2, '0'))
+    .join('')
+}
+
+/** Comparação em tempo constante de duas strings hex do mesmo tamanho. */
+function iguaisEmTempoConstante(a: string, b: string): boolean {
+  if (a.length !== b.length) return false
+  let diferenca = 0
+  for (let i = 0; i < a.length; i++) diferenca |= a.charCodeAt(i) ^ b.charCodeAt(i)
+  return diferenca === 0
+}
+
+/**
+ * Valida o cabeçalho `x-signature` do Mercado Pago (`ts=<epoch>,v1=<hmac>`). O HMAC-SHA256
+ * (hex) é calculado com o segredo do app sobre o manifesto `id:<data.id>;request-id:<x-request-id>;ts:<ts>;`,
+ * omitindo a parte cujo valor não veio. `data.id` vem da query da URL (minúsculo, quando alfanumérico).
+ * Formato conforme a documentação de Webhooks do Mercado Pago.
+ */
+export async function validarAssinaturaMercadoPago(params: {
+  xSignature: string
+  xRequestId: string | null
+  dataId: string | null
+  segredo: string
+}): Promise<boolean> {
+  const partes = Object.fromEntries(
+    params.xSignature.split(',').map((p) => {
+      const i = p.indexOf('=')
+      return i < 0 ? [p.trim(), ''] : [p.slice(0, i).trim(), p.slice(i + 1).trim()]
+    }),
+  )
+  const ts = partes.ts
+  const v1 = (partes.v1 ?? '').toLowerCase()
+  if (!ts || !v1) return false
+
+  let manifesto = ''
+  if (params.dataId) manifesto += `id:${params.dataId.toLowerCase()};`
+  if (params.xRequestId) manifesto += `request-id:${params.xRequestId};`
+  manifesto += `ts:${ts};`
+
+  const chave = await crypto.subtle.importKey(
+    'raw',
+    new TextEncoder().encode(params.segredo),
+    { name: 'HMAC', hash: 'SHA-256' },
+    false,
+    ['sign'],
+  )
+  const esperado = hex(await crypto.subtle.sign('HMAC', chave, new TextEncoder().encode(manifesto)))
+  return iguaisEmTempoConstante(esperado, v1)
+}
+
 export const mercadoPago: ProvedorPix = {
   chave: 'mercadopago',
   nome: 'Mercado Pago',
@@ -160,4 +213,18 @@ export const mercadoPago: ProvedorPix = {
   },
 
   extrairIdDaNotificacao: extrairNotificacaoMercadoPago,
+
+  async validarNotificacao(req, segredo): Promise<ResultadoAssinatura> {
+    if (!segredo) return 'sem_segredo'
+    const xSignature = req.headers.get('x-signature')
+    if (!xSignature) return 'sem_assinatura'
+    const url = new URL(req.url)
+    const ok = await validarAssinaturaMercadoPago({
+      xSignature,
+      xRequestId: req.headers.get('x-request-id'),
+      dataId: url.searchParams.get('data.id') ?? url.searchParams.get('id'),
+      segredo,
+    })
+    return ok ? 'valida' : 'invalida'
+  },
 }

@@ -2,12 +2,15 @@
 // Rodar: node --experimental-strip-types supabase/functions/_shared/pagamento/pagamento.test.ts
 // (também roda no Deno: `deno run supabase/functions/_shared/pagamento/pagamento.test.ts`).
 import assert from 'node:assert/strict'
+import { createHmac } from 'node:crypto'
 import {
   dataExpiracaoMercadoPago,
   extrairNotificacaoMercadoPago,
   extrairQrMercadoPago,
+  mercadoPago,
   montarCorpoCobrancaMercadoPago,
   statusDoMercadoPago,
+  validarAssinaturaMercadoPago,
 } from './mercadopago.ts'
 import { chaveDoProvedor, obterProvedor, urlNotificacaoPagamento } from './registro.ts'
 import { buscarTokenDoProvedor } from './token.ts'
@@ -133,5 +136,58 @@ assert.deepEqual(decidirAprovado({ statusPendente: 'expirado', valorPagoCentavos
 // Já processado ou rejeitado: ignora (retry do provedor)
 assert.deepEqual(decidirAprovado({ statusPendente: 'aprovado', valorPagoCentavos: 4700, totalEsperadoCentavos: 4700 }), { acao: 'ignorar' })
 assert.deepEqual(decidirAprovado({ statusPendente: 'rejeitado', valorPagoCentavos: 4700, totalEsperadoCentavos: 4700 }), { acao: 'ignorar' })
+
+// x-signature do Mercado Pago (HMAC calculado de forma independente com node:crypto)
+const hmacMp = (segredo: string, manifesto: string) => createHmac('sha256', segredo).update(manifesto).digest('hex')
+const SEG = 'segredo-de-teste'
+assert.equal(
+  await validarAssinaturaMercadoPago({
+    xSignature: `ts=1742505638683,v1=${hmacMp(SEG, 'id:123456;request-id:req-1;ts:1742505638683;')}`,
+    xRequestId: 'req-1',
+    dataId: '123456',
+    segredo: SEG,
+  }),
+  true,
+)
+// data.id alfanumérico chega maiúsculo: o manifesto usa minúsculo
+assert.equal(
+  await validarAssinaturaMercadoPago({
+    xSignature: `ts=1,v1=${hmacMp(SEG, 'id:abc123;request-id:r;ts:1;')}`,
+    xRequestId: 'r',
+    dataId: 'ABC123',
+    segredo: SEG,
+  }),
+  true,
+)
+// sem request-id, a parte some do manifesto
+assert.equal(
+  await validarAssinaturaMercadoPago({
+    xSignature: `ts=9,v1=${hmacMp(SEG, 'id:7;ts:9;')}`,
+    xRequestId: null,
+    dataId: '7',
+    segredo: SEG,
+  }),
+  true,
+)
+// segredo errado, id adulterado, cabeçalho malformado
+const sig = (segredo: string, manifesto: string) => `ts=1,v1=${hmacMp(segredo, manifesto)}`
+assert.equal(await validarAssinaturaMercadoPago({ xSignature: sig('outro', 'id:7;ts:1;'), xRequestId: null, dataId: '7', segredo: SEG }), false)
+assert.equal(await validarAssinaturaMercadoPago({ xSignature: sig(SEG, 'id:7;ts:1;'), xRequestId: null, dataId: '8', segredo: SEG }), false)
+assert.equal(await validarAssinaturaMercadoPago({ xSignature: 'lixo', xRequestId: null, dataId: '7', segredo: SEG }), false)
+assert.equal(await validarAssinaturaMercadoPago({ xSignature: 'ts=1', xRequestId: null, dataId: '7', segredo: SEG }), false)
+
+// ProvedorPix.validarNotificacao: sem segredo / sem cabeçalho / válida / inválida
+const reqMp = (cabecalhos: Record<string, string>) =>
+  new Request('https://x.test/f?pendente=p&p=mercadopago&data.id=55', { method: 'POST', headers: cabecalhos })
+assert.equal(await mercadoPago.validarNotificacao!(reqMp({}), null), 'sem_segredo')
+assert.equal(await mercadoPago.validarNotificacao!(reqMp({}), SEG), 'sem_assinatura')
+assert.equal(
+  await mercadoPago.validarNotificacao!(
+    reqMp({ 'x-signature': `ts=3,v1=${hmacMp(SEG, 'id:55;request-id:rq;ts:3;')}`, 'x-request-id': 'rq' }),
+    SEG,
+  ),
+  'valida',
+)
+assert.equal(await mercadoPago.validarNotificacao!(reqMp({ 'x-signature': 'ts=3,v1=00', 'x-request-id': 'rq' }), SEG), 'invalida')
 
 console.log('pagamento.test.ts: tudo certo')
