@@ -42,6 +42,7 @@
       "required": ["pedido_id", "status", "tipo_atendimento", "itens", "total_centavos"],
       "properties": {
         "pedido_id": { "type": "string", "format": "uuid" },
+        "barraca_nome": { "type": "string", "description": "Aditivo v1: nome da barraca (para mensagens ao cliente). Ausente em emissor antigo; o leitor deve tolerar." },
         "senha": { "type": ["integer", "null"] },
         "status": { "enum": ["a_fazer", "pronto", "entregue", "cancelado"] },
         "tipo_atendimento": { "enum": ["mesa", "balcao", "retirada", "entrega"] },

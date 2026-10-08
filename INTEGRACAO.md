@@ -44,7 +44,7 @@ Eventos v1:
 | `customer.created`, `customer.updated` | cliente novo ou alterado |
 | `coupon.redeemed` | **reservado** (Sprint 3) |
 
-`data` de `order.*`: `pedido_id`, `senha`, `status`, `tipo_atendimento`, `itens[]` (`nome`, `quantidade`, `preco_centavos`, `observacao`, `opcoes[]`), `taxa_entrega_centavos`, `total_centavos`, `metodo_pagamento`, `cliente` (`nome`, `telefone`, `consentimento_contato`).
+`data` de `order.*`: `pedido_id`, `barraca_nome` (aditivo; ausente em emissor antigo), `senha`, `status`, `tipo_atendimento`, `itens[]` (`nome`, `quantidade`, `preco_centavos`, `observacao`, `opcoes[]`), `taxa_entrega_centavos`, `total_centavos`, `metodo_pagamento`, `cliente` (`nome`, `telefone`, `consentimento_contato`).
 Minimização (LGPD): `telefone` só vai se existir; o CRM o usa só para aviso de pedido. Marketing exige o consentimento separado que a Comanda já guarda.
 
 Implementação na Comanda (frente B): tabela `eventos_saida` (outbox) alimentada por trigger em `pedidos` (`AFTER INSERT` e `AFTER UPDATE OF status`), com worker (edge function + cron) que assina, envia e retenta. Os itens são lidos no worker, não no trigger (itens entram depois do pedido). Filtrar por `OF status` para não gerar evento de `cliente_avisado_em`.

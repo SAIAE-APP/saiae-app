@@ -209,6 +209,7 @@ declare
   v_nome text;
   v_consente boolean;
   v_cliente jsonb;
+  v_barraca_nome text;
 begin
   select * into e from public.eventos_saida where id = p_evento_id;
   if not found then
@@ -234,6 +235,7 @@ begin
   from public.itens_do_pedido i
   where i.pedido_id = p.id and not i.removido;
 
+  select nome into v_barraca_nome from public.barracas where id = p.barraca_id;
   v_taxa := coalesce(p.taxa_entrega_centavos, 0);
   v_nome := nullif(btrim(coalesce(p.cliente_nome, p.entrega_nome, '')), '');
   v_tel := coalesce(p.cliente_telefone, p.entrega_telefone);
@@ -264,6 +266,7 @@ begin
     'sequence', e.sequence,
     'data', jsonb_strip_nulls(jsonb_build_object(
       'pedido_id', p.id,
+      'barraca_nome', v_barraca_nome,
       'senha', p.senha,
       'status', e.status_pedido,
       'tipo_atendimento', coalesce(
