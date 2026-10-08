@@ -483,6 +483,40 @@ repetir `versionCode`: subir a cada build. Validar em aparelho Android 7–11 e
   "Novo item" ou tocando na linha) com foto, nome, preço, categoria,
   descrição, Ativo/Esgotado/Popular, dados fiscais e "Apagar item";
   tudo grava de uma vez no botão Salvar/Adicionar.
+- Cupons por código (v2, 2026-10-08/09; spec `docs/superpowers/specs/2026-10-08-cupons-design.md`,
+  plano `docs/superpowers/plans/2026-10-08-cupons-comanda.md`). Só no CARDÁPIO DIGITAL (operador no balcão
+  não digita cupom). Flag por loja `barracas.cupons_habilitado` (nasce desligada; RPC pública
+  `cupom_config(slug)` devolve só o booleano). O app envia SÓ o código (`cupom_codigo`); o desconto é
+  sempre calculado no banco (`cupom_regras`/`cupom_avaliar`/`cupom_reservar`, só papel de serviço).
+  Tipo percentual (1–100, floor em centavos) ou fixo; limites: validade, limite total, uma vez por cliente
+  (exige sessão do perfil; só uso CONFIRMADO conta e refazer o checkout libera a reserva anterior do mesmo
+  cliente) e pedido mínimo. DECISÕES DO DONO: desconto só sobre os ITENS (a taxa de entrega nunca é
+  descontada); os itens cobrados nunca ficam abaixo de R$ 1,00 (Pix não aceita zero); um cupom por pedido;
+  o cupom só conta como USADO com o pagamento confirmado — durante o Pix aberto fica RESERVADO até o
+  vencimento (reserva vencida é ignorada na contagem, sem cron) e é liberado se o Pix expira/é rejeitado;
+  "pagar na entrega" reserva e confirma direto. Reserva atômica (`for update` na linha do cupom: dois
+  clientes disputando o último uso, exatamente um vence). Pagamento aprovado NUNCA é recusado: o webhook
+  confirma o uso mesmo com a reserva vencida/liberada e mesmo se o cupom foi pausado ou venceu. Uma linha de
+  `cupom_usos` por cobrança (índice único): trocar o cupom da mesma cobrança reaproveita a linha.
+  Fluxo do Pix: `criar-pagamento-pix` avalia, confere `total_esperado_centavos` já descontado (409 com o
+  novo total), reserva com `reservado_ate` = vencimento do Pix e grava `cupom_id/desconto_cupom_centavos/
+  cupom_uso_id` no pendente; o webhook compara o valor pago com itens − desconto + taxa e chama
+  `cupom_confirmar` ANTES de marcar o pendente aprovado (falha = 500 e o provedor reenvia).
+  `cupom-validar` (sem JWT) só consulta, nunca reserva; tentativas INVÁLIDAS limitadas (15/h por IP+loja,
+  100/h por loja; `cupom_registrar_tentativa`, `ip_hash`). O pedido guarda cópia de `cupom_codigo` e
+  `desconto_cupom_centavos` (editar/apagar o cupom depois não muda pedido antigo); cupom com uso não se
+  apaga, só pausa (`cupom_apagar` só sem uso). O desconto fica À PARTE dos itens: Histórico/Detalhe mostram
+  "Cupom X: −R$ Y"; Relatório/Faturamento tem a seção "Descontos de cupom" e "Recebido nos itens"
+  (faturamento continua a soma dos itens; `src/lib/descontosCupom.ts`). NFC-e: o desconto é rateado entre
+  os itens (`_shared/descontoNfce.ts`) e vai no campo `valor_desconto` POR ITEM da FocusNFe (confirmado na
+  doc oficial; a requisição não tem desconto no nível da nota); a nota vale itens − desconto e a taxa segue
+  fora. NENHUMA nota com desconto foi emitida: conferir a primeira em homologação. Evento para o CRM leva
+  `cupom_codigo` e `desconto_cupom_centavos` (opcionais) e, com cupom, `total_centavos` é o PAGO.
+  RISCO CONHECIDO (aceito pelo dono): quem gera dois Pix com o mesmo cupom e paga os DOIS leva o desconto duas
+  vezes (cada Pix foi cobrado pelo valor que o cliente viu). Apagar os dados do cliente (LGPD) zera
+  `cupom_usos.cliente_id`: o uso continua contando no limite total, e o "uma vez por cliente" daquele telefone
+  deixa de valer. Testes de banco/functions contra o staging: `tests/cupons*.staging.mjs` (rodar com as
+  variáveis do cabeçalho de cada script); o teste real do Pix fica para um Pix de valor baixo na loja de teste.
 
 ## Regras de tema
 - Identidade visual atual é a IDV "Sai aê" (rebrand fechado em
