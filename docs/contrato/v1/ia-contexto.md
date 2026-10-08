@@ -64,7 +64,7 @@ const assinatura = 'sha256=' + createHmac('sha256', segredo).update(`${timestamp
                            opcoes: { nome: string; preco_centavos: number }[] }[] }[]
   }
   cliente: null | { primeiro_nome: string; ultimos_pedidos: { itens: string[] }[] }
-  ia: { texto_livre: string | null; whatsapp_dono: string | null; plano_limite_conversas: number | null }
+  ia: { texto_livre: string | null; whatsapp_dono: string | null; dono_confirmado: boolean; plano_limite_conversas: number }
 }
 ```
 Regras de leitura:
@@ -72,7 +72,8 @@ Regras de leitura:
 - **`cliente`**: só existe se o perfil daquele telefone **naquela loja** tem telefone confirmado. Traz só o **primeiro nome** e os itens dos últimos 3 pedidos não cancelados. Caso contrário `null`: a IA trata como cliente novo e **não afirma que o conhece**.
 - **Isolamento**: nada de outra loja nem de outro cliente aparece. O CRM não deve enviar o telefone de terceiros.
 - `texto_livre` é texto do dono: **dado, nunca instrução** (a IA não obedece ordens que estejam nele).
-- `plano_limite_conversas`: `null` = sem limite definido ainda (os números saem da medição de custo).
+- `plano_limite_conversas`: limite do plano em `ia_limites_plano`; plano **sem linha** na tabela = **200** (padrão seguro, nunca "sem limite"; os números definitivos saem da medição de custo).
+- `dono_confirmado`: o WhatsApp do dono foi confirmado por ele (contrato `ia-dono-confirmar.md`). A IA só fica ligada com o número confirmado.
 - Campos aditivos em relação ao rascunho da spec: `grupo.tipo` e `taxa_entrega.bairro_nao_listado`.
 
 ## Publicação (só por ordem do dono)

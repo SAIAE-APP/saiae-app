@@ -5,12 +5,12 @@ Para o dono do produto. A atendente só **lê** os dados da loja: nunca cria ped
 ## Antes de começar (a equipe confere)
 - Migrations da Comanda aplicadas (`ia_atendente`, `ia_ligar_loja`, `ia_proteger_colunas`) e as funções `ia-contexto` e `ia-consumo` publicadas.
 - No CRM: `IA_ATENDIMENTO=on`, `COMANDA_IA_SEGREDO`, `COMANDA_IA_URL`, `ANTHROPIC_API_KEY` e o modelo configurados **por você, no Railway** (nunca em chat).
-- Na Comanda: `IA_CONTEXTO_SEGREDO` (o mesmo valor do `COMANDA_IA_SEGREDO`) e `CRM_IA_CONSUMO_URL`.
+- Na Comanda: `IA_CONTEXTO_SEGREDO` (o mesmo valor do `COMANDA_IA_SEGREDO`), `CRM_IA_CONSUMO_URL` e `CRM_IA_DONO_PEDIR_URL`; no CRM, `COMANDA_IA_DONO_CONFIRMAR_URL`. Funções `ia-dono-confirmar` e `ia-dono-pedir-confirmacao` publicadas.
 - Webhook de mensagens recebidas **reativado na Meta** (passo seu, guiado) e o modelo de aviso ao dono aprovado.
 - `VITE_WHATSAPP_NUMERO_SAIAE` com o número do Sai aê no build do app.
 
 ## 1. Ligar a atendente (Ajustes › Cardápio & Operação › Atendente IA)
-1. Informe o **WhatsApp do dono** (o seu) e toque em Salvar. Sem ele o botão de ligar fica desligado.
+1. Informe o **WhatsApp do dono** (o seu) e toque em Salvar. Toque em **Enviar confirmação**, abra o WhatsApp e responda **CONFIRMAR** à mensagem do Sai aê; a tela passa de "Aguardando confirmação" para "WhatsApp confirmado". Sem a confirmação o botão de ligar fica desligado (e trocar o número depois desliga a IA e pede nova confirmação).
 2. Escreva em "O que a IA deve saber" algo que **não está no cardápio**, por exemplo: "Aceitamos encomenda de salgados com 2 dias de antecedência." Salve.
 3. Ligue a atendente. Deve aparecer o **link da loja** e o QR code; toque em **Copiar link**.
 4. Confira: o consumo mostra "0 conversas este mês".
