@@ -32,6 +32,7 @@ import { BotaoSalvarCampo, ErroSalvar } from '../components/BotaoSalvarCampo'
 import { SecaoModosAtendimento } from '../components/SecaoModosAtendimento'
 import { SecaoTaxaEntrega } from '../components/SecaoTaxaEntrega'
 import { SecaoBairrosEntrega } from '../components/SecaoBairrosEntrega'
+import { SecaoOpcoes } from '../components/SecaoOpcoes'
 import { SecaoClientesEntrega } from '../components/SecaoClientesEntrega'
 import { SecaoPagarNaEntrega } from '../components/SecaoPagarNaEntrega'
 import { SecaoEstoque } from '../components/SecaoEstoque'
@@ -2832,6 +2833,9 @@ export function Ajustes({ categoria = 'conta' }: { categoria?: CategoriaAjustes 
           </SecaoDaCategoria>
           <SecaoDaCategoria categoria="cardapio" atual={categoria}>
             <SecaoCardapio barracaId={barraca.id} />
+          </SecaoDaCategoria>
+          <SecaoDaCategoria categoria="cardapio" atual={categoria}>
+            <SecaoOpcoes barraca={barraca} />
           </SecaoDaCategoria>
           <SecaoDaCategoria categoria="cardapio" atual={categoria}>
             <SecaoBanners barracaId={barraca.id} />
