@@ -11,6 +11,7 @@ import {
 } from './mercadopago.ts'
 import { chaveDoProvedor, obterProvedor, urlNotificacaoPagamento } from './registro.ts'
 import { buscarTokenDoProvedor } from './token.ts'
+import { decidirAprovado, totalEsperadoDoPendente } from './conciliacao.ts'
 import { centavosParaDecimal, ehProvedorValido, valorDecimalParaCentavos } from './tipos.ts'
 
 const semCorpo = async () => null
@@ -117,5 +118,20 @@ assert.equal(
   await buscarTokenDoProvedor({ from: () => ({ select: () => ({ eq: async () => ({ data: null, error: { message: 'x' } }) }) }) }, 'b', 'mercadopago'),
   null,
 )
+
+// Conciliação: total esperado = itens + taxa do snapshot (centavos inteiros)
+assert.equal(totalEsperadoDoPendente([{ quantidade: 2, preco_centavos_unitario: 1800 }, { quantidade: 1, preco_centavos_unitario: 600 }], 500), 4700)
+assert.equal(totalEsperadoDoPendente([{ quantidade: 1, preco_centavos_unitario: 1000 }], 0), 1000)
+
+// Pendente normal, valor certo: cria o pedido (não tardio)
+assert.deepEqual(decidirAprovado({ statusPendente: 'pendente', valorPagoCentavos: 4700, totalEsperadoCentavos: 4700 }), { acao: 'criar_pedido', tardio: false })
+// Pago depois de expirar, valor certo: cria o pedido (tardio, vira registro informativo)
+assert.deepEqual(decidirAprovado({ statusPendente: 'expirado', valorPagoCentavos: 4700, totalEsperadoCentavos: 4700 }), { acao: 'criar_pedido', tardio: true })
+// Valor divergente (a mais ou a menos), expirado ou não: concilia, NUNCA cria pedido
+assert.deepEqual(decidirAprovado({ statusPendente: 'pendente', valorPagoCentavos: 4600, totalEsperadoCentavos: 4700 }), { acao: 'conciliar_valor' })
+assert.deepEqual(decidirAprovado({ statusPendente: 'expirado', valorPagoCentavos: 4800, totalEsperadoCentavos: 4700 }), { acao: 'conciliar_valor' })
+// Já processado ou rejeitado: ignora (retry do provedor)
+assert.deepEqual(decidirAprovado({ statusPendente: 'aprovado', valorPagoCentavos: 4700, totalEsperadoCentavos: 4700 }), { acao: 'ignorar' })
+assert.deepEqual(decidirAprovado({ statusPendente: 'rejeitado', valorPagoCentavos: 4700, totalEsperadoCentavos: 4700 }), { acao: 'ignorar' })
 
 console.log('pagamento.test.ts: tudo certo')
