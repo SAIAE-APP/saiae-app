@@ -85,6 +85,12 @@ describe('validarCorpoIa', () => {
     }
   })
 
+  test('telefone ausente ou nulo vale como cliente novo; presente e inválido continua recusado', () => {
+    assert.deepEqual(validarCorpoIa(JSON.stringify({ codigo_loja: 'ABCD23' })), { ok: true, codigo: 'ABCD23', telefone: null })
+    assert.deepEqual(validarCorpoIa(JSON.stringify({ codigo_loja: 'ABCD23', telefone: null })), { ok: true, codigo: 'ABCD23', telefone: null })
+    assert.deepEqual(validarCorpoIa(JSON.stringify({ codigo_loja: 'abcd23' })), { ok: false })
+  })
+
   test('telefone só com dígitos, de 10 a 13', () => {
     for (const tel of ['119777766', '11977776655999', '(11) 97777-6655', '+5511977776655', '11 97777 6655', 'abc', '']) {
       assert.deepEqual(validarCorpoIa(JSON.stringify({ codigo_loja: 'ABCD23', telefone: tel })), { ok: false }, tel)
@@ -98,7 +104,6 @@ describe('validarCorpoIa', () => {
       JSON.stringify({ codigo_loja: 'ABCD23', telefone: 11977776655 }),
       JSON.stringify({ codigo_loja: ['ABCD23'], telefone: '11977776655' }),
       JSON.stringify({ telefone: '11977776655' }),
-      JSON.stringify({ codigo_loja: 'ABCD23' }),
     ]) {
       assert.deepEqual(validarCorpoIa(ruim), { ok: false }, ruim)
     }
