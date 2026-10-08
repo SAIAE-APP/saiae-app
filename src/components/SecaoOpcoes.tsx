@@ -16,6 +16,7 @@ import {
   type RascunhoOpcao,
 } from '../lib/opcoesCadastro'
 import { filtrarEntradaPreco } from '../lib/preco'
+import { bancoSemRecurso } from '../lib/semMigration'
 import { ErroSalvar } from './BotaoSalvarCampo'
 import { BottomSheet } from './ui/BottomSheet'
 import { Button } from './ui/Button'
@@ -43,6 +44,8 @@ function mensagemDeCarga(erro: unknown): string {
 export function SecaoOpcoes({ barraca }: { barraca: Barraca }) {
   const [cadastro, setCadastro] = useState<CadastroDeOpcoes | null>(null)
   const [erroCarga, setErroCarga] = useState<string | null>(null)
+  // Banco sem as tabelas de opções (app no ar antes da migration): a seção some, sem erro.
+  const [semBanco, setSemBanco] = useState(false)
   const [recarga, setRecarga] = useState(0)
   const [edicao, setEdicao] = useState<Edicao | null>(null)
   const [salvando, setSalvando] = useState(false)
@@ -63,7 +66,9 @@ export function SecaoOpcoes({ barraca }: { barraca: Barraca }) {
         setErroCarga(null)
       })
       .catch((e) => {
-        if (!cancelado) setErroCarga(mensagemDeCarga(e))
+        if (cancelado) return
+        if (bancoSemRecurso(e)) setSemBanco(true)
+        else setErroCarga(mensagemDeCarga(e))
       })
     return () => {
       cancelado = true
@@ -151,6 +156,8 @@ export function SecaoOpcoes({ barraca }: { barraca: Barraca }) {
       return { ...e, rascunho: { ...e.rascunho, itemIds: ids } }
     })
   }
+
+  if (semBanco) return null
 
   return (
     <section>
