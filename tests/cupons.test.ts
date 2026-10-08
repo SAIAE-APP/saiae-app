@@ -166,3 +166,43 @@ describe('formularioDoCupom (editar) volta a validar igual', () => {
     assert.deepEqual([f.valorTexto, f.inicioTexto, f.limiteTexto, f.minimoTexto], ['15', '', '', ''])
   })
 })
+
+import { FUSO_PADRAO, fusoDaLoja, isoParaDia } from '../src/lib/cupons.ts'
+
+describe('datas no fuso da loja (nunca o do navegador)', () => {
+  test('São Paulo (UTC-3): início 00:00 e fim 23:59:59.999 do dia', () => {
+    assert.equal(dataParaIso('2026-10-01', 'inicio'), '2026-10-01T03:00:00.000Z')
+    assert.equal(dataParaIso('2026-10-01', 'fim'), '2026-10-02T02:59:59.999Z')
+  })
+  test('outro fuso do Brasil (Manaus, UTC-4) desloca o instante', () => {
+    assert.equal(dataParaIso('2026-10-01', 'inicio', 'America/Manaus'), '2026-10-01T04:00:00.000Z')
+    assert.equal(dataParaIso('2026-10-01', 'fim', 'America/Manaus'), '2026-10-02T03:59:59.999Z')
+  })
+  test('fuso ausente ou inválido cai em America/Sao_Paulo', () => {
+    assert.equal(fusoDaLoja(null), FUSO_PADRAO)
+    assert.equal(fusoDaLoja(undefined), FUSO_PADRAO)
+    assert.equal(fusoDaLoja(''), FUSO_PADRAO)
+    assert.equal(fusoDaLoja('Marte/Olympus'), FUSO_PADRAO)
+    assert.equal(fusoDaLoja('America/Manaus'), 'America/Manaus')
+    assert.equal(dataParaIso('2026-10-01', 'inicio', 'Marte/Olympus'), '2026-10-01T03:00:00.000Z')
+  })
+  test('ida e volta: o dia digitado é o dia mostrado, nas duas pontas', () => {
+    for (const fuso of ['America/Sao_Paulo', 'America/Manaus', 'America/Noronha']) {
+      for (const ponta of ['inicio', 'fim'] as const) {
+        assert.equal(isoParaDia(dataParaIso('2026-12-31', ponta, fuso)!, fuso), '2026-12-31', `${fuso} ${ponta}`)
+      }
+    }
+  })
+  test('o formulário usa o fuso da loja ao validar e ao editar', () => {
+    const r = validarFormularioCupom(form({ inicioTexto: '2026-10-01', fimTexto: '2026-10-31' }), { lojaUsaPerfil: true, fuso: 'America/Manaus' })
+    assert.ok(r.ok)
+    assert.equal(r.dados.inicio_em, '2026-10-01T04:00:00.000Z')
+    const f = formularioDoCupom({ id: '1', codigo: 'ABC', tipo: 'percentual', valor: 5, inicio_em: r.dados.inicio_em, fim_em: r.dados.fim_em, limite_usos: null, uma_por_cliente: false, pedido_minimo_centavos: 0, ativo: true }, 'America/Manaus')
+    assert.deepEqual([f.inicioTexto, f.fimTexto], ['2026-10-01', '2026-10-31'])
+  })
+  test('a validade mostrada vem do fuso da loja (00:30 UTC do dia 2 ainda é dia 1 em São Paulo)', () => {
+    assert.equal(textoValidade({ inicio_em: null, fim_em: '2026-10-02T00:30:00.000Z' }), 'até 01/10/2026')
+    assert.equal(textoValidade({ inicio_em: null, fim_em: '2026-10-02T00:30:00.000Z' }, 'America/Manaus'), 'até 01/10/2026')
+    assert.equal(textoValidade({ inicio_em: null, fim_em: '2026-10-02T04:30:00.000Z' }, 'America/Manaus'), 'até 02/10/2026')
+  })
+});
