@@ -1,5 +1,6 @@
 {
   "pedido_id": "99999999-9999-4999-8999-999999999999",
+  "barraca_nome": "Sabor Kawashima",
   "senha": 12,
   "status": "a_fazer",
   "tipo_atendimento": "retirada",
