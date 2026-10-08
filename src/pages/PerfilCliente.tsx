@@ -8,6 +8,7 @@ import { Checkbox } from '../components/ui/Checkbox'
 import { Icone } from '../components/ui/Icone'
 import { Input } from '../components/ui/Input'
 import { useClienteSessao } from '../hooks/useClienteSessao'
+import { usePerfilConfig } from '../hooks/usePerfilConfig'
 import { chamarSessao, lerSessao } from '../lib/clienteApi'
 import { resumoPedirDeNovo, type LinhaPedirDeNovo } from '../lib/clientePerfil'
 import { formatarPrecoBR } from '../lib/preco'
@@ -45,6 +46,7 @@ export function PerfilCliente() {
   const { slug } = useParams<{ slug: string }>()
   const navigate = useNavigate()
   const { sessao, entrar, sair } = useClienteSessao(slug)
+  const config = usePerfilConfig(slug)
 
   const [perfil, setPerfil] = useState<Perfil | null>(null)
   const [enderecos, setEnderecos] = useState<Endereco[]>([])
@@ -71,8 +73,13 @@ export function PerfilCliente() {
     else setErro(r.erro)
   }, [])
 
+  // Recurso ainda não existe no banco desta loja: nada a mostrar, volta ao cardápio.
   useEffect(() => {
-    if (!slug || precisaEntrar) return
+    if (slug && !config.carregando && !config.disponivel) navigate(`/${slug}/cardapio`, { replace: true })
+  }, [slug, config.carregando, config.disponivel, navigate])
+
+  useEffect(() => {
+    if (!slug || precisaEntrar || !config.disponivel) return
     let cancelado = false
     void (async () => {
       const [p, h] = await Promise.all([
@@ -90,9 +97,9 @@ export function PerfilCliente() {
     return () => {
       cancelado = true
     }
-  }, [slug, precisaEntrar, recarga, tratarFalha])
+  }, [slug, precisaEntrar, recarga, tratarFalha, config.disponivel])
 
-  if (!slug) return null
+  if (!slug || config.carregando || !config.disponivel) return null
   const voltar = () => navigate(`/${slug}/cardapio`)
 
   async function salvarDados() {

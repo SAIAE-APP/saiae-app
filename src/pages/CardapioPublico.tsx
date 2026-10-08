@@ -15,6 +15,7 @@ import { Textarea } from '../components/ui/Textarea'
 import { SeletorOpcoes } from '../components/SeletorOpcoes'
 import { ModalIdentificacao } from '../components/cliente/ModalIdentificacao'
 import { useClienteSessao } from '../hooks/useClienteSessao'
+import { usePerfilConfig } from '../hooks/usePerfilConfig'
 import { lerSessao, limparSessao } from '../lib/clienteApi'
 import { lerPedirDeNovo } from '../lib/clientePerfil'
 import {
@@ -590,7 +591,7 @@ export function CardapioPublico() {
   const [linhasOpcoes, setLinhasOpcoes] = useState<LinhaOpcoes[]>([])
   // Perfil do cliente final (por loja). Só é exigido no fechamento quando o dono liga a flag.
   const { sessao: sessaoCliente, entrar: entrarCliente } = useClienteSessao(slug)
-  const [perfilObrigatorio, setPerfilObrigatorio] = useState(false)
+  const { disponivel: perfilDisponivel, obrigatorio: perfilObrigatorio } = usePerfilConfig(slug)
   const [pedindoIdentificacao, setPedindoIdentificacao] = useState(false)
   const resolverIdentificacao = useRef<((ok: boolean) => void) | null>(null)
   // Grupos/opções por item (vazio = loja sem opções habilitadas = tudo item simples, como sempre).
@@ -672,19 +673,6 @@ export function CardapioPublico() {
       setGruposPorItem(agruparOpcoes((data ?? []) as LinhaOpcaoPublica[]))
     })
 
-    return () => {
-      cancelado = true
-    }
-  }, [slug])
-
-  // Perfil obrigatório? Banco sem a migration (função ausente) = perfil opcional, como sempre.
-  useEffect(() => {
-    if (!slug) return
-    let cancelado = false
-    supabase.rpc('perfil_cliente_config', { p_slug: slug }).then(({ data, error }) => {
-      if (cancelado || error) return
-      if (Array.isArray(data) && data[0]?.obrigatorio === true) setPerfilObrigatorio(true)
-    })
     return () => {
       cancelado = true
     }
@@ -922,7 +910,8 @@ export function CardapioPublico() {
 
   // Garante o perfil antes de finalizar quando a loja o exige: abre o modal e espera o resultado.
   function garantirPerfil(): Promise<boolean> {
-    if (!perfilObrigatorio || (slug && lerSessao(slug))) return Promise.resolve(true)
+    // Perfil indisponível (banco sem a RPC) nunca é obrigatório: fechamento como sempre foi.
+    if (!perfilDisponivel || !perfilObrigatorio || (slug && lerSessao(slug))) return Promise.resolve(true)
     return new Promise((resolve) => {
       resolverIdentificacao.current = resolve
       setPedindoIdentificacao(true)
@@ -1375,6 +1364,7 @@ export function CardapioPublico() {
               ? 'Monte seu pedido e pague com Pix direto por aqui'
               : 'Monte sua lista aqui e finalize no caixa'}
           </p>
+          {perfilDisponivel && (
           <Link
             to={`/${slug}/perfil`}
             className="mt-1 inline-flex min-h-11 items-center gap-1 rounded-mesa-full px-3 text-sm font-medium text-mesa-text-primary underline-offset-2 hover:underline"
@@ -1382,6 +1372,7 @@ export function CardapioPublico() {
             <Icone nome="person" size={16} />
             {sessaoCliente ? sessaoCliente.nome.split(' ')[0] : 'Entrar'}
           </Link>
+          )}
           {status && (
             <span
               className={`mt-2 inline-flex items-center gap-1 rounded-mesa-balao px-2 py-0.5 text-xs font-bold ${
