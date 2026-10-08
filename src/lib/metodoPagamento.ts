@@ -12,6 +12,9 @@ export const METODOS_DISPONIVEIS: { chave: MetodoPagamento; label: string; icone
 /** Pedido do cardápio digital "Pagar na entrega": o método real só é definido na entrega. */
 export const METODO_NA_ENTREGA = 'na_entrega'
 
+/** Pedido que o cupom cobriu por inteiro (sem taxa a pagar): ninguém pagou nada, não é Pix nem dinheiro. */
+export const METODO_GRATIS = 'gratis'
+
 /** Opção "Pagar na entrega" do operador: só no modo Entrega. Fica fora de
  * `METODOS_DISPONIVEIS` de propósito (não é método real nem configurável por
  * barraca, e Ajustes/Histórico/relatórios percorrem essa lista). */
@@ -24,6 +27,7 @@ export const OPCAO_PAGAR_NA_ENTREGA = {
 export function humanizarMetodo(chave: string | null): string {
   if (!chave) return 'Método não informado'
   if (chave === METODO_NA_ENTREGA) return 'A definir na entrega'
+  if (chave === METODO_GRATIS) return 'Grátis (cupom)'
   return METODOS_DISPONIVEIS.find((m) => m.chave === chave)?.label ?? 'Método não informado'
 }
 

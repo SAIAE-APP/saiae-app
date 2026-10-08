@@ -1,4 +1,5 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
+import { AVISO_TELEFONE_PEDIDO_GRATIS, TEXTO_BOTAO_PEDIDO_GRATIS, ehPedidoGratis, lerPedidoGratis, telefoneServePedidoGratis } from '../lib/pedidoGratis'
 import { Link, useParams } from 'react-router'
 import clsx from 'clsx'
 import { supabase } from '../lib/supabase'
@@ -97,7 +98,7 @@ type EstadoPagamento =
       totalCentavos?: number
       taxaCentavos?: number
     }
-  | { fase: 'aprovado'; senha: number | null }
+  | { fase: 'aprovado'; senha: number | null; gratis?: boolean }
   // "Pagar na entrega": dados do cliente -> envio -> pedido já na cozinha + wa.me do dono.
   | { fase: 'dados_entrega'; erro?: string }
   | { fase: 'enviando_entrega' }
@@ -1018,6 +1019,11 @@ export function CardapioPublico() {
 
   async function pagar() {
     if (!slug || itensCarrinho.length === 0) return
+    // Pedido grátis (cupom cobre tudo): o servidor exige telefone; avisa antes de gastar a chamada.
+    if (ehPedidoGratis(totalCentavosCarrinho - descontoCupom) && !telefoneServePedidoGratis(telefoneAviso)) {
+      setPagamento({ fase: 'erro', mensagem: AVISO_TELEFONE_PEDIDO_GRATIS })
+      return
+    }
     if (!(await garantirPerfil())) return
     const barracaId = itensCarrinho[0].item.barraca_id
 
@@ -1063,6 +1069,13 @@ export function CardapioPublico() {
       return
     }
 
+    const gratis = lerPedidoGratis(data)
+    if (gratis) {
+      // Sem Pix: o pedido já existe e foi pra cozinha; a reserva do cupom virou uso confirmado.
+      pendenteAnteriorRef.current = null
+      setPagamento({ fase: 'aprovado', senha: gratis.senha, gratis: true })
+      return
+    }
     pendenteAnteriorRef.current = typeof data.pendente_id === "string" ? data.pendente_id : null
     setPagamento({
       fase: 'aguardando',
@@ -1358,6 +1371,12 @@ export function CardapioPublico() {
       return
     }
 
+    const gratisEntrega = lerPedidoGratis(data)
+    if (gratisEntrega) {
+      pendenteAnteriorRef.current = null
+      setPagamento({ fase: 'aprovado', senha: gratisEntrega.senha, gratis: true })
+      return
+    }
     pendenteAnteriorRef.current = typeof data.pendente_id === "string" ? data.pendente_id : null
     setPagamento({
       fase: 'aguardando',
@@ -1644,7 +1663,7 @@ export function CardapioPublico() {
 
             {podeComprar && !entregaNoCardapio && (
               <Input
-                label="Seu WhatsApp (opcional)"
+                label={ehPedidoGratis(totalCentavosCarrinho - descontoCupom) ? "Seu WhatsApp" : "Seu WhatsApp (opcional)"}
                 type="text"
                 inputMode="tel"
                 autoComplete="tel"
@@ -1720,12 +1739,12 @@ export function CardapioPublico() {
             ) : podeComprar ? (
               <Button
                 size="xl"
-                icon={<Icone nome="qr_code" size={20} />}
+                icon={<Icone nome={ehPedidoGratis(totalCentavosCarrinho - descontoCupom) ? 'check_circle' : 'qr_code'} size={20} />}
                 className="w-full"
                 disabled={itensCarrinho.length === 0}
                 onClick={pagar}
               >
-                Pagar com Pix
+                {ehPedidoGratis(totalCentavosCarrinho - descontoCupom) ? TEXTO_BOTAO_PEDIDO_GRATIS : 'Pagar com Pix'}
               </Button>
             ) : (
               <Button
@@ -1951,14 +1970,16 @@ export function CardapioPublico() {
             {formaEntrega === 'pix' ? (
               <Button
                 size="xl"
-                icon={<Icone nome="qr_code" size={20} />}
+                icon={<Icone nome={ehPedidoGratis(totalPixEntregaCentavos) ? 'check_circle' : 'qr_code'} size={20} />}
                 disabled={totalPixEntregaCentavos === null}
                 className="w-full"
                 onClick={pagarPixEntrega}
               >
                 {totalPixEntregaCentavos === null
                   ? 'Escolha o bairro pra ver o total'
-                  : `Gerar Pix de ${formatarPrecoBR(totalPixEntregaCentavos)}`}
+                  : ehPedidoGratis(totalPixEntregaCentavos)
+                    ? TEXTO_BOTAO_PEDIDO_GRATIS
+                    : `Gerar Pix de ${formatarPrecoBR(totalPixEntregaCentavos)}`}
               </Button>
             ) : (
               <Button
@@ -2056,8 +2077,12 @@ export function CardapioPublico() {
         {pagamento.fase === 'aprovado' && (
           <div className="flex flex-col items-center gap-3 py-6 text-center">
             <Icone nome="check_circle" size={40} className="text-mesa-success-500" />
-            <h2 className="text-lg font-semibold text-mesa-text-primary">Pagamento confirmado!</h2>
-            <p className="text-sm text-mesa-text-secondary">Seu pedido já foi pra cozinha.</p>
+            <h2 className="text-lg font-semibold text-mesa-text-primary">
+              {pagamento.gratis ? 'Pedido grátis confirmado!' : 'Pagamento confirmado!'}
+            </h2>
+            <p className="text-sm text-mesa-text-secondary">
+              {pagamento.gratis ? 'O cupom cobriu tudo, não precisa pagar nada. Seu pedido já foi pra cozinha.' : 'Seu pedido já foi pra cozinha.'}
+            </p>
             {pagamento.senha !== null && (
               <p className="font-mesa-display text-3xl font-black text-mesa-text-primary">
                 Senha {String(pagamento.senha).padStart(3, '0')}
