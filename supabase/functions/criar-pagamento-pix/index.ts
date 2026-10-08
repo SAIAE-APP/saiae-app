@@ -18,6 +18,7 @@ import { chaveDoProvedor, obterProvedor, urlNotificacaoPagamento } from '../_sha
 import { buscarTokenDoProvedor } from '../_shared/pagamento/token.ts'
 import { ErroProvedor, ehProvedorValido, type QrPix } from '../_shared/pagamento/tipos.ts'
 import { hashIp, ipDoCliente, pareceBot } from '../_shared/antiabuso.ts'
+import { MENSAGEM_FECHADO, foraDoHorarioBloqueado } from '../_shared/horario.ts'
 
 // Teto anti-bot por IP: não é limite de volume (ver comentário no ponto de uso).
 const JANELA_RATE_LIMIT_MS = 5 * 60 * 1000
@@ -187,6 +188,12 @@ Deno.serve(async (req: Request) => {
 
   if (!barraca.pagamento_online_habilitado) {
     return jsonResponse({ erro: 'Pagamento online não habilitado para esta barraca' }, 422)
+  }
+
+  // Opcional por barraca (padrão desligado). Só NOVA cobrança: o retry de cobrança já
+  // emitida voltou lá em cima, e o webhook (cliente já pagou) nunca olha o horário.
+  if (await foraDoHorarioBloqueado(supabase, barraca)) {
+    return jsonResponse({ erro: MENSAGEM_FECHADO, codigo: 'fechado' }, 422)
   }
 
   const provedorChave = chaveDoProvedor(barraca.pagamento_provedor)

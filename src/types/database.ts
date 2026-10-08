@@ -31,6 +31,9 @@ export type Barraca = {
   pagar_na_entrega_habilitado?: boolean
   /** Estoque: true = bloqueia a venda acima do saldo; false/ausente = só avisa (padrão). */
   estoque_bloqueia?: boolean
+  /** Fuso da barraca (padrão America/Sao_Paulo; só os do Brasil) e interruptor de bloqueio fora do horário. */
+  fuso?: string
+  bloquear_fora_do_horario?: boolean
   imagem_capa_url: string | null
   mostrar_horario_pedido: boolean
   /** Emitente fiscal e PROCON (cupom da NFC-e). Opcionais: cache local anterior à migration não tem. */
