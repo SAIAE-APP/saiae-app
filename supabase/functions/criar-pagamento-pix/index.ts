@@ -19,6 +19,7 @@ import { buscarTokenDoProvedor } from '../_shared/pagamento/token.ts'
 import { minutosExpiracaoPix } from '../_shared/pagamento/expiracao.ts'
 import { ErroProvedor, ehProvedorValido, type QrPix } from '../_shared/pagamento/tipos.ts'
 import { hashIp, ipDoCliente, pareceBot } from '../_shared/antiabuso.ts'
+import { resolverPerfilDoPedido } from '../_shared/perfilNoPedido.ts'
 import { MENSAGEM_FECHADO, foraDoHorarioBloqueado } from '../_shared/horario.ts'
 import { interpretarResolver, itensAcimaDoEstoque, montarLinhas, respostaDeErros } from '../_shared/carrinho.ts'
 
@@ -69,6 +70,8 @@ Deno.serve(async (req: Request) => {
 
   let body: {
     barraca_id?: string
+    /** Sessão do perfil do cliente (obrigatória só se a barraca ligar perfil_cliente_obrigatorio). */
+    sessao_token?: string
     mesa?: string | null
     viagem?: boolean
     observacao?: string | null
@@ -180,6 +183,11 @@ Deno.serve(async (req: Request) => {
 
   if (erroBarraca || !barraca) {
     return jsonResponse({ erro: 'Barraca não encontrada' }, 404)
+  }
+
+  const perfil = await resolverPerfilDoPedido(supabase, Deno.env.get('CLIENTE_HASH_PEPPER') ?? '', barraca_id, body.sessao_token)
+  if (perfil.bloqueado) {
+    return jsonResponse({ erro: 'Confirme seu telefone para finalizar o pedido.', codigo: 'perfil_obrigatorio' }, 401)
   }
 
   if (!barraca.pagamento_online_habilitado) {
@@ -363,6 +371,7 @@ Deno.serve(async (req: Request) => {
         entrega: entregaSnapshot,
         taxa_entrega_centavos: taxaEntregaCentavos,
         cliente_nome: clienteNome,
+        ...(perfil.clienteId ? { cliente_id: perfil.clienteId } : {}),
         // Só quando informado: sem telefone o update é o de sempre.
         ...(clienteTelefone ? { cliente_telefone: clienteTelefone } : {}),
         // Pendente sem cobrança emitida pode trocar de provedor (dono mudou a escolha).
@@ -396,6 +405,7 @@ Deno.serve(async (req: Request) => {
             }
           : {}),
         ...(clienteTelefone ? { cliente_telefone: clienteTelefone } : {}),
+        ...(perfil.clienteId ? { cliente_id: perfil.clienteId } : {}),
         // Mercado Pago = default da coluna: o insert dele é IDÊNTICO ao de antes.
         ...(provedor.chave !== 'mercadopago' ? { provedor: provedor.chave } : {}),
       })

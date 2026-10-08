@@ -15,6 +15,7 @@ import {
   respostaDeErros,
 } from '../_shared/carrinho.ts'
 import { MENSAGEM_FECHADO, foraDoHorarioBloqueado } from '../_shared/horario.ts'
+import { resolverPerfilDoPedido } from '../_shared/perfilNoPedido.ts'
 
 // Anti-bot, NÃO limite de volume: barraca em evento recebe centenas de pedidos em
 // poucos minutos e vários consumidores saem do mesmo IP (wifi/NAT). Por isso não
@@ -64,6 +65,8 @@ Deno.serve(async (req: Request) => {
 
   let body: {
     barraca_id?: string
+    /** Sessão do perfil do cliente (obrigatória só se a barraca ligar perfil_cliente_obrigatorio). */
+    sessao_token?: string
     client_uuid?: string
     nome?: string
     telefone?: string
@@ -177,6 +180,11 @@ Deno.serve(async (req: Request) => {
   }
   if (entregaEstruturada && !((barraca.modos_atendimento as string[] | null) ?? []).includes('entrega')) {
     return jsonResponse({ erro: 'Esta barraca não faz entrega pelo cardápio' }, 422)
+  }
+
+  const perfil = await resolverPerfilDoPedido(supabase, Deno.env.get('CLIENTE_HASH_PEPPER') ?? '', barracaId, body.sessao_token)
+  if (perfil.bloqueado) {
+    return jsonResponse({ erro: 'Confirme seu telefone para finalizar o pedido.', codigo: 'perfil_obrigatorio' }, 401)
   }
 
   // Preço, nome, disponibilidade e regras de opções (mínimo/máximo, variação) SEMPRE do banco, pelo
@@ -321,6 +329,15 @@ Deno.serve(async (req: Request) => {
   if (erroPedido || !criado) {
     console.error('criar-pedido-cardapio: falha em criar_pedido', erroPedido?.message)
     return jsonResponse({ erro: 'Não foi possível enviar o pedido agora. Tente de novo.' }, 500)
+  }
+
+  // Vínculo com o perfil (best-effort: nunca derruba um pedido já criado).
+  if (perfil.clienteId) {
+    const { error: erroVinculo } = await supabase
+      .from('pedidos')
+      .update({ cliente_id: perfil.clienteId })
+      .eq('id', (criado as { pedido_id: string }).pedido_id)
+    if (erroVinculo) console.error('criar-pedido-cardapio: falha ao vincular cliente', erroVinculo.message)
   }
 
   const aceitaMarketing = body.consentimento_marketing === true || entregaBruta?.consentimento_marketing === true

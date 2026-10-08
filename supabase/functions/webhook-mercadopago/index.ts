@@ -253,6 +253,11 @@ Deno.serve(async (req: Request) => {
     }
 
     const pedidoId = desfecho.pedidoId
+    // Vínculo com o perfil do cliente (a cobrança carrega o cliente_id). Best-effort.
+    if (pendente.cliente_id) {
+      const { error: erroVinculo } = await supabase.from('pedidos').update({ cliente_id: pendente.cliente_id }).eq('id', pedidoId)
+      if (erroVinculo) console.error('webhook-mercadopago: falha ao vincular cliente ao pedido', erroVinculo.message)
+    }
     await supabase
       .from('pagamentos_pendentes')
       .update({ status: 'aprovado', pedido_id: pedidoId })
