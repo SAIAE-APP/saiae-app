@@ -25,3 +25,13 @@ export function ratearDesconto(brutosCentavos: number[], descontoCentavos: numbe
   }
   return parte
 }
+
+/** Valor da nota em centavos: itens ativos − desconto do cupom (a taxa de entrega fica fora). Zero = pedido
+ * grátis (cupom de 100%): não há o que faturar, então NÃO se emite nota nem se chama a FocusNFe. */
+export function totalDaNotaCentavos(brutosCentavos: number[], descontoCentavos: number): number {
+  const bruto = brutosCentavos.reduce((s, v) => s + v, 0)
+  return Math.max(0, bruto - Math.max(0, Math.min(Math.floor(descontoCentavos), bruto)))
+}
+
+export const MENSAGEM_PEDIDO_GRATIS =
+  'Este pedido foi grátis (cupom de 100%): o total é R$ 0,00, então não há nota fiscal para emitir.'
