@@ -63,3 +63,24 @@ export function mensagemErroIa(erro: { message?: string } | null | undefined): s
   if (/failed to fetch|networkerror|network request failed|load failed/i.test(m)) return 'Sem internet. Não foi salvo.'
   return m ? `Não foi possível salvar: ${m}` : 'Não foi possível salvar. Tente novamente.'
 }
+
+export type ConsumoIa = { mes: string | null; conversas: number; limite: number | null }
+
+/** Linha do consumo do mês na tela: "12 de 100 conversas este mês", "3 conversas este mês (sem limite definido)".
+ * `atingiu` = passou do limite: a atendente só manda o link do cardápio até o mês virar. */
+export function textoConsumo(c: ConsumoIa): { texto: string; atingiu: boolean } {
+  const palavra = c.conversas === 1 ? 'conversa' : 'conversas'
+  if (c.limite === null) return { texto: `${c.conversas} ${palavra} este mês (sem limite definido)`, atingiu: false }
+  const atingiu = c.conversas >= c.limite
+  return { texto: `${c.conversas} de ${c.limite} conversas este mês`, atingiu }
+}
+
+/** Resposta da function `ia-consumo` → dados da tela; qualquer coisa fora de forma = null ("consumo indisponível"). */
+export function lerConsumo(corpo: unknown): ConsumoIa | null {
+  if (typeof corpo !== 'object' || corpo === null) return null
+  const { ok, mes, conversas, limite } = corpo as Record<string, unknown>
+  if (ok !== true || typeof conversas !== 'number' || !Number.isInteger(conversas) || conversas < 0) return null
+  if (limite !== null && (typeof limite !== 'number' || !Number.isInteger(limite) || limite < 0)) return null
+  if (mes !== null && typeof mes !== 'string') return null
+  return { mes: (mes as string | null) ?? null, conversas, limite }
+}

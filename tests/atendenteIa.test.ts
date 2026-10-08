@@ -98,3 +98,26 @@ describe('mensagemErroIa', () => {
     assert.match(mensagemErroIa(null), /Não foi possível/)
   })
 })
+
+import { lerConsumo, textoConsumo } from '../src/lib/atendenteIa.ts'
+
+describe('consumo do mês', () => {
+  test('texto com limite, sem limite e singular', () => {
+    assert.deepEqual(textoConsumo({ mes: '2026-10', conversas: 12, limite: 100 }), { texto: '12 de 100 conversas este mês', atingiu: false })
+    assert.deepEqual(textoConsumo({ mes: '2026-10', conversas: 1, limite: null }), { texto: '1 conversa este mês (sem limite definido)', atingiu: false })
+    assert.deepEqual(textoConsumo({ mes: null, conversas: 0, limite: null }), { texto: '0 conversas este mês (sem limite definido)', atingiu: false })
+  })
+  test('atingiu o limite a partir de conversas >= limite', () => {
+    assert.equal(textoConsumo({ mes: '2026-10', conversas: 99, limite: 100 }).atingiu, false)
+    assert.equal(textoConsumo({ mes: '2026-10', conversas: 100, limite: 100 }).atingiu, true)
+    assert.equal(textoConsumo({ mes: '2026-10', conversas: 150, limite: 100 }).atingiu, true)
+    assert.equal(textoConsumo({ mes: '2026-10', conversas: 0, limite: 0 }).atingiu, true)
+  })
+  test('lerConsumo aceita só o formato da function', () => {
+    assert.deepEqual(lerConsumo({ ok: true, mes: '2026-10', conversas: 3, limite: 50 }), { mes: '2026-10', conversas: 3, limite: 50 })
+    assert.deepEqual(lerConsumo({ ok: true, mes: null, conversas: 0, limite: null }), { mes: null, conversas: 0, limite: null })
+    for (const ruim of [null, 'x', {}, { erro: 'Consumo indisponível' }, { ok: false, conversas: 1, limite: null, mes: null }, { ok: true, conversas: -1, limite: null, mes: null }, { ok: true, conversas: 1.5, limite: null, mes: null }, { ok: true, conversas: 1, limite: '5', mes: null }, { ok: true, conversas: 1, limite: undefined, mes: null }]) {
+      assert.equal(lerConsumo(ruim), null, JSON.stringify(ruim))
+    }
+  })
+});
