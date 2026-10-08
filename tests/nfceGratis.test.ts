@@ -19,7 +19,7 @@ test('emitir-nfce recusa total zero ANTES de qualquer chamada à FocusNFe', () =
   const f = readFileSync(new URL('../supabase/functions/emitir-nfce/index.ts', import.meta.url), 'utf8').replace(/\r\n/g, '\n')
   const guarda = f.indexOf('MENSAGEM_PEDIDO_GRATIS, codigo')
   assert.ok(guarda > 0)
-  assert.match(f, /=== 0\) \{\n    return jsonResponse\(\{ erro: MENSAGEM_PEDIDO_GRATIS/)
+  assert.match(f, /=== 0\) \{\r?\n {4}return jsonResponse\(\{ erro: MENSAGEM_PEDIDO_GRATIS/)
   assert.ok(guarda < f.indexOf('fetch('), 'a guarda vem antes do primeiro fetch')
   assert.ok(guarda < f.indexOf('FORMA_PAGAMENTO_POR_METODO[pedido'), 'e antes da forma de pagamento')
   assert.match(MENSAGEM_PEDIDO_GRATIS, /R\$ 0,00/)
