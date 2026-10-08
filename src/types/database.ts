@@ -26,6 +26,8 @@ export type Barraca = {
   pagamento_online_habilitado: boolean
   /** Provedor do Pix online ('mercadopago' = padrão; cache antigo sem o campo vale Mercado Pago). */
   pagamento_provedor?: string
+  /** Validade do QR do Pix em minutos (35..60; ausente = 35). */
+  pix_expiracao_minutos?: number
   /** WhatsApp do dono (só dígitos) e liga/desliga do "Pagar na entrega" no cardápio. */
   whatsapp_pedidos?: string | null
   pagar_na_entrega_habilitado?: boolean

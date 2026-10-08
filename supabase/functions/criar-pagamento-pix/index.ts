@@ -16,6 +16,7 @@
 import { createClient } from 'jsr:@supabase/supabase-js@2'
 import { chaveDoProvedor, obterProvedor, urlNotificacaoPagamento } from '../_shared/pagamento/registro.ts'
 import { buscarTokenDoProvedor } from '../_shared/pagamento/token.ts'
+import { minutosExpiracaoPix } from '../_shared/pagamento/expiracao.ts'
 import { ErroProvedor, ehProvedorValido, type QrPix } from '../_shared/pagamento/tipos.ts'
 import { hashIp, ipDoCliente, pareceBot } from '../_shared/antiabuso.ts'
 
@@ -23,9 +24,8 @@ import { hashIp, ipDoCliente, pareceBot } from '../_shared/antiabuso.ts'
 const JANELA_RATE_LIMIT_MS = 5 * 60 * 1000
 const LIMITE_COBRANCAS_POR_IP = 60
 
-// Mínimo aceito pelo Mercado Pago é 30 min; 35 dá folga pra diferença de relógio.
-// Pedido de balcão, não faz sentido um QR que dure dias.
-const EXPIRACAO_PIX_MS = 35 * 60 * 1000
+// Expiração do QR: por barraca (barracas.pix_expiracao_minutos, 35..60, padrão 35).
+// O Mercado Pago exige 30 min a 30 dias; os 35 mínimos dão folga de relógio.
 
 const CORS_HEADERS = {
   'Access-Control-Allow-Origin': '*',
@@ -427,6 +427,10 @@ Deno.serve(async (req: Request) => {
     pendente = criado
   }
 
+  // Mesma data vai pro provedor (QR vence nele) e pro pendente (cron de expiração).
+  const expiraEm = new Date(Date.now() + minutosExpiracaoPix(barraca.pix_expiracao_minutos) * 60 * 1000)
+  await supabase.from('pagamentos_pendentes').update({ expira_em: expiraEm.toISOString() }).eq('id', pendente.id)
+
   let cobranca: QrPix
   try {
     cobranca = await provedor.criarCobranca({
@@ -434,7 +438,7 @@ Deno.serve(async (req: Request) => {
       valorCentavos: totalCobradoCentavos,
       referencia: pendente.id,
       descricao: ehEntrega ? 'Pedido com entrega no cardápio digital' : 'Pedido no cardápio digital',
-      expiraEm: new Date(Date.now() + EXPIRACAO_PIX_MS),
+      expiraEm,
       urlNotificacao: urlNotificacaoPagamento(Deno.env.get('SUPABASE_URL') ?? '', pendente.id, provedor.chave),
     })
   } catch (erro) {

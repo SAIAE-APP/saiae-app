@@ -41,6 +41,7 @@ import {
   type ChaveProvedorPix,
   type ProvedorPixInfo,
 } from '../lib/provedoresPix'
+import { PIX_EXPIRACAO_OPCOES_MINUTOS, minutosExpiracaoPix } from '../lib/pixExpiracao'
 import { SecaoAvisoPronto } from '../components/SecaoAvisoPronto'
 import { EmitenteFiscal } from '../components/EmitenteFiscal'
 import { Button } from '../components/ui/Button'
@@ -2081,6 +2082,9 @@ function SecaoPagamentoOnline({ barraca }: { barraca: Barraca }) {
   const habilitadoR = useRascunho(barraca.pagamento_online_habilitado)
   const habilitado = habilitadoR.valor
   const salvarHabilitado = useSalvarBarraca(barraca)
+  // Validade do QR do Pix (35..60 min; ausente = 35, o comportamento de sempre).
+  const expiracaoR = useRascunho(minutosExpiracaoPix(barraca.pix_expiracao_minutos))
+  const salvarExpiracao = useSalvarBarraca(barraca)
   // Provedor do Pix. Hoje só o Mercado Pago está publicado; o seletor aparece sozinho
   // quando houver mais de um disponível (próximas stories).
   const provedorR = useRascunho(provedorPixDaBarraca(barraca.pagamento_provedor).chave)
@@ -2117,6 +2121,12 @@ function SecaoPagamentoOnline({ barraca }: { barraca: Barraca }) {
     setTokenConfigurado(null)
     await salvarProvedor.salvar({ pagamento_provedor: chave })
     provedorR.descartar()
+  }
+
+  async function trocarExpiracao(minutos: number) {
+    expiracaoR.definir(minutos)
+    await salvarExpiracao.salvar({ pix_expiracao_minutos: minutos })
+    expiracaoR.descartar()
   }
 
   async function alternarHabilitado(valor: boolean) {
@@ -2162,6 +2172,25 @@ function SecaoPagamentoOnline({ barraca }: { barraca: Barraca }) {
           />
         </div>
         <ErroSalvar erro={salvarHabilitado.erro} className="mt-2" />
+
+        <div className="mt-4">
+          <p className="mb-1 text-sm font-medium text-mesa-text-primary">Validade do QR Code do Pix</p>
+          <p className="mb-2 text-xs text-mesa-text-secondary">
+            Depois desse prazo o cliente precisa gerar um novo Pix. O mínimo é 35 minutos (regra do Mercado Pago).
+          </p>
+          <div className="flex flex-wrap gap-2" role="radiogroup" aria-label="Validade do QR Code do Pix">
+            {PIX_EXPIRACAO_OPCOES_MINUTOS.map((minutos) => (
+              <Chip
+                key={minutos}
+                checked={expiracaoR.valor === minutos}
+                onClick={() => void trocarExpiracao(minutos)}
+              >
+                {minutos} min
+              </Chip>
+            ))}
+          </div>
+          <ErroSalvar erro={salvarExpiracao.erro} className="mt-2" />
+        </div>
 
         <div className="mt-4">
           <p className="mb-2 text-sm font-medium text-mesa-text-primary">
