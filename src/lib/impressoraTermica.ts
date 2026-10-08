@@ -21,6 +21,7 @@ import { humanizarMetodo } from './metodoPagamento'
 import { AVISO_HOMOLOGACAO, ambienteDaNota, formatarCpf } from './fiscal'
 import { linhasRodapeProcon } from './rodapeProcon'
 import { semAcento } from './semAcento'
+import { nomeComOpcoes } from './opcoes'
 
 export { semAcento }
 
@@ -216,7 +217,7 @@ export function montarCupomFiscal({ barraca, pedido }: DadosCupomFiscal, largura
     .align('left')
 
   for (const item of itensValidos) {
-    encoder = encoder.line(semAcento(item.nome_item)).table(
+    encoder = encoder.line(semAcento(nomeComOpcoes(item.nome_item, item.opcoes))).table(
       [{ width: colunas - 10 }, { width: 10, align: 'right' }],
       [
         [
@@ -326,7 +327,8 @@ export type DadosComanda = {
   entrega?: DadosEntrega | null
   /** Taxa cobrada, em linha separada do total (que já a inclui). */
   taxaEntregaCentavos?: number
-  itens: { nome: string; quantidade: number; observacao: string | null; precoCentavos: number }[]
+  /** `opcoes`: nomes das escolhas (variação e adicionais), impressas uma por linha sob o item. */
+  itens: { nome: string; quantidade: number; observacao: string | null; precoCentavos: number; opcoes?: string[] }[]
 }
 
 function centralizar(texto: string, largura: number): string {
@@ -410,6 +412,7 @@ export function montarComanda(dados: DadosComanda, largura: LarguraPapel): Uint8
     encoder = encoder.table(colunasTabela, [
       [`${item.quantidade}x`, semAcento(item.nome), formatarPrecoBR(item.precoCentavos * item.quantidade)],
     ])
+    for (const opcao of item.opcoes ?? []) encoder = encoder.line(semAcento(`  + ${opcao}`))
     if (item.observacao) encoder = encoder.line(semAcento(`  > ${item.observacao}`))
   }
 

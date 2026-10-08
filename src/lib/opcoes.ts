@@ -198,3 +198,23 @@ export function montarGruposDoOperador(
   }
   return porItem
 }
+
+/** Nomes das opções gravadas no item do pedido, uma por entrada. Tolerante a pedido antigo (coluna
+ * ausente/nula) e a lixo no jsonb: devolve [] em vez de quebrar a tela. */
+export function nomesDasOpcoes(opcoes: unknown): string[] {
+  if (!Array.isArray(opcoes)) return []
+  return opcoes
+    .map((o) => (typeof o === 'object' && o !== null && typeof (o as { nome?: unknown }).nome === 'string' ? (o as { nome: string }).nome.trim() : ''))
+    .filter((nome) => nome !== '')
+}
+
+/** Texto das opções: "Grande, Ovo, Bacon" ('' em item simples). */
+export function textoOpcoes(opcoes: unknown): string {
+  return nomesDasOpcoes(opcoes).join(', ')
+}
+
+/** Nome do item com as opções entre parênteses, para texto corrido (planilha, WhatsApp, NFC-e). */
+export function nomeComOpcoes(nome: string, opcoes: unknown): string {
+  const texto = textoOpcoes(opcoes)
+  return texto ? `${nome} (${texto})` : nome
+}

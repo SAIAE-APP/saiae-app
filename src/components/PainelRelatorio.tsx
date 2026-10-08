@@ -469,6 +469,19 @@ export function PainelRelatorio({
         )}
       </SecaoRelatorio>
 
+      {atual.opcoesVendidas.length > 0 && (
+        <SecaoRelatorio titulo="Variações e adicionais" icone="checklist">
+          <ListaBarras
+            itens={atual.opcoesVendidas.slice(0, 8).map((o) => ({
+              chave: `${o.tipo}|${o.grupo_nome}|${o.nome}`,
+              rotulo: o.grupo_nome ? `${o.nome} · ${o.grupo_nome}` : o.nome,
+              valor: o.quantidade_total,
+              rotuloValor: `${o.quantidade_total} un.${o.valor_total > 0 ? ` (${formatarPrecoBR(o.valor_total)})` : ''}`,
+            }))}
+          />
+        </SecaoRelatorio>
+      )}
+
       {mostraRitmo && (
         <SecaoRelatorio titulo="Ritmo" icone="schedule">
           {atual.ritmoDoDia.horarioPico === null ? (

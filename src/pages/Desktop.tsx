@@ -184,6 +184,27 @@ export function Desktop() {
         })
       }
 
+      if (atual.opcoesVendidas.length > 0) {
+        const opcoes = workbook.addWorksheet('Variações e adicionais')
+        opcoes.columns = [
+          { header: 'Tipo', key: 'tipo', width: 14 },
+          { header: 'Grupo', key: 'grupo', width: 22 },
+          { header: 'Opção', key: 'opcao', width: 26 },
+          { header: 'Quantidade', key: 'quantidade', width: 14 },
+          { header: 'Valor', key: 'valor', width: 16 },
+        ]
+        estilizarCabecalho(opcoes, 'E')
+        for (const o of atual.opcoesVendidas) {
+          opcoes.addRow({
+            tipo: o.tipo === 'variacao' ? 'Variação' : 'Adicional',
+            grupo: o.grupo_nome,
+            opcao: o.nome,
+            quantidade: o.quantidade_total,
+            valor: o.valor_total > 0 ? formatarPrecoBR(o.valor_total) : '',
+          })
+        }
+      }
+
       const { cancelados, itensSemPreco, itensRemovidos } = atual.pontosAtencao
       if (cancelados.quantidade > 0 || itensSemPreco.pedidos > 0 || itensRemovidos.quantidade > 0) {
         const atencao = workbook.addWorksheet('Pontos de atenção')

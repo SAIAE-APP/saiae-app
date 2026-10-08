@@ -24,6 +24,7 @@ import { useToast } from '../components/ui/useToast'
 import { dadosComandaDoPedido } from '../hooks/useImpressaoAutomatica'
 import { descreverErroImpressao, imprimirComanda, impressoraSuportada } from '../lib/impressoraTermica'
 import { comRetentativaDeImpressao } from '../lib/politicaImpressao'
+import { nomeComOpcoes, textoOpcoes } from '../lib/opcoes'
 import type { MotivoCancelamento } from '../lib/cancelamento'
 import type { Barraca, ItemDoPedido, PedidoComItens } from '../types/database'
 import type { StatusConexao } from '../hooks/useRealtimePedidos'
@@ -138,6 +139,7 @@ function LinhaItemEntregaDireta({ item }: { item: ItemDoPedido }) {
       <Icone nome="shopping_bag" size={14} className="shrink-0" />
       <span className="text-sm font-medium">
         {item.quantidade} {item.nome_item}
+        {textoOpcoes(item.opcoes) && ` — ${textoOpcoes(item.opcoes)}`}
       </span>
     </div>
   )
@@ -280,6 +282,9 @@ function CardPedido({
                     )}
                   >
                     {item.nome_item}
+                    {textoOpcoes(item.opcoes) && (
+                      <span className="mt-0.5 block text-xs font-normal opacity-80">{textoOpcoes(item.opcoes)}</span>
+                    )}
                   </span>
                 </div>
               ),
@@ -435,7 +440,7 @@ function SecaoDespachados({ pedidos }: { pedidos: PedidoComItens[] }) {
         {pedidos.map((pedido) => {
           const itensAtivos = pedido.itens_do_pedido.filter((i) => !i.removido)
           const resumoItens = itensAtivos
-            .map((i) => `${i.nome_item}${i.quantidade > 1 ? ` (${i.quantidade}x)` : ''}`)
+            .map((i) => `${nomeComOpcoes(i.nome_item, i.opcoes)}${i.quantidade > 1 ? ` (${i.quantidade}x)` : ''}`)
             .join(', ')
           return (
             <li key={pedido.id} className="flex items-center justify-between gap-2 text-sm">
