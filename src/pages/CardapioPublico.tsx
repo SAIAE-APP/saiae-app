@@ -16,6 +16,9 @@ import { SeletorOpcoes } from '../components/SeletorOpcoes'
 import { ModalIdentificacao } from '../components/cliente/ModalIdentificacao'
 import { useClienteSessao } from '../hooks/useClienteSessao'
 import { usePerfilConfig } from '../hooks/usePerfilConfig'
+import { useCupom } from '../hooks/useCupom'
+import { CampoCupom } from '../components/CampoCupom'
+import { textoDesconto } from '../lib/cupomApi'
 import { lerSessao, limparSessao } from '../lib/clienteApi'
 import { lerPedirDeNovo } from '../lib/clientePerfil'
 import {
@@ -939,6 +942,24 @@ export function CardapioPublico() {
     }))
   }
 
+  // Cupom (só aparece quando a loja liga e o banco tem cupom_config). O desconto vem SEMPRE do servidor.
+  const itensDoCarrinhoParaCupom = useMemo(
+    () =>
+      itensCarrinho.map((l) => ({
+        item_id: l.item.item_id,
+        quantidade: l.quantidade,
+        ...(l.opcaoIds.length > 0 ? { opcao_ids: l.opcaoIds } : {}),
+        ...(l.observacao ? { observacao: l.observacao } : {}),
+      })),
+    [itensCarrinho],
+  )
+  const cupom = useCupom(slug, itensDoCarrinhoParaCupom, slug ? (lerSessao(slug)?.token ?? null) : null)
+  const descontoCupom = cupom.aplicado?.descontoCentavos ?? 0
+  /** Só o código vai ao servidor: ele recalcula o desconto e recusa (409) se o total que o cliente viu divergir. */
+  function corpoCupom(): { cupom_codigo?: string } {
+    return cupom.aplicado ? { cupom_codigo: cupom.aplicado.codigo } : {}
+  }
+
   function quantidadeDoItem(itemId: string): number {
     return (carrinho[itemId] ?? 0) + linhasOpcoes.filter((l) => l.itemId === itemId).reduce((soma, l) => soma + l.quantidade, 0)
   }
@@ -999,6 +1020,7 @@ export function CardapioPublico() {
     const { data, error } = await supabase.functions.invoke('criar-pagamento-pix', {
       body: {
         ...tokenCliente(),
+        ...corpoCupom(),
         barraca_id: barracaId,
         viagem: modoEfetivo === 'retirada',
         observacao: observacao.trim() || null,
@@ -1089,6 +1111,7 @@ export function CardapioPublico() {
     const { data, error } = await supabase.functions.invoke('criar-pedido-cardapio', {
       body: {
         ...tokenCliente(),
+        ...corpoCupom(),
         barraca_id: itensCarrinho[0].item.barraca_id,
         client_uuid: clientUuidRef.current,
         website: honeypot,
@@ -1098,7 +1121,7 @@ export function CardapioPublico() {
         endereco: estruturada ? null : enderecoCliente.trim() || null,
         // Total que o cliente viu (itens + taxa da prévia). Se o servidor chegar a outro
         // valor, não cria o pedido e devolve o novo total (409).
-        ...(estruturada && previaTaxa?.permitido ? { total_esperado_centavos: totalCentavosCarrinho + previaTaxa.taxaCentavos } : {}),
+        ...(estruturada && previaTaxa?.permitido ? { total_esperado_centavos: totalCentavosCarrinho - descontoCupom + previaTaxa.taxaCentavos } : {}),
         ...(estruturada
           ? {
               entrega: {
@@ -1227,7 +1250,7 @@ export function CardapioPublico() {
       ? { ...previaTaxaLocal, taxaCentavos: taxaServidor.centavos }
       : previaTaxaLocal
   // Total do Pix com entrega: só existe com bairro escolhido e aceito.
-  const totalPixEntregaCentavos = previaTaxa?.permitido ? totalCentavosCarrinho + previaTaxa.taxaCentavos : null
+  const totalPixEntregaCentavos = previaTaxa?.permitido ? totalCentavosCarrinho - descontoCupom + previaTaxa.taxaCentavos : null
 
   /** Valida o formulário de Entrega; devolve a mensagem de erro ou null. */
   function erroDoFormularioEntrega(): string | null {
@@ -1259,6 +1282,7 @@ export function CardapioPublico() {
     const { data, error } = await supabase.functions.invoke('criar-pagamento-pix', {
       body: {
         ...tokenCliente(),
+        ...corpoCupom(),
         barraca_id: itensCarrinho[0].item.barraca_id,
         tipo_atendimento: 'entrega',
         observacao: observacao.trim() || null,
@@ -1621,11 +1645,30 @@ export function CardapioPublico() {
               />
             )}
 
-            <div className="flex items-center justify-between border-t border-mesa-border-subtle pt-3">
-              <span className="text-sm text-mesa-text-secondary">Total</span>
-              <span className="font-mesa-display text-lg font-bold text-mesa-text-primary">
-                {formatarPrecoBR(totalCentavosCarrinho)}
-              </span>
+            {cupom.habilitado && (
+              <CampoCupom
+                aplicado={cupom.aplicado}
+                validando={cupom.validando}
+                erro={cupom.erro}
+                aviso={cupom.aviso}
+                onAplicar={(c) => void cupom.aplicar(c)}
+                onRemover={cupom.remover}
+              />
+            )}
+
+            <div className="flex flex-col gap-1 border-t border-mesa-border-subtle pt-3">
+              {descontoCupom > 0 && (
+                <div className="flex items-center justify-between text-sm text-mesa-text-secondary">
+                  <span>Cupom {cupom.aplicado?.codigo}</span>
+                  <span>{textoDesconto(descontoCupom)}</span>
+                </div>
+              )}
+              <div className="flex items-center justify-between">
+                <span className="text-sm text-mesa-text-secondary">Total</span>
+                <span className="font-mesa-display text-lg font-bold text-mesa-text-primary">
+                  {formatarPrecoBR(totalCentavosCarrinho - descontoCupom)}
+                </span>
+              </div>
             </div>
 
             {mostrarPagarNaEntrega && (
@@ -1844,6 +1887,16 @@ export function CardapioPublico() {
                 {pagamento.erro}
               </p>
             )}
+            {cupom.habilitado && (
+              <CampoCupom
+                aplicado={cupom.aplicado}
+                validando={cupom.validando}
+                erro={cupom.erro}
+                aviso={cupom.aviso}
+                onAplicar={(c) => void cupom.aplicar(c)}
+                onRemover={cupom.remover}
+              />
+            )}
             <div className="flex flex-col gap-1 border-t border-mesa-border-subtle pt-3">
               {entregaNoCardapio && (
                 <>
@@ -1851,6 +1904,12 @@ export function CardapioPublico() {
                     <span>Itens</span>
                     <span>{formatarPrecoBR(totalCentavosCarrinho)}</span>
                   </div>
+                  {descontoCupom > 0 && (
+                    <div className="flex items-center justify-between text-sm text-mesa-text-secondary">
+                      <span>Cupom {cupom.aplicado?.codigo}</span>
+                      <span>{textoDesconto(descontoCupom)}</span>
+                    </div>
+                  )}
                   <div className="flex items-center justify-between text-sm text-mesa-text-secondary">
                     <span>Taxa de entrega</span>
                     <span>
@@ -1866,7 +1925,7 @@ export function CardapioPublico() {
               <div className="flex items-center justify-between">
                 <span className="text-sm text-mesa-text-secondary">Total</span>
                 <span className="font-mesa-display text-lg font-bold text-mesa-text-primary">
-                  {formatarPrecoBR(totalCentavosCarrinho + (previaTaxa?.permitido ? previaTaxa.taxaCentavos : 0))}
+                  {formatarPrecoBR(totalCentavosCarrinho - descontoCupom + (previaTaxa?.permitido ? previaTaxa.taxaCentavos : 0))}
                 </span>
               </div>
               {entregaNoCardapio && (
