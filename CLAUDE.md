@@ -491,7 +491,7 @@ repetir `versionCode`: subir a cada build. Validar em aparelho Android 7–11 e
   Tipo percentual (1–100, floor em centavos) ou fixo; limites: validade, limite total, uma vez por cliente
   (exige sessão do perfil; só uso CONFIRMADO conta e refazer o checkout libera a reserva anterior do mesmo
   cliente) e pedido mínimo. DECISÕES DO DONO: desconto só sobre os ITENS (a taxa de entrega nunca é
-  descontada); os itens cobrados nunca ficam abaixo de R$ 1,00 (Pix não aceita zero); um cupom por pedido;
+  descontada); o desconto pode zerar os itens (cupom de 100% = PEDIDO GRÁTIS, decisão do dono 2026-10-19, ver abaixo; antes havia piso de R$ 1,00); um cupom por pedido;
   o cupom só conta como USADO com o pagamento confirmado — durante o Pix aberto fica RESERVADO até o
   vencimento (reserva vencida é ignorada na contagem, sem cron) e é liberado se o Pix expira/é rejeitado;
   "pagar na entrega" reserva e confirma direto. Reserva atômica (`for update` na linha do cupom: dois
@@ -520,7 +520,7 @@ repetir `versionCode`: subir a cada build. Validar em aparelho Android 7–11 e
   Revisão independente (2026-10-08) corrigida: tentativas de adivinhar código contam nos endpoints de pedido
   (resultado real); excluir barraca/conta limpa cupons e usos; refazer o checkout libera a reserva antiga
   (`pendente_anterior_id`, `cupom_liberar_abandonadas`); retry da mesma cobrança reavalia o desconto; "pagar na
-  entrega" cria o pedido e confirma o cupom na MESMA transação (`criar_pedido_com_cupom`). Testes de banco/functions contra o staging: `tests/cupons*.staging.mjs` (rodar com as
+  entrega" cria o pedido e confirma o cupom na MESMA transação (`criar_pedido_com_cupom`). PEDIDO GRÁTIS (total cobrado = itens − desconto + taxa = 0): NÃO chama o provedor Pix. `criar-pagamento-pix` reserva o cupom, cria o pedido na MESMA transação que confirma o uso (`criar_pedido_com_cupom`, método novo `gratis`, migration `20261019140000`; `cupom_regras` sem o piso na `20261019130000`), marca o pendente aprovado e responde `{pedido_gratis:true, senha, pedido_id}`; retry do mesmo `client_uuid` devolve o mesmo pedido. Exige WhatsApp informado (422 `telefone_obrigatorio`; perfil confirmado quando a loja usa perfil, limite por IP e "uma vez por cliente" seguem valendo). Com taxa de entrega > 0 o total não é zero: Pix só da taxa. "Pagar na entrega" com total 0 também vira `gratis`. `emitir-nfce` NÃO emite nota de total R$ 0,00 (422 `pedido_gratis`, sem chamar a FocusNFe). Front: botão "Finalizar pedido grátis", senha sem QR; Relatório/Faturamento mostra o método "Grátis (cupom)" em linha própria e o desconto à parte. Aplicar as migrations `…130000` e `…140000` ANTES do deploy das functions. Testes de banco/functions contra o staging: `tests/cupons*.staging.mjs` (rodar com as
   variáveis do cabeçalho de cada script); o teste real do Pix fica para um Pix de valor baixo na loja de teste.
 
 ## Regras de tema

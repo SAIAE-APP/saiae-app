@@ -48,7 +48,7 @@ O app só envia o **código**; nunca o valor do desconto.
 5. Limite total: `confirmados + reservas vigentes < limite_usos`, senão "Este cupom esgotou".
 6. Uma vez por cliente: exige sessão do cliente; se já há uso confirmado ou reserva vigente do mesmo `cliente_id`, "Você já usou este cupom". Sem sessão, "Entre com seu telefone para usar este cupom".
 
-Cálculo (inteiros em centavos): percentual = `floor(subtotal * valor / 100)`; fixo = `valor`. O desconto nunca passa de `subtotal - 100` (o pedido cobrado em itens fica com no mínimo R$ 1,00, porque o Pix não aceita valor zero e "pedido grátis" está fora do escopo). `total cobrado = subtotal - desconto + taxa de entrega`.
+Cálculo (inteiros em centavos): percentual = `floor(subtotal * valor / 100)`; fixo = `valor`. O desconto nunca passa do subtotal dos itens (`greatest(0, least(desc, subtotal))`); cupom de 100% (ou fixo igual/maior que os itens) zera os itens e o pedido sai **grátis de verdade** (decisão do dono, 2026-10-19; antes havia o piso de R$ 1,00, que foi removido). `total cobrado = subtotal - desconto + taxa de entrega`.
 
 **Reserva atômica:** função de banco (`cupom_reservar`) trava a linha do cupom (`for update`), reconta usos e cria a reserva na mesma transação — duas pessoas não levam o último cupom. `reservado_ate` = `expira_em` do Pix. Reserva vencida (`reservado_ate < now()`) é ignorada na contagem, então não depende de cron para liberar.
 
@@ -79,10 +79,10 @@ Cálculo (inteiros em centavos): percentual = `floor(subtotal * valor / 100)`; f
 - **Impressão da comanda:** sem alteração (cozinha não precisa do desconto).
 
 ## Fora desta versão
-Cupom no balcão/operador, cupom automático por cliente (ex.: 5º pedido, primeiro pedido), restrição por tipo de atendimento, cupom que soma com outro, pedido gratuito, frete grátis, cupom por item ou categoria, envio do cupom por WhatsApp.
+Cupom no balcão/operador, cupom automático por cliente (ex.: 5º pedido, primeiro pedido), restrição por tipo de atendimento, cupom que soma com outro, frete grátis, cupom por item ou categoria, envio do cupom por WhatsApp.
 
 ## Testes e liberação
-- **Banco (staging):** reserva atômica sob concorrência (N pedidos paralelos para o último uso: exatamente 1 vence), reserva vencida libera, uso confirmado só com pagamento aprovado, `uma_por_cliente` com e sem sessão, mínimo, validade nas bordas, cálculo percentual com arredondamento, teto que mantém R$ 1,00, retry idempotente, webhook duplicado não confirma duas vezes, cupom editado depois não muda pedido antigo, isolamento entre lojas (código igual em duas lojas).
+- **Banco (staging):** reserva atômica sob concorrência (N pedidos paralelos para o último uso: exatamente 1 vence), reserva vencida libera, uso confirmado só com pagamento aprovado, `uma_por_cliente` com e sem sessão, mínimo, validade nas bordas, cálculo percentual com arredondamento, cupom que cobre tudo (pedido grátis), retry idempotente, webhook duplicado não confirma duas vezes, cupom editado depois não muda pedido antigo, isolamento entre lojas (código igual em duas lojas).
 - **Segurança:** limite de tentativas inválidas, funções de reserva recusam chamada anônima, cliente não consegue forçar valor de desconto no corpo da requisição.
 - **Front:** passada visual em 375 px (campo, erros, linhas no resumo, formulário do dono).
 - **Revisão independente (aorus-19) antes de produção**, como no perfil.
