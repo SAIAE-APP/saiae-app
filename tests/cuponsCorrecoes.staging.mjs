@@ -133,6 +133,18 @@ try {
   const { data: ev } = await db.rpc('montar_evento_saida', { p_evento_id: (await db.from('eventos_saida').select('id').eq('pedido_id', ped.id).order('sequence').limit(1)).data?.[0]?.id ?? randomUUID() })
   confere('I3/I4: evento (quando há integração) já sai com desconto', ev == null || ev?.pedido?.desconto_cupom_centavos === 100 || JSON.stringify(ev ?? {}).includes('desconto_cupom_centavos'), JSON.stringify(ev).slice(0, 200))
 
+  // Re-revisão I1: dois envios do MESMO client_uuid (duplo toque) contam um uso só
+  const c5 = await novoCupom({ tipo: 'fixo', valor: 100, limite_usos: 5 })
+  const cu = randomUUID()
+  const dup = await Promise.all([
+    pedir({ client_uuid: cu, itens: carrinho, cupom_codigo: c5.codigo }),
+    pedir({ client_uuid: cu, itens: carrinho, cupom_codigo: c5.codigo }),
+  ])
+  await pedir({ client_uuid: cu, itens: carrinho, cupom_codigo: c5.codigo })
+  const { data: usos5 } = await db.from('cupom_usos').select('estado').eq('cupom_id', c5.id)
+  const { data: peds5 } = await db.from('pedidos').select('id').eq('client_uuid', cu)
+  confere('duplo envio: 1 pedido e no máximo 1 uso confirmado', peds5.length === 1 && usos5.filter((u) => u.estado === 'confirmado').length === 1 && !usos5.some((u) => u.estado === 'reservado'), JSON.stringify([dup.map((d) => d.status), peds5.length, usos5]))
+
   // B2: apagar a barraca com cupom e uso não é barrado (FK em cascata)
   const { data: b2, error: eb2 } = await db.from('barracas').insert({ nome: 'TESTE revisao exclusao', slug: `teste-rev-${randomUUID().slice(0, 6)}` }).select('id').single()
   if (eb2) throw new Error(eb2.message)
