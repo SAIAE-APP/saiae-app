@@ -11,6 +11,7 @@ import {
 } from '../lib/atendenteIa'
 import { formatarTelefoneBR } from '../lib/entrega'
 import { BotaoSalvarCampo, ErroSalvar } from './BotaoSalvarCampo'
+import { ConsumoIa } from './ConsumoIa'
 import { Button } from './ui/Button'
 import { Card } from './ui/Card'
 import { Icone } from './ui/Icone'
@@ -165,6 +166,13 @@ export function SecaoAtendenteIa({ barraca }: { barraca: Barraca }) {
             onSalvar={() => void aoSalvarTexto()}
           />
         </div>
+
+        {barraca.ia_codigo && (
+          <div className="mt-5">
+            <p className="text-sm font-semibold text-mesa-text-primary">Uso da atendente</p>
+            <ConsumoIa barracaId={barraca.id} />
+          </div>
+        )}
 
         <div className="mt-5">
           <p className="text-sm font-semibold text-mesa-text-primary">Link da sua loja no WhatsApp</p>
