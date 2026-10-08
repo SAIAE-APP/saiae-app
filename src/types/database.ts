@@ -33,6 +33,10 @@ export type Barraca = {
   pagar_na_entrega_habilitado?: boolean
   /** Estoque: true = bloqueia a venda acima do saldo; false/ausente = só avisa (padrão). */
   estoque_bloqueia?: boolean
+  /** Cupons por código no cardápio digital (padrão false). Ausente em banco/cache de antes da migration. */
+  cupons_habilitado?: boolean
+  /** Perfil do cliente final exigido no fechamento (padrão false). */
+  perfil_cliente_obrigatorio?: boolean
   /** SAI-010a: a loja usa variações/adicionais no cardápio (padrão false). Ausente em cache antigo. */
   opcoes_habilitado?: boolean
   /** Fuso da barraca (padrão America/Sao_Paulo; só os do Brasil) e interruptor de bloqueio fora do horário. */
