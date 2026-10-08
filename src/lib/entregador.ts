@@ -26,7 +26,7 @@ export type PedidoDoEntregador =
       bairro: string | null
       referencia: string | null
       observacao: string | null
-      itens: { nome_item: string; quantidade: number; observacao: string | null }[]
+      itens: { nome_item: string; quantidade: number; observacao: string | null; opcoes?: string[] }[]
       taxa_entrega_centavos: number
       total_centavos: number
       metodo_pagamento: string | null
