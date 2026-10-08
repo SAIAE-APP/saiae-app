@@ -56,14 +56,29 @@ $$;
 
 revoke all on function public.expirar_pagamentos_pendentes_job() from public, anon, authenticated;
 
--- Mesmo padrão do cron de assinaturas. Se pg_cron não estiver disponível no plano
--- do projeto, este bloco falha sozinho e pode ser comentado: o resto continua
--- valendo (só o status 'pendente' vencido não é limpo).
-create extension if not exists pg_cron with schema extensions;
+-- Agenda a cada 5 min com pg_cron. Idempotente e compatível com `supabase db push`
+-- (o papel de login da CLI não tem permissão em cron.job, então nada de `delete from
+-- cron.job`: usa cron.unschedule). Tolerante: sem pg_cron no plano, ou sem permissão
+-- para agendar, só avisa e a migration segue. Nesse caso agende por fora:
+--   select cron.schedule('expirar-pix-pendentes', '*/5 * * * *',
+--     'select public.expirar_pagamentos_pendentes_job()');
+-- O resto continua valendo; só o status 'pendente' vencido não seria limpo.
+do $$
+begin
+  create extension if not exists pg_cron with schema extensions;
 
-delete from cron.job where jobname = 'expirar-pix-pendentes';
-select cron.schedule(
-  'expirar-pix-pendentes',
-  '*/5 * * * *',
-  $$select public.expirar_pagamentos_pendentes_job()$$
-);
+  begin
+    perform cron.unschedule('expirar-pix-pendentes');
+  exception when others then
+    null; -- ainda não existia
+  end;
+
+  perform cron.schedule(
+    'expirar-pix-pendentes',
+    '*/5 * * * *',
+    'select public.expirar_pagamentos_pendentes_job()'
+  );
+exception when others then
+  raise warning 'expirar-pix-pendentes não agendado (%): agende expirar_pagamentos_pendentes_job() por fora', sqlerrm;
+end;
+$$;
