@@ -800,6 +800,7 @@ export function CardapioPublico() {
         viagem: modoEfetivo === 'retirada',
         observacao: observacao.trim() || null,
         client_uuid: clientUuidRef.current,
+        website: honeypot,
         // Só quando preenchido; o servidor ignora número inválido.
         ...(telefoneAviso.trim() ? { cliente_telefone: telefoneAviso.trim() } : {}),
         itens: itensCarrinho.map((l) => ({ item_id: l.item.item_id, quantidade: l.quantidade })),
@@ -1052,6 +1053,8 @@ export function CardapioPublico() {
         client_uuid: clientUuidRef.current,
         itens: itensCarrinho.map((l) => ({ item_id: l.item.item_id, quantidade: l.quantidade })),
         total_esperado_centavos: totalPixEntregaCentavos,
+        website: honeypot,
+        ms_no_checkout: Date.now() - aberturaCheckoutRef.current,
         entrega: {
           nome: nomeCliente.trim(),
           telefone: telefoneCliente.replace(/\D/g, ''),
