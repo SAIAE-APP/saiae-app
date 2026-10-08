@@ -31,3 +31,5 @@ jobs:
         run: npm test
       - name: Testes (pagamento, edge functions)
         run: node --experimental-strip-types supabase/functions/_shared/pagamento/pagamento.test.ts
+      - name: Testes (anti-abuso, edge functions)
+        run: node --experimental-strip-types supabase/functions/_shared/antiabuso.test.ts
