@@ -5,6 +5,7 @@ import { BottomSheet } from './ui/BottomSheet'
 import { Button } from './ui/Button'
 import { Icone } from './ui/Icone'
 import { textoOpcoes } from '../lib/opcoes'
+import { textoCupomDoPedido } from '../lib/descontosCupom'
 import { iconeAtendimento, nomeDoCliente, rotuloAtendimento } from '../lib/atendimento'
 import type { Barraca, ItemDoPedido, PedidoComItens } from '../types/database'
 
@@ -276,6 +277,7 @@ export function DetalheComanda({
               {nomeDoCliente(pedido)}
             </p>
           )}
+          {textoCupomDoPedido(pedido) && <p className="mt-1 truncate text-xs text-mesa-neutral-400">{textoCupomDoPedido(pedido)}</p>}
 
           <p className="mt-4 text-sm text-mesa-neutral-400">Marque os itens conforme forem saindo</p>
 

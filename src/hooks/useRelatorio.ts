@@ -1,4 +1,5 @@
 import { calcularOpcoesVendidas, type OpcaoVendida } from '../lib/opcoesRelatorio'
+import { calcularDescontosCupom, type DescontosCupom } from '../lib/descontosCupom'
 import { useEffect, useMemo, useState } from 'react'
 import { supabase } from '../lib/supabase'
 import {
@@ -44,6 +45,7 @@ export type AgregadosRelatorio = {
   pontosAtencao: PontosAtencao
   maisVendidos: ItemMaisVendido[]
   opcoesVendidas: OpcaoVendida[]
+  descontosCupom: DescontosCupom
   ritmoDoDia: RitmoDoDia
   serieTemporal: { granularidade: 'dia' | 'hora'; pontos: PontoSerie[] }
   itensVendidos: number
@@ -130,6 +132,7 @@ function agregar(
     pontosAtencao: calcularPontosAtencao(pedidos, catalogoPrecos),
     maisVendidos: calcularMaisVendidos(pedidos),
     opcoesVendidas: calcularOpcoesVendidas(pedidos),
+    descontosCupom: calcularDescontosCupom(pedidos),
     ritmoDoDia: calcularRitmoDoDia(pedidos),
     serieTemporal,
     itensVendidos: calcularTotalItensVendidos(pedidos),

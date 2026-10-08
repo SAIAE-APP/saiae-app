@@ -227,6 +227,10 @@ export type Pedido = {
   taxa_entrega_centavos?: number
   /** Link do entregador (/e/:token): só pedido de Entrega novo; NULL nos antigos. */
   entrega_token?: string | null
+  /** Cupom (v2): cópia do código e do desconto na hora da venda; o desconto fica À PARTE dos itens. */
+  cupom_id?: string | null
+  cupom_codigo?: string | null
+  desconto_cupom_centavos?: number
   entrega_confirmada_em?: string | null
   cliente_final_id?: string | null
   observacao: string | null
