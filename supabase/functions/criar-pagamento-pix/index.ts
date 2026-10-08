@@ -20,6 +20,7 @@ import { minutosExpiracaoPix } from '../_shared/pagamento/expiracao.ts'
 import { ErroProvedor, ehProvedorValido, type QrPix } from '../_shared/pagamento/tipos.ts'
 import { hashIp, ipDoCliente, pareceBot } from '../_shared/antiabuso.ts'
 import { resolverPerfilDoPedido } from '../_shared/perfilNoPedido.ts'
+import { interpretarAvaliacao, mensagemDoErro, normalizarCodigo, totalCobrado } from '../_shared/cupom.ts'
 import { MENSAGEM_FECHADO, foraDoHorarioBloqueado } from '../_shared/horario.ts'
 import { interpretarResolver, itensAcimaDoEstoque, montarLinhas, respostaDeErros } from '../_shared/carrinho.ts'
 
@@ -72,6 +73,8 @@ Deno.serve(async (req: Request) => {
     barraca_id?: string
     /** Sessão do perfil do cliente (obrigatória só se a barraca ligar perfil_cliente_obrigatorio). */
     sessao_token?: string
+    /** Cupom digitado pelo cliente. Só o CÓDIGO viaja: o desconto é calculado aqui, no banco. */
+    cupom_codigo?: string | null
     mesa?: string | null
     viagem?: boolean
     observacao?: string | null
@@ -131,7 +134,10 @@ Deno.serve(async (req: Request) => {
         ((pendenteExistente.itens ?? []) as { quantidade: number; preco_centavos_unitario: number }[]).reduce(
           (soma, item) => soma + item.preco_centavos_unitario * item.quantidade,
           0,
-        ) + Number(pendenteExistente.taxa_entrega_centavos ?? 0)
+        ) +
+        Number(pendenteExistente.taxa_entrega_centavos ?? 0) -
+        // Cupom: o total do QR já emitido é o DESCONTADO.
+        Number(pendenteExistente.desconto_cupom_centavos ?? 0)
       if (esperadoRetry !== totalExistente) {
         return jsonResponse({ erro: 'Os dados do pedido mudaram. Gere um novo Pix.' }, 409)
       }
@@ -333,8 +339,43 @@ Deno.serve(async (req: Request) => {
     }
   }
 
+  // ---- Cupom (só quando enviado; sem ele nada muda). Aqui só AVALIA (sem gravar) para o total esperado
+  // ser conferido antes de criar a cobrança; a reserva real vem depois, com o id da cobrança. ----
+  let descontoCentavos = 0
+  let cupomCodigo: string | null = null
+  const cupomBruto = String(body.cupom_codigo ?? '').trim()
+  if (cupomBruto !== '') {
+    const codigo = normalizarCodigo(cupomBruto)
+    const ipCupom = await hashIp('cupom-validar', ipDoCliente(req), barraca_id)
+    const dentroDoLimite = await supabase.rpc('cupom_registrar_tentativa', {
+      p_barraca_id: barraca_id,
+      p_ip_hash: ipCupom,
+      p_valida: codigo !== null,
+    })
+    if (dentroDoLimite.error || dentroDoLimite.data === false) {
+      return jsonResponse({ erro: 'Muitas tentativas. Tente de novo em alguns minutos.', codigo: 'cupom_tentativas' }, 429)
+    }
+    if (!codigo) return jsonResponse({ erro: mensagemDoErro('invalido'), codigo: 'cupom_invalido' }, 422)
+    const { data: dadosCupom, error: erroCupom } = await supabase.rpc('cupom_avaliar', {
+      p_barraca_id: barraca_id,
+      p_codigo: codigo,
+      p_subtotal_centavos: totalCentavos,
+      p_cliente_id: perfil.clienteId,
+    })
+    if (erroCupom) {
+      console.error('criar-pagamento-pix: cupom_avaliar falhou')
+      return jsonResponse({ erro: 'Não foi possível validar o cupom agora. Tente de novo.' }, 500)
+    }
+    const avaliacao = interpretarAvaliacao(dadosCupom)
+    if (!avaliacao.ok) {
+      return jsonResponse({ erro: mensagemDoErro(avaliacao.erro, avaliacao.minimo_centavos), codigo: 'cupom_invalido' }, 422)
+    }
+    descontoCentavos = avaliacao.desconto_centavos
+    cupomCodigo = codigo
+  }
+
   // Tudo em centavos INTEIROS; só vira reais na última linha (MP).
-  const totalCobradoCentavos = totalCentavos + taxaEntregaCentavos
+  const totalCobradoCentavos = totalCobrado(totalCentavos, descontoCentavos, taxaEntregaCentavos)
 
   // Cliente viu um total na tela; se o servidor chegou a outro (dono mexeu na
   // taxa/preço no meio), NÃO cobra sem o cliente ver o novo valor.
@@ -422,6 +463,49 @@ Deno.serve(async (req: Request) => {
   const expiraEm = new Date(Date.now() + minutosExpiracaoPix(barraca.pix_expiracao_minutos) * 60 * 1000)
   await supabase.from('pagamentos_pendentes').update({ expira_em: expiraEm.toISOString() }).eq('id', pendente.id)
 
+  // Cupom: reserva ATÔMICA no banco, ligada a esta cobrança, vigente até o Pix vencer. Sem cupom, uma
+  // reserva antiga da mesma cobrança (cliente tirou o código) é liberada.
+  if (cupomCodigo) {
+    const { data: dadosReserva, error: erroReserva } = await supabase.rpc('cupom_reservar', {
+      p_barraca_id: barraca_id,
+      p_codigo: cupomCodigo,
+      p_subtotal_centavos: totalCentavos,
+      p_cliente_id: perfil.clienteId,
+      p_pendente_id: pendente.id,
+      p_reservado_ate: expiraEm.toISOString(),
+    })
+    if (erroReserva) {
+      console.error('criar-pagamento-pix: cupom_reservar falhou')
+      return jsonResponse({ erro: 'Não foi possível aplicar o cupom agora. Tente de novo.' }, 500)
+    }
+    const reserva = interpretarAvaliacao(dadosReserva)
+    if (!reserva.ok) {
+      // Perdeu a corrida (esgotou, venceu...) entre a conferência e a reserva: nada foi cobrado.
+      return jsonResponse({ erro: mensagemDoErro(reserva.erro, reserva.minimo_centavos), codigo: 'cupom_invalido' }, 422)
+    }
+    if (reserva.desconto_centavos !== descontoCentavos) {
+      // Desconto mudou no meio (dono editou o cupom): o cliente confirma o novo total antes de pagar.
+      return jsonResponse(
+        {
+          erro: 'O valor do pedido mudou. Confira o novo total antes de pagar.',
+          total_centavos: totalCobrado(totalCentavos, reserva.desconto_centavos, taxaEntregaCentavos),
+          taxa_entrega_centavos: taxaEntregaCentavos,
+        },
+        409,
+      )
+    }
+    await supabase
+      .from('pagamentos_pendentes')
+      .update({ cupom_id: reserva.cupom_id, desconto_cupom_centavos: reserva.desconto_centavos, cupom_uso_id: reserva.uso_id ?? null })
+      .eq('id', pendente.id)
+  } else if (pendenteExistente) {
+    await supabase.rpc('cupom_liberar', { p_pendente_id: pendente.id })
+    await supabase
+      .from('pagamentos_pendentes')
+      .update({ cupom_id: null, desconto_cupom_centavos: 0, cupom_uso_id: null })
+      .eq('id', pendente.id)
+  }
+
   let cobranca: QrPix
   try {
     cobranca = await provedor.criarCobranca({
@@ -433,6 +517,8 @@ Deno.serve(async (req: Request) => {
       urlNotificacao: urlNotificacaoPagamento(Deno.env.get('SUPABASE_URL') ?? '', pendente.id, provedor.chave),
     })
   } catch (erro) {
+    // A cobrança não saiu: devolve a vaga do cupom (a cobrança nunca existiu para o cliente).
+    if (cupomCodigo) await supabase.rpc('cupom_liberar', { p_pendente_id: pendente.id })
     if (erro instanceof ErroProvedor) {
       return jsonResponse(
         { erro: erro.message, detalhe: erro.detalhe },
@@ -456,5 +542,6 @@ Deno.serve(async (req: Request) => {
     ticket_url: cobranca.ticketUrl ?? null,
     total_centavos: totalCobradoCentavos,
     taxa_entrega_centavos: taxaEntregaCentavos,
+    desconto_cupom_centavos: descontoCentavos,
   })
 })
