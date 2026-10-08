@@ -1,6 +1,6 @@
 // Autentica o token de sessão do cliente final (nunca guardado em claro).
 import type { SupabaseClient } from 'jsr:@supabase/supabase-js@2'
-import { hashSegredo, sessaoValida } from './clienteCodigo.ts'
+import { hashSegredo, precisaAtualizarUso, sessaoValida } from './clienteCodigo.ts'
 
 export async function autenticarSessao(
   supabase: SupabaseClient,
@@ -12,11 +12,13 @@ export async function autenticarSessao(
   const hash = await hashSegredo(pimenta, 'sessao', token)
   const { data } = await supabase
     .from('cliente_sessoes')
-    .select('id, cliente_id, expira_em, revogada_em')
+    .select('id, cliente_id, expira_em, revogada_em, ultimo_uso_em')
     .eq('token_hash', hash)
     .eq('barraca_id', barracaId)
     .maybeSingle()
   if (!data || !sessaoValida(data, Date.now())) return null
-  await supabase.from('cliente_sessoes').update({ ultimo_uso_em: new Date().toISOString() }).eq('id', data.id)
+  if (precisaAtualizarUso(data.ultimo_uso_em, Date.now())) {
+    await supabase.from('cliente_sessoes').update({ ultimo_uso_em: new Date().toISOString() }).eq('id', data.id)
+  }
   return { cliente_id: data.cliente_id, sessao_id: data.id }
 }
