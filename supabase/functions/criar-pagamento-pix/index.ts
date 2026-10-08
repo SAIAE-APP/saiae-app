@@ -21,7 +21,7 @@ import { ErroProvedor, ehProvedorValido, type QrPix } from '../_shared/pagamento
 import { hashIp, ipDoCliente, pareceBot } from '../_shared/antiabuso.ts'
 import { resolverPerfilDoPedido } from '../_shared/perfilNoPedido.ts'
 import { totalCobrado } from '../_shared/cupom.ts'
-import { avaliarCupomDoPedido, reservarCupomDoPedido } from '../_shared/cupomPedido.ts'
+import { avaliarCupomDoPedido, liberarReservasAbandonadas, reservarCupomDoPedido } from '../_shared/cupomPedido.ts'
 import { MENSAGEM_FECHADO, foraDoHorarioBloqueado } from '../_shared/horario.ts'
 import { interpretarResolver, itensAcimaDoEstoque, montarLinhas, respostaDeErros } from '../_shared/carrinho.ts'
 
@@ -76,6 +76,8 @@ Deno.serve(async (req: Request) => {
     sessao_token?: string
     /** Cupom digitado pelo cliente. Só o CÓDIGO viaja: o desconto é calculado aqui, no banco. */
     cupom_codigo?: string | null
+    /** Pix anterior deste cliente (id que o próprio front recebeu): checkout refeito libera a reserva dele. */
+    pendente_anterior_id?: string | null
     mesa?: string | null
     viagem?: boolean
     observacao?: string | null
@@ -342,6 +344,13 @@ Deno.serve(async (req: Request) => {
 
   // ---- Cupom (só quando enviado; sem ele nada muda). Aqui só AVALIA (sem gravar) para o total esperado
   // ser conferido antes de criar a cobrança; a reserva real vem depois, com o id da cobrança. ----
+  if (String(body.cupom_codigo ?? '').trim() !== '' || body.pendente_anterior_id) {
+    await liberarReservasAbandonadas(supabase, {
+      barracaId: barraca_id,
+      clienteId: perfil.clienteId,
+      pendentesIds: [body.pendente_anterior_id, pendenteExistente?.id],
+    })
+  }
   const avCupom = await avaliarCupomDoPedido(supabase, {
     barracaId: barraca_id,
     codigoBruto: body.cupom_codigo,
