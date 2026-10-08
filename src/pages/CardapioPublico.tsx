@@ -253,11 +253,13 @@ function CardItemPublico({
           <p className="mt-0.5 line-clamp-2 text-xs text-mesa-text-secondary">{item.item_descricao}</p>
         )}
         <div className="mt-2 flex items-center justify-between gap-2">
-          <span className="font-mesa-display text-sm font-semibold text-mesa-text-primary">
+          <span className="flex flex-col font-mesa-display text-sm font-semibold text-mesa-text-primary">
             {item.a_partir_de && item.item_preco_centavos > 0 && (
-              <span className="mr-1 text-xs font-normal text-mesa-text-secondary">a partir de</span>
+              <span className="text-xs font-normal text-mesa-text-secondary">a partir de</span>
             )}
-            {item.item_preco_centavos > 0 ? formatarPrecoBR(item.item_preco_centavos) : 'Sob consulta'}
+            <span className="whitespace-nowrap">
+              {item.item_preco_centavos > 0 ? formatarPrecoBR(item.item_preco_centavos) : 'Sob consulta'}
+            </span>
           </span>
           <BotaoAdicionar
             variant="sm"
@@ -505,7 +507,9 @@ function CardItemHorizontal({
             {item.a_partir_de && item.item_preco_centavos > 0 && (
               <span className="text-[10px] font-normal text-mesa-text-secondary">a partir de</span>
             )}
-            {item.item_preco_centavos > 0 ? formatarPrecoBR(item.item_preco_centavos) : 'Consulta'}
+            <span className="whitespace-nowrap">
+              {item.item_preco_centavos > 0 ? formatarPrecoBR(item.item_preco_centavos) : 'Consulta'}
+            </span>
           </span>
           <BotaoAdicionarCompacto
             podeAdicionar={!podeComprar || item.item_preco_centavos > 0}
