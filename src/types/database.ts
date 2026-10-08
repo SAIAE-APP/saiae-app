@@ -35,6 +35,11 @@ export type Barraca = {
   estoque_bloqueia?: boolean
   /** Cupons por código no cardápio digital (padrão false). Ausente em banco/cache de antes da migration. */
   cupons_habilitado?: boolean
+  /** Atendente IA do WhatsApp (padrão false). Ausentes em banco/cache de antes da migration. */
+  ia_habilitada?: boolean
+  ia_texto_livre?: string | null
+  ia_whatsapp_dono?: string | null
+  ia_codigo?: string | null
   /** Perfil do cliente final exigido no fechamento (padrão false). */
   perfil_cliente_obrigatorio?: boolean
   /** SAI-010a: a loja usa variações/adicionais no cardápio (padrão false). Ausente em cache antigo. */
