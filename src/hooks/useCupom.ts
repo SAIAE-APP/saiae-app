@@ -81,6 +81,9 @@ export function useCupom(slug: string | undefined, itens: ItemParaCupom[], token
     [slug],
   )
 
+  /** O cliente está digitando outro código: o erro do anterior já não vale. */
+  const limparErro = useCallback(() => setErro(null), [])
+
   const remover = useCallback(() => {
     chamada.current++
     setAplicado(null)
@@ -102,12 +105,13 @@ export function useCupom(slug: string | undefined, itens: ItemParaCupom[], token
       if (r.ok) setAplicado(r)
       else {
         setAplicado(null)
-        setAviso(`O cupom ${aplicado.codigo} saiu do pedido: ${r.mensagem}.`)
+        const motivo = r.mensagem.charAt(0).toLowerCase() + r.mensagem.slice(1).replace(/[.]+$/, '')
+        setAviso(`O cupom ${aplicado.codigo} saiu do pedido: ${motivo}.`)
       }
     })
     // Só quando os itens mudam (o próprio `aplicado` se atualiza dentro do efeito).
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [slug, chaveItens])
 
-  return { habilitado, aplicado, validando, erro, aviso, aplicar, remover }
+  return { habilitado, aplicado, validando, erro, aviso, aplicar, remover, limparErro }
 }
