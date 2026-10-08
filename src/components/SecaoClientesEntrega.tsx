@@ -10,6 +10,7 @@ import { ImportarClientesSheet } from './ImportarClientesSheet'
 import { BottomSheet } from './ui/BottomSheet'
 import { Button } from './ui/Button'
 import { Badge } from './ui/Badge'
+import { textoEndereco } from '../lib/enderecoCliente'
 import { Card } from './ui/Card'
 import { Icone } from './ui/Icone'
 import { Input } from './ui/Input'
@@ -24,12 +25,8 @@ function RotuloSecao({ icone, children }: { icone?: string; children: ReactNode 
   )
 }
 
-function enderecoDoCliente(c: ClienteFinal): string {
-  // Perfil criado só por telefone (cardápio) ainda não tem endereço.
-  if (!c.rua && !c.numero && !c.bairro) return 'Sem endereço'
-  const base = `${c.rua ?? ''}, ${c.numero ?? ''} - ${c.bairro ?? ''}`
-  return c.referencia ? `${base} (${c.referencia})` : base
-}
+// Perfil criado só por telefone (cardápio) ainda não tem endereço: textoEndereco devolve "Sem endereço".
+const enderecoDoCliente = textoEndereco
 
 /**
  * Clientes de entrega salvos (nome, telefone, endereço). Existe pra cumprir a

@@ -3,6 +3,7 @@ import { normalizarTelefone, somenteDigitos, type DadosEntrega } from './entrega
 import type { ClienteFinal } from '../types/database'
 import { emLotes, type ClienteImportado } from './importarClientes'
 import { bancoSemRecurso } from './semMigration'
+import { camposDeEndereco } from './enderecoCliente'
 
 const COLUNAS_BASE = 'id, barraca_id, nome, telefone, rua, numero, bairro, referencia, criado_em, atualizado_em'
 const COLUNAS_PERFIL = `${COLUNAS_BASE}, telefone_confirmado_em, consentimento_marketing_em`
@@ -119,10 +120,7 @@ export function clienteParaDadosEntrega(c: ClienteFinal): DadosEntrega {
   return {
     nome: c.nome,
     telefone: c.telefone,
-    rua: c.rua ?? '',
-    numero: c.numero ?? '',
-    bairro: c.bairro ?? '',
-    referencia: c.referencia,
+    ...camposDeEndereco(c),
   }
 }
 

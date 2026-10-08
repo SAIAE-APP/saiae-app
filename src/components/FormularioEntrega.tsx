@@ -1,6 +1,7 @@
 import { useState } from 'react'
 import { useBuscaClienteFinal } from '../hooks/useBuscaClienteFinal'
 import { clienteParaDadosEntrega } from '../lib/clientesFinais'
+import { textoEndereco } from '../lib/enderecoCliente'
 import { formatarTelefoneBR, type DadosEntrega, type ErrosEntrega } from '../lib/entrega'
 import { Icone } from './ui/Icone'
 import { Input } from './ui/Input'
@@ -78,7 +79,7 @@ export function FormularioEntrega({
                     {c.nome} · {formatarTelefoneBR(c.telefone)}
                   </span>
                   <span className="block truncate text-xs text-mesa-text-secondary">
-                    {c.rua}, {c.numero} - {c.bairro}
+                    {textoEndereco(c)}
                   </span>
                 </span>
               </button>
