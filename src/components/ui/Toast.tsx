@@ -1,7 +1,5 @@
 import {
-  createContext,
   useCallback,
-  useContext,
   useEffect,
   useState,
   type ReactNode,
@@ -9,22 +7,13 @@ import {
 import { createPortal } from 'react-dom'
 import clsx from 'clsx'
 import { Icone } from './Icone'
+import { ToastContext, type ToastOpcoes, type ToastVariante } from './useToast'
 
 // Avisos e notificações da IDV Sai aê (DESIGN.md): canto balão, ícone
 // colorido por variante, mensagem curta e direta — "Saiaê! Senha 042...",
 // "Sem internet...", "Pagamento recusado...". Empilha (mais de um toast
 // por vez é raro, mas não trava se acontecer) e cada um se fecha sozinho
 // ou no toque.
-
-export type ToastVariante = 'sucesso' | 'erro' | 'aviso'
-
-export interface ToastOpcoes {
-  variante?: ToastVariante
-  icone?: string
-  duracaoMs?: number | null
-  /** Toque no toast executa isso (e fecha) — ex.: "Reimprimir". */
-  aoClicar?: () => void
-}
 
 interface ToastItem {
   id: number
@@ -34,12 +23,6 @@ interface ToastItem {
   saindo: boolean
   aoClicar?: () => void
 }
-
-interface ToastContextValue {
-  mostrarToast: (texto: string, opcoes?: ToastOpcoes) => void
-}
-
-const ToastContext = createContext<ToastContextValue | null>(null)
 
 const ICONE_PADRAO: Record<ToastVariante, string> = {
   sucesso: 'check_circle',
@@ -59,14 +42,6 @@ const DURACAO_PADRAO_MS = 4000
 const DURACAO_SAIDA_MS = 250
 
 let proximoId = 0
-
-export function useToast(): ToastContextValue {
-  const contexto = useContext(ToastContext)
-  if (!contexto) {
-    throw new Error('useToast precisa ser usado dentro de ToastProvider')
-  }
-  return contexto
-}
 
 export function ToastProvider({ children }: { children: ReactNode }) {
   const [itens, setItens] = useState<ToastItem[]>([])

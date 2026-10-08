@@ -6,7 +6,7 @@ import { PLANOS } from '../lib/planos'
 import { Button } from '../components/ui/Button'
 import { Icone } from '../components/ui/Icone'
 import { BottomSheet } from '../components/ui/BottomSheet'
-import { useToast } from '../components/ui/Toast'
+import { useToast } from '../components/ui/useToast'
 import type { Assinatura as TipoAssinatura } from '../types/database'
 
 const NOME_STATUS: Record<string, string> = {
