@@ -17,6 +17,7 @@ import {
 import { MENSAGEM_FECHADO, foraDoHorarioBloqueado } from '../_shared/horario.ts'
 import { resolverPerfilDoPedido } from '../_shared/perfilNoPedido.ts'
 import { totalCobrado } from '../_shared/cupom.ts'
+import { METODO_GRATIS, ehPedidoGratis } from '../_shared/pedidoGratis.ts'
 import { avaliarCupomDoPedido, reservarCupomDoPedido } from '../_shared/cupomPedido.ts'
 
 // Anti-bot, NÃO limite de volume: barraca em evento recebe centenas de pedidos em
@@ -363,7 +364,8 @@ Deno.serve(async (req: Request) => {
       p_viagem: true,
       p_observacao: observacao,
       p_client_uuid: clientUuid,
-      p_metodo_pagamento: 'na_entrega',
+      // Cupom cobrindo tudo (sem taxa): nada a pagar na entrega, o pedido é grátis.
+      p_metodo_pagamento: ehPedidoGratis(totalCobradoCentavos) ? METODO_GRATIS : 'na_entrega',
       p_itens: itensResolvidos,
       p_tipo_atendimento: 'entrega',
       p_entrega: entregaEstruturada ?? {
