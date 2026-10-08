@@ -4,6 +4,7 @@ import clsx from 'clsx'
 import { BottomSheet } from './ui/BottomSheet'
 import { Button } from './ui/Button'
 import { Icone } from './ui/Icone'
+import { textoOpcoes } from '../lib/opcoes'
 import { iconeAtendimento, nomeDoCliente, rotuloAtendimento } from '../lib/atendimento'
 import type { Barraca, ItemDoPedido, PedidoComItens } from '../types/database'
 
@@ -163,6 +164,9 @@ function LinhaItemDetalhe({
         >
           {item.nome_item}
         </span>
+        {textoOpcoes(item.opcoes) && (
+          <span className="block break-words text-sm text-mesa-text-secondary">{textoOpcoes(item.opcoes)}</span>
+        )}
         {item.observacao && !item.removido && (
           // Mostarda intencional aqui (regra revista no redesign do card
           // de Cozinha, ver CLAUDE.md "Regras de tema") — mesma etiqueta

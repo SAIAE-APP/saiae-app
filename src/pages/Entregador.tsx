@@ -207,6 +207,9 @@ export function Entregador() {
           {pedido.itens.map((item, i) => (
             <li key={i} className="text-base text-mesa-text-primary">
               <span className="font-mesa-display font-bold">{item.quantidade}x</span> {item.nome_item}
+              {item.opcoes && item.opcoes.length > 0 && (
+                <span className="block text-sm text-mesa-text-secondary">{item.opcoes.join(', ')}</span>
+              )}
               {item.observacao && <span className="block text-sm text-mesa-text-secondary">{item.observacao}</span>}
             </li>
           ))}

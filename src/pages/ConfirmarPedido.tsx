@@ -37,18 +37,24 @@ function LinhaItemConfirmar({
   marcado,
   permiteEntregaDireta,
   observacao,
+  precoUnitarioCentavos,
+  resumoOpcoes,
   onAlternar,
 }: {
   item: Item
   quantidade: number
+  /** Preço final da unidade (já com variação/adicionais). */
+  precoUnitarioCentavos: number
+  /** Texto das opções escolhidas ("Grande, Ovo"); vazio em item simples. */
+  resumoOpcoes: string
   marcado: boolean
   /** Falso no modo Entrega: o pedido tem que passar pela cozinha. */
   permiteEntregaDireta: boolean
   observacao: string
   onAlternar: () => void
 }) {
-  const temPreco = item.preco_centavos > 0
-  const subtotal = item.preco_centavos * quantidade
+  const temPreco = precoUnitarioCentavos > 0
+  const subtotal = precoUnitarioCentavos * quantidade
 
   return (
     <div className="flex items-start gap-3 border-b border-dashed border-mesa-border-subtle py-3 last:border-b-0">
@@ -72,8 +78,9 @@ function LinhaItemConfirmar({
         <p className="text-base font-semibold text-mesa-text-primary">
           {quantidade}× {item.nome}
         </p>
+        {resumoOpcoes && <p className="mt-0.5 text-sm text-mesa-text-secondary">{resumoOpcoes}</p>}
         <p className="mt-0.5 text-xs text-mesa-text-secondary">
-          {temPreco ? `${formatarPrecoBR(item.preco_centavos)} cada` : 'Sem preço cadastrado'}
+          {temPreco ? `${formatarPrecoBR(precoUnitarioCentavos)} cada` : 'Sem preço cadastrado'}
           {marcado && ' · Entregar direto sem passar na cozinha'}
         </p>
         {observacao && (
@@ -174,18 +181,29 @@ export function ConfirmarPedido() {
 
   const { carrinho, itens, mesa, viagem, tipoAtendimento } = estado
   const observacaoPorItem = estado.observacaoPorItem ?? {}
+  const opcoesPorLinha = estado.opcoesPorLinha ?? {}
 
+  // `itemId` aqui é a CHAVE da linha: o id do item (simples) ou a chave da linha com opções, que
+  // aponta para o item em `opcoesPorLinha`. Observação e entrega direta usam a mesma chave.
   const linhas = Object.entries(carrinho)
     .filter(([, quantidade]) => quantidade > 0)
-    .map(([itemId, quantidade]) => ({
-      item: itens.find((i) => i.id === itemId),
-      itemId,
-      quantidade,
-    }))
-    .filter((linha): linha is { item: Item; itemId: string; quantidade: number } => Boolean(linha.item))
+    .map(([itemId, quantidade]) => {
+      const comOpcoes = opcoesPorLinha[itemId]
+      const item = itens.find((i) => i.id === (comOpcoes?.itemId ?? itemId))
+      return {
+        item,
+        itemId,
+        quantidade,
+        precoUnitarioCentavos: comOpcoes ? comOpcoes.precoUnitarioCentavos : (item?.preco_centavos ?? 0),
+        resumoOpcoes: comOpcoes?.resumo ?? '',
+        snapshotOpcoes: comOpcoes?.snapshot ?? [],
+      }
+    })
+    .filter((linha): linha is typeof linha & { item: Item } => Boolean(linha.item))
 
   const totalCentavos = linhas.reduce(
-    (soma, { item, quantidade }) => soma + (item.preco_centavos > 0 ? item.preco_centavos * quantidade : 0),
+    (soma, { precoUnitarioCentavos, quantidade }) =>
+      soma + (precoUnitarioCentavos > 0 ? precoUnitarioCentavos * quantidade : 0),
     0,
   )
 
@@ -223,6 +241,7 @@ export function ConfirmarPedido() {
         observacao,
         entregaDireta,
         observacaoPorItem,
+        opcoesPorLinha,
         entrega: ehEntrega ? entrega : undefined,
         clienteNome,
         clienteTelefone,
@@ -257,11 +276,13 @@ export function ConfirmarPedido() {
     const diretaPorItem = ehEntrega ? {} : entregaDireta
     const todosEntregaDireta = forcarTudo || linhas.every(({ itemId }) => diretaPorItem[itemId] ?? false)
 
-    const itensPedido = linhas.map(({ item, itemId, quantidade }) => ({
-      item_id: itemId,
+    const itensPedido = linhas.map(({ item, itemId, quantidade, precoUnitarioCentavos, snapshotOpcoes }) => ({
+      item_id: item.id,
       nome_item: item.nome,
       quantidade,
-      preco_centavos_unitario: item.preco_centavos,
+      preco_centavos_unitario: precoUnitarioCentavos,
+      // Só vai a chave quando há opções: payload de item simples fica idêntico ao de antes.
+      ...(snapshotOpcoes.length > 0 ? { opcoes: snapshotOpcoes } : {}),
       entrega_direta: forcarTudo ? true : (diretaPorItem[itemId] ?? false),
       observacao: observacaoPorItem[itemId] || null,
     }))
@@ -307,8 +328,8 @@ export function ConfirmarPedido() {
           entregaDireta: todosEntregaDireta,
           entrega: ehEntrega
             ? {
-                itens: linhas.map(({ item, quantidade, itemId }) => ({
-                  nome: item.nome,
+                itens: linhas.map(({ item, quantidade, itemId, resumoOpcoes }) => ({
+                  nome: resumoOpcoes ? `${item.nome} (${resumoOpcoes})` : item.nome,
                   quantidade,
                   observacao: observacaoPorItem[itemId] || null,
                 })),
@@ -365,11 +386,13 @@ export function ConfirmarPedido() {
           </span>
         </h2>
         <Card>
-          {linhas.map(({ item, itemId, quantidade }) => (
+          {linhas.map(({ item, itemId, quantidade, precoUnitarioCentavos, resumoOpcoes }) => (
             <LinhaItemConfirmar
               key={itemId}
               item={item}
               quantidade={quantidade}
+              precoUnitarioCentavos={precoUnitarioCentavos}
+              resumoOpcoes={resumoOpcoes}
               permiteEntregaDireta={!ehEntrega}
               marcado={!ehEntrega && (entregaDireta[itemId] ?? false)}
               observacao={observacaoPorItem[itemId] ?? ''}

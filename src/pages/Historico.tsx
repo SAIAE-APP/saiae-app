@@ -27,6 +27,7 @@ import { SegmentedControl } from '../components/ui/SegmentedControl'
 import { useToast } from '../components/ui/useToast'
 import { BotaoDefinirPagamento } from '../components/BotaoDefinirPagamento'
 import { ambienteDaNota, cpfValido, formatarCpf } from '../lib/fiscal'
+import { nomeComOpcoes } from '../lib/opcoes'
 import { descreverErroImpressao, imprimirCupomFiscal, impressoraSuportada } from '../lib/impressoraTermica'
 import type { Item, PedidoComItens } from '../types/database'
 
@@ -112,7 +113,7 @@ async function gerarPlanilha(pedidos: PedidoComItens[]): Promise<ArrayBuffer> {
   for (const pedido of pedidos) {
     const itensTexto = pedido.itens_do_pedido
       .filter((item) => !item.removido)
-      .map((item) => `${item.quantidade}x ${item.nome_item}`)
+      .map((item) => `${item.quantidade}x ${nomeComOpcoes(item.nome_item, item.opcoes)}`)
       .join(', ')
 
     const cancelado = pedido.status === 'cancelado'
@@ -378,10 +379,14 @@ function CardHistorico({
       {itensAtivos.length > 0 && (
         <div className="mt-3 flex flex-wrap gap-1.5">
           {itensAtivos.map((item) => (
-            <Chip key={item.id} variant="plain">
-              {item.quantidade}× {item.nome_item}
+            // Não usa Chip (nowrap): com opções o texto é longo e precisa quebrar linha no celular.
+            <span
+              key={item.id}
+              className="max-w-full break-words rounded-mesa-md bg-mesa-neutral-100 px-3 py-2 text-sm font-medium text-mesa-neutral-700 dark:bg-mesa-neutral-700 dark:text-mesa-neutral-200"
+            >
+              {item.quantidade}× {nomeComOpcoes(item.nome_item, item.opcoes)}
               {item.observacao && ` (${item.observacao})`}
-            </Chip>
+            </span>
           ))}
         </div>
       )}

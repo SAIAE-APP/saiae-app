@@ -1,3 +1,4 @@
+import { calcularOpcoesVendidas, type OpcaoVendida } from '../lib/opcoesRelatorio'
 import { useEffect, useMemo, useState } from 'react'
 import { supabase } from '../lib/supabase'
 import {
@@ -6,6 +7,7 @@ import {
   calcularEstimativaLiquida,
   calcularIntervalosRelatorio,
   calcularMaisVendidos,
+  
   calcularPontosAtencao,
   calcularRitmoDoDia,
   calcularSerieItemPorDia,
@@ -22,6 +24,7 @@ import type {
   FiltroRelatorio,
   IntervaloData,
   ItemMaisVendido,
+
   MetodoOuNaoInformado,
   PontoSerie,
   PontosAtencao,
@@ -40,6 +43,7 @@ export type AgregadosRelatorio = {
   estimativaLiquida: EstimativaLiquida | null
   pontosAtencao: PontosAtencao
   maisVendidos: ItemMaisVendido[]
+  opcoesVendidas: OpcaoVendida[]
   ritmoDoDia: RitmoDoDia
   serieTemporal: { granularidade: 'dia' | 'hora'; pontos: PontoSerie[] }
   itensVendidos: number
@@ -125,6 +129,7 @@ function agregar(
     estimativaLiquida: calcularEstimativaLiquida(pedidos, taxaDebitoBps, taxaCreditoBps),
     pontosAtencao: calcularPontosAtencao(pedidos, catalogoPrecos),
     maisVendidos: calcularMaisVendidos(pedidos),
+    opcoesVendidas: calcularOpcoesVendidas(pedidos),
     ritmoDoDia: calcularRitmoDoDia(pedidos),
     serieTemporal,
     itensVendidos: calcularTotalItensVendidos(pedidos),

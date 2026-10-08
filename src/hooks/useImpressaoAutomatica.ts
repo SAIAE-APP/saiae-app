@@ -16,6 +16,7 @@ import {
   marcarImpressoNesteAparelho,
 } from '../lib/politicaImpressao'
 import type { DadosEntrega } from '../lib/entrega'
+import { nomesDasOpcoes } from '../lib/opcoes'
 import type { Barraca, Pedido, TipoAtendimento } from '../types/database'
 import type { PedidoComItens } from './useRealtimePedidos'
 
@@ -25,6 +26,8 @@ type ItemPayload = {
   observacao: string | null
   preco_centavos_unitario: number
   entrega_direta: boolean
+  /** Snapshot de variação/adicionais (SAI-010a); ausente em item simples. */
+  opcoes?: unknown
 }
 
 type IdsDoPedido = { pedidoId?: string | null; clientUuid?: string | null }
@@ -120,6 +123,7 @@ export function dadosComandaDoPedido(
         quantidade: i.quantidade,
         observacao: i.observacao,
         precoCentavos: i.preco_centavos_unitario,
+        opcoes: nomesDasOpcoes(i.opcoes),
       })),
   }
 }
@@ -271,6 +275,7 @@ export function useImpressaoAutomatica(barraca: Barraca | null) {
             quantidade: i.quantidade,
             observacao: i.observacao,
             precoCentavos: i.preco_centavos_unitario,
+            opcoes: nomesDasOpcoes(i.opcoes),
           })),
       })
 

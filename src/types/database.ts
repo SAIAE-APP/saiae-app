@@ -260,6 +260,8 @@ export type ItemDoPedido = {
   entrega_direta: boolean
   preco_centavos_unitario: number
   observacao: string | null
+  /** SAI-010a: foto das opções escolhidas ([] em item simples; ausente em cache/consulta antiga). */
+  opcoes?: { grupo_nome?: string; tipo?: 'variacao' | 'adicional'; nome: string; preco_centavos?: number }[]
 }
 
 export type PedidoComItens = Pedido & { itens_do_pedido: ItemDoPedido[] }

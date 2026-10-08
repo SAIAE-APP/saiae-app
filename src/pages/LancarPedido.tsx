@@ -9,6 +9,18 @@ import { useTheme } from '../hooks/useTheme'
 import { aoConcluirCriacaoPedido, aoCriarPedidoLocal } from '../lib/fila'
 import { avisoPassaDoEstoque, excessosDoCarrinho, mensagemExcessos, textoRestam, verificarAdicao } from '../lib/estoque'
 import { formatarPrecoBR } from '../lib/preco'
+import {
+  chaveDaLinha,
+  montarGruposDoOperador,
+  precoAPartirDe,
+  precoUnitario,
+  resumoEscolhas,
+  snapshotOpcoes,
+  type GrupoItem,
+  type GrupoLeitura,
+  type LigacaoLeitura,
+  type OpcaoLeitura,
+} from '../lib/opcoes'
 import { linkWhatsAppSemNumero, montarMensagemEntregador } from '../lib/entrega'
 import { tocarSomPedidoCriado } from '../lib/sons'
 import { buscarIdsMaisPedidos } from '../lib/popularidade'
@@ -19,7 +31,9 @@ import type {
   EstadoParaEditar,
   EstadoPedidoEnviado,
   ObservacaoPorItem,
+  OpcoesPorLinha,
 } from '../lib/carrinho'
+import { SeletorOpcoes } from '../components/SeletorOpcoes'
 import { BotoesLinkEntregador } from '../components/BotoesLinkEntregador'
 import { useEntregaToken } from '../hooks/useEntregaToken'
 import { Badge } from '../components/ui/Badge'
@@ -102,9 +116,17 @@ function CardItemCardapio({
   onIncrementar,
   onDecrementar,
   onAbrirObservacao,
+  comOpcoes = false,
+  precoCard = item.preco_centavos,
+  totalCard = item.preco_centavos * quantidade,
 }: {
   item: Item
   quantidade: number
+  /** Item com variação/adicionais: o + abre o seletor, o preço vira "a partir de" e a observação
+   * é pedida no próprio seletor. */
+  comOpcoes?: boolean
+  precoCard?: number
+  totalCard?: number
   observacao: string
   posicaoPopular: number | null
   onIncrementar: () => void
@@ -167,7 +189,14 @@ function CardItemCardapio({
           <p className="mt-0.5 line-clamp-2 text-xs text-mesa-text-secondary">{item.descricao}</p>
         )}
         <p className="mt-1 font-mesa-display text-sm font-semibold text-mesa-text-primary">
-          {item.preco_centavos > 0 ? formatarPrecoBR(item.preco_centavos) : 'Sem preço'}
+          {precoCard > 0 ? (
+            <>
+              {comOpcoes && <span className="mr-1 text-xs font-normal text-mesa-text-secondary">a partir de</span>}
+              <span className="whitespace-nowrap">{formatarPrecoBR(precoCard)}</span>
+            </>
+          ) : (
+            'Sem preço'
+          )}
         </p>
         {!item.esgotado && textoRestam(item) && (
           <p className="mt-0.5 text-xs font-semibold text-mesa-warning-700 dark:text-mesa-warning-500">
@@ -182,17 +211,21 @@ function CardItemCardapio({
 
         {selecionado && (
           <div className="mt-2 flex items-center justify-between gap-2">
-            <button
-              type="button"
-              onClick={onAbrirObservacao}
-              className="flex min-h-11 min-w-0 items-center gap-1 truncate text-xs font-medium text-mesa-text-secondary"
-            >
-              <Icone nome="description" size={14} />
-              <span className="truncate">{observacao ? `Obs: ${observacao}` : 'Adicionar observação'}</span>
-            </button>
-            {item.preco_centavos > 0 && (
+            {comOpcoes ? (
+              <span />
+            ) : (
+              <button
+                type="button"
+                onClick={onAbrirObservacao}
+                className="flex min-h-11 min-w-0 items-center gap-1 truncate text-xs font-medium text-mesa-text-secondary"
+              >
+                <Icone nome="description" size={14} />
+                <span className="truncate">{observacao ? `Obs: ${observacao}` : 'Adicionar observação'}</span>
+              </button>
+            )}
+            {totalCard > 0 && (
               <span className="shrink-0 font-mesa-display text-xs font-semibold text-mesa-text-primary">
-                Total: {formatarPrecoBR(item.preco_centavos * quantidade)}
+                Total: {formatarPrecoBR(totalCard)}
               </span>
             )}
           </div>
@@ -213,9 +246,13 @@ function CardItemCardapioGrade({
   onIncrementar,
   onDecrementar,
   onAbrirObservacao,
+  comOpcoes = false,
+  precoCard = item.preco_centavos,
 }: {
   item: Item
   quantidade: number
+  comOpcoes?: boolean
+  precoCard?: number
   observacao: string
   posicaoPopular: number | null
   onIncrementar: () => void
@@ -256,7 +293,14 @@ function CardItemCardapioGrade({
         <p className="mt-0.5 line-clamp-2 text-xs text-mesa-text-secondary">{item.descricao}</p>
       )}
       <p className="mt-1 font-mesa-display text-sm font-semibold text-mesa-text-primary">
-        {item.preco_centavos > 0 ? formatarPrecoBR(item.preco_centavos) : 'Sem preço'}
+        {precoCard > 0 ? (
+          <>
+            {comOpcoes && <span className="mr-1 text-xs font-normal text-mesa-text-secondary">a partir de</span>}
+            <span className="whitespace-nowrap">{formatarPrecoBR(precoCard)}</span>
+          </>
+        ) : (
+          'Sem preço'
+        )}
       </p>
       {!item.esgotado && textoRestam(item) && (
         <p className="mt-0.5 text-xs font-semibold text-mesa-warning-700 dark:text-mesa-warning-500">
@@ -295,7 +339,7 @@ function CardItemCardapioGrade({
         )}
       </div>
 
-      {selecionado && (
+      {selecionado && !comOpcoes && (
         <button
           type="button"
           onClick={onAbrirObservacao}
@@ -498,6 +542,12 @@ export function LancarPedido() {
     () => edicaoRecebida?.observacaoPorItem ?? {},
   )
   const [itemObservacaoAberta, setItemObservacaoAberta] = useState<Item | null>(null)
+  // SAI-010a: linhas do carrinho com variação/adicionais (chave da linha -> item e escolhas) e o
+  // seletor aberto. Só existe com `opcoes_habilitado`; sem isso o operador vende como sempre.
+  const [opcoesPorLinha, setOpcoesPorLinha] = useState<OpcoesPorLinha>(() => edicaoRecebida?.opcoesPorLinha ?? {})
+  const [gruposPorItem, setGruposPorItem] = useState<Map<string, GrupoItem[]>>(() => new Map())
+  const [itemSeletor, setItemSeletor] = useState<Item | null>(null)
+  const opcoesHabilitado = barraca.opcoes_habilitado === true
   // Não editável nesta tela — só guardado pra devolver pra ConfirmarPedido
   // intacto se o operador for e voltar sem mudar nada.
   const [entregaDiretaHerdada] = useState<EntregaDiretaPorItem>(
@@ -588,6 +638,49 @@ export function LancarPedido() {
       window.clearInterval(timer)
     }
   }, [barraca.id])
+
+  // Grupos e opções dos itens (SAI-010a). Cópia no aparelho: sem internet o operador segue vendendo
+  // com a última lista conhecida; sem lista nenhuma, o item vende simples (nunca trava o balcão).
+  useEffect(() => {
+    if (!opcoesHabilitado) return
+    let cancelado = false
+    const chaveCache = `saiae-opcoes-operador:${barraca.id}`
+    type Cadastro = { grupos: GrupoLeitura[]; opcoes: OpcaoLeitura[]; ligacoes: LigacaoLeitura[] }
+    function aplicar(c: Cadastro) {
+      setGruposPorItem(montarGruposDoOperador(c.grupos, c.opcoes, c.ligacoes))
+    }
+    try {
+      const salvo = window.localStorage.getItem(chaveCache)
+      if (salvo) aplicar(JSON.parse(salvo) as Cadastro)
+    } catch {
+      // cache ilegível: ignora, a leitura do servidor abaixo repõe
+    }
+    Promise.all([
+      supabase.from('grupos_opcoes').select('id, nome, tipo, min_escolhas, max_escolhas, ordem, ativo').eq('barraca_id', barraca.id).eq('ativo', true),
+      supabase.from('opcoes').select('id, grupo_id, nome, preco_centavos, ordem, ativo, esgotado').eq('barraca_id', barraca.id).eq('ativo', true),
+      supabase.from('itens_grupos').select('item_id, grupo_id, ordem').eq('barraca_id', barraca.id),
+    ])
+      .then(([g, o, l]) => {
+        if (cancelado || g.error || o.error || l.error) return
+        const cadastro: Cadastro = {
+          grupos: (g.data ?? []) as GrupoLeitura[],
+          opcoes: (o.data ?? []) as OpcaoLeitura[],
+          ligacoes: (l.data ?? []) as LigacaoLeitura[],
+        }
+        aplicar(cadastro)
+        try {
+          window.localStorage.setItem(chaveCache, JSON.stringify(cadastro))
+        } catch {
+          // sem espaço/privado: só perde o cache
+        }
+      })
+      .catch(() => {
+        // sem internet: fica com o cache
+      })
+    return () => {
+      cancelado = true
+    }
+  }, [barraca.id, opcoesHabilitado, itens])
 
   useEffect(() => {
     let cancelado = false
@@ -707,25 +800,99 @@ export function LancarPedido() {
     [carrinho],
   )
 
+  // A chave do carrinho é o id do item (simples) ou a chave da linha com opções (SAI-010a).
+  const itemDaChave = (chave: string) => itens.find((i) => i.id === (opcoesPorLinha[chave]?.itemId ?? chave))
+  const precoDaChave = (chave: string, item: Item) =>
+    opcoesPorLinha[chave]?.precoUnitarioCentavos ?? item.preco_centavos
+
+  // Quantidade por ITEM somando as linhas com opções (estoque e selo do card).
+  const quantidadePorItem = useMemo(() => {
+    const total: Carrinho = {}
+    for (const [chave, quantidade] of Object.entries(carrinho)) {
+      const itemId = opcoesPorLinha[chave]?.itemId ?? chave
+      total[itemId] = (total[itemId] ?? 0) + quantidade
+    }
+    return total
+  }, [carrinho, opcoesPorLinha])
+
   const totalCentavos = useMemo(
     () =>
-      Object.entries(carrinho).reduce((soma, [itemId, quantidade]) => {
-        const item = itens.find((i) => i.id === itemId)
-        if (!item || item.preco_centavos <= 0) return soma
-        return soma + item.preco_centavos * quantidade
+      Object.entries(carrinho).reduce((soma, [chave, quantidade]) => {
+        const item = itemDaChave(chave)
+        if (!item) return soma
+        const preco = precoDaChave(chave, item)
+        return preco <= 0 ? soma : soma + preco * quantidade
       }, 0),
-    [carrinho, itens],
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+    [carrinho, itens, opcoesPorLinha],
   )
 
   const itensSemPreco = useMemo(
     () =>
-      Object.entries(carrinho).filter(([itemId, quantidade]) => {
+      Object.entries(carrinho).filter(([chave, quantidade]) => {
         if (quantidade <= 0) return false
-        const item = itens.find((i) => i.id === itemId)
-        return item !== undefined && item.preco_centavos <= 0
+        const item = itemDaChave(chave)
+        return item !== undefined && precoDaChave(chave, item) <= 0
       }).length,
-    [carrinho, itens],
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+    [carrinho, itens, opcoesPorLinha],
   )
+
+  /** Total em reais das linhas de um item (simples + com opções), para o card. */
+  function totalDoItem(itemId: string): number {
+    return Object.entries(carrinho).reduce((soma, [chave, quantidade]) => {
+      if ((opcoesPorLinha[chave]?.itemId ?? chave) !== itemId) return soma
+      const item = itens.find((i) => i.id === itemId)
+      const preco = item ? precoDaChave(chave, item) : 0
+      return preco > 0 ? soma + preco * quantidade : soma
+    }, 0)
+  }
+
+  function gruposDoItem(itemId: string): GrupoItem[] {
+    return opcoesHabilitado ? (gruposPorItem.get(itemId) ?? []) : []
+  }
+
+  /** Toque no + de um item com opções: abre o seletor (a linha só entra ao confirmar). */
+  function abrirSeletor(item: Item) {
+    const verificacao = verificarAdicao(item, quantidadePorItem[item.id] ?? 0, Boolean(barraca.estoque_bloqueia))
+    if (!verificacao.ok) {
+      mostrarToast(`${item.nome}: ${verificacao.mensagem}`, { variante: 'aviso', icone: 'error' })
+      return
+    }
+    setItemSeletor(item)
+  }
+
+  function confirmarOpcoes(item: Item, opcaoIds: string[], obs: string) {
+    const grupos = gruposDoItem(item.id)
+    const chave = chaveDaLinha(item.id, opcaoIds, obs)
+    const verificacao = verificarAdicao(item, quantidadePorItem[item.id] ?? 0, Boolean(barraca.estoque_bloqueia))
+    if (!verificacao.ok) {
+      mostrarToast(`${item.nome}: ${verificacao.mensagem}`, { variante: 'aviso', icone: 'error' })
+      return
+    }
+    if (verificacao.aviso) mostrarToast(`${item.nome}: ${verificacao.aviso}`, { variante: 'aviso', icone: 'error' })
+    setOpcoesPorLinha((atual) => ({
+      ...atual,
+      [chave]: {
+        itemId: item.id,
+        opcaoIds,
+        precoUnitarioCentavos: precoUnitario(item.preco_centavos, grupos, opcaoIds),
+        resumo: resumoEscolhas(grupos, opcaoIds),
+        snapshot: snapshotOpcoes(grupos, opcaoIds),
+      },
+    }))
+    setCarrinho((atual) => ({ ...atual, [chave]: (atual[chave] ?? 0) + 1 }))
+    definirObservacaoItem(chave, obs)
+    setItemSeletor(null)
+  }
+
+  /** "−" de item com opções: tira uma unidade da última linha adicionada daquele item. */
+  function decrementarComOpcoes(itemId: string) {
+    const chave = Object.keys(carrinho)
+      .filter((k) => (opcoesPorLinha[k]?.itemId ?? k) === itemId)
+      .pop()
+    if (chave) decrementar(chave)
+  }
 
   function incrementar(itemId: string) {
     // Estoque: com o bloqueio ligado não passa do saldo conhecido; desligado deixa passar
@@ -756,6 +923,7 @@ export function LancarPedido() {
 
   function limparFormulario() {
     setCarrinho({})
+    setOpcoesPorLinha({})
     setMesa('')
     setTipoAtendimento(modoInicial(modosDisponiveis))
     setObservacao('')
@@ -795,7 +963,7 @@ export function LancarPedido() {
     // Bloqueio ligado: o carrinho pode ter ficado acima do saldo (saldo atualizado depois
     // de adicionar). Só com o saldo que este aparelho conhece, nunca por rede.
     if (barraca.estoque_bloqueia) {
-      const excessos = excessosDoCarrinho(itens, carrinho)
+      const excessos = excessosDoCarrinho(itens, quantidadePorItem)
       if (excessos.length > 0) {
         mostrarToast(`Passa do estoque — ${mensagemExcessos(excessos)}`, { variante: 'aviso', icone: 'error', duracaoMs: 6000 })
         return
@@ -811,6 +979,7 @@ export function LancarPedido() {
         observacao,
         entregaDireta: entregaDiretaHerdada,
         observacaoPorItem,
+        opcoesPorLinha,
         entrega: tipoEfetivo === 'entrega' ? entregaHerdada : undefined,
         clienteNome: clienteNomeHerdado,
         clienteTelefone: clienteTelefoneHerdado,
@@ -1092,11 +1261,14 @@ export function LancarPedido() {
                         <CardItemCardapio
                           key={item.id}
                           item={item}
-                          quantidade={carrinho[item.id] ?? 0}
+                          quantidade={quantidadePorItem[item.id] ?? 0}
                           observacao={observacaoPorItem[item.id] ?? ''}
                           posicaoPopular={indicePopular === -1 ? null : indicePopular}
-                          onIncrementar={() => incrementar(item.id)}
-                          onDecrementar={() => decrementar(item.id)}
+                          comOpcoes={gruposDoItem(item.id).length > 0}
+                          precoCard={precoAPartirDe(item.preco_centavos, gruposDoItem(item.id))}
+                          totalCard={totalDoItem(item.id)}
+                          onIncrementar={() => (gruposDoItem(item.id).length > 0 ? abrirSeletor(item) : incrementar(item.id))}
+                          onDecrementar={() => (gruposDoItem(item.id).length > 0 ? decrementarComOpcoes(item.id) : decrementar(item.id))}
                           onAbrirObservacao={() => setItemObservacaoAberta(item)}
                         />
                       )
@@ -1110,11 +1282,13 @@ export function LancarPedido() {
                         <CardItemCardapioGrade
                           key={item.id}
                           item={item}
-                          quantidade={carrinho[item.id] ?? 0}
+                          quantidade={quantidadePorItem[item.id] ?? 0}
                           observacao={observacaoPorItem[item.id] ?? ''}
                           posicaoPopular={indicePopular === -1 ? null : indicePopular}
-                          onIncrementar={() => incrementar(item.id)}
-                          onDecrementar={() => decrementar(item.id)}
+                          comOpcoes={gruposDoItem(item.id).length > 0}
+                          precoCard={precoAPartirDe(item.preco_centavos, gruposDoItem(item.id))}
+                          onIncrementar={() => (gruposDoItem(item.id).length > 0 ? abrirSeletor(item) : incrementar(item.id))}
+                          onDecrementar={() => (gruposDoItem(item.id).length > 0 ? decrementarComOpcoes(item.id) : decrementar(item.id))}
                           onAbrirObservacao={() => setItemObservacaoAberta(item)}
                         />
                       )
@@ -1167,6 +1341,17 @@ export function LancarPedido() {
             </button>
           </div>
         </div>
+      )}
+
+      {itemSeletor && (
+        <SeletorOpcoes
+          key={itemSeletor.id}
+          nomeItem={itemSeletor.nome}
+          precoBaseCentavos={itemSeletor.preco_centavos}
+          grupos={gruposDoItem(itemSeletor.id)}
+          onClose={() => setItemSeletor(null)}
+          onConfirmar={(ids, obs) => confirmarOpcoes(itemSeletor, ids, obs)}
+        />
       )}
 
       <BottomSheet

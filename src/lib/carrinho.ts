@@ -1,5 +1,6 @@
 import type { Item, TipoAtendimento } from '../types/database'
 import type { DadosEntrega, DadosMensagemEntrega } from './entrega'
+import type { OpcaoSnapshot } from './opcoes'
 
 /**
  * Contrato de estado passado via `navigate(..., { state })` entre
@@ -13,6 +14,20 @@ export type EntregaDiretaPorItem = Record<string, boolean>
  * diferente de `observacao` (recado geral do pedido inteiro). */
 export type ObservacaoPorItem = Record<string, string>
 
+/** Linha do carrinho com variação/adicionais (SAI-010a). Nela a chave do `Carrinho` (e de
+ * `observacaoPorItem`/`entregaDireta`) NÃO é o id do item: é `chaveDaLinha(...)`, e o item vem de
+ * `itemId`. Item sem opções segue com a chave = id do item, exatamente como antes. */
+export type LinhaComOpcoes = {
+  itemId: string
+  opcaoIds: string[]
+  /** Preço final da unidade (variação absoluta ou base + adicionais), calculado no aparelho. */
+  precoUnitarioCentavos: number
+  /** "Grande, Ovo, Bacon" — para mostrar na nota. */
+  resumo: string
+  snapshot: OpcaoSnapshot[]
+}
+export type OpcoesPorLinha = Record<string, LinhaComOpcoes>
+
 /** LancarPedido → ConfirmarPedido, ao clicar "Ver nota". */
 export type EstadoParaConfirmar = {
   carrinho: Carrinho
@@ -24,6 +39,7 @@ export type EstadoParaConfirmar = {
   observacao: string
   entregaDireta?: EntregaDiretaPorItem
   observacaoPorItem?: ObservacaoPorItem
+  opcoesPorLinha?: OpcoesPorLinha
   /** Dados do cliente (só no modo Entrega); preenchidos em ConfirmarPedido. */
   entrega?: DadosEntrega
   /** Nome do cliente digitado em Confirmar (modos sem formulário de Entrega). */
@@ -41,6 +57,7 @@ export type EstadoParaEditar = {
   observacao: string
   entregaDireta?: EntregaDiretaPorItem
   observacaoPorItem?: ObservacaoPorItem
+  opcoesPorLinha?: OpcoesPorLinha
   /** Devolvido intacto pra não perder o que foi digitado em ConfirmarPedido. */
   entrega?: DadosEntrega
   clienteNome?: string

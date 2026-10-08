@@ -69,6 +69,20 @@ type ItemDoPedidoRow = {
   quantidade: number
   preco_centavos_unitario: number
   removido: boolean
+  /** SAI-010a: snapshot de variação/adicionais ([] em item simples). */
+  opcoes?: unknown
+}
+
+// NFC-e: UMA linha por item do pedido; as opções vão só na descrição (preço, NCM e CFOP são os do
+// item pai, e preco_centavos_unitario já é o preço final da unidade). Limite de 120 da descrição.
+function descricaoDoItem(nome: string, opcoes: unknown): string {
+  const nomes = Array.isArray(opcoes)
+    ? opcoes
+        .map((o) => (o && typeof o === 'object' && typeof (o as { nome?: unknown }).nome === 'string' ? (o as { nome: string }).nome.trim() : ''))
+        .filter((n) => n !== '')
+    : []
+  const texto = nomes.length > 0 ? `${nome} (${nomes.join(', ')})` : nome
+  return texto.length > 120 ? `${texto.slice(0, 117)}...` : texto
 }
 
 type ItemCadastroRow = {
@@ -121,7 +135,7 @@ Deno.serve(async (req: Request) => {
     .from('pedidos')
     .select(
       'id, barraca_id, metodo_pagamento, nfce_status, nfce_chave, nfce_numero, ' +
-        'itens_do_pedido(id, item_id, nome_item, quantidade, preco_centavos_unitario, removido)',
+        'itens_do_pedido(id, item_id, nome_item, quantidade, preco_centavos_unitario, removido, opcoes)',
     )
     .eq('id', pedidoId)
     .single()
@@ -260,7 +274,7 @@ Deno.serve(async (req: Request) => {
       tributosCentavos,
       numero_item: String(indice + 1),
       codigo_produto: item.item_id,
-      descricao: item.nome_item,
+      descricao: descricaoDoItem(item.nome_item, item.opcoes),
       codigo_ncm: cadastro.ncm,
       cfop: cadastro.cfop,
       quantidade_comercial: item.quantidade,
