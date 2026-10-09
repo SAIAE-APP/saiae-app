@@ -11,6 +11,9 @@ import { Icone } from '../components/ui/Icone'
 import { BottomSheet } from '../components/ui/BottomSheet'
 import { useToast } from '../components/ui/useToast'
 import type { Assinatura as TipoAssinatura } from '../types/database'
+/** WhatsApp do suporte do Sai aê (DDI+DDD+número). Não é o número da vendedora IA. */
+const WHATSAPP_SUPORTE = '5561982694384'
+const LINK_SUPORTE = `https://wa.me/${WHATSAPP_SUPORTE}?text=${encodeURIComponent('Olá! Quero trocar ou cancelar meu plano do Sai aê.')}`
 
 const NOME_STATUS: Record<string, string> = {
   trialing: 'Teste grátis',
@@ -179,7 +182,7 @@ export function Assinatura() {
               size="lg"
               icon={<Icone nome="chat" size={20} />}
               className="mt-4 w-full"
-              onClick={() => abrirLinkExterno('https://wa.me/')}
+              onClick={() => abrirLinkExterno(LINK_SUPORTE)}
             >
               Falar no WhatsApp
             </Button>
