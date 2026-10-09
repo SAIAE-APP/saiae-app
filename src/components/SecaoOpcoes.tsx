@@ -15,6 +15,9 @@ import {
   type RascunhoGrupo,
   type RascunhoOpcao,
 } from '../lib/opcoesCadastro'
+import { ListaDeModelos } from './ListaDeModelos'
+import { negociosDaBarraca, onboardingKitsHabilitado } from '../lib/kitsIniciais'
+import { buscarModelos, modelosParaNegocio, rascunhoDoModelo, type ModeloDeOpcoes } from '../lib/modelosDeOpcoes'
 import { filtrarEntradaPreco } from '../lib/preco'
 import { ErroSalvar } from './BotaoSalvarCampo'
 import { BottomSheet } from './ui/BottomSheet'
@@ -50,6 +53,13 @@ export function SecaoOpcoes({ barraca }: { barraca: Barraca }) {
   const [paraApagar, setParaApagar] = useState<string | null>(null)
   const [apagando, setApagando] = useState(false)
   const [escolhendoModelo, setEscolhendoModelo] = useState(false)
+  const [buscaModelo, setBuscaModelo] = useState('')
+  // Biblioteca de modelos por tipo de negócio e campo "mínimo": atrás do interruptor dos kits (sem ele, a tela é a de sempre).
+  const kitsLigado = onboardingKitsHabilitado(import.meta.env.VITE_ONBOARDING_KITS)
+  const modelosDaLoja = useMemo(
+    () => modelosParaNegocio(negociosDaBarraca(barraca.kit_aplicado, barraca.categoria_negocio)),
+    [barraca.kit_aplicado, barraca.categoria_negocio],
+  )
 
   const habilitadoR = useRascunho(Boolean(barraca.opcoes_habilitado))
   const flag = useSalvarBarraca(barraca)
@@ -135,6 +145,12 @@ export function SecaoOpcoes({ barraca }: { barraca: Barraca }) {
         : new Set<string>(),
     [r, cadastro, edicao?.grupoId],
   )
+
+  function usarModelo(m: ModeloDeOpcoes) {
+    setEscolhendoModelo(false)
+    setBuscaModelo('')
+    abrir(null, rascunhoDoModelo(m))
+  }
 
   function atualizar(parcial: Partial<RascunhoGrupo>) {
     setEdicao((e) => (e ? { ...e, rascunho: { ...e.rascunho, ...parcial } } : e))
@@ -233,32 +249,51 @@ export function SecaoOpcoes({ barraca }: { barraca: Barraca }) {
                 Novo grupo
               </Button>
               <Button variant="ghost" size="md" onClick={() => setEscolhendoModelo(true)}>
-                Modelos prontos
+                {kitsLigado ? 'Usar modelo' : 'Modelos prontos'}
               </Button>
             </div>
           </>
         )}
       </Card>
 
-      <BottomSheet open={escolhendoModelo} onClose={() => setEscolhendoModelo(false)} aria-label="Modelos prontos">
-        <h3 className="text-lg font-semibold text-mesa-text-primary">Modelos prontos</h3>
+      <BottomSheet open={escolhendoModelo} onClose={() => setEscolhendoModelo(false)} aria-label={kitsLigado ? 'Usar modelo' : 'Modelos prontos'}>
+        <h3 className="text-lg font-semibold text-mesa-text-primary">{kitsLigado ? 'Usar modelo' : 'Modelos prontos'}</h3>
         <p className="mt-1 text-sm text-mesa-text-secondary">O modelo abre preenchido; você ajusta os nomes e informa os preços antes de salvar.</p>
-        <div className="mt-4 flex flex-col gap-2">
-          {MODELOS_DE_GRUPO.map((m) => (
-            <button
-              key={m.id}
-              type="button"
-              onClick={() => {
-                setEscolhendoModelo(false)
-                abrir(null, m.criar())
-              }}
-              className="rounded-mesa-lg border border-mesa-border-default p-3 text-left"
-            >
-              <span className="block text-base font-semibold text-mesa-text-primary">{m.titulo}</span>
-              <span className="block text-sm text-mesa-text-secondary">{m.descricao}</span>
-            </button>
-          ))}
-        </div>
+        {kitsLigado ? (
+          <div className="mt-4 flex max-h-[65dvh] flex-col gap-4 overflow-y-auto">
+            <Input label="Buscar modelo" value={buscaModelo} onChange={(e) => setBuscaModelo(e.target.value)} placeholder="Ex.: borda, molho, tamanho" />
+            {buscaModelo.trim() ? (
+              <ListaDeModelos
+                titulo={null}
+                modelos={buscarModelos(buscaModelo)}
+                vazio="Nenhum modelo com esse nome. Crie o seu em Novo grupo."
+                aoEscolher={usarModelo}
+              />
+            ) : (
+              <>
+                <ListaDeModelos titulo={modelosDaLoja.doNegocio.length > 0 ? 'Para o seu negócio' : null} modelos={modelosDaLoja.doNegocio} vazio={null} aoEscolher={usarModelo} />
+                <ListaDeModelos titulo={modelosDaLoja.doNegocio.length > 0 ? 'Outros modelos' : 'Todos os modelos'} modelos={modelosDaLoja.outros} vazio={null} aoEscolher={usarModelo} />
+              </>
+            )}
+          </div>
+        ) : (
+          <div className="mt-4 flex flex-col gap-2">
+            {MODELOS_DE_GRUPO.map((m) => (
+              <button
+                key={m.id}
+                type="button"
+                onClick={() => {
+                  setEscolhendoModelo(false)
+                  abrir(null, m.criar())
+                }}
+                className="rounded-mesa-lg border border-mesa-border-default p-3 text-left"
+              >
+                <span className="block text-base font-semibold text-mesa-text-primary">{m.titulo}</span>
+                <span className="block text-sm text-mesa-text-secondary">{m.descricao}</span>
+              </button>
+            ))}
+          </div>
+        )}
       </BottomSheet>
 
       <BottomSheet open={edicao !== null} onClose={() => !salvando && setEdicao(null)} aria-label="Grupo de opções">
@@ -298,6 +333,16 @@ export function SecaoOpcoes({ barraca }: { barraca: Barraca }) {
                   <span className="text-sm text-mesa-text-primary">Obrigatório escolher</span>
                   <Toggle checked={r.obrigatorio} onChange={(v) => atualizar({ obrigatorio: v })} aria-label="Obrigatório escolher" />
                 </div>
+                {kitsLigado && r.obrigatorio && (
+                  <Input
+                    label="Mínimo de escolhas"
+                    inputMode="numeric"
+                    value={r.minimoTexto ?? ''}
+                    onChange={(e) => atualizar({ minimoTexto: e.target.value.replace(/\D/g, '').slice(0, 2) })}
+                    placeholder="Vazio = 1"
+                    helpText="Ex.: 3 para um combo em que o cliente escolhe 3 sabores diferentes."
+                  />
+                )}
                 <Input
                   label="Limite de escolhas"
                   inputMode="numeric"

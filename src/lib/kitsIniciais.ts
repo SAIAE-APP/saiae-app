@@ -11,8 +11,14 @@ import {
   modeloDeOpcoes,
   type AjusteDeModelo,
   type GrupoDoKit,
+  type NegocioId,
 } from './modelosDeOpcoes.ts'
 import type { ChaveModeloHorario } from './onboardingConfig.ts'
+
+/** Interruptor de front dos kits (além de VITE_ONBOARDING_CONFIG): sem `1`, Ajustes e o assistente ficam como antes. */
+export function onboardingKitsHabilitado(valor: unknown): boolean {
+  return valor === '1'
+}
 
 export type KitId = 'feira' | 'quermesse' | 'lanchonete' | 'acai' | 'hamburgueria' | 'pizzaria' | 'pastelaria' | 'pf'
 
@@ -285,6 +291,26 @@ export function conteudoDoKit(id: KitId): ConteudoDoKit {
     itens: k.itens.map((i) => ({ nome: i.nome, categoria: i.categoria, grupos: [...(i.grupos ?? [])] })),
     opcoes_habilitado: grupos.length > 0,
   }
+}
+
+/** Categoria do onboarding → tipo(s) de negócio dos modelos de opções. */
+const NEGOCIOS_POR_CATEGORIA: Record<string, NegocioId[]> = {
+  lanches: ['lanchonete', 'hamburgueria'],
+  pizza: ['pizzaria'],
+  marmita: ['pf'],
+  acai: ['acai'],
+  pastel: ['pastelaria'],
+  doces: ['doces', 'feira'],
+  oriental: ['oriental'],
+  bebidas: ['bebidas'],
+  churrasco: ['churrasco'],
+  outra: ['quermesse'],
+}
+
+/** Tipos de negócio da barraca para ordenar os modelos de opções: o kit aplicado vale mais que a categoria. */
+export function negociosDaBarraca(kitAplicado: string | null | undefined, categoria: string | null | undefined): NegocioId[] {
+  if (kitAplicado && kitDoId(kitAplicado)) return [kitAplicado as NegocioId]
+  return (categoria && NEGOCIOS_POR_CATEGORIA[categoria]) || []
 }
 
 /** Itens do kit que ainda não têm preço (para a tela "Revisar cardápio de exemplo"). */

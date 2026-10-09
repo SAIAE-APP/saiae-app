@@ -41,6 +41,8 @@ export type ModeloDeOpcoes = {
   obrigatorio: boolean
   /** null = sem limite (só adicional). Variação é sempre 1. */
   maximo: number | null
+  /** Mínimo de escolhas quando maior que 1 (ex.: combo de 3 sabores). Ausente = 1 se obrigatório. */
+  minimo?: number
   opcoes: OpcaoDeModelo[]
   negocios: NegocioId[]
 }
@@ -58,6 +60,7 @@ export type GrupoDoKit = {
 const P = true // opção que precisa de preço
 
 type Def = Omit<ModeloDeOpcoes, 'tipo' | 'obrigatorio' | 'maximo'> & Partial<Pick<ModeloDeOpcoes, 'maximo'>>
+const obrigatorioDe = (d: Def): ModeloDeOpcoes => ({ ...d, tipo: 'adicional', obrigatorio: true, maximo: d.maximo ?? 1 })
 
 const variacao = (d: Def): ModeloDeOpcoes => ({ ...d, tipo: 'variacao', obrigatorio: true, maximo: 1 })
 const escolhaUnica = (d: Def): ModeloDeOpcoes => ({ ...d, tipo: 'adicional', obrigatorio: true, maximo: 1 })
@@ -170,6 +173,15 @@ export const MODELOS_DE_OPCOES: ModeloDeOpcoes[] = [
     negocios: ['bebidas'],
   }),
 
+  // ---- Adicionais obrigatórios com mínimo maior que 1 (precisam do campo "mínimo" do formulário; ainda não vão em kit)
+  obrigatorioDe({
+    id: 'sabores_combo', titulo: 'Sabores do combo (escolha 3)', nomeGrupo: 'Sabores',
+    descricao: 'O cliente escolhe exatamente 3 sabores diferentes. O mesmo sabor não pode repetir (quantidade por opção ainda não existe).',
+    minimo: 3, maximo: 3,
+    opcoes: [{ nome: 'Carne' }, { nome: 'Queijo' }, { nome: 'Frango com catupiry' }, { nome: 'Pizza' }],
+    negocios: ['pastelaria', 'feira', 'quermesse'],
+  }),
+
   // ---- Adicionais opcionais
   opcional({
     id: 'adicionais', titulo: 'Adicionais', nomeGrupo: 'Adicionais',
@@ -261,16 +273,18 @@ export function rascunhoDoModelo(m: ModeloDeOpcoes): RascunhoGrupo {
     ...rascunhoVazio(m.tipo),
     nome: m.nomeGrupo,
     obrigatorio: m.obrigatorio,
+    minimoTexto: m.tipo === 'adicional' && (m.minimo ?? 1) > 1 ? String(m.minimo) : '',
     maximoTexto: m.tipo === 'adicional' && m.maximo !== null ? String(m.maximo) : '',
     opcoes: m.opcoes.map((o) => ({ ...opcaoVazia(), nome: o.nome })),
   }
 }
 
 /** Lista de "Usar modelo": primeiro os do tipo de negócio, depois os demais (cada grupo em ordem alfabética). */
-export function modelosParaNegocio(negocio: string | null | undefined): { doNegocio: ModeloDeOpcoes[]; outros: ModeloDeOpcoes[] } {
+export function modelosParaNegocio(negocio: string | string[] | null | undefined): { doNegocio: ModeloDeOpcoes[]; outros: ModeloDeOpcoes[] } {
   const ordenar = (l: ModeloDeOpcoes[]) => [...l].sort((a, b) => a.titulo.localeCompare(b.titulo, 'pt-BR'))
   // Um modelo que serve a todos os negócios (Tamanho, Adicionais) vai primeiro, mesmo sem negócio escolhido.
-  const doNegocio = MODELOS_DE_OPCOES.filter((m) => negocio && (m.negocios as string[]).includes(negocio))
+  const alvo = Array.isArray(negocio) ? negocio : negocio ? [negocio] : []
+  const doNegocio = MODELOS_DE_OPCOES.filter((m) => alvo.some((n) => (m.negocios as string[]).includes(n)))
   const ids = new Set(doNegocio.map((m) => m.id))
   return { doNegocio: ordenar(doNegocio), outros: ordenar(MODELOS_DE_OPCOES.filter((m) => !ids.has(m.id))) }
 }
@@ -288,6 +302,8 @@ export type AjusteDeModelo = { nome?: string; somente?: string[]; maximo?: numbe
 
 /** O grupo do modelo, já com os ajustes, no formato que a RPC do kit recebe. */
 export function conteudoDoGrupo(chave: string, m: ModeloDeOpcoes, ajuste: AjusteDeModelo = {}): GrupoDoKit {
+  // A RPC do kit só conhece "obrigatório" (mínimo 1): modelo com mínimo maior não cabe num kit.
+  if ((m.minimo ?? 1) > 1) throw new Error(`O modelo ${m.id} tem mínimo maior que 1 e não pode entrar num kit.`)
   const opcoes = ajuste.somente ? m.opcoes.filter((o) => ajuste.somente!.includes(o.nome)) : m.opcoes
   return {
     chave,
