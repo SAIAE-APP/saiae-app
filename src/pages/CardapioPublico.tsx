@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { AVISO_TELEFONE_PEDIDO_GRATIS, TEXTO_BOTAO_PEDIDO_GRATIS, ehPedidoGratis, lerPedidoGratis, telefoneServePedidoGratis } from '../lib/pedidoGratis'
 import { Link, useParams } from 'react-router'
+import { useResolverApelido } from '../hooks/useResolverApelido'
 import clsx from 'clsx'
 import { supabase } from '../lib/supabase'
 import { formatarPrecoBR } from '../lib/preco'
@@ -586,6 +587,8 @@ export function CardapioPublico() {
   const [estado, setEstado] = useState<Estado>(() =>
     slug ? { status: 'carregando' } : { status: 'erro' },
   )
+  // Endereço antigo (apelido): descobre o slug atual e redireciona, em vez de mostrar "Cardápio não encontrado".
+  const apelido = useResolverApelido(slug, estado.status === 'erro')
   const [banners, setBanners] = useState<BannerPublico[]>([])
   const [horarios, setHorarios] = useState<HorarioPublico[]>([])
   const [busca, setBusca] = useState('')
@@ -1230,7 +1233,7 @@ export function CardapioPublico() {
     }
   }
 
-  if (estado.status === 'carregando') {
+  if (estado.status === 'carregando' || (estado.status === 'erro' && apelido.verificando)) {
     return (
       <div className="flex min-h-dvh items-center justify-center bg-mesa-bg-base">
         <p className="text-mesa-text-secondary">Carregando cardápio...</p>

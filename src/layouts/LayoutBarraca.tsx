@@ -2,6 +2,7 @@ import { useEffect, useRef } from 'react'
 import { Outlet, useLocation, useParams } from 'react-router'
 import clsx from 'clsx'
 import { useBarraca } from '../hooks/useBarraca'
+import { useResolverApelido } from '../hooks/useResolverApelido'
 import { useSincronizacao } from '../hooks/useSincronizacao'
 import { useImpressaoAutomatica } from '../hooks/useImpressaoAutomatica'
 import { useRealtimePedidos } from '../hooks/useRealtimePedidos'
@@ -20,6 +21,8 @@ import { PedidosContext } from './contextoPedidos'
 export function LayoutBarraca() {
   const { slug } = useParams<{ slug: string }>()
   const { barraca, carregando, erro } = useBarraca(slug ?? '')
+  // Endereço antigo (apelido): redireciona para o atual em vez de "Estabelecimento não encontrado".
+  const apelido = useResolverApelido(slug, !carregando && (Boolean(erro) || !barraca))
   const sincronizacao = useSincronizacao()
   useImpressaoAutomatica(barraca)
   const { mostrarToast } = useToast()
@@ -102,7 +105,7 @@ export function LayoutBarraca() {
       ?.setAttribute('href', barraca.logo_url ?? '/icons/apple-touch-icon.png')
   }, [barraca])
 
-  if (carregando) {
+  if (carregando || apelido.verificando) {
     return (
       <div className="flex min-h-dvh items-center justify-center bg-mesa-bg-base">
         <p className="text-mesa-text-secondary">Carregando...</p>

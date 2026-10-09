@@ -88,6 +88,18 @@ export function useBarraca(slug: string) {
         if (cancelado) return
 
         if (error) {
+          // A loja não existe mais com ESTE endereço (PGRST116: nenhuma linha): o cache é de um endereço antigo (apelido)
+          // ou de uma loja apagada. Limpa e mostra o erro para a tela resolver o apelido, em vez de ficar presa no cache.
+          if (error.code === 'PGRST116') {
+            ultimaBarraca.delete(slug)
+            try {
+              window.localStorage.removeItem(chaveCache(slug))
+            } catch {
+              // localStorage indisponível: sem cache a limpar
+            }
+            setEstado({ barraca: null, carregando: false, erro: error.message })
+            return
+          }
           // já tem cache na tela — provavelmente é só falta de rede,
           // não vale a pena substituir o que já está funcionando por um erro
           if (cache) return
