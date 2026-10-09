@@ -1,6 +1,6 @@
 # Produto de valor livre ("Preço aberto") — spec curta (H6)
 
-Estado: **proposta para o João**. Só documento; nenhuma linha de código. Origem: feedback do Sabor Kawashima (bomboniere), backlog H6.
+Estado: **APROVADA (decisões do João na seção 6, 2026-10-09)**. Só documento; nenhuma linha de código. Origem: feedback do Sabor Kawashima (bomboniere), backlog H6.
 
 ## 1. O problema
 O operador vende coisas sem preço fixo (uma bomboniere de R$ 0,50 a R$ 4,00; um valor combinado diferente para quem capta clientes na frente do INSS). Hoje todo item tem preço cadastrado, então ele não consegue lançar "R$ 1,35, bala de menta" e o caixa não fecha certinho.
@@ -33,12 +33,12 @@ O operador vende coisas sem preço fixo (uma bomboniere de R$ 0,50 a R$ 4,00; um
 - **Fiscal:** descrição genérica na nota. Mitigação: descrição = nome + observação obrigatória; NCM/CFOP genéricos escolhidos pelo contador do dono (a tela explica); testar em homologação antes de uso real (nenhuma nota foi emitida de verdade ainda).
 - **Abuso interno** (operador lança valor menor): é o objetivo do recurso; o Histórico mostra cada valor e a observação. Limite por linha sugerido: R$ 9.999,99.
 
-## 6. Decisões para o João
-1. A observação "o que foi vendido" é **obrigatória** (recomendado, por causa da nota) ou opcional?
-2. A descrição da nota deve ser **nome + observação** (recomendado)?
-3. O ranking de itens agrupa tudo em "Valor livre" (recomendado) ou queremos agrupar por observação?
-4. Limite de valor por linha (sugestão R$ 9.999,99)?
-5. Quantidade editável no item de preço aberto (valor por unidade) ou sempre 1 por linha (recomendado)?
+## 6. Decisões (do João, 2026-10-09, aprovadas como "recomendado")
+1. A observação "o que foi vendido" é **obrigatória** (2 a 60 caracteres).
+2. A descrição do produto na nota é **nome do item + observação**.
+3. O ranking de itens **agrupa tudo em "Valor livre"** (uma linha só).
+4. Limite de valor por linha: **R$ 9.999,99**.
+5. **Sempre 1 por linha** (a quantidade não é editável no item de preço aberto).
 
 ## 7. Plano (PRs pequenos, depois da aprovação)
 1. Migration: `itens.preco_aberto` + `cardapio_publico`/`resolver_carrinho` ignoram e recusam o item; testes.
