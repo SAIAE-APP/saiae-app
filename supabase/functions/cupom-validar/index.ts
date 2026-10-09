@@ -4,6 +4,7 @@
 //   supabase functions deploy cupom-validar --no-verify-jwt --project-ref <ref>
 // Segredo: CLIENTE_HASH_PEPPER (identifica o cliente pela sessão, quando houver).
 import { createClient } from 'jsr:@supabase/supabase-js@2'
+import { buscarBarracaPorSlug } from '../_shared/resolverSlug.ts'
 import { hashIp, ipDoCliente } from '../_shared/antiabuso.ts'
 import { interpretarResolver, montarLinhas, respostaDeErros } from '../_shared/carrinho.ts'
 import { autenticarSessao } from '../_shared/clienteSessao.ts'
@@ -42,7 +43,7 @@ Deno.serve(async (req: Request) => {
   const pimenta = Deno.env.get('CLIENTE_HASH_PEPPER') ?? ''
   const supabase = createClient(Deno.env.get('SUPABASE_URL') ?? '', Deno.env.get('SUPABASE_SERVICE_ROLE_KEY') ?? '')
 
-  const { data: barraca } = await supabase.from('barracas').select('id, cupons_habilitado').eq('slug', slug).maybeSingle()
+  const barraca = await buscarBarracaPorSlug<{ id: string; cupons_habilitado: boolean | null }>(supabase, slug, 'id, cupons_habilitado')
   if (!barraca) return json({ erro: 'Loja não encontrada' }, 404)
   const ipHash = await hashIp('cupom-validar', ipDoCliente(req), barraca.id)
 
