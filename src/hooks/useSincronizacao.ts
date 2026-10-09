@@ -9,11 +9,15 @@ import {
   ouvirMudancaFila,
 } from '../lib/fila'
 import type { OperacaoPendente } from '../lib/fila'
+import { EVENTO_CLIENTE_NAO_SALVO, enfileirar } from '../lib/fila'
+import { salvarClienteComReenvio } from '../lib/salvarClienteComReenvio'
 import { salvarClienteFinal } from '../lib/clientesFinais'
 import type { DadosEntrega } from '../lib/entrega'
 
 const ATRASO_INICIAL_MS = 1000
 const ATRASO_MAXIMO_MS = 30000
+/** Tentativas de salvar o cadastro de um cliente antes de desistir (com o atraso máximo, ~10 min). */
+const MAX_TENTATIVAS_CLIENTE = 20
 
 /** A operação não pode ser enviada AGORA por causa de algo que só o servidor
  * resolve (ex.: banco sem a criar_pedido v6), mas não tem nada a ver com as
@@ -40,8 +44,11 @@ function salvarClienteDoPedido(payload: Record<string, unknown>) {
   const entrega = payload.p_entrega as DadosEntrega | null | undefined
   const barracaId = payload.p_barraca_id
   if (!entrega || typeof barracaId !== 'string') return
-  salvarClienteFinal(barracaId, entrega).catch((erro) => {
-    console.warn('[sincronizacao] cliente final não salvo', erro)
+  // Falhou: o operador é avisado e o salvamento vira uma operação da fila (reenvia sozinha, sem travar os pedidos).
+  void salvarClienteComReenvio({
+    salvar: () => salvarClienteFinal(barracaId, entrega),
+    enfileirar: () => enfileirar('salvar_cliente', { p_barraca_id: barracaId, p_entrega: entrega }),
+    avisar: () => window.dispatchEvent(new Event(EVENTO_CLIENTE_NAO_SALVO)),
   })
 }
 
@@ -106,6 +113,25 @@ async function executarOperacao(op: OperacaoPendente): Promise<void> {
         payload: op.payload,
         enviadoEm: op.criadoEm,
       })
+      return
+    }
+
+    case 'salvar_cliente': {
+      const entrega = op.payload.p_entrega as DadosEntrega | null | undefined
+      const barracaId = op.payload.p_barraca_id
+      if (!entrega || typeof barracaId !== 'string') return
+      // Dado que o banco nunca aceita (ex.: telefone inválido) não fica na fila para sempre.
+      if (op.tentativas >= MAX_TENTATIVAS_CLIENTE) {
+        console.warn('[sincronizacao] cliente final descartado depois de várias tentativas')
+        return
+      }
+      try {
+        await salvarClienteFinal(barracaId, entrega)
+      } catch (erro) {
+        // Reenvia com backoff SEM travar os pedidos que vêm depois (o cadastro nunca pode atrasar a cozinha).
+        console.warn('[sincronizacao] cliente final ainda não salvo', erro)
+        throw new OperacaoAdiadaError('Cadastro do cliente aguardando para ser salvo')
+      }
       return
     }
 
@@ -197,6 +223,10 @@ export function useSincronizacao() {
           break
         }
       }
+
+      // Operação criada DURANTE esta rodada (ex.: cliente que não salvou) não estava na lista lida no começo:
+      // sem isto ninguém tentaria de novo até outro evento da fila.
+      if (!falhou && (await listarPendentes()).length > 0) falhou = true
 
       await atualizarContagem()
       processandoRef.current = false
