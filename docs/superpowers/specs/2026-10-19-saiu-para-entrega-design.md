@@ -1,6 +1,6 @@
 # "Saiu para entrega" — coluna do kanban e aviso ao cliente (spec curta)
 
-Estado: **proposta para o João**. Só documento. Depende de: link do motoboy (`/e/:token`, já no ar), "pagar depois" (Fase 1, já no ar) e do modelo Meta `pedido_saiu_entrega_v2` (ativo) no CRM.
+Estado: **APROVADA (decisões do João na seção 8, 2026-10-09)**. Só documento. Depende de: link do motoboy (`/e/:token`, já no ar), "pagar depois" (Fase 1, já no ar) e do modelo Meta `pedido_saiu_entrega_v2` (ativo) no CRM.
 
 ## 1. Problema
 Hoje o kanban tem duas colunas (A fazer, Pronto) e o pedido de Entrega fica "Pronto" até alguém tocar "Entregue". Não dá para saber quais já saíram com o motoboy, e o cliente não recebe o aviso "seu pedido saiu para entrega" (existe só o botão manual "Avisar cliente" quando fica pronto).
@@ -25,7 +25,7 @@ Hoje o kanban tem duas colunas (A fazer, Pronto) e o pedido de Entrega fica "Pro
 
 ## 5. Aviso ao cliente (pelo CRM)
 - Novo evento de saída **`order.out_for_delivery`** (aditivo: entra no CHECK de `eventos_saida.tipo` e no `evento.schema.json`; `data.status` ganha o valor `saiu_entrega`). Emitido pelo gatilho que já existe em `pedidos` quando o status muda para `saiu_entrega`, junto de `order.status_changed`.
-- O CRM, ao receber, envia o modelo **`pedido_saiu_entrega_v2`** ao telefone do pedido (`cliente_telefone` ou o telefone da entrega) **só se** o cliente aceita avisos (`aceita_avisos_pedido` quando há perfil) e a loja tem o CRM ligado. **No máximo um aviso por pedido** (o CRM deduplica por pedido + tipo, então voltar e sair de novo não reenvia). Variáveis sugeridas: primeiro nome, senha, nome da loja. **Não envia o link do motoboy ao cliente** (é do entregador).
+- O CRM, ao receber, envia o modelo **`pedido_saiu_entrega_v2`** ao telefone do pedido (`cliente_telefone` ou o telefone da entrega) seguindo **exatamente a regra do aviso "pedido pronto"** (decisão 4: nada de regra nova de consentimento) e só com a loja com o CRM ligado. **No máximo um aviso por pedido** (o CRM deduplica por pedido + tipo, então voltar e sair de novo não reenvia). Variáveis sugeridas: primeiro nome, senha, nome da loja. **Não envia o link do motoboy ao cliente** (é do entregador).
 - Sem CRM ou com o envio falhando, o botão manual "Avisar cliente" (WhatsApp sem API) continua existindo no card, como fallback.
 
 ## 6. Modelo de dados (aditivo)
@@ -38,11 +38,11 @@ Hoje o kanban tem duas colunas (A fazer, Pronto) e o pedido de Entrega fica "Pro
 - **Migration antes do front:** sem a coluna, o update da fila falharia e travaria a fila; por isso a migration entra e o interruptor só liga depois.
 - **App antigo** não conhece o status: pedido em Saiu para entrega **some** do kanban dele (a Cozinha antiga só mostra A fazer e Pronto). Mitigação: ligar o interruptor só depois de atualizar todos os aparelhos da loja; o Histórico antigo mostra o pedido com status desconhecido.
 
-## 8. Decisões para o João
-1. "Saiu para entrega" também vale para **Retirada** (cliente busca)? Proposta: **não**, só Entrega.
-2. O aviso ao cliente sai **ao tocar "Saiu"** (proposto) ou só quando o operador confirmar o envio da mensagem?
-3. Pedir o link do motoboy na folha ao tocar "Saiu" (proposto) ou só pelo botão que já existe?
-4. O aviso respeita `aceita_avisos_pedido` do perfil (proposto) e, sem perfil, sai para o telefone do pedido?
+## 8. Decisões (do João, 2026-10-09, aprovadas como "recomendado")
+1. **Só Entrega** (Retirada não ganha "Saiu").
+2. O aviso ao cliente **sai ao tocar "Saiu para entrega"**.
+3. **Pedir o link do motoboy** na folha ao tocar "Saiu".
+4. O aviso segue **exatamente a regra do aviso "pedido pronto" que já existe** (aviso ligado na loja, telefone do pedido e, quando há perfil, cliente que aceita avisos / telefone confirmado). **Nenhuma regra nova de consentimento.**
 
 ## 9. Plano (PRs pequenos, depois da aprovação)
 1. **Migration:** colunas, `order.out_for_delivery` no CHECK e no gatilho, `entregador_confirmar` aceitando o status novo; testes no PGlite.
