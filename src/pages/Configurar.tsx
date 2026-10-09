@@ -921,7 +921,8 @@ export function Configurar() {
         }}
         onCadastrarItens={async () => {
           await recarregar()
-          navigate(`/${barraca.slug}/ajustes/cardapio`, { replace: true })
+          // Com kit aplicado, vai para a tela de completar os preços; sem kit, para o cadastro de itens.
+          navigate(`/${barraca.slug}/ajustes/cardapio${barraca.kit_aplicado ? '/exemplo' : ''}`, { replace: true })
         }}
         onAtivarPix={async () => {
           await recarregar()

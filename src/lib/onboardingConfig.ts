@@ -356,6 +356,13 @@ export function mensagemErroOnboarding(mensagem: string | null | undefined): str
   return 'Não foi possível salvar agora. Tente de novo.'
 }
 
+/** Para onde cada pendência do checklist leva. `null` = abre a oferta do kit no próprio Hub (não é uma rota). */
+export function rotaDoItemChecklist(slug: string, chave: string): string | null {
+  if (chave === 'kit_oferta') return null
+  if (chave === 'kit_precos') return `/${slug}/ajustes/cardapio/exemplo`
+  return `/${slug}/ajustes${destinoDoItemChecklist(chave) === 'cardapio' ? '/cardapio' : ''}`
+}
+
 /** Em qual categoria de Ajustes cada pendência do checklist se resolve (a rota /:slug/ajustes é "conta"). */
 export function destinoDoItemChecklist(chave: string): 'conta' | 'cardapio' {
   switch (chave) {

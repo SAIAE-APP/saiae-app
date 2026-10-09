@@ -1,7 +1,8 @@
 import { useEffect, useState } from 'react'
 import { useNavigate } from 'react-router'
 import { supabase } from '../lib/supabase'
-import { calcularChecklist, destinoDoItemChecklist, mostrarChecklist, type Progresso } from '../lib/onboardingConfig'
+import { calcularChecklist, mostrarChecklist, rotaDoItemChecklist, type Progresso } from '../lib/onboardingConfig'
+import { OfertaKit } from './OfertaKit'
 import { Card } from './ui/Card'
 import { Icone } from './ui/Icone'
 
@@ -17,6 +18,8 @@ export function CartaoChecklistOnboarding({ barracaId, slug }: { barracaId: stri
   const [resposta, setResposta] = useState<Resposta | null>(null)
   const [aberto, setAberto] = useState(false)
   const [ocultando, setOcultando] = useState(false)
+  const [ofertaAberta, setOfertaAberta] = useState(false)
+  const [recarga, setRecarga] = useState(0)
   const [agora] = useState(() => Date.now())
 
   useEffect(() => {
@@ -30,7 +33,7 @@ export function CartaoChecklistOnboarding({ barracaId, slug }: { barracaId: stri
     return () => {
       cancelado = true
     }
-  }, [barracaId])
+  }, [barracaId, recarga])
 
   if (!resposta) return null
   const { itens, feitos, total, porcentagem } = calcularChecklist(resposta)
@@ -79,7 +82,11 @@ export function CartaoChecklistOnboarding({ barracaId, slug }: { barracaId: stri
                 <li key={i.chave}>
                   <button
                     type="button"
-                    onClick={() => navigate(`/${slug}/ajustes${destinoDoItemChecklist(i.chave) === 'cardapio' ? '/cardapio' : ''}`)}
+                    onClick={() => {
+                      const rota = rotaDoItemChecklist(slug, i.chave)
+                      if (rota) navigate(rota)
+                      else setOfertaAberta(true)
+                    }}
                     className="flex min-h-11 w-full items-center justify-between gap-3 py-2 text-left text-sm text-mesa-text-primary"
                   >
                     {i.rotulo}
@@ -99,6 +106,13 @@ export function CartaoChecklistOnboarding({ barracaId, slug }: { barracaId: stri
           </>
         )}
       </Card>
+      <OfertaKit
+        barracaId={barracaId}
+        slug={slug}
+        aberto={ofertaAberta}
+        onFechar={() => setOfertaAberta(false)}
+        onResolvido={() => setRecarga((n) => n + 1)}
+      />
     </div>
   )
 }
