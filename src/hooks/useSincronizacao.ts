@@ -11,6 +11,7 @@ import {
 import type { OperacaoPendente } from '../lib/fila'
 import { salvarClienteFinal } from '../lib/clientesFinais'
 import type { DadosEntrega } from '../lib/entrega'
+import { desfechoDefinirMetodo } from '../lib/definirMetodoFila'
 
 const ATRASO_INICIAL_MS = 1000
 const ATRASO_MAXIMO_MS = 30000
@@ -107,6 +108,17 @@ async function executarOperacao(op: OperacaoPendente): Promise<void> {
         enviadoEm: op.criadoEm,
       })
       return
+    }
+
+    case 'definir_metodo': {
+      // "Pagar depois": forma de pagamento escolhida ao tocar Entregue. Idempotente no servidor (repetir o mesmo método
+      // é ok; método já definido por outro lugar nunca é sobrescrito). Banco sem a RPC: adiada, sem travar a fila.
+      const { pedido_id, metodo } = op.payload as { pedido_id: string; metodo: string }
+      const { data, error } = await supabase.rpc('definir_metodo_pagamento', { p_pedido_id: pedido_id, p_metodo: metodo })
+      const desfecho = desfechoDefinirMetodo(error, data as { estado?: string } | null)
+      if (desfecho === 'concluida') return
+      if (desfecho === 'adiar') throw new OperacaoAdiadaError('Forma de pagamento aguardando o servidor (definir_metodo_pagamento)')
+      throw error ?? new Error('definir_metodo_pagamento não confirmou')
     }
 
     case 'mudar_status': {
