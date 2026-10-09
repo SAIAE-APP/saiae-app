@@ -1,10 +1,10 @@
 import { useState, type ReactNode } from 'react'
 import { useRascunho, useSalvarBarraca } from '../hooks/useSalvarBarraca'
-import { DESCRICAO_MODO, ICONE_MODO, ROTULO_MODO, TODOS_OS_MODOS, modosAtivos } from '../lib/atendimento'
+import { TODOS_OS_MODOS, modosAtivos } from '../lib/atendimento'
+import { SeletorModos } from './SeletorModos'
 import { ErroSalvar } from './BotaoSalvarCampo'
 import { Card } from './ui/Card'
 import { Icone } from './ui/Icone'
-import { Toggle } from './ui/Toggle'
 import type { Barraca, TipoAtendimento } from '../types/database'
 
 function RotuloSecao({ icone, children }: { icone?: string; children: ReactNode }) {
@@ -58,30 +58,7 @@ export function SecaoModosAtendimento({ barraca }: { barraca: Barraca }) {
           </p>
         )}
 
-        <ul className="mt-2 divide-y divide-mesa-border-subtle">
-          {TODOS_OS_MODOS.map((modo) => (
-            <li key={modo}>
-              <label
-                htmlFor={`modo-${modo}`}
-                className="flex min-h-11 cursor-pointer items-center justify-between gap-3 py-3"
-              >
-                <span className="flex min-w-0 items-center gap-3">
-                  <Icone nome={ICONE_MODO[modo]} size={20} />
-                  <span className="min-w-0">
-                    <span className="block text-base text-mesa-text-primary">{ROTULO_MODO[modo]}</span>
-                    <span className="block text-xs text-mesa-text-secondary">{DESCRICAO_MODO[modo]}</span>
-                  </span>
-                </span>
-                <Toggle
-                  id={`modo-${modo}`}
-                  checked={ativos.includes(modo)}
-                  onChange={() => alternar(modo)}
-                  aria-label={ROTULO_MODO[modo]}
-                />
-              </label>
-            </li>
-          ))}
-        </ul>
+                <SeletorModos ativos={ativos} onAlternar={alternar} />
 
         <ErroSalvar erro={salvador.erro} className="mt-2" />
       </Card>

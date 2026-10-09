@@ -20,9 +20,9 @@ import { apagarLogoBarraca, enviarLogoBarraca } from '../lib/logoBarraca'
 import { apagarCapaBarraca, enviarCapaBarraca } from '../lib/capaBarraca'
 import { ativarFaceId, desativarFaceId, faceIdAtivado, faceIdSuportado } from '../lib/faceId'
 import { urlPublica } from '../lib/urlPublica'
-import { METODOS_DISPONIVEIS } from '../lib/metodoPagamento'
 import { BPS_MAX, bpsParaPercentual, percentualParaBps } from '../lib/taxas'
 import { ModalTrocarSenha } from '../components/ModalTrocarSenha'
+import { SeletorMetodos } from '../components/SeletorMetodos'
 import { GateSenhaAdmin } from '../components/GateSenhaAdmin'
 import { SecaoImpressora } from '../components/SecaoImpressora'
 import { SecaoBanners } from '../components/SecaoBanners'
@@ -1565,27 +1565,7 @@ function SecaoPagamento({ barraca }: { barraca: Barraca }) {
       <Card>
         {aviso && <AvisoInline>{aviso}</AvisoInline>}
 
-        <ul className="divide-y divide-mesa-border-subtle">
-          {METODOS_DISPONIVEIS.map((metodo) => (
-            <li key={metodo.chave}>
-              <label
-                htmlFor={`metodo-${metodo.chave}`}
-                className="flex cursor-pointer items-center justify-between gap-3 py-3"
-              >
-                <span className="inline-flex items-center gap-2 text-base text-mesa-text-primary">
-                  <Icone nome={metodo.icone} size={16} />
-                  {metodo.label}
-                </span>
-                <Toggle
-                  id={`metodo-${metodo.chave}`}
-                  checked={ativos.includes(metodo.chave)}
-                  onChange={() => alternar(metodo.chave)}
-                  aria-label={metodo.label}
-                />
-              </label>
-            </li>
-          ))}
-        </ul>
+        <SeletorMetodos ativos={ativos} onAlternar={alternar} />
 
         <ErroSalvar erro={metodos.erro} className="mt-2" />
 

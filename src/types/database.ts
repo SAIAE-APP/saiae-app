@@ -35,6 +35,19 @@ export type Barraca = {
   pagamento_depois_habilitado?: boolean
   /** Estoque: true = bloqueia a venda acima do saldo; false/ausente = só avisa (padrão). */
   estoque_bloqueia?: boolean
+  /** Assistente de configuração inicial (migration 20261020100000). Opcionais: banco/cache de antes não têm. */
+  categoria_negocio?: string | null
+  endereco_cep?: string | null
+  endereco_rua?: string | null
+  endereco_numero?: string | null
+  endereco_complemento?: string | null
+  endereco_bairro?: string | null
+  endereco_cidade?: string | null
+  endereco_uf?: string | null
+  sem_cnpj?: boolean
+  onboarding_etapa?: number
+  onboarding_concluido_em?: string | null
+  checklist_oculto_ate?: string | null
   /** Cupons por código no cardápio digital (padrão false). Ausente em banco/cache de antes da migration. */
   cupons_habilitado?: boolean
   /** Atendente IA do WhatsApp (padrão false). Ausentes em banco/cache de antes da migration. */

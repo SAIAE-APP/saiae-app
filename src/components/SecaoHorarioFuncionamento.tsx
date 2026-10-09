@@ -7,6 +7,7 @@ import { Card } from './ui/Card'
 import { Chip } from './ui/Chip'
 import { Icone } from './ui/Icone'
 import { Toggle } from './ui/Toggle'
+import { CampoHorarioDia } from './CampoHorarioDia'
 import type { Barraca, HorarioFuncionamento } from '../types/database'
 
 type LinhaHorario = {
@@ -28,9 +29,6 @@ const DIAS: { valor: number; rotulo: string }[] = [
 
 const HORA_ABERTURA_PADRAO = '18:00'
 const HORA_FECHAMENTO_PADRAO = '23:00'
-
-const CLASSE_INPUT_HORA =
-  'h-10 w-full rounded-mesa-sm border-[1.5px] border-mesa-border-default bg-mesa-surface px-3 text-sm text-mesa-text-primary outline-none focus:border-mesa-orange-500'
 
 function RotuloSecao({ icone, children }: { icone?: string; children: ReactNode }) {
   return (
@@ -149,35 +147,18 @@ export function SecaoHorarioFuncionamento({ barraca }: { barraca: Barraca }) {
             {horarios.map((linha, indice) => {
               const dia = DIAS[indice]
               return (
-                <li key={dia.valor} className={`flex flex-col gap-2 ${indice > 0 ? 'pt-3' : ''}`}>
-                  <div className="flex items-center justify-between gap-2">
-                    <span className="text-sm font-medium text-mesa-text-primary">{dia.rotulo}</span>
-                    <Toggle
-                      checked={linha.aberto}
-                      onChange={(valor) => alterarLinha(dia.valor, { aberto: valor })}
-                      aria-label={`${dia.rotulo} aberto`}
-                    />
-                  </div>
-                  {linha.aberto && (
-                    <div className="flex items-center gap-2">
-                      <input
-                        type="time"
-                        value={linha.hora_abertura}
-                        onChange={(e) => alterarLinha(dia.valor, { hora_abertura: e.target.value })}
-                        aria-label={`Horário de abertura de ${dia.rotulo}`}
-                        className={CLASSE_INPUT_HORA}
-                      />
-                      <span className="text-sm text-mesa-text-secondary">até</span>
-                      <input
-                        type="time"
-                        value={linha.hora_fechamento}
-                        onChange={(e) => alterarLinha(dia.valor, { hora_fechamento: e.target.value })}
-                        aria-label={`Horário de fechamento de ${dia.rotulo}`}
-                        className={CLASSE_INPUT_HORA}
-                      />
-                    </div>
-                  )}
-                </li>
+                <CampoHorarioDia
+                  key={dia.valor}
+                  rotulo={dia.rotulo}
+                  linha={linha}
+                  primeiro={indice === 0}
+                  onAlterar={(alteracoes) =>
+                    alterarLinha(
+                      dia.valor,
+                      alteracoes as Partial<LinhaHorario>,
+                    )
+                  }
+                />
               )
             })}
           </ul>
