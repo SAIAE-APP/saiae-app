@@ -27,6 +27,8 @@ export type RascunhoGrupo = {
   obrigatorio: boolean
   /** Vazio = sem limite (só adicional). */
   maximoTexto: string
+  /** Mínimo de escolhas quando obrigatório e maior que 1 (só adicional; vazio = 1). Opcional: rascunho antigo não tem. */
+  minimoTexto?: string
   ativo: boolean
   opcoes: RascunhoOpcao[]
   itemIds: string[]
@@ -63,11 +65,13 @@ export function opcaoVazia(): RascunhoOpcao {
 }
 
 /** min/max gravados no banco. Variação é sempre 1/1; o limite inválido vira null aqui e é barrado em `validarRascunho`. */
-export function limitesDoGrupo(r: Pick<RascunhoGrupo, 'tipo' | 'obrigatorio' | 'maximoTexto'>): { min: number; max: number | null } {
+export function limitesDoGrupo(r: Pick<RascunhoGrupo, 'tipo' | 'obrigatorio' | 'maximoTexto' | 'minimoTexto'>): { min: number; max: number | null } {
   if (r.tipo === 'variacao') return { min: 1, max: 1 }
   const texto = r.maximoTexto.trim()
   const max = texto === '' || !/^\d+$/.test(texto) ? null : Number(texto)
-  return { min: r.obrigatorio ? 1 : 0, max }
+  const minTexto = (r.minimoTexto ?? '').trim()
+  const minN = /^\d+$/.test(minTexto) ? Number(minTexto) : 1
+  return { min: r.obrigatorio ? Math.max(1, minN) : 0, max }
 }
 
 function precoValido(texto: string): { ok: boolean; centavos: number } {
@@ -101,6 +105,15 @@ export function validarRascunho(r: RascunhoGrupo): string[] {
 
   const ativas = r.opcoes.filter((o) => o.ativo)
   if (ativas.length === 0) erros.push('Cadastre pelo menos uma opção ativa.')
+
+  const minTexto = (r.minimoTexto ?? '').trim()
+  if (r.tipo === 'adicional' && r.obrigatorio && minTexto !== '') {
+    const n = /^\d+$/.test(minTexto) ? Number(minTexto) : NaN
+    const maxTexto = r.maximoTexto.trim()
+    if (!(n >= 1 && n <= MAX_ESCOLHAS)) erros.push(`O mínimo de escolhas deve ser de 1 a ${MAX_ESCOLHAS}.`)
+    else if (maxTexto !== '' && /^\d+$/.test(maxTexto) && n > Number(maxTexto)) erros.push('O mínimo de escolhas não pode passar do limite.')
+    else if (ativas.length > 0 && n > ativas.length) erros.push('O mínimo de escolhas é maior que o número de opções ativas.')
+  }
 
   const vistos = new Set<string>()
   for (const o of r.opcoes) {
@@ -170,7 +183,8 @@ export function itensIndisponiveis(
 export function resumoDoGrupo(g: Pick<GrupoCadastro, 'tipo' | 'min_escolhas' | 'max_escolhas'>): string {
   if (g.tipo === 'variacao') return 'Variação · escolha 1'
   const obrigatorio = g.min_escolhas >= 1 ? 'obrigatório' : 'opcional'
-  return `Adicional · ${obrigatorio}${g.max_escolhas !== null ? ` · até ${g.max_escolhas}` : ''}`
+  const minimo = g.min_escolhas > 1 ? ` · mínimo ${g.min_escolhas}` : ''
+  return `Adicional · ${obrigatorio}${minimo}${g.max_escolhas !== null ? ` · até ${g.max_escolhas}` : ''}`
 }
 
 /** Modelos prontos: abrem o formulário já preenchido (sem preços: o dono completa antes de salvar). */
@@ -217,6 +231,7 @@ export function rascunhoDoGrupo(
     nome: g.nome,
     tipo: g.tipo,
     obrigatorio: g.min_escolhas >= 1,
+    minimoTexto: g.tipo === 'adicional' && g.min_escolhas > 1 ? String(g.min_escolhas) : '',
     maximoTexto: g.tipo === 'adicional' && g.max_escolhas !== null ? String(g.max_escolhas) : '',
     ativo: g.ativo,
     opcoes: opcoes

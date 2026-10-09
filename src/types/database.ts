@@ -37,6 +37,8 @@ export type Barraca = {
   estoque_bloqueia?: boolean
   /** Assistente de configuração inicial (migration 20261020100000). Opcionais: banco/cache de antes não têm. */
   categoria_negocio?: string | null
+  /** Kit inicial aplicado (migration 20261021110000). Opcional: banco/cache de antes não têm. */
+  kit_aplicado?: string | null
   endereco_cep?: string | null
   endereco_rua?: string | null
   endereco_numero?: string | null

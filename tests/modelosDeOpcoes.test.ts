@@ -16,11 +16,11 @@ import {
 const comPrecos = (r: RascunhoGrupo): RascunhoGrupo => ({ ...r, opcoes: r.opcoes.map((o) => ({ ...o, precoTexto: '5,00' })) })
 
 describe('a biblioteca', () => {
-  test('tem 30 modelos: 8 variações e 22 adicionais, ids únicos', () => {
-    assert.equal(MODELOS_DE_OPCOES.length, 30)
+  test('tem 31 modelos: 8 variações e 23 adicionais, ids únicos', () => {
+    assert.equal(MODELOS_DE_OPCOES.length, 31)
     assert.equal(MODELOS_DE_OPCOES.filter((m) => m.tipo === 'variacao').length, 8)
-    assert.equal(MODELOS_DE_OPCOES.filter((m) => m.tipo === 'adicional').length, 22)
-    assert.equal(new Set(MODELOS_DE_OPCOES.map((m) => m.id)).size, 30)
+    assert.equal(MODELOS_DE_OPCOES.filter((m) => m.tipo === 'adicional').length, 23)
+    assert.equal(new Set(MODELOS_DE_OPCOES.map((m) => m.id)).size, 31)
   })
   test('os ids que já existiam (tamanho, adicionais) mantêm nome e opções dos modelos antigos', () => {
     for (const antigo of MODELOS_DE_GRUPO) {
@@ -51,7 +51,7 @@ describe('a biblioteca', () => {
   })
   test('adicional obrigatório é escolha única; limite entre 1 e 20 ou sem limite', () => {
     for (const m of MODELOS_DE_OPCOES.filter((x) => x.tipo === 'adicional')) {
-      if (m.obrigatorio) assert.equal(m.maximo, 1, m.id)
+      if (m.obrigatorio && (m.minimo ?? 1) === 1) assert.equal(m.maximo, 1, m.id)
       assert.ok(m.maximo === null || (m.maximo >= 1 && m.maximo <= 20), m.id)
     }
   })
@@ -63,7 +63,7 @@ describe('a biblioteca', () => {
   test('o rascunho reproduz min e max do modelo', () => {
     for (const m of MODELOS_DE_OPCOES) {
       const l = limitesDoGrupo(rascunhoDoModelo(m))
-      assert.equal(l.min, m.obrigatorio ? 1 : 0, m.id)
+      assert.equal(l.min, m.obrigatorio ? (m.minimo ?? 1) : 0, m.id)
       assert.equal(l.max, m.tipo === 'variacao' ? 1 : m.maximo, m.id)
     }
   })
@@ -87,17 +87,17 @@ describe('por tipo de negócio', () => {
     const { doNegocio, outros } = modelosParaNegocio('pizzaria')
     assert.ok(doNegocio.some((m) => m.id === 'tamanho_pizza') && doNegocio.some((m) => m.id === 'borda'))
     assert.ok(outros.every((m) => !doNegocio.includes(m)))
-    assert.equal(doNegocio.length + outros.length, 30)
+    assert.equal(doNegocio.length + outros.length, 31)
   })
   test('sem negócio escolhido, tudo vem em "outros"', () => {
     const r = modelosParaNegocio(null)
     assert.equal(r.doNegocio.length, 0)
-    assert.equal(r.outros.length, 30)
+    assert.equal(r.outros.length, 31)
   })
   test('busca por nome ignora acento e maiúscula', () => {
     assert.ok(buscarModelos('PORCAO').some((m) => m.id === 'porcao'))
     assert.ok(buscarModelos('catupiry').some((m) => m.id === 'borda'))
-    assert.equal(buscarModelos('').length, 30)
+    assert.equal(buscarModelos('').length, 31)
     assert.equal(buscarModelos('zzzz').length, 0)
   })
 })
@@ -123,5 +123,36 @@ describe('conteudoDoGrupo (formato da RPC)', () => {
   })
   test('variação ignora ajuste de máximo (é sempre 1)', () => {
     assert.equal(conteudoDoGrupo('t', modeloDeOpcoes('tamanho')!, { maximo: 5 }).maximo, 1)
+  })
+})
+
+describe('mínimo de escolhas (combo de sabores)', () => {
+  const m = modeloDeOpcoes('sabores_combo')!
+  test('o modelo exige 3 sabores: mínimo 3, máximo 3', () => {
+    const r = rascunhoDoModelo(m)
+    assert.equal(r.minimoTexto, '3')
+    assert.equal(r.maximoTexto, '3')
+    assert.deepEqual(limitesDoGrupo(r), { min: 3, max: 3 })
+    assert.deepEqual(validarRascunho(r), [])
+  })
+  test('mínimo maior que o limite, fora de 1 a 20 ou maior que as opções ativas é recusado', () => {
+    const r = rascunhoDoModelo(m)
+    assert.ok(validarRascunho({ ...r, minimoTexto: '4' }).some((e) => /passar do limite/.test(e)))
+    assert.ok(validarRascunho({ ...r, minimoTexto: '0' }).some((e) => /1 a 20/.test(e)))
+    assert.ok(validarRascunho({ ...r, minimoTexto: '21', maximoTexto: '' }).some((e) => /1 a 20/.test(e)))
+    assert.ok(validarRascunho({ ...r, minimoTexto: '3', maximoTexto: '', opcoes: r.opcoes.slice(0, 2) }).some((e) => /maior que o número de opções ativas/.test(e)))
+  })
+  test('sem "obrigatório" o mínimo é ignorado; sem minimoTexto continua 1 (rascunho antigo)', () => {
+    const r = rascunhoDoModelo(m)
+    assert.equal(limitesDoGrupo({ ...r, obrigatorio: false }).min, 0)
+    const antigo = { ...r } as Partial<typeof r>
+    delete antigo.minimoTexto
+    assert.equal(limitesDoGrupo(antigo as typeof r).min, 1)
+  })
+  test('um modelo com mínimo maior que 1 não entra num kit', () => {
+    assert.throws(() => conteudoDoGrupo('s', m))
+  })
+  test('nenhum dos 8 kits usa modelo com mínimo maior que 1', () => {
+    for (const x of MODELOS_DE_OPCOES) if ((x.minimo ?? 1) > 1) assert.equal(x.id, 'sabores_combo')
   })
 })
