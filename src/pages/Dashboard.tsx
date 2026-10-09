@@ -16,6 +16,8 @@ import { Card } from '../components/ui/Card'
 import { Icone } from '../components/ui/Icone'
 import { BottomSheet } from '../components/ui/BottomSheet'
 import { TourGuiado, type PassoTour } from '../components/TourGuiado'
+import { CartaoChecklistOnboarding } from '../components/CartaoChecklistOnboarding'
+import { onboardingConfigHabilitado } from '../lib/onboardingConfig'
 import { marcarTourVisto, tourJaVisto } from '../lib/tourStorage'
 import { calcularEsperaMediaFila } from '../lib/esperaMedia'
 
@@ -251,6 +253,12 @@ export function Dashboard() {
           </button>
         </div>
       </div>
+
+      {/* Pendências de configuração (só dono, só com a flag; some em 100% e some em silêncio se o banco ainda não tem a migration). */}
+      {onboardingConfigHabilitado(import.meta.env.VITE_ONBOARDING_CONFIG) &&
+        barracasDoUsuario.some((b) => b.barraca_id === barraca.id && b.papel === 'dono') && (
+          <CartaoChecklistOnboarding barracaId={barraca.id} slug={barraca.slug} />
+        )}
 
       <div className="px-6 pt-6">
         <p className="text-base font-semibold text-mesa-text-primary">O que você vai fazer agora?</p>

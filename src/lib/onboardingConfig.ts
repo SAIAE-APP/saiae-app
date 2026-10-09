@@ -307,3 +307,17 @@ export function mensagemErroOnboarding(mensagem: string | null | undefined): str
   if (/failed to fetch|network|load failed/i.test(m)) return 'Sem internet. Tente de novo.'
   return 'Não foi possível salvar agora. Tente de novo.'
 }
+
+/** Em qual categoria de Ajustes cada pendência do checklist se resolve (a rota /:slug/ajustes é "conta"). */
+export function destinoDoItemChecklist(chave: string): 'conta' | 'cardapio' {
+  switch (chave) {
+    case 'horario':
+    case 'modos':
+    case 'item':
+    case 'taxa':
+    case 'endereco':
+      return 'cardapio'
+    default:
+      return 'conta' // pagamento, cnpj (Fiscal), pix_online, logo (Identidade)
+  }
+}

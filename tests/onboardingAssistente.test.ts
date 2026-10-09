@@ -99,3 +99,28 @@ describe('telemetria sem dado pessoal', () => {
     assert.doesNotMatch(api.slice(api.indexOf('export function registrarEvento'), api.indexOf('export const slugDisponivel')), /nome|slug|cnpj|email/i)
   })
 })
+
+describe('checklist no Hub (PR 5)', () => {
+  const cartao = ler('src/components/CartaoChecklistOnboarding.tsx')
+  const dash = ler('src/pages/Dashboard.tsx')
+  test('só com a flag e só para o dono da barraca atual', () => {
+    assert.match(dash, /onboardingConfigHabilitado\(import\.meta\.env\.VITE_ONBOARDING_CONFIG\)/)
+    assert.match(dash, /b\.barraca_id === barraca\.id && b\.papel === 'dono'/)
+    assert.match(dash, /<CartaoChecklistOnboarding barracaId=\{barraca\.id\} slug=\{barraca\.slug\} \/>/)
+  })
+  test('falha da RPC (migration ausente, sem rede) esconde o cartão em silêncio', () => {
+    assert.match(cartao, /if \(!resposta\) return null/)
+    assert.match(cartao, /!cancelado && !error && data/)
+    assert.match(cartao, /\.then\(undefined, \(\) => \{\}\)/)
+  })
+  test('pesos iguais e some em 100% / oculto por 7 dias; botões de 44 px', () => {
+    assert.match(cartao, /calcularChecklist\(resposta\)/)
+    assert.match(cartao, /mostrarChecklist\(porcentagem, resposta\.checklist_oculto_ate, agora\)/)
+    assert.match(cartao, /Ocultar por 7 dias/)
+    assert.match(cartao, /min-h-11/)
+    assert.match(cartao, /role="progressbar"/)
+  })
+  test('cada pendência leva a Ajustes (cardápio ou conta)', () => {
+    assert.match(cartao, /destinoDoItemChecklist\(i\.chave\) === 'cardapio'/)
+  })
+})

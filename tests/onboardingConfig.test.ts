@@ -251,3 +251,12 @@ describe('Fase 1 do assistente', () => {
     assert.match(mensagemErroOnboarding('TypeError: Failed to fetch'), /Sem internet/)
   })
 })
+
+import { destinoDoItemChecklist } from '../src/lib/onboardingConfig.ts'
+
+describe('atalhos do checklist', () => {
+  test('cada item leva à categoria certa de Ajustes', () => {
+    for (const c of ['horario', 'modos', 'item', 'taxa', 'endereco']) assert.equal(destinoDoItemChecklist(c), 'cardapio', c)
+    for (const c of ['pagamento', 'cnpj', 'pix_online', 'logo', 'qualquer']) assert.equal(destinoDoItemChecklist(c), 'conta', c)
+  })
+})
