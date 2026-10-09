@@ -19,6 +19,7 @@ import { Ajustes } from './pages/Ajustes'
 import { CardapioPublico } from './pages/CardapioPublico'
 import { PerfilCliente } from './pages/PerfilCliente'
 import { Privacidade } from './pages/Privacidade'
+import { RevisarCardapioExemplo } from './pages/RevisarCardapioExemplo'
 import { ExcluirConta } from './pages/ExcluirConta'
 import { NaoEncontrado } from './pages/NaoEncontrado'
 import { Login } from './pages/Login'
@@ -118,6 +119,7 @@ function App() {
               <Route path="chamada" element={<TelaChamada />} />
               <Route path="ajustes" element={<Ajustes categoria="conta" />} />
               <Route path="ajustes/cardapio" element={<Ajustes categoria="cardapio" />} />
+              <Route path="ajustes/cardapio/exemplo" element={<RevisarCardapioExemplo />} />
               <Route path="planos" element={<Planos />} />
               <Route path="assinatura" element={<Assinatura />} />
             </Route>

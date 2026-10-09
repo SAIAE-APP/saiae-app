@@ -121,6 +121,8 @@ describe('checklist no Hub (PR 5)', () => {
     assert.match(cartao, /role="progressbar"/)
   })
   test('cada pendência leva a Ajustes (cardápio ou conta)', () => {
-    assert.match(cartao, /destinoDoItemChecklist\(i\.chave\) === 'cardapio'/)
+    // A rota sai de rotaDoItemChecklist (onboardingConfig), que decide conta x cardápio por destinoDoItemChecklist.
+    assert.match(cartao, /rotaDoItemChecklist\(slug, i\.chave\)/)
+    assert.match(ler('src/lib/onboardingConfig.ts'), /destinoDoItemChecklist\(chave\) === 'cardapio'/)
   })
 })
