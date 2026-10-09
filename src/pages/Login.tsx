@@ -1,20 +1,42 @@
-import { useState } from 'react'
+import { useEffect, useState } from 'react'
 import type { FormEvent } from 'react'
 import { Link, useNavigate, useSearchParams } from 'react-router'
 import { useAuth } from '../hooks/useAuth'
 import { LayoutAuth } from '../components/LayoutAuth'
 import { Button } from '../components/ui/Button'
 import { Input } from '../components/ui/Input'
+import { BotaoGoogle } from '../components/BotaoGoogle'
+import { loginGoogleHabilitado, mensagemErroRetorno } from '../lib/loginGoogle'
 
 export function Login() {
   const navigate = useNavigate()
   const [params] = useSearchParams()
-  const { entrar } = useAuth()
+  const { entrar, entrarComGoogle } = useAuth()
+  const comGoogle = loginGoogleHabilitado(import.meta.env.VITE_LOGIN_GOOGLE)
+  const [entrandoGoogle, setEntrandoGoogle] = useState(false)
 
   const [email, setEmail] = useState('')
   const [senha, setSenha] = useState('')
   const [entrando, setEntrando] = useState(false)
   const [erro, setErro] = useState<string | null>(null)
+
+  // Volta do Google com erro (ex.: falha no provedor): frase simples; cancelar não mostra nada.
+  useEffect(() => {
+    const mensagem = mensagemErroRetorno(window.location.search + window.location.hash)
+    // eslint-disable-next-line react-hooks/set-state-in-effect
+    if (mensagem) setErro(mensagem)
+  }, [])
+
+  async function aoGoogle() {
+    if (entrandoGoogle) return
+    setEntrandoGoogle(true)
+    setErro(null)
+    const resultado = await entrarComGoogle(params)
+    if (resultado.erro) {
+      setErro(resultado.erro)
+      setEntrandoGoogle(false)
+    }
+  }
 
   async function aoSubmeter(e: FormEvent) {
     e.preventDefault()
@@ -49,7 +71,18 @@ export function Login() {
       <h1 className="text-[32px] font-bold leading-[40px] text-mesa-text-primary">Bem-vindo de volta</h1>
       <p className="mt-1 text-sm text-mesa-text-secondary">Entre pra continuar na sua barraca</p>
 
-      <form onSubmit={aoSubmeter} className="mt-8 flex flex-col gap-4">
+      {comGoogle && (
+        <div className="mt-8">
+          <BotaoGoogle onClick={aoGoogle} carregando={entrandoGoogle} />
+          <div className="my-6 flex items-center gap-3 text-xs text-mesa-text-tertiary">
+            <span className="h-px flex-1 bg-mesa-border-subtle" />
+            ou entre com e-mail
+            <span className="h-px flex-1 bg-mesa-border-subtle" />
+          </div>
+        </div>
+      )}
+
+      <form onSubmit={aoSubmeter} className={comGoogle ? 'flex flex-col gap-4' : 'mt-8 flex flex-col gap-4'}>
         <Input
           label="E-mail"
           type="email"

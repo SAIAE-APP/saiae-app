@@ -7,11 +7,15 @@ import { LayoutAuth } from '../components/LayoutAuth'
 import { Button } from '../components/ui/Button'
 import { Icone } from '../components/ui/Icone'
 import { Input } from '../components/ui/Input'
+import { BotaoGoogle } from '../components/BotaoGoogle'
+import { loginGoogleHabilitado } from '../lib/loginGoogle'
 
 export function Cadastro() {
   const navigate = useNavigate()
   const [params] = useSearchParams()
-  const { cadastrar } = useAuth()
+  const { cadastrar, entrarComGoogle } = useAuth()
+  const comGoogle = loginGoogleHabilitado(import.meta.env.VITE_LOGIN_GOOGLE)
+  const [entrandoGoogle, setEntrandoGoogle] = useState(false)
 
   const [email, setEmail] = useState('')
   const [senha, setSenha] = useState('')
@@ -59,6 +63,19 @@ export function Cadastro() {
     navigate('/')
   }
 
+  // Com Google, "criar conta" e "entrar" são a mesma ação: o Supabase cria o usuário no primeiro acesso
+  // (o trial de 7 dias nasce pelo mesmo trigger em auth.users).
+  async function aoGoogle() {
+    if (entrandoGoogle) return
+    setEntrandoGoogle(true)
+    setErro(null)
+    const resultado = await entrarComGoogle(params)
+    if (resultado.erro) {
+      setErro(resultado.erro)
+      setEntrandoGoogle(false)
+    }
+  }
+
   if (precisaConfirmarEmail) {
     return (
       <div className="flex min-h-dvh flex-col items-center justify-center bg-mesa-bg-base p-6 text-center">
@@ -86,7 +103,18 @@ export function Cadastro() {
       <h1 className="text-[32px] font-bold leading-[40px] text-mesa-text-primary">Criar conta</h1>
       <p className="mt-1 text-sm text-mesa-text-secondary">Comece a usar o Sai aê na sua barraca</p>
 
-      <form onSubmit={aoSubmeter} className="mt-8 flex flex-col gap-4">
+      {comGoogle && (
+        <div className="mt-8">
+          <BotaoGoogle onClick={aoGoogle} carregando={entrandoGoogle} />
+          <div className="my-6 flex items-center gap-3 text-xs text-mesa-text-tertiary">
+            <span className="h-px flex-1 bg-mesa-border-subtle" />
+            ou crie com e-mail
+            <span className="h-px flex-1 bg-mesa-border-subtle" />
+          </div>
+        </div>
+      )}
+
+      <form onSubmit={aoSubmeter} className={comGoogle ? 'flex flex-col gap-4' : 'mt-8 flex flex-col gap-4'}>
         <Input
           label="E-mail"
           type="email"

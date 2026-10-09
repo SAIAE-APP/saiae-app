@@ -1,12 +1,14 @@
 import { useEffect } from 'react'
-import { useNavigate } from 'react-router'
+import { useNavigate, useSearchParams } from 'react-router'
 import { useAuth } from '../hooks/useAuth'
 import { useBarracasDoUsuario } from '../hooks/useBarracasDoUsuario'
 import { Button } from '../components/ui/Button'
 import { onboardingJaVisto } from '../lib/onboardingStorage'
+import { destinoAposLogin } from '../lib/loginGoogle'
 
 export function Dispatcher() {
   const navigate = useNavigate()
+  const [params] = useSearchParams()
   const { usuario, carregando: carregandoAuth, sair } = useAuth()
   const { barracas, carregando: carregandoBarracas, erro } = useBarracasDoUsuario(usuario)
 
@@ -21,6 +23,13 @@ export function Dispatcher() {
       return
     }
 
+    // Voltou do Google vindo de /assinar (ou outro fluxo com ?voltar=): retoma de onde parou.
+    const destinoSalvo = destinoAposLogin(params.toString())
+    if (destinoSalvo) {
+      navigate(destinoSalvo, { replace: true })
+      return
+    }
+
     if (carregandoBarracas) return
     if (erro) return
 
@@ -32,7 +41,7 @@ export function Dispatcher() {
     // 0 barracas cai aqui também — SelecionarBarraca mostra o convite pra
     // criar a primeira, em vez de um beco sem saída.
     navigate('/selecionar-barraca', { replace: true })
-  }, [usuario, carregandoAuth, barracas, carregandoBarracas, erro, navigate])
+  }, [usuario, carregandoAuth, barracas, carregandoBarracas, erro, navigate, params])
 
   if (carregandoAuth || (usuario && carregandoBarracas)) {
     return (

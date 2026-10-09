@@ -96,7 +96,7 @@ export function ExcluirConta() {
         <section className="flex flex-col gap-3">
           <h2 className="text-lg font-bold text-mesa-text-primary font-mesa-display">O que é apagado</h2>
           <ul className="flex flex-col gap-2 text-[15px] leading-[1.6] text-mesa-text-secondary">
-            <ItemLista>Sua conta de acesso (e-mail e senha).</ItemLista>
+            <ItemLista>Sua conta de acesso (e-mail e senha, ou o login com Google, se você usa).</ItemLista>
             <ItemLista>
               Toda barraca da qual você é dono: cardápio, pedidos (inclusive os dados de entrega),
               clientes de entrega cadastrados, histórico, caixa e configurações.

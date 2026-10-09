@@ -23,6 +23,7 @@ import { urlPublica } from '../lib/urlPublica'
 import { METODOS_DISPONIVEIS } from '../lib/metodoPagamento'
 import { BPS_MAX, bpsParaPercentual, percentualParaBps } from '../lib/taxas'
 import { ModalTrocarSenha } from '../components/ModalTrocarSenha'
+import { temSenhaNaConta } from '../lib/loginGoogle'
 import { GateSenhaAdmin } from '../components/GateSenhaAdmin'
 import { SecaoImpressora } from '../components/SecaoImpressora'
 import { SecaoBanners } from '../components/SecaoBanners'
@@ -2670,6 +2671,7 @@ function Rodape({ barracaId }: { barracaId: string }) {
       {mostrarModal && email && (
         <ModalTrocarSenha
           email={email}
+          temSenha={temSenhaNaConta(usuario)}
           onFechar={() => setMostrarModal(false)}
           onSucesso={aoTrocarComSucesso}
         />
@@ -2689,7 +2691,7 @@ function Rodape({ barracaId }: { barracaId: string }) {
       >
         <h2 className="text-lg font-semibold text-mesa-text-primary">Você quer mesmo sair?</h2>
         <p className="mt-1 text-sm text-mesa-text-secondary">
-          Vai precisar entrar com e-mail e senha de novo.
+          Vai precisar entrar de novo (com e-mail e senha ou com o Google).
         </p>
         <div className="mt-6 flex flex-col gap-2">
           <Button
