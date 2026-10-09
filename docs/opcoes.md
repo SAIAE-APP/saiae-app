@@ -36,6 +36,12 @@ O `resolver_carrinho` roda **imediatamente antes** do `criar_pedido` (ou da grav
 
 Por que não revalidar dentro do `criar_pedido`: ele também é o caminho do operador e da fila offline, que nunca podem ser recusados por regra de catálogo, e o preço do Pix é congelado na cobrança por desenho. Fechar a janela de verdade exigiria uma RPC pública transacional própria; decisão do orquestrador, hoje fora do escopo.
 
+## Biblioteca de modelos e kits iniciais
+
+Atrás de `VITE_ONBOARDING_KITS=1`. `src/lib/modelosDeOpcoes.ts` tem 31 modelos de grupo (Tamanho em várias versões, Ponto da carne, Mistura do PF, Borda, Molhos, Coberturas e Extras de açaí, Temperatura etc.), cada um com regra (variação ou adicional, obrigatório, mínimo e máximo) e os tipos de negócio a que pertence. Em **Ajustes › Opções › "Usar modelo"** o dono vê primeiro os do tipo de negócio da loja; tocar abre o formulário já preenchido, sem preços. O formulário de grupo tem **"Mínimo de escolhas"** para adicional obrigatório (ex.: combo de 3 sabores). O onboarding monta um cardápio de exemplo com esses modelos: ver `CLAUDE.md` ("Kits iniciais") e a spec `2026-10-09-kits-iniciais-design.md`.
+
+O que o modelo atual **não** resolve (fase seguinte): meio a meio com preço pelo maior sabor, quantidade por opção, opções que mudam com o tamanho, "primeiros N grátis" no mesmo grupo e estoque por opção. O kit não inventa contorno para isso.
+
 ## Testes
 
 - `tests/opcoesResolver.test.ts`: migration real no PGlite (constraints, multi-tenant, RLS, permissões, regras do resolver, contrato com `_shared/carrinho.ts`).
