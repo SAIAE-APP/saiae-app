@@ -91,7 +91,11 @@ export function Privacidade() {
           <p>Quem cria uma conta e opera uma barraca no Sai aê fornece, conforme o uso:</p>
           <ul className="flex flex-col gap-2">
             <ItemLista>
-              <strong>Conta:</strong> e-mail e senha (usados só para autenticação, via Supabase Auth).
+              <strong>Conta:</strong> e-mail e senha (usados só para autenticação, via Supabase Auth) ou, se você
+              escolher &quot;Continuar com Google&quot;, o seu e-mail e o identificador da conta Google. O Google também
+              informa nome e foto, que ficam guardados no provedor de autenticação, mas não são usados por nós. O uso
+              dos dados recebidos do Google se limita a identificar a sua conta; não os repassamos nem os usamos
+              para publicidade.
             </ItemLista>
             <ItemLista>
               <strong>Dados da barraca:</strong> nome, logo, imagem de capa e fotos/descrições do

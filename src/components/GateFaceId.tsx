@@ -97,7 +97,7 @@ export function GateFaceId({ children }: { children: ReactNode }) {
             navigate('/login')
           }}
         >
-          Sair e entrar com senha
+          Sair e entrar de novo
         </Button>
       </div>
     </div>

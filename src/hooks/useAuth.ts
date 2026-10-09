@@ -2,6 +2,7 @@ import { useEffect, useState } from 'react'
 import type { Session, User } from '@supabase/supabase-js'
 import { supabase } from '../lib/supabase'
 import { urlPublica } from '../lib/urlPublica'
+import { caminhoRetornoGoogle } from '../lib/loginGoogle'
 
 const MENSAGENS_ERRO_LOGIN: Record<string, string> = {
   'Invalid login credentials': 'Email ou senha incorretos',
@@ -62,6 +63,20 @@ export function useAuth() {
     return { precisaConfirmarEmail: !data.session }
   }
 
+  /** Login/cadastro com Google (web/PWA). O Google devolve o usuário à raiz do app; o Dispatcher resolve o
+   * destino. Sem erro quando o navegador sai para o Google (a página é recarregada na volta). */
+  async function entrarComGoogle(parametros: URLSearchParams): Promise<{ erro?: string }> {
+    const { error } = await supabase.auth.signInWithOAuth({
+      provider: 'google',
+      options: {
+        redirectTo: urlPublica(caminhoRetornoGoogle(parametros)),
+        queryParams: { prompt: 'select_account' },
+      },
+    })
+    if (error) return { erro: 'Não foi possível entrar com o Google. Tente de novo.' }
+    return {}
+  }
+
   async function sair(): Promise<void> {
     await supabase.auth.signOut()
   }
@@ -74,5 +89,5 @@ export function useAuth() {
 
   const usuario: User | null = sessao?.user ?? null
 
-  return { sessao, usuario, carregando, entrar, cadastrar, sair, resetarSenha }
+  return { sessao, usuario, carregando, entrar, entrarComGoogle, cadastrar, sair, resetarSenha }
 }

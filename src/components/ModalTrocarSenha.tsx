@@ -17,10 +17,13 @@ function traduzirErroAtualizar(mensagem: string): string {
 
 export function ModalTrocarSenha({
   email,
+  temSenha = true,
   onFechar,
   onSucesso,
 }: {
   email: string
+  /** Conta só-Google não tem senha ainda: não pede a atual e o texto vira "Criar uma senha". */
+  temSenha?: boolean
   onFechar: () => void
   onSucesso: () => void
 }) {
@@ -34,7 +37,7 @@ export function ModalTrocarSenha({
   const mostraDivergencia = confirmarSenha.length > 0 && confirmarSenha !== novaSenha
 
   const podeTrocar =
-    novaSenhaValida && confirmarSenha === novaSenha && senhaAtual.length > 0 && !processando
+    novaSenhaValida && confirmarSenha === novaSenha && (!temSenha || senhaAtual.length > 0) && !processando
 
   async function trocarSenha() {
     if (!podeTrocar) return
@@ -45,10 +48,9 @@ export function ModalTrocarSenha({
     // sessao ativa por uma nova (mesmo usuario, tokens renovados) quando o
     // login da certo; se der errado, nao mexe na sessao existente. Validado
     // via Playwright na etapa de testes, nao so por inspecao de codigo.
-    const { error: erroLogin } = await supabase.auth.signInWithPassword({
-      email,
-      password: senhaAtual,
-    })
+    const { error: erroLogin } = temSenha
+      ? await supabase.auth.signInWithPassword({ email, password: senhaAtual })
+      : { error: null }
 
     if (erroLogin) {
       setErro('Senha atual incorreta')
@@ -69,21 +71,25 @@ export function ModalTrocarSenha({
   }
 
   return (
-    <BottomSheet open onClose={onFechar} aria-label="Trocar senha">
-      <h2 className="text-lg font-semibold text-mesa-text-primary">Trocar senha</h2>
+    <BottomSheet open onClose={onFechar} aria-label={temSenha ? 'Trocar senha' : 'Criar uma senha'}>
+      <h2 className="text-lg font-semibold text-mesa-text-primary">{temSenha ? 'Trocar senha' : 'Criar uma senha'}</h2>
       <p className="mt-1 text-sm text-mesa-text-secondary">
-        Digite sua senha atual e escolha uma nova segura.
+        {temSenha
+          ? 'Digite sua senha atual e escolha uma nova segura.'
+          : 'Você entra com o Google. Crie uma senha se quiser poder entrar também com e-mail e senha.'}
       </p>
 
       <div className="mt-4 flex flex-col gap-4">
-        <Input
-          label="Senha atual"
-          type="password"
-          value={senhaAtual}
-          onChange={(e) => setSenhaAtual(e.target.value)}
-          autoComplete="current-password"
-          autoFocus
-        />
+        {temSenha && (
+          <Input
+            label="Senha atual"
+            type="password"
+            value={senhaAtual}
+            onChange={(e) => setSenhaAtual(e.target.value)}
+            autoComplete="current-password"
+            autoFocus
+          />
+        )}
 
         <Input
           label="Nova senha"
@@ -129,7 +135,7 @@ export function ModalTrocarSenha({
           onClick={trocarSenha}
           className="w-full"
         >
-          Trocar senha
+          {temSenha ? 'Trocar senha' : 'Criar senha'}
         </Button>
         <Button variant="ghost" size="md" onClick={onFechar} className="w-full">
           Voltar
