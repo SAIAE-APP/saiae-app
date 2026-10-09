@@ -276,6 +276,25 @@ export function sugestaoDoKit(id: string | null | undefined): { modos: TipoAtend
   return k ? { modos: [...k.modos], horario: k.horario } : null
 }
 
+/**
+ * O que pré-selecionar nos passos 6 (horário) e 8 (modos) por causa do kit. Só enquanto o dono ainda não confirmou o
+ * passo (`etapaFeita` é o último passo concluído); depois vale o que está no banco. O horário também não é sugerido
+ * se já há dia aberto gravado.
+ */
+export function sugestoesDoKit(p: { kitId: string | null | undefined; etapaFeita: number; temDiaAberto: boolean }): {
+  rotulo: string | null
+  horario: ChaveModeloHorario | null
+  modos: TipoAtendimento[] | null
+} {
+  const kit = kitDoId(p.kitId)
+  if (!kit) return { rotulo: null, horario: null, modos: null }
+  return {
+    rotulo: kit.rotulo,
+    horario: p.etapaFeita < 6 && !p.temDiaAberto ? kit.horario : null,
+    modos: p.etapaFeita < 8 ? [...kit.modos] : null,
+  }
+}
+
 /** O JSON que a RPC recebe: grupos montados dos modelos da biblioteca, com os ajustes do kit. */
 export function conteudoDoKit(id: KitId): ConteudoDoKit {
   const k = kitDoId(id)

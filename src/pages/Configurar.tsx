@@ -13,6 +13,8 @@ import { SeletorMetodos } from '../components/SeletorMetodos'
 import { SeletorModos } from '../components/SeletorModos'
 import { TODOS_OS_MODOS, modosAtivos } from '../lib/atendimento'
 import { urlPublica } from '../lib/urlPublica'
+import { KIT_NENHUM, kitDoId, mensagemDoEstadoDoKit, onboardingKitsHabilitado, sugestoesDoKit, type KitId } from '../lib/kitsIniciais'
+import { SeletorDeKit } from '../components/SeletorDeKit'
 import { filtrarEntradaPreco, reaisParaCentavos } from '../lib/preco'
 import {
   CATEGORIAS,
@@ -57,6 +59,8 @@ import {
   salvarTaxa,
   salvarOrigem,
   slugDisponivel,
+  aplicarKit,
+  carregarKitEscolhido,
 } from '../lib/onboardingApi'
 import type { Barraca, TipoAtendimento } from '../types/database'
 
@@ -188,15 +192,26 @@ function PassoOrigem({ onSalvar, onPular }: { onSalvar: (origem: string, detalhe
   )
 }
 
-function PassoCategoria({ onSalvar, onPular }: { onSalvar: (categoria: string) => Promise<string | null>; onPular: () => void }) {
+function PassoCategoria({
+  kitsLigado,
+  kitInicial,
+  onSalvar,
+  onPular,
+}: {
+  kitsLigado: boolean
+  kitInicial: string | null
+  onSalvar: (categoria: string, kit: string | null) => Promise<string | null>
+  onPular: () => void
+}) {
   const [categoria, setCategoria] = useState<string | null>(null)
+  const [kit, setKit] = useState<string | null>(kitInicial)
   const [salvando, setSalvando] = useState(false)
   const [erro, setErro] = useState<string | null>(null)
 
   async function continuar() {
     if (!categoria) return
     setSalvando(true)
-    setErro(await onSalvar(categoria))
+    setErro(await onSalvar(categoria, kitsLigado ? kit : null))
     setSalvando(false)
   }
 
@@ -210,7 +225,10 @@ function PassoCategoria({ onSalvar, onPular }: { onSalvar: (categoria: string) =
             type="button"
             role="radio"
             aria-checked={categoria === c.chave}
-            onClick={() => setCategoria(c.chave)}
+            onClick={() => {
+              if (c.chave !== categoria) setKit(null)
+              setCategoria(c.chave)
+            }}
             className={clsx(
               'min-h-14 rounded-mesa-xl border-2 px-3 py-3 text-left text-sm font-semibold',
               categoria === c.chave
@@ -222,6 +240,7 @@ function PassoCategoria({ onSalvar, onPular }: { onSalvar: (categoria: string) =
           </button>
         ))}
       </div>
+      {kitsLigado && categoria && <SeletorDeKit categoria={categoria} valor={kit} onChange={setKit} />}
       <div className="flex-1" />
       <Rodape desabilitado={!categoria} carregando={salvando} erro={erro} onContinuar={continuar} onPular={onPular} />
     </>
@@ -370,9 +389,12 @@ const MODELOS: ChaveModeloHorario[] = ['almoco', 'jantar', 'fim_de_semana']
 
 function PassoHorario({
   inicial,
+  sugestaoDe,
   onSalvar,
 }: {
   inicial: HorarioDia[]
+  /** Nome do modelo de negócio que sugeriu este horário (kit); null = sem sugestão. */
+  sugestaoDe: string | null
   onSalvar: (semana: HorarioDia[]) => Promise<string | null>
 }) {
   const [semana, setSemana] = useState<HorarioDia[]>(inicial)
@@ -407,6 +429,11 @@ function PassoHorario({
   return (
     <>
       <p className="text-sm text-mesa-text-secondary">Aparece no seu cardápio como &quot;Aberto agora&quot; ou &quot;Fechado&quot;. Comece por um modelo e ajuste.</p>
+      {sugestaoDe && (
+        <p role="status" className="mt-2 text-xs font-medium text-mesa-text-secondary">
+          Sugestão do modelo {sugestaoDe}. Ajuste como quiser; só é gravada quando você tocar em Continuar.
+        </p>
+      )}
       <div className="mt-3 flex flex-wrap gap-2">
         {MODELOS.map((m) => (
           <Chip key={m} onClick={() => setSemana(aplicarModelo(m))}>
@@ -482,7 +509,16 @@ function PassoPagamento({ inicial, onSalvar }: { inicial: string[]; onSalvar: (m
   )
 }
 
-function PassoModos({ inicial, onSalvar }: { inicial: TipoAtendimento[]; onSalvar: (modos: TipoAtendimento[]) => Promise<string | null> }) {
+function PassoModos({
+  inicial,
+  sugestaoDe,
+  onSalvar,
+}: {
+  inicial: TipoAtendimento[]
+  /** Nome do modelo de negócio que sugeriu estes modos (kit); null = sem sugestão. */
+  sugestaoDe: string | null
+  onSalvar: (modos: TipoAtendimento[]) => Promise<string | null>
+}) {
   const [ativos, setAtivos] = useState<TipoAtendimento[]>(inicial)
   const [salvando, setSalvando] = useState(false)
   const [erro, setErro] = useState<string | null>(null)
@@ -507,6 +543,11 @@ function PassoModos({ inicial, onSalvar }: { inicial: TipoAtendimento[]; onSalva
   return (
     <>
       <p className="text-sm text-mesa-text-secondary">Ligue só o que a sua barraca usa. Dá para mudar depois em Ajustes.</p>
+      {sugestaoDe && (
+        <p role="status" className="text-xs font-medium text-mesa-text-secondary">
+          Sugestão do modelo {sugestaoDe}. Ajuste como quiser; só é gravada quando você tocar em Continuar.
+        </p>
+      )}
       <Card className="mt-4">
         {aviso && <p className="mb-2 text-sm font-medium text-mesa-warning-700">{aviso}</p>}
         <SeletorModos ativos={ativos} onAlternar={alternar} prefixoId="onb-modo" />
@@ -688,6 +729,7 @@ function PassoTaxa({ onSalvar, onPular }: { onSalvar: (habilitada: boolean, cent
 }
 
 function TelaFinal({ barraca, onIrParaHub, onCadastrarItens, onAtivarPix }: { barraca: Barraca; onIrParaHub: () => void; onCadastrarItens: () => void; onAtivarPix: () => void }) {
+  const comKit = Boolean(barraca.kit_aplicado)
   const [fase, setFase] = useState<'preparando' | 'pronto' | 'erro'>('preparando')
   const [erro, setErro] = useState<string | null>(null)
   const [copiado, setCopiado] = useState(false)
@@ -754,7 +796,7 @@ function TelaFinal({ barraca, onIrParaHub, onCadastrarItens, onAtivarPix }: { ba
         </Button>
       </Card>
       <Button size="xl" className="w-full" onClick={onIrParaHub}>Ir para o início</Button>
-      <Button variant="outline" size="md" className="w-full" onClick={onCadastrarItens}>Cadastrar meus itens</Button>
+      <Button variant="outline" size="md" className="w-full" onClick={onCadastrarItens}>{comKit ? 'Completar os preços do cardápio' : 'Cadastrar meus itens'}</Button>
       {!barraca.pagamento_online_habilitado && (
         <Button variant="ghost" size="md" className="w-full" onClick={onAtivarPix}>Ativar o Pix online (o dinheiro cai na sua conta)</Button>
       )}
@@ -772,6 +814,10 @@ export function Configurar() {
   const [barraca, setBarraca] = useState<Barraca | null>(null)
   const [passo, setPasso] = useState(1)
   const [semanaInicial, setSemanaInicial] = useState<HorarioDia[]>(semanaFechada())
+  // Kits iniciais (atrás de VITE_ONBOARDING_KITS): o que o dono escolheu no passo 2 e o aviso do resultado.
+  const kitsLigado = onboardingKitsHabilitado(import.meta.env.VITE_ONBOARDING_KITS)
+  const [kitEscolhido, setKitEscolhido] = useState<string | null>(null)
+  const [avisoKit, setAvisoKit] = useState<string | null>(null)
   // O passo 9 (taxa) só existe com Entrega ligada.
   const entregaAtiva = barraca ? modosAtivos(barraca).includes('entrega') : false
   const ordem = useMemo(() => ordemDoAssistente(entregaAtiva), [entregaAtiva])
@@ -798,7 +844,19 @@ export function Configurar() {
         setPronto(true)
         return
       }
-      setBarraca(completa)
+      let atual = completa
+      if (kitsLigado) {
+        // Fechou o app entre o passo 3 e a montagem do kit? Aplica agora (a RPC é idempotente).
+        const kit = await carregarKitEscolhido()
+        if (cancelado) return
+        setKitEscolhido(kit)
+        if (kit && kit !== KIT_NENHUM && kitDoId(kit) && completa.kit_elegivel !== false && !completa.kit_aplicado_em) {
+          const k = await aplicarKit(completa.id, kit as KitId)
+          setAvisoKit(mensagemDoEstadoDoKit(k.ok ? k.dados.estado : 'dados_invalidos'))
+          atual = (await carregarBarracaCompleta(completa.id)) ?? completa
+        }
+      }
+      setBarraca(atual)
       setSemanaInicial(semanaDoBanco(await carregarSemana(completa.id)))
       if ((completa.onboarding_etapa ?? 0) < 3) await concluirMarca(completa.id)
       setPasso(proximoPassoEm(ordemDoAssistente(modosAtivos(completa).includes('entrega')), Math.max(completa.onboarding_etapa ?? 0, 3)))
@@ -807,7 +865,7 @@ export function Configurar() {
     return () => {
       cancelado = true
     }
-  }, [carregandoAuth, carregandoBarracas, usuario, barracas, pronto, navigate])
+  }, [carregandoAuth, carregandoBarracas, usuario, barracas, pronto, navigate, kitsLigado])
 
   useEffect(() => {
     if (!pronto) return
@@ -844,6 +902,15 @@ export function Configurar() {
     seguinte(n)
   }
 
+  // Sugestões do kit para os passos 6 e 8: só enquanto o dono ainda não confirmou o passo (o banco manda depois).
+  const sugestoes = sugestoesDoKit({
+    kitId: kitsLigado ? kitEscolhido : null,
+    etapaFeita: barraca?.onboarding_etapa ?? 0,
+    temDiaAberto: semanaInicial.some((h) => h.aberto),
+  })
+  const sugestaoHorario = sugestoes.horario ? { horario: sugestoes.horario, rotulo: sugestoes.rotulo ?? '' } : null
+  const sugestaoModos = sugestoes.modos ? { modos: sugestoes.modos, rotulo: sugestoes.rotulo ?? '' } : null
+
   if (passo === 10 && barraca) {
     return (
       <TelaFinal
@@ -866,6 +933,11 @@ export function Configurar() {
 
   return (
     <MolduraPasso numero={passo} ordem={ordem} podeVoltar={podeVoltar} onVoltar={anterior}>
+      {avisoKit && passo > 3 && (
+        <p role="status" className="mb-4 rounded-mesa-lg bg-mesa-surface p-3 text-sm text-mesa-text-secondary">
+          {avisoKit}
+        </p>
+      )}
       {passo === 1 && (
         <PassoOrigem
           onPular={() => pular(1)}
@@ -874,8 +946,14 @@ export function Configurar() {
       )}
       {passo === 2 && (
         <PassoCategoria
+          kitsLigado={kitsLigado}
+          kitInicial={kitEscolhido}
           onPular={() => pular(2)}
-          onSalvar={async (categoria) => aposSalvar(await salvarOrigem(null, null, categoria), 2)}
+          onSalvar={async (categoria, kit) => {
+            const r = await salvarOrigem(null, null, categoria, kit)
+            if (r.ok) setKitEscolhido(kit)
+            return aposSalvar(r, 2)
+          }}
         />
       )}
       {passo === 3 && (
@@ -890,9 +968,16 @@ export function Configurar() {
             const r = await concluirMarca(criada.dados.id)
             registrarEvento(criada.dados.id, 3, 'concluido')
             if (!r.ok) {
-              // A barraca já existe; a retomada completa o passo 3 na próxima abertura.
+              // A barraca já existe; a retomada completa o passo 3 (e o kit) na próxima abertura.
               irPara(6)
               return null
+            }
+            if (kitsLigado && kitEscolhido && kitEscolhido !== KIT_NENHUM && kitDoId(kitEscolhido)) {
+              // Falha do kit nunca trava o assistente: avisa e segue (o Hub oferece de novo).
+              const k = await aplicarKit(criada.dados.id, kitEscolhido as KitId)
+              setAvisoKit(mensagemDoEstadoDoKit(k.ok ? k.dados.estado : 'dados_invalidos'))
+              const atualizada = await carregarBarracaCompleta(criada.dados.id)
+              if (atualizada) setBarraca(atualizada)
             }
             seguinte(3)
             return null
@@ -926,7 +1011,11 @@ export function Configurar() {
         />
       )}
       {passo === 6 && barraca && (
-        <PassoHorario inicial={semanaInicial} onSalvar={async (semana) => aposSalvar(await salvarHorarios(barraca.id, semana), 6)} />
+        <PassoHorario
+          inicial={sugestaoHorario ? aplicarModelo(sugestaoHorario.horario) : semanaInicial}
+          sugestaoDe={sugestaoHorario ? sugestaoHorario.rotulo : null}
+          onSalvar={async (semana) => aposSalvar(await salvarHorarios(barraca.id, semana), 6)}
+        />
       )}
       {passo === 7 && barraca && (
         <PassoPagamento
@@ -940,7 +1029,8 @@ export function Configurar() {
       )}
       {passo === 8 && barraca && (
         <PassoModos
-          inicial={modosAtivos(barraca)}
+          inicial={sugestaoModos ? sugestaoModos.modos : modosAtivos(barraca)}
+          sugestaoDe={sugestaoModos ? sugestaoModos.rotulo : null}
           onSalvar={async (modos) => {
             const r = await salvarModos(barraca.id, modos)
             if (r.ok) setBarraca({ ...barraca, modos_atendimento: modos })

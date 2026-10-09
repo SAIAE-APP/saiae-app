@@ -1,6 +1,7 @@
 // Chamadas do assistente de configuração ao banco (RPCs da migration 20261020100000). Cada passo SALVA na hora.
 import { supabase } from './supabase'
 import { mensagemErroOnboarding, type HorarioDia, type RespostaConsulta, horariosParaRpc } from './onboardingConfig'
+import { conteudoDoKit, type KitId } from './kitsIniciais'
 import type { Barraca } from '../types/database'
 
 type Resultado<T = void> = { ok: true; dados: T } | { ok: false; erro: string }
@@ -25,8 +26,33 @@ export const slugDisponivel = async (slug: string): Promise<boolean | null> => {
   return r.ok ? r.dados === true : null // null = não deu para saber (não bloqueia; o banco confere ao criar)
 }
 
-export const salvarOrigem = (origem: string | null, detalhe: string | null, categoria: string | null) =>
-  rpc('onboarding_salvar_origem', { p_origem: origem ?? '', p_detalhe: detalhe ?? '', p_categoria: categoria ?? '' })
+/** `kit` só vai na chamada quando existe: com a flag dos kits desligada (ou banco sem a migration) a chamada é a de sempre. */
+export const salvarOrigem = (origem: string | null, detalhe: string | null, categoria: string | null, kit?: string | null) =>
+  rpc('onboarding_salvar_origem', {
+    p_origem: origem ?? '',
+    p_detalhe: detalhe ?? '',
+    p_categoria: categoria ?? '',
+    ...(kit ? { p_kit: kit } : {}),
+  })
+
+/** Monta o cardápio de exemplo (idempotente: repetir devolve "ja_aplicado"). Qualquer falha vira "dados_invalidos"
+ * para o assistente seguir e oferecer o kit de novo no Hub. */
+export const aplicarKit = async (barracaId: string, kit: KitId): Promise<Resultado<{ estado: string }>> => {
+  const r = await rpc<{ estado?: string }>('onboarding_aplicar_kit', { p_barraca_id: barracaId, p_kit: kit, p_conteudo: conteudoDoKit(kit) })
+  if (!r.ok) return r
+  return { ok: true, dados: { estado: r.dados?.estado ?? 'dados_invalidos' } }
+}
+
+/** Kit que o usuário escolheu no passo 2 (ou "nenhum"). Falha = não escolheu. */
+export async function carregarKitEscolhido(): Promise<string | null> {
+  try {
+    const { data, error } = await supabase.from('perfis_usuario').select('kit_inicial').maybeSingle()
+    if (error || !data) return null
+    return (data as { kit_inicial: string | null }).kit_inicial ?? null
+  } catch {
+    return null
+  }
+}
 
 export const criarBarraca = (nome: string, slug: string) => rpc<Barraca>('criar_barraca', { p_nome: nome, p_slug: slug })
 
