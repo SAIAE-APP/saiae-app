@@ -111,6 +111,8 @@ export const MODELOS_HORARIO = {
   almoco: { rotulo: 'Almoço', dias: [1, 2, 3, 4, 5, 6], abre: '11:00', fecha: '15:00' },
   jantar: { rotulo: 'Jantar', dias: [1, 2, 3, 4, 5, 6], abre: '18:00', fecha: '23:00' },
   fim_de_semana: { rotulo: 'Fim de semana', dias: [0, 6], abre: '11:00', fecha: '23:00' },
+  /** Sugerido pelo kit de açaí (todos os dias, 12h às 22h). */
+  tarde_noite: { rotulo: 'Tarde e noite', dias: [0, 1, 2, 3, 4, 5, 6], abre: '12:00', fecha: '22:00' },
 } as const
 export type ChaveModeloHorario = keyof typeof MODELOS_HORARIO
 
@@ -238,11 +240,20 @@ export type Progresso = {
   taxa?: boolean | null
   pix_online?: boolean
   logo?: boolean
+  /** Kits iniciais: itens do kit ainda sem preço, e se vale oferecer "Montar um cardápio de exemplo". */
+  kit_precos_pendentes?: number
+  kit_oferta?: boolean
 }
 
 export type ItemChecklist = { chave: string; rotulo: string; feito: boolean; passo: number | null }
 
-const ITENS_CHECKLIST: { chave: keyof Progresso | 'marca'; rotulo: string; passo: number | null; aplica?: (p: Progresso) => boolean }[] = [
+const ITENS_CHECKLIST: {
+  chave: keyof Progresso | 'marca' | 'kit_precos'
+  rotulo: string
+  passo: number | null
+  aplica?: (p: Progresso) => boolean
+  feito?: (p: Progresso) => boolean
+}[] = [
   { chave: 'marca', rotulo: 'Nome e link do cardápio', passo: 3 },
   { chave: 'horario', rotulo: 'Horário de funcionamento', passo: 6 },
   { chave: 'pagamento', rotulo: 'Formas de pagamento', passo: 7 },
@@ -253,6 +264,9 @@ const ITENS_CHECKLIST: { chave: keyof Progresso | 'marca'; rotulo: string; passo
   { chave: 'taxa', rotulo: 'Taxa de entrega', passo: 9, aplica: (p) => p.entrega_ativa === true },
   { chave: 'pix_online', rotulo: 'Ativar o Pix online', passo: 7 },
   { chave: 'logo', rotulo: 'Colocar a logo', passo: null },
+  // Só existem para barraca com kit: quem não tem kit (inclusive toda barraca antiga) não vê nem muda a porcentagem.
+  { chave: 'kit_precos', rotulo: 'Completar os preços do cardápio de exemplo', passo: null, aplica: (p) => (p.kit_precos_pendentes ?? 0) > 0, feito: () => false },
+  { chave: 'kit_oferta', rotulo: 'Montar um cardápio de exemplo (opcional)', passo: null, aplica: (p) => p.kit_oferta === true, feito: () => false },
 ]
 
 /** Todos os itens têm o MESMO peso (decisão do dono): % = concluídos ÷ total aplicável. */
@@ -261,7 +275,7 @@ export function calcularChecklist(p: Progresso): { itens: ItemChecklist[]; feito
     chave: i.chave,
     rotulo: i.rotulo,
     passo: i.passo,
-    feito: i.chave === 'marca' ? true : p[i.chave as keyof Progresso] === true,
+    feito: i.feito ? i.feito(p) : i.chave === 'marca' ? true : p[i.chave as keyof Progresso] === true,
   }))
   const feitos = itens.filter((i) => i.feito).length
   return { itens, feitos, total: itens.length, porcentagem: itens.length === 0 ? 100 : Math.floor((feitos * 100) / itens.length) }
