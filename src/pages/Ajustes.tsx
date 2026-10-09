@@ -36,6 +36,7 @@ import { SecaoIntegracaoCrm } from '../components/SecaoIntegracaoCrm'
 import { SecaoOpcoes } from '../components/SecaoOpcoes'
 import { SecaoClientesEntrega } from '../components/SecaoClientesEntrega'
 import { SecaoPagarNaEntrega } from '../components/SecaoPagarNaEntrega'
+import { EnderecoCardapio } from '../components/EnderecoCardapio'
 import { SecaoPagamentoDepois } from '../components/SecaoPagamentoDepois'
 import { SecaoEstoque } from '../components/SecaoEstoque'
 import { SecaoCupons } from '../components/SecaoCupons'
@@ -1377,6 +1378,7 @@ function SecaoCardapioDigital({ barraca }: { barraca: Barraca }) {
         >
           {linkCopiado ? 'Link copiado!' : 'Compartilhar cardápio'}
         </Button>
+        <EnderecoCardapio barraca={barraca} />
       </Card>
     </section>
   )
