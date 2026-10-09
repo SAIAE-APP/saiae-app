@@ -40,9 +40,38 @@ async function buscarBarraca(env: Env, slug: string): Promise<Barraca | null> {
   }
 }
 
+/** Endereço antigo (apelido): o slug ATUAL, ou null (sem apelido, banco sem a função ou falha de rede). */
+async function slugAtualDoApelido(env: Env, slug: string): Promise<string | null> {
+  try {
+    const resposta = await fetch(`${env.VITE_SUPABASE_URL}/rest/v1/rpc/barraca_slug_atual`, {
+      method: 'POST',
+      headers: {
+        apikey: env.VITE_SUPABASE_ANON_KEY,
+        Authorization: `Bearer ${env.VITE_SUPABASE_ANON_KEY}`,
+        'Content-Type': 'application/json',
+      },
+      body: JSON.stringify({ p_slug: slug }),
+    })
+    if (!resposta.ok) return null
+    const atual = await resposta.json()
+    return typeof atual === 'string' && atual !== slug && /^[a-z0-9]+(-[a-z0-9]+)*$/.test(atual) ? atual : null
+  } catch {
+    return null
+  }
+}
+
 export const onRequestGet: PagesFunction<Env> = async (context) => {
-  const slug = String(context.params.slug ?? '')
-  const barraca = await buscarBarraca(context.env, slug)
+  let slug = String(context.params.slug ?? '')
+  let barraca = await buscarBarraca(context.env, slug)
+  // Atalho instalado com o endereço antigo: o manifest já sai com o endereço ATUAL (start_url e scope), assim o app
+  // instalado/reinstalado nasce no endereço certo.
+  if (!barraca) {
+    const atual = await slugAtualDoApelido(context.env, slug)
+    if (atual) {
+      slug = atual
+      barraca = await buscarBarraca(context.env, atual)
+    }
+  }
 
   const nome = barraca?.nome ?? NOME_PADRAO
   const icone192 = barraca?.logo_url ?? ICONE_192_PADRAO

@@ -1,3 +1,4 @@
+import { abrirLinkExterno } from '../lib/abrirExternoApp'
 import { useState } from 'react'
 import { usePedidosAtual } from '../layouts/contextoPedidos'
 import { enfileirar } from '../lib/fila'
@@ -57,7 +58,7 @@ export function BotaoAvisarCliente({
 
   function avisar() {
     setAviso(false)
-    window.open(urlWhatsappCliente(telefone as string, mensagem()), '_blank', 'noopener')
+    abrirLinkExterno(urlWhatsappCliente(telefone as string, mensagem()))
     window.setTimeout(() => {
       if (!document.hidden) setAviso(true)
     }, 1500)

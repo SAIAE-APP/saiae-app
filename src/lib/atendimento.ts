@@ -97,10 +97,35 @@ export function modoInicial(ativos: TipoAtendimento[]): TipoAtendimento {
   return ativos.includes('balcao') ? 'balcao' : ativos[0]
 }
 
-/** Faixa em destaque no topo da comanda impressa. Mesa/Balcão não têm faixa:
- * o destaque existe pra separar o que sai do balcão (Retirada x Entrega). */
-export function faixaImpressao(tipo: TipoAtendimento): string | null {
+/** Colunas de papel que a faixa pode usar quando impressa em 2x de largura (58 mm = 32 colunas → 16). */
+const COLUNAS_FAIXA_PADRAO = 16
+
+function semAcentoMaiusculo(texto: string): string {
+  return texto
+    // NFD separa o acento da letra; o 1º replace tira as marcas combinantes (U+0300 a U+036F).
+    .normalize('NFD')
+    .replace(/[̀-ͯ]/g, '')
+    .replace(/[^\x20-\x7e]/g, '')
+    .trim()
+    .toUpperCase()
+}
+
+/** Faixa em destaque, logo abaixo da senha da comanda impressa (2x de largura e altura): "*** MESA 12 ***",
+ * "*** BALCAO ***", "*** RETIRADA ***" ou "*** ENTREGA ***". Sem acento, para a térmica genérica. Sempre cabe nas
+ * `colunasFaixa` colunas (16 no papel de 58 mm, 24 no de 80 mm): mesa com nome comprido perde os asteriscos e,
+ * se ainda não couber, é truncada. */
+export function faixaImpressao(
+  tipo: TipoAtendimento,
+  opcoes: { mesa?: string | null; colunasFaixa?: number } = {},
+): string | null {
   if (tipo === 'entrega') return '*** ENTREGA ***'
   if (tipo === 'retirada') return '*** RETIRADA ***'
-  return null
+  if (tipo === 'balcao') return '*** BALCAO ***'
+  const mesa = semAcentoMaiusculo(opcoes.mesa ?? '')
+  if (!mesa) return '*** BALCAO ***'
+  const max = opcoes.colunasFaixa ?? COLUNAS_FAIXA_PADRAO
+  const comEstrelas = `*** MESA ${mesa} ***`
+  if (comEstrelas.length <= max) return comEstrelas
+  const simples = `MESA ${mesa}`
+  return simples.length <= max ? simples : simples.slice(0, max).trimEnd()
 }

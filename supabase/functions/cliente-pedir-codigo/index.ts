@@ -3,6 +3,7 @@
 // Segredos: CLIENTE_HASH_PEPPER, CRM_CODIGO_URL, CRM_CODIGO_SEGREDO. Deploy sem JWT:
 //   supabase functions deploy cliente-pedir-codigo --no-verify-jwt --project-ref <ref>
 import { createClient } from 'jsr:@supabase/supabase-js@2'
+import { buscarBarracaPorSlug } from '../_shared/resolverSlug.ts'
 import { hashIp, ipDoCliente, pareceBot } from '../_shared/antiabuso.ts'
 import {
   LIMITE_IP_GLOBAL_HORA,
@@ -53,7 +54,7 @@ Deno.serve(async (req: Request) => {
     return json({ erro: 'Não conseguimos enviar o código agora. Tente de novo.' }, 503)
   }
 
-  const { data: barraca } = await supabase.from('barracas').select('id, codigos_dia_max').eq('slug', slug).maybeSingle()
+  const barraca = await buscarBarracaPorSlug<{ id: string; codigos_dia_max: number | null }>(supabase, slug, 'id, codigos_dia_max')
   if (!barraca) return json({ erro: 'Loja não encontrada' }, 404)
 
   const agora = Date.now()

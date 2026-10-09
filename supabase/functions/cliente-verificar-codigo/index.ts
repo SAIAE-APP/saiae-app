@@ -1,6 +1,7 @@
 // Confere o código, cria/atualiza o perfil e abre a sessão. Endpoint PÚBLICO.
 //   supabase functions deploy cliente-verificar-codigo --no-verify-jwt --project-ref <ref>
 import { createClient } from 'jsr:@supabase/supabase-js@2'
+import { buscarBarracaPorSlug } from '../_shared/resolverSlug.ts'
 import {
   MAX_TENTATIVAS,
   MENSAGEM_CODIGO_INVALIDO,
@@ -47,7 +48,7 @@ Deno.serve(async (req: Request) => {
   if (!pimenta) return json({ erro: 'Tente de novo em instantes.' }, 503)
   const supabase = createClient(Deno.env.get('SUPABASE_URL') ?? '', Deno.env.get('SUPABASE_SERVICE_ROLE_KEY') ?? '')
 
-  const { data: barraca } = await supabase.from('barracas').select('id').eq('slug', slug).maybeSingle()
+  const barraca = await buscarBarracaPorSlug<{ id: string }>(supabase, slug, 'id')
   if (!barraca) return json(invalido(), 400)
 
   // Limite próprio da verificação (por telefone+loja e por IP). Não usa o limite de PEDIR código: o dono

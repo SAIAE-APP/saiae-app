@@ -2,6 +2,7 @@ import { useEffect, useRef } from 'react'
 import { Outlet, useLocation, useParams } from 'react-router'
 import clsx from 'clsx'
 import { useBarraca } from '../hooks/useBarraca'
+import { useResolverApelido } from '../hooks/useResolverApelido'
 import { useSincronizacao } from '../hooks/useSincronizacao'
 import { useImpressaoAutomatica } from '../hooks/useImpressaoAutomatica'
 import { useRealtimePedidos } from '../hooks/useRealtimePedidos'
@@ -13,12 +14,15 @@ import { SidebarDesktop } from '../components/SidebarDesktop'
 import { BannerTrial } from '../components/BannerTrial'
 import { acessoBloqueadoPorAssinatura, mostraBannerDeTrial } from '../lib/cobranca'
 import { useToast } from '../components/ui/useToast'
+import { EVENTO_CLIENTE_NAO_SALVO } from '../lib/fila'
 import { BarracaContext, SincronizacaoContext } from './contextoBarraca'
 import { PedidosContext } from './contextoPedidos'
 
 export function LayoutBarraca() {
   const { slug } = useParams<{ slug: string }>()
   const { barraca, carregando, erro } = useBarraca(slug ?? '')
+  // Endereço antigo (apelido): redireciona para o atual em vez de "Estabelecimento não encontrado".
+  const apelido = useResolverApelido(slug, !carregando && (Boolean(erro) || !barraca))
   const sincronizacao = useSincronizacao()
   useImpressaoAutomatica(barraca)
   const { mostrarToast } = useToast()
@@ -43,6 +47,16 @@ export function LayoutBarraca() {
       })
     }
   }, [sincronizacao.online, mostrarToast])
+  // O cliente do pedido de Entrega não entrou no cadastro de primeira: avisa (o reenvio é automático).
+  useEffect(() => {
+    const aviso = () =>
+      mostrarToast('O cliente deste pedido ainda não foi salvo no cadastro. Vamos tentar de novo sozinhos.', {
+        variante: 'aviso',
+        duracaoMs: 6000,
+      })
+    window.addEventListener(EVENTO_CLIENTE_NAO_SALVO, aviso)
+    return () => window.removeEventListener(EVENTO_CLIENTE_NAO_SALVO, aviso)
+  }, [mostrarToast])
   const { pedidos, status, pedidosCarregados, aplicarPatchPedido, aplicarPatchItem } =
     useRealtimePedidos(barraca?.id ?? '')
   const { assinatura } = useAssinaturaBarraca(slug ?? '')
@@ -91,7 +105,7 @@ export function LayoutBarraca() {
       ?.setAttribute('href', barraca.logo_url ?? '/icons/apple-touch-icon.png')
   }, [barraca])
 
-  if (carregando) {
+  if (carregando || apelido.verificando) {
     return (
       <div className="flex min-h-dvh items-center justify-center bg-mesa-bg-base">
         <p className="text-mesa-text-secondary">Carregando...</p>

@@ -272,3 +272,86 @@ export function mostrarChecklist(porcentagem: number, ocultoAte: string | null |
   if (porcentagem >= 100) return false
   return !(ocultoAte && Date.parse(ocultoAte) > agora)
 }
+
+// ---------------------------------------------------------------- Fase 1 do assistente (PR 4)
+/** Flag de front: sem VITE_ONBOARDING_CONFIG=1 o fluxo atual (SelecionarBarraca) segue intacto. */
+export function onboardingConfigHabilitado(valor: unknown): boolean {
+  return valor === '1'
+}
+
+/** Ordem dos passos do assistente: o 9 (taxa de entrega) só existe com Entrega ligada. */
+export function ordemDoAssistente(entregaAtiva: boolean): number[] {
+  return [1, 2, 3, 4, 5, 6, 7, 8, ...(entregaAtiva ? [9] : []), 10]
+}
+
+/** Máscara de CNPJ enquanto digita: 00.000.000/0000-00. */
+export function formatarCnpjDigitando(texto: string): string {
+  const d = String(texto ?? '').replace(/\D/g, '').slice(0, 14)
+  return d
+    .replace(/^(\d{2})(\d)/, '$1.$2')
+    .replace(/^(\d{2})\.(\d{3})(\d)/, '$1.$2.$3')
+    .replace(/\.(\d{3})(\d)/, '.$1/$2')
+    .replace(/(\d{4})(\d)/, '$1-$2')
+}
+
+/** Máscara de CEP enquanto digita: 00000-000. */
+export function formatarCepDigitando(texto: string): string {
+  const d = String(texto ?? '').replace(/\D/g, '').slice(0, 8)
+  return d.length > 5 ? `${d.slice(0, 5)}-${d.slice(5)}` : d
+}
+
+/** Resposta da função consultar-externo (já só com o necessário). */
+export type RespostaConsulta<T> = { ok: true; dados: T } | { ok: false; motivo: 'invalido' | 'nao_encontrado' | 'indisponivel' | 'limite' | 'nao_autenticado' }
+
+export function mensagemDaConsulta(motivo: string): string {
+  switch (motivo) {
+    case 'nao_encontrado':
+      return 'Não encontramos esse número. Confira ou preencha à mão.'
+    case 'limite':
+      return 'Muitas consultas seguidas. Preencha à mão ou tente em alguns minutos.'
+    case 'invalido':
+      return 'Confira o número digitado.'
+    default:
+      return 'Não deu para buscar agora. Preencha à mão.'
+  }
+}
+
+/** Próximo passo da ordem depois do último concluído; ao fim, o último (a tela final). */
+export function proximoPassoEm(ordem: readonly number[], etapaConcluida: number): number {
+  const seguinte = ordem.find((n) => n > etapaConcluida)
+  return seguinte ?? ordem[ordem.length - 1]
+}
+
+/** Posição (1-based) do passo na barra de progresso. */
+export function posicaoNaOrdem(ordem: readonly number[], numero: number): number {
+  const i = ordem.indexOf(numero)
+  return i < 0 ? 1 : i + 1
+}
+
+/** Erros das RPCs do assistente em frase simples (nunca texto técnico do banco). */
+export function mensagemErroOnboarding(mensagem: string | null | undefined): string {
+  const m = String(mensagem ?? '')
+  if (/horario_vazio/.test(m)) return 'Marque pelo menos um dia em que você abre.'
+  if (/horarios_invalidos/.test(m)) return 'Confira os horários. Cada dia aberto precisa de hora de abrir e de fechar.'
+  if (/metodos_invalidos/.test(m)) return 'Escolha pelo menos uma forma de pagamento.'
+  if (/modos_invalidos/.test(m)) return 'Escolha pelo menos um jeito de atender.'
+  if (/obrigatorios_pendentes/.test(m)) return 'Faltam passos obrigatórios (horário, pagamento ou atendimento).'
+  if (/já está em uso|ja esta em uso/i.test(m)) return 'Esse endereço já está em uso. Escolha outro.'
+  if (/plano Essencial/i.test(m)) return 'O plano Essencial permite só 1 barraca.'
+  if (/failed to fetch|network|load failed/i.test(m)) return 'Sem internet. Tente de novo.'
+  return 'Não foi possível salvar agora. Tente de novo.'
+}
+
+/** Em qual categoria de Ajustes cada pendência do checklist se resolve (a rota /:slug/ajustes é "conta"). */
+export function destinoDoItemChecklist(chave: string): 'conta' | 'cardapio' {
+  switch (chave) {
+    case 'horario':
+    case 'modos':
+    case 'item':
+    case 'taxa':
+    case 'endereco':
+      return 'cardapio'
+    default:
+      return 'conta' // pagamento, cnpj (Fiscal), pix_online, logo (Identidade)
+  }
+}

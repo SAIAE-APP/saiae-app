@@ -24,6 +24,7 @@ import { NaoEncontrado } from './pages/NaoEncontrado'
 import { Login } from './pages/Login'
 import { Cadastro } from './pages/Cadastro'
 import { SelecionarBarraca } from './pages/SelecionarBarraca'
+import { Configurar } from './pages/Configurar'
 import { EsqueciSenha } from './pages/EsqueciSenha'
 import { RedefinirSenha } from './pages/RedefinirSenha'
 import { Dispatcher } from './pages/Dispatcher'
@@ -74,6 +75,16 @@ function App() {
             <Route path="/excluir-conta" element={<ExcluirConta />} />
 
             <Route path="/" element={<Dispatcher />} />
+
+            {/* Assistente de configuração inicial (atrás da flag VITE_ONBOARDING_CONFIG; sem ela o Dispatcher nunca vem aqui). */}
+            <Route
+              path="/configurar"
+              element={
+                <RotaProtegida>
+                  <Configurar />
+                </RotaProtegida>
+              }
+            />
 
             <Route
               path="/selecionar-barraca"

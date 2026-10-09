@@ -20,9 +20,9 @@ import { apagarLogoBarraca, enviarLogoBarraca } from '../lib/logoBarraca'
 import { apagarCapaBarraca, enviarCapaBarraca } from '../lib/capaBarraca'
 import { ativarFaceId, desativarFaceId, faceIdAtivado, faceIdSuportado } from '../lib/faceId'
 import { urlPublica } from '../lib/urlPublica'
-import { METODOS_DISPONIVEIS } from '../lib/metodoPagamento'
 import { BPS_MAX, bpsParaPercentual, percentualParaBps } from '../lib/taxas'
 import { ModalTrocarSenha } from '../components/ModalTrocarSenha'
+import { SeletorMetodos } from '../components/SeletorMetodos'
 import { GateSenhaAdmin } from '../components/GateSenhaAdmin'
 import { SecaoImpressora } from '../components/SecaoImpressora'
 import { SecaoBanners } from '../components/SecaoBanners'
@@ -37,9 +37,11 @@ import { SecaoOpcoes } from '../components/SecaoOpcoes'
 import { SecaoClientesEntrega } from '../components/SecaoClientesEntrega'
 import { SecaoPagarNaEntrega } from '../components/SecaoPagarNaEntrega'
 import { EnderecoCardapio } from '../components/EnderecoCardapio'
+import { SecaoPagamentoDepois } from '../components/SecaoPagamentoDepois'
 import { SecaoEstoque } from '../components/SecaoEstoque'
 import { SecaoCupons } from '../components/SecaoCupons'
 import { SecaoAtendenteIa } from '../components/SecaoAtendenteIa'
+import { mostrarAtendenteIa } from '../lib/visibilidadeIaCrm'
 import {
   PROVEDORES_PIX_DISPONIVEIS,
   provedorPixDaBarraca,
@@ -1565,27 +1567,7 @@ function SecaoPagamento({ barraca }: { barraca: Barraca }) {
       <Card>
         {aviso && <AvisoInline>{aviso}</AvisoInline>}
 
-        <ul className="divide-y divide-mesa-border-subtle">
-          {METODOS_DISPONIVEIS.map((metodo) => (
-            <li key={metodo.chave}>
-              <label
-                htmlFor={`metodo-${metodo.chave}`}
-                className="flex cursor-pointer items-center justify-between gap-3 py-3"
-              >
-                <span className="inline-flex items-center gap-2 text-base text-mesa-text-primary">
-                  <Icone nome={metodo.icone} size={16} />
-                  {metodo.label}
-                </span>
-                <Toggle
-                  id={`metodo-${metodo.chave}`}
-                  checked={ativos.includes(metodo.chave)}
-                  onChange={() => alternar(metodo.chave)}
-                  aria-label={metodo.label}
-                />
-              </label>
-            </li>
-          ))}
-        </ul>
+        <SeletorMetodos ativos={ativos} onAlternar={alternar} />
 
         <ErroSalvar erro={metodos.erro} className="mt-2" />
 
@@ -2867,11 +2849,17 @@ export function Ajustes({ categoria = 'conta' }: { categoria?: CategoriaAjustes 
             <SecaoPagarNaEntrega barraca={barraca} />
           </SecaoDaCategoria>
           <SecaoDaCategoria categoria="cardapio" atual={categoria}>
-            <SecaoCupons barraca={barraca} />
+            <SecaoPagamentoDepois barraca={barraca} />
           </SecaoDaCategoria>
           <SecaoDaCategoria categoria="cardapio" atual={categoria}>
-            <SecaoAtendenteIa barraca={barraca} />
+            <SecaoCupons barraca={barraca} />
           </SecaoDaCategoria>
+          {/* Escondida para cliente novo (decisão 2026-10-09); quem já tem a IA ligada vê, e VITE_MOSTRAR_ATENDENTE_IA=1 reabre. */}
+          {mostrarAtendenteIa(barraca, import.meta.env.VITE_MOSTRAR_ATENDENTE_IA) && (
+            <SecaoDaCategoria categoria="cardapio" atual={categoria}>
+              <SecaoAtendenteIa barraca={barraca} />
+            </SecaoDaCategoria>
+          )}
           <SecaoDaCategoria categoria="cardapio" atual={categoria}>
             <SecaoAvisoPronto barraca={barraca} />
           </SecaoDaCategoria>

@@ -1,8 +1,10 @@
 // Operações do perfil do cliente final, sempre por token de sessão (nunca por id vindo do cliente).
 //   supabase functions deploy cliente-sessao --no-verify-jwt --project-ref <ref>
 import { createClient } from 'jsr:@supabase/supabase-js@2'
+import { buscarBarracaPorSlug } from '../_shared/resolverSlug.ts'
 import { autenticarSessao } from '../_shared/clienteSessao.ts'
 import { classificarItensPedirDeNovo } from '../_shared/pedirDeNovo.ts'
+import { drenarFilaApagarIa } from '../_shared/iaApagarSupabase.ts'
 
 const CORS = {
   'Access-Control-Allow-Origin': '*',
@@ -30,7 +32,7 @@ Deno.serve(async (req: Request) => {
   const pimenta = Deno.env.get('CLIENTE_HASH_PEPPER') ?? ''
   const supabase = createClient(Deno.env.get('SUPABASE_URL') ?? '', Deno.env.get('SUPABASE_SERVICE_ROLE_KEY') ?? '')
   const slug = texto(body.barraca_slug, 80).toLowerCase()
-  const { data: barraca } = await supabase.from('barracas').select('id').eq('slug', slug).maybeSingle()
+  const barraca = await buscarBarracaPorSlug<{ id: string }>(supabase, slug, 'id')
   const sessao = barraca && pimenta ? await autenticarSessao(supabase, pimenta, barraca.id, body.token) : null
   if (!barraca || !sessao) return json({ erro: 'Sessão expirada', codigo: 'sessao_invalida' }, 401)
 
@@ -145,7 +147,11 @@ Deno.serve(async (req: Request) => {
 
     case 'apagar': {
       const { error } = await supabase.rpc('cliente_apagar_dados', { p_cliente_id: clienteId })
-      return error ? json({ erro: 'Não foi possível apagar agora. Tente de novo.' }, 500) : json({ ok: true })
+      if (error) return json({ erro: 'Não foi possível apagar agora. Tente de novo.' }, 500)
+      // O pedido de apagar a conversa da IA no CRM já está na fila (mesma transação do apagamento). Tentar enviar agora é
+      // só pressa: se o CRM falhar, o job periódico reenvia e o cliente nunca fica sem o apagamento local.
+      await drenarFilaApagarIa(supabase).catch(() => undefined)
+      return json({ ok: true })
     }
 
     default:

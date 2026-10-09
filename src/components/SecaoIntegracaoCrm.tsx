@@ -2,6 +2,7 @@ import { useCallback, useEffect, useState } from 'react'
 import { supabase } from '../lib/supabase'
 import { MSG_SEM_INTERNET } from '../hooks/useSalvarBarraca'
 import { bancoSemRecurso } from '../lib/semMigration'
+import { mostrarIntegracaoCrm } from '../lib/visibilidadeIaCrm'
 import { Button } from './ui/Button'
 import { Card } from './ui/Card'
 import { Icone } from './ui/Icone'
@@ -113,7 +114,9 @@ export function SecaoIntegracaoCrm({ barraca }: { barraca: Barraca }) {
     }
   }
 
-  if (semBanco) return null
+  // Escondida para cliente novo (decisão 2026-10-09): só aparece se a barraca JÁ está conectada ou com VITE_MOSTRAR_INTEGRACAO_CRM=1.
+  // Esconder a tela não desliga nada: o envio de eventos ao CRM (e as mensagens de status) continua como estava.
+  if (semBanco || !mostrarIntegracaoCrm(estado, import.meta.env.VITE_MOSTRAR_INTEGRACAO_CRM)) return null
 
   return (
     <section>

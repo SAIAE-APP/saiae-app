@@ -483,6 +483,12 @@ repetir `versionCode`: subir a cada build. Validar em aparelho Android 7–11 e
   "Novo item" ou tocando na linha) com foto, nome, preço, categoria,
   descrição, Ativo/Esgotado/Popular, dados fiscais e "Apagar item";
   tudo grava de uma vez no botão Salvar/Adicionar.
+- IA e CRM escondidos (decisão do João, 2026-10-09: produto focado em um app redondo; a integração app + CRM é fase futura):
+  em Ajustes, "Atendente IA" só aparece se a barraca já tem `ia_habilitada` (ou `VITE_MOSTRAR_ATENDENTE_IA=1`) e "Integração
+  com o CRM" só se a barraca já está conectada (URL/segredo/envio ligado em `integracao_crm_estado`) ou
+  `VITE_MOSTRAR_INTEGRACAO_CRM=1` (`src/lib/visibilidadeIaCrm.ts`). Só a TELA some: backend, eventos SAI-001, RPCs e
+  functions não mudam e as mensagens automáticas de status (aviso de pedido pronto etc., enviadas pelo CRM)
+  continuam. O onboarding e o checklist do Hub não oferecem nem citam IA/CRM.
 - Cupons por código (v2, 2026-10-08/09; spec `docs/superpowers/specs/2026-10-08-cupons-design.md`,
   plano `docs/superpowers/plans/2026-10-08-cupons-comanda.md`). Só no CARDÁPIO DIGITAL (operador no balcão
   não digita cupom). Flag por loja `barracas.cupons_habilitado` (nasce desligada; RPC pública
