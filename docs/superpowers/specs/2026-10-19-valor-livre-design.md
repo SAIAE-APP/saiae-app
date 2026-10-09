@@ -7,7 +7,7 @@ O operador vende coisas sem preço fixo (uma bomboniere de R$ 0,50 a R$ 4,00; um
 
 ## 2. Comportamento proposto
 - **Cadastro:** no item (Ajustes › Cardápio), opção **"Preço aberto"**. Com ela ligada, o preço do cadastro some (fica 0 de reserva) e o item mostra "Valor livre" no lugar do preço.
-- **Lançar Pedido:** ao tocar no item "Preço aberto", abre uma folha pedindo **valor** (teclado numérico, centavos, obrigatório e maior que zero) e **o que foi vendido** (texto curto, obrigatório, 2 a 60 caracteres). Confirmar põe a linha no carrinho com aquele valor. Cada toque cria uma **linha própria** (não soma quantidade com outro valor); quantidade fica 1 (editável só se o valor for por unidade, decisão 5).
+- **Lançar Pedido:** ao tocar no item "Preço aberto", abre uma folha pedindo **valor** (teclado numérico, centavos, obrigatório e maior que zero) e **o que foi vendido** (texto curto, obrigatório, 2 a 60 caracteres). Confirmar põe a linha no carrinho com aquele valor. Cada toque cria uma **linha própria** (não soma quantidade com outro valor); quantidade é sempre 1 (decisão 5).
 - **Carrinho / Confirmar Pedido:** a linha mostra "Valor livre — bala de menta" e o valor digitado; tocar nela reabre a folha para corrigir antes de enviar.
 - **Dinheiro e troco, cupom, taxa:** nada muda (o valor entra no total como qualquer item).
 
