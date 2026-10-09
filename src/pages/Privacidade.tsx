@@ -142,8 +142,8 @@ export function Privacidade() {
         <Secao titulo="3. Dados que coletamos do cliente final (cardápio digital)">
           <p>
             Quem acessa o cardápio digital público de uma barraca (link <code>/cardapio</code>) para
-            navegar o menu ou montar um pedido <strong>não precisa informar nome, telefone ou e-mail</strong>.
-            Coletamos apenas:
+            navegar o menu ou montar um pedido <strong>não precisa informar nome, telefone ou e-mail</strong>
+            (a Entrega e o perfil, descritos abaixo, pedem alguns dados). Sem perfil, coletamos apenas:
           </p>
           <ul className="flex flex-col gap-2">
             <ItemLista>Os itens escolhidos, a mesa (quando informada) e uma observação opcional do pedido.</ItemLista>
@@ -154,6 +154,41 @@ export function Privacidade() {
               pedido (não é um e-mail real, não recebe nem envia nada).
             </ItemLista>
           </ul>
+          <p>
+            <strong>Perfil do cliente na loja (opcional).</strong> Em lojas que oferecem, o cliente pode
+            criar um perfil para pedir de novo com mais facilidade. Nunca é obrigatório para pedir.
+          </p>
+          <ul className="flex flex-col gap-2">
+            <ItemLista>
+              <strong>O que guardamos:</strong> nome, telefone, endereços de entrega e o histórico de
+              pedidos <strong>naquela loja</strong>. O perfil é separado por loja: uma loja não enxerga o
+              perfil de outra. Não pedimos CPF nem data de nascimento.
+            </ItemLista>
+            <ItemLista>
+              <strong>Confirmação por código:</strong> para entrar, enviamos um código de 6 dígitos por
+              WhatsApp ao telefone informado, válido por poucos minutos e com limite de tentativas. Só
+              guardamos uma versão embaralhada (hash) do código. Depois de confirmar, o aparelho guarda
+              uma sessão de até 30 dias; o cliente pode sair a qualquer momento.
+            </ItemLista>
+            <ItemLista>
+              <strong>Avisos e promoções:</strong> os avisos sobre o próprio pedido fazem parte do
+              serviço. Promoções só se o cliente marcar a caixa própria, e ele pode desmarcar depois.
+            </ItemLista>
+            <ItemLista>
+              <strong>Apagar:</strong> em &quot;Meu perfil&quot;, o botão &quot;Apagar meus dados&quot; remove o
+              perfil, os endereços, as sessões e os códigos. Os pedidos já feitos ficam na loja para
+              contabilidade e nota fiscal, sem nome, telefone nem endereço do cliente. Também é possível
+              pedir à loja ou ao e-mail de contato.
+            </ItemLista>
+          </ul>
+          <p>
+            <strong>Cupons de desconto.</strong> Quando a loja usa cupons, o cliente digita um código no
+            cardápio. Guardamos qual cupom foi usado e o valor do desconto no pedido e, nos cupons de
+            &quot;uma vez por cliente&quot;, o vínculo do uso com o perfil confirmado (telefone). Para
+            conter tentativas de adivinhar códigos, registramos tentativas inválidas com um identificador
+            embaralhado (hash) do endereço de rede, sem guardar o IP. Ao apagar os dados do perfil, o uso do
+            cupom continua contando para o limite da loja, mas deixa de estar ligado à pessoa.
+          </p>
         </Secao>
 
         <Secao titulo="4. Dados de clientes de entrega (informados pela barraca)">
@@ -313,9 +348,10 @@ export function Privacidade() {
               conversa.
             </ItemLista>
             <ItemLista>
-              <strong>Por quanto tempo:</strong> as mensagens ficam no máximo 30 dias. A pessoa pode
-              escrever <strong>PARAR</strong> para encerrar, ou pedir a exclusão do contato no e-mail
-              de contato desta política.
+              <strong>Por quanto tempo:</strong> as mensagens ficam no máximo 30 dias. O contato
+              (lead) é guardado por até 12 meses sem nenhum contato novo e depois é apagado; a pessoa
+              pode pedir a exclusão antes disso no e-mail de contato desta política, ou escrever{' '}
+              <strong>PARAR</strong> para encerrar o atendimento.
             </ItemLista>
           </ul>
         </Secao>
@@ -355,7 +391,9 @@ export function Privacidade() {
             Ao excluir uma barraca, todos os dados associados a ela (pedidos, cardápio, histórico, senha
             administrativa, clientes de entrega, respostas do assistente de configuração e endereço da
             loja) são apagados permanentemente. As conversas do atendente automático e do atendimento a
-            interessados ficam no máximo 30 dias (seções 8 e 9).
+            interessados ficam no máximo 30 dias, e o lead de interessado até 12 meses sem contato (seções 8 e 9).
+            Cópias de segurança (backup) do banco do atendimento, que incluem conversas e leads, são
+            mantidas por até 30 dias e depois descartadas automaticamente.
           </p>
           <p>
             O cadastro de clientes de entrega fica guardado enquanto a barraca existir ou até o dono
