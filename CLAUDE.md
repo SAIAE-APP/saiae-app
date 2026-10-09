@@ -603,6 +603,36 @@ repetir `versionCode`: subir a cada build. Validar em aparelho Android 7–11 e
   nunca usado pra decidir acesso de verdade). Destaque de
   palavra-chave em títulos = fundo mostarda atrás da palavra
   (componente `Destaque`), mesmo padrão do site saiae.com.br.
+- Assistente de configuração inicial (2026-10-08/09; spec
+  `docs/superpowers/specs/2026-10-08-onboarding-configuracao-design.md`, PRs 1–7;
+  roteiro de teste `docs/onboarding-roteiro-e2e.md`). É OUTRA coisa que o carrossel acima: roda
+  DEPOIS do login (`/configurar`, `src/pages/Configurar.tsx`), um passo por tela, cada passo salva na hora e
+  retoma de onde parou. **Atrás de `VITE_ONBOARDING_CONFIG=1`** (`onboardingConfigHabilitado`): sem a flag o
+  `Dispatcher` e o Hub ignoram tudo isso e o fluxo antigo (`SelecionarBarraca`) segue intacto. Passos (`PASSOS`
+  em `src/lib/onboardingConfig.ts`): 1 origem e 2 categoria (opcionais, gravam no USUÁRIO em `perfis_usuario`,
+  porque ainda não há barraca), 3 nome + link do cardápio (obrigatório; o slug nasce do nome por `gerarSlug`,
+  checa `slug_disponivel` ao digitar, recusa reservados e cria a barraca), 4 CNPJ e 5 endereço (opcionais, com
+  consulta), 6 horário, 7 formas de pagamento (dinheiro/débito/crédito; vales fora; Pix online só vira atalho para Ajustes na tela final, o token nunca passa pelo assistente) e 8
+  modos de atendimento (os 4 obrigatórios), 9 taxa de entrega (só se Entrega ligada), 10 tela final. Um intervalo
+  por dia, sem dois turnos. Só os obrigatórios travam o avanço; "fazer depois" só nos opcionais. REGRA DE OURO:
+  barraca antiga (backfill `onboarding_concluido_em = criada_em`) NUNCA é redirecionada nem bloqueada; só ganha o
+  cartão "Falta pouco para vender" no Hub (`CartaoChecklistOnboarding`, só dono, pesos iguais, % = feitos ÷
+  aplicáveis, some em 100% e "Ocultar por 7 dias"). Banco (migration `20261020100000_onboarding_config.sql`,
+  aditiva): `perfis_usuario`, colunas novas em `barracas` (`categoria_negocio`, `endereco_*`, `sem_cnpj`,
+  `onboarding_etapa`, `onboarding_concluido_em`, `checklist_oculto_ate`), `onboarding_eventos` (telemetria SEM
+  texto livre nem dado pessoal), `criar_barraca` igual à anterior + recusa de slug reservado, e RPCs `slug_disponivel`,
+  `onboarding_salvar_origem`, `onboarding_salvar_passo` (valida só campos conhecidos do passo, idempotente),
+  `onboarding_progresso`, `onboarding_ocultar_checklist`, `onboarding_evento`. CNPJ e CEP: edge function
+  `consultar-externo` (COM verificação de JWT; BrasilAPI e ViaCEP chamados pelo SERVIDOR, nunca pelo navegador;
+  timeout 6 s; limite 30/h por usuário e tipo via `consulta_externa_registrar`; migration
+  `20261020110000_consultas_externas.sql`, a tabela guarda só usuário, tipo e hora, NUNCA o CNPJ/CEP; falha ou
+  lentidão vira "preencha à mão" e nunca trava o passo). Consultar o CNPJ só preenche, não liga o fiscal.
+  Funções puras e testes: `tests/onboarding*.test.ts` (`npm test`); banco contra o staging:
+  `tests/onboardingBanco.staging.mjs`. O assistente e o checklist não oferecem nem citam IA/CRM (ver
+  "IA e CRM escondidos"). Política de Privacidade (seções 2, 7, 8, 9) descreve origem/categoria/endereço/CNPJ, a
+  consulta por terceiros, as conversas da IA (máx. 30 dias) e os leads do panfleto. Ordem de deploy: migrations →
+  edge function → app com a flag DESLIGADA; ligar no staging para testar e só em produção com ordem do João,
+  primeiro numa conta de teste. Pendente de validação ponta a ponta: o roteiro E2E ainda não foi executado.
 - Login (2026-09-27): foto real de uma dona de barraca (feira, banca
   de fruta/verdura, celular na mão) humaniza a tela — acima do
   formulário no mobile, ao lado (não acima) no desktop, mesmo espírito

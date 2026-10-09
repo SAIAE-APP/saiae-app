@@ -13,7 +13,7 @@ import { Icone } from '../components/ui/Icone'
 // usa nenhum rastreador de terceiro (confirmado por busca no código,
 // 2026-09-28) — não há seção de cookies além da nota informativa abaixo.
 
-const DATA_VIGENCIA = '4 de outubro de 2026'
+const DATA_VIGENCIA = '9 de outubro de 2026'
 
 function Secao({ titulo, children }: { titulo: string; children: React.ReactNode }) {
   return (
@@ -96,6 +96,19 @@ export function Privacidade() {
             <ItemLista>
               <strong>Dados da barraca:</strong> nome, logo, imagem de capa e fotos/descrições do
               cardápio.
+            </ItemLista>
+            <ItemLista>
+              <strong>Configuração inicial (assistente):</strong> ao criar a conta você pode informar
+              como conheceu o Sai aê (e, se for indicação, quem indicou, em texto curto), o tipo de
+              negócio, o endereço da loja, o CNPJ (ou que ainda não tem), o horário de funcionamento, as
+              formas de pagamento aceitas, os tipos de atendimento e a taxa de entrega. Só o nome e o
+              link do cardápio, o horário, as formas de pagamento e os tipos de atendimento são
+              necessários para a barraca funcionar; o resto é opcional e pode ficar para depois. Usamos
+              essas informações para montar o seu cardápio e a sua loja (execução do contrato), para
+              preencher a nota fiscal e a comanda quando você ativar esses recursos e, no caso de
+              origem e tipo de negócio, para entender como o Sai aê chega às pessoas e personalizar
+              dicas (legítimo interesse). O endereço e o CNPJ da loja são dados da empresa; se o seu
+              CNPJ for de MEI, podem identificar você, e nesse caso os tratamos como seus dados pessoais.
             </ItemLista>
             <ItemLista>
               <strong>Dados fiscais (opcional):</strong> CNPJ e token de integração com a FocusNFe, usados
@@ -206,7 +219,7 @@ export function Privacidade() {
             <strong>Excluir:</strong> o dono da barraca pode excluir o cadastro de um cliente em Ajustes,
             na seção "Clientes de entrega". Isso apaga o cadastro; os pedidos já feitos continuam no
             Histórico com os dados da entrega, e só são apagados pelo "Apagar período" ou ao excluir a
-            barraca (ver "Retenção de dados"). O cliente final que quiser corrigir ou apagar os próprios
+            barraca (ver "Retenção de dados", seção 12). O cliente final que quiser corrigir ou apagar os próprios
             dados pode pedir à barraca ou diretamente a nós pelo e-mail de contato abaixo.
           </p>
         </Secao>
@@ -228,7 +241,86 @@ export function Privacidade() {
           </p>
         </Secao>
 
-        <Secao titulo="7. Com quem compartilhamos dados">
+        <Secao titulo="7. Consulta automática de CNPJ e CEP">
+          <p>
+            No assistente de configuração, ao digitar o CNPJ ou o CEP da loja, buscamos o nome da empresa e
+            o endereço para você não precisar digitar tudo. A consulta é feita pelos nossos servidores
+            (nunca direto pelo seu navegador) na <strong>BrasilAPI</strong> (CNPJ) e no{' '}
+            <strong>ViaCEP</strong> (CEP), que são serviços públicos de terceiros e recebem apenas o número
+            consultado.
+          </p>
+          <p>
+            Não guardamos o CNPJ nem o CEP consultado, nem a resposta: o resultado só aparece para você
+            confirmar ou corrigir. Guardamos apenas o tipo (CNPJ ou CEP) e a hora de cada consulta, para
+            limitar o número de consultas por hora; esse registro é descartado depois de 1 dia e também é
+            apagado se a conta for excluída. Se o serviço estiver fora do ar, você preenche à mão.
+          </p>
+        </Secao>
+
+        <Secao titulo="8. Atendente automático por WhatsApp (IA)">
+          <p>
+            A barraca pode ligar, em Ajustes, um <strong>atendente automático</strong> que responde seus
+            clientes pelo WhatsApp (cardápio, horário, taxa e formas de pagamento). Ele só responde quando
+            a pessoa escreve primeiro, avisa na primeira resposta que é um assistente automático, nunca
+            envia mensagem por conta própria e para quando a pessoa escreve <strong>PARAR</strong>. Para
+            ligar, o dono confirma o próprio número de WhatsApp respondendo a uma mensagem do Sai aê.
+          </p>
+          <ul className="flex flex-col gap-2">
+            <ItemLista>
+              <strong>O que é tratado:</strong> o telefone de quem escreve, o texto das mensagens (áudio
+              não é lido; a pessoa é convidada a escrever) e, quando existe um perfil confirmado daquele
+              telefone naquela loja, o nome e os dados de pedidos dela na mesma loja. Nunca dados de outra
+              loja.
+            </ItemLista>
+            <ItemLista>
+              <strong>Por quanto tempo:</strong> as mensagens ficam guardadas por no máximo{' '}
+              <strong>30 dias</strong> e depois são apagadas. Nos registros técnicos o telefone aparece só
+              em formato embaralhado (hash), e nunca o conteúdo da conversa.
+            </ItemLista>
+            <ItemLista>
+              <strong>Apagar:</strong> quem pede para apagar os próprios dados na loja tem também as
+              conversas daquele telefone naquela loja apagadas; ao excluir a barraca ou a conta, as
+              conversas da loja entram numa fila de exclusão e são apagadas do nosso sistema de
+              atendimento.
+            </ItemLista>
+            <ItemLista>
+              <strong>Prestadores:</strong> as respostas são geradas por um modelo de linguagem da{' '}
+              <strong>Anthropic</strong>, que recebe o trecho necessário da conversa e as informações da
+              loja; as mensagens trafegam pela plataforma de WhatsApp Business da <strong>Meta</strong>. O
+              atendimento roda em servidores da <strong>Railway</strong>.
+            </ItemLista>
+          </ul>
+          <p>
+            A IA não cria pedidos, não altera preços e não promete desconto: quando não sabe, chama o
+            dono da barraca.
+          </p>
+        </Secao>
+
+        <Secao titulo="9. Quem fala com o Sai aê pelo WhatsApp (panfleto e interessados)">
+          <p>
+            O número de WhatsApp do Sai aê também atende pessoas interessadas no produto, por exemplo quem
+            chegou por um panfleto ou QR code. Esse atendimento também é feito por um assistente
+            automático, que se apresenta como tal e pode chamar a nossa equipe.
+          </p>
+          <ul className="flex flex-col gap-2">
+            <ItemLista>
+              <strong>O que guardamos (lead):</strong> telefone, nome, tipo de negócio e cidade quando a
+              pessoa informar, e a origem do contato (por exemplo, panfleto).
+            </ItemLista>
+            <ItemLista>
+              <strong>Para quê:</strong> apenas para responder sobre o Sai aê e combinar o teste
+              gratuito. Não vendemos nem repassamos esses dados e não pedimos cartão, senha nem CPF pela
+              conversa.
+            </ItemLista>
+            <ItemLista>
+              <strong>Por quanto tempo:</strong> as mensagens ficam no máximo 30 dias. A pessoa pode
+              escrever <strong>PARAR</strong> para encerrar, ou pedir a exclusão do contato no e-mail
+              de contato desta política.
+            </ItemLista>
+          </ul>
+        </Secao>
+
+        <Secao titulo="10. Com quem compartilhamos dados">
           <p>Usamos os seguintes prestadores de serviço para operar o Sai aê. Nenhum deles usa seus dados para fins próprios de publicidade:</p>
           <ul className="flex flex-col gap-2">
             <ItemLista><strong>Supabase</strong> — banco de dados, autenticação e sincronização em tempo real.</ItemLista>
@@ -238,6 +330,8 @@ export function Privacidade() {
             <ItemLista><strong>FocusNFe</strong> — emissão de nota fiscal eletrônica (quando habilitado pelo dono da barraca).</ItemLista>
             <ItemLista><strong>Kirvano</strong> — processamento da cobrança de assinatura do Sai aê.</ItemLista>
             <ItemLista><strong>Google Fonts</strong> — carregamento das fontes usadas na interface.</ItemLista>
+            <ItemLista><strong>BrasilAPI e ViaCEP</strong> — consulta pública de CNPJ e CEP no assistente de configuração (ver seção 7).</ItemLista>
+            <ItemLista><strong>Anthropic, Meta e Railway</strong> — atendente automático por WhatsApp e atendimento a interessados (ver seções 8 e 9).</ItemLista>
           </ul>
           <p>
             Não usamos ferramentas de analytics, rastreamento de comportamento ou publicidade de
@@ -245,7 +339,7 @@ export function Privacidade() {
           </p>
         </Secao>
 
-        <Secao titulo="8. Segurança">
+        <Secao titulo="11. Segurança">
           <p>
             Dados sensíveis (senhas de acesso, tokens de integração fiscal e de pagamento) ficam
             protegidos por controle de acesso a nível de linha (RLS) no banco de dados, sem consulta
@@ -254,12 +348,14 @@ export function Privacidade() {
           </p>
         </Secao>
 
-        <Secao titulo="9. Retenção de dados">
+        <Secao titulo="12. Retenção de dados">
           <p>
             Mantemos os dados da sua conta e da sua barraca enquanto ela existir. Histórico de pedidos
             pode ser apagado manualmente pelo dono da barraca (função "Apagar período", em Histórico).
             Ao excluir uma barraca, todos os dados associados a ela (pedidos, cardápio, histórico, senha
-            administrativa, clientes de entrega) são apagados permanentemente.
+            administrativa, clientes de entrega, respostas do assistente de configuração e endereço da
+            loja) são apagados permanentemente. As conversas do atendente automático e do atendimento a
+            interessados ficam no máximo 30 dias (seções 8 e 9).
           </p>
           <p>
             O cadastro de clientes de entrega fica guardado enquanto a barraca existir ou até o dono
@@ -268,7 +364,7 @@ export function Privacidade() {
           </p>
         </Secao>
 
-        <Secao titulo="10. Seus direitos (LGPD)">
+        <Secao titulo="13. Seus direitos (LGPD)">
           <p>
             Você pode solicitar, a qualquer momento e gratuitamente, através do e-mail{' '}
             <a href="mailto:contatosaiae@gmail.com" className="font-medium text-mesa-text-primary underline">
@@ -290,7 +386,7 @@ export function Privacidade() {
           </ul>
         </Secao>
 
-        <Secao titulo="11. Alterações nesta política">
+        <Secao titulo="14. Alterações nesta política">
           <p>
             Podemos atualizar esta política conforme o Sai aê ganha novos recursos. Mudanças relevantes
             serão comunicadas por e-mail ou aviso no aplicativo. A data no topo desta página sempre
@@ -298,7 +394,7 @@ export function Privacidade() {
           </p>
         </Secao>
 
-        <Secao titulo="12. Contato">
+        <Secao titulo="15. Contato">
           <p>
             Dúvidas sobre esta política ou sobre seus dados:{' '}
             <a href="mailto:contatosaiae@gmail.com" className="font-medium text-mesa-text-primary underline">
