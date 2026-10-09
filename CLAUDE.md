@@ -633,6 +633,38 @@ repetir `versionCode`: subir a cada build. Validar em aparelho Android 7–11 e
   consulta por terceiros, as conversas da IA (máx. 30 dias) e os leads do panfleto. Ordem de deploy: migrations →
   edge function → app com a flag DESLIGADA; ligar no staging para testar e só em produção com ordem do João,
   primeiro numa conta de teste. Pendente de validação ponta a ponta: o roteiro E2E ainda não foi executado.
+- Kits iniciais por tipo de negócio (2026-10-09/10; spec `docs/superpowers/specs/2026-10-09-kits-iniciais-design.md`,
+  PRs #139–#143 + este). O assistente pode montar um **cardápio de exemplo** (categorias, itens, grupos de opções)
+  do tipo de negócio, atrás de `VITE_ONBOARDING_KITS=1` (além de `VITE_ONBOARDING_CONFIG=1`; sem ela o assistente e
+  Ajustes ficam como antes). Fluxo, sem passo novo: o kit é ESCOLHIDO no passo 2 (`SeletorDeKit`; grava
+  `perfis_usuario.kit_inicial`, ou `nenhum` = "começar do zero") e APLICADO ao fim do passo 3, depois de criar a
+  barraca (`aplicarKit` → RPC `onboarding_aplicar_kit`); a retomada reaplica se o app fechou no meio (idempotente);
+  falha do kit nunca trava o assistente. Horário e modos do kit são só SUGESTÃO pré-selecionada nos passos 6 e 8
+  (`sugestoesDoKit`); só gravam quando o dono toca em Continuar. REGRAS DO BANCO (migration
+  `20261021110000_kits_iniciais.sql`, aditiva): só o dono aplica; só com catálogo VAZIO (zero categorias, itens e
+  grupos) e nunca mistura nem sobrescreve; barraca que já existia na migration tem `kit_elegivel = false` e NUNCA
+  recebe kit; idempotente (`kit_aplicado_em`, advisory lock); valida tudo antes de gravar (tetos: 8 categorias, 30
+  itens, 6 grupos, 12 opções por grupo, nomes até 60); só liga `opcoes_habilitado` se o kit tem grupos. NADA NASCE
+  VENDÁVEL: itens com `ativo = false`, preço 0 e `kit_exemplo = true`; opções de variação e as que "precisam de
+  preço" nascem inativas (variação com preço 0 SUBSTITUIRIA o preço do item). O dono completa em "Completar o
+  cardápio de exemplo" (`/:slug/ajustes/cardapio/exemplo`, `RevisarCardapioExemplo`): marca "Usar" e informa o
+  preço; só então item e opção são ativados (`montarPlano` em `src/lib/revisarKit.ts`). Quem pulou o kit vê
+  "Montar um cardápio de exemplo" no checklist do Hub (`OfertaKit`) enquanto a barraca está vazia, é elegível e não
+  escolheu "começar do zero"; o item "Completar os preços" aparece enquanto houver item de kit sem preço (chaves
+  `kit_oferta` e `kit_precos_pendentes` em `onboarding_progresso`; barraca sem kit não muda de porcentagem).
+  BIBLIOTECA DE MODELOS (`src/lib/modelosDeOpcoes.ts`, 31 modelos: tamanhos, ponto da carne, mistura do PF, borda,
+  molhos, coberturas de açaí, temperatura etc., cada um com regra e tipos de negócio): os 8 kits
+  (`src/lib/kitsIniciais.ts`: feira, quermesse, lanchonete, açaí, hamburgueria, pizzaria, pastelaria, PF) são
+  receitas sobre ela, e Ajustes › Opções › "Usar modelo" a oferece ao dono com os modelos do tipo de negócio da
+  barraca primeiro (`negociosDaBarraca`) e busca; o formulário de grupo ganhou "Mínimo de escolhas" (`minimoTexto`;
+  o banco já aceitava min até 20; `sabores_combo` usa; modelo com mínimo > 1 não entra em kit). NÃO RESOLVEM (fase
+  seguinte): meio a meio com preço pelo maior sabor, quantidade por opção, opções que mudam com o tamanho, "primeiros
+  N grátis" no mesmo grupo, estoque por opção, venda por peso, ficha/saldo, cardápio do dia. VALE SÓ NO APP NOVO:
+  decisão do João (2026-10-09), o Android 1.9 não é alvo dos kits; conferir a versão nativa nova antes de ligar a flag
+  em produção. Testes: `tests/kitsIniciais.test.ts`, `modelosDeOpcoes.test.ts`, `kitsAssistente.test.ts`,
+  `revisarKit.test.ts`, `kitsBanco.test.ts` (`npm test`) e, contra o staging, `tests/kitsIniciais.staging.mjs`
+  (rodar de novo quando a migration do valor livre, com o CHECK `itens_preco_aberto_coerente`, entrar no staging).
+  Roteiro de teste: `docs/onboarding-roteiro-e2e.md`, seção 10.
 - Login (2026-09-27): foto real de uma dona de barraca (feira, banca
   de fruta/verdura, celular na mão) humaniza a tela — acima do
   formulário no mobile, ao lado (não acima) no desktop, mesmo espírito

@@ -106,7 +106,35 @@ Gere o app **sem** `VITE_ONBOARDING_CONFIG` (ou com outro valor que não `1`).
 - Animação da tela final desligada com "reduzir movimento" ativado no aparelho.
 - Texto simples, sem jargão; um botão principal (mostarda) por tela.
 
-## 10. Depois do teste
+## 10. Kits iniciais (cardápio de exemplo)
+Só com o app gerado **com as duas flags** (`VITE_ONBOARDING_CONFIG=1` e `VITE_ONBOARDING_KITS=1`) e a migration `20261021110000` aplicada no staging. Antes: `node tests/kitsIniciais.staging.mjs` com tudo `OK` (a equipe roda; rodar de novo quando a migration do valor livre entrar). Conta nova, e-mail `...@staging.saiae.invalid`. O kit **só vale no app novo** (decisão do João); teste no navegador/PWA.
+
+| # | Faça | Esperado | ☐ |
+|---|---|---|---|
+| 10.1 | Passo 2: escolha "Lanches". | Aparecem os kits **Lanchonete** e **Hamburgueria**, "Ver outros modelos" e "Começar do zero". Nada é criado ainda. | ☐ |
+| 10.2 | Toque em "Ver outros modelos". | Aparecem os outros 6 kits. Com "Oriental", "Bebidas" ou "Churrasco" os 8 aparecem direto. | ☐ |
+| 10.3 | Escolha **Hamburgueria**, passo 3 com nome e link, Continuar. | A barraca é criada e o kit montado. Aparece a frase "Montamos um cardápio de exemplo…" nos passos seguintes. | ☐ |
+| 10.4 | Passo 6 (horário) e passo 8 (modos). | Vêm com **Jantar** e **Mesa, Balcão, Entrega** marcados e a legenda "Sugestão do modelo Hamburgueria". Nada foi gravado: mude um deles e confirme que vale o que você escolheu ao Continuar. | ☐ |
+| 10.5 | Passos 6 e 8 de uma conta que já confirmou o passo e voltou. | Vale o que está salvo, sem sugestão. | ☐ |
+| 10.6 | Tela final. | O botão virou "Completar os preços do cardápio". | ☐ |
+| 10.7 | Abra o cardápio público da loja **antes** de preencher qualquer preço. | **Nenhum item** do kit aparece (todos inativos). | ☐ |
+| 10.8 | Em "Completar o cardápio de exemplo", marque o Burger clássico **sem** preço e toque em Salvar. | Erro na linha ("Informe o preço…"); nada é salvo. | ☐ |
+| 10.9 | Preencha o preço do Burger clássico e os tamanhos Simples e Duplo (marcados), salve. | "Salvo". O cardápio público mostra **só** o Burger clássico, com Simples/Duplo e Ponto da carne obrigatório. | ☐ |
+| 10.10 | Tente marcar um tamanho sem preço. | Erro ("ele substitui o preço do item"). | ☐ |
+| 10.11 | Marque um item que tem tamanho obrigatório sem ativar nenhum tamanho. | Aviso de que o item não poderá ser pedido; salvar é permitido. | ☐ |
+| 10.12 | Hub. | O checklist mostra "Completar os preços do cardápio de exemplo" até acabarem os itens sem preço; depois o item some. | ☐ |
+| 10.13 | Ajustes › Opções. | Os grupos do kit estão lá e podem ser editados; "Opções" já aparece ligada. | ☐ |
+| 10.14 | Conta nova: passo 2 com **"Começar do zero"**. | Barraca vazia e **sem** a oferta "Montar um cardápio de exemplo" no Hub. | ☐ |
+| 10.15 | Outra conta: **pule** o passo 2. | Barraca vazia; o Hub mostra "Montar um cardápio de exemplo (opcional)". Toque, escolha **Feira**: monta o kit sem grupos e a opção "Opções" **continua desligada**. | ☐ |
+| 10.16 | Conta onde você já cadastrou um item e depois tenta a oferta (peça à equipe para forçar). | Mensagem "Seu cardápio já tem itens…"; nada é misturado nem alterado. | ☐ |
+| 10.17 | Barraca **antiga** (a de seed). | Nenhum seletor de kit, nenhuma oferta, mesma porcentagem de antes. | ☐ |
+| 10.18 | Feche o app logo depois de criar a barraca no passo 3 e abra de novo. | O assistente retoma e o kit aparece montado **uma vez só** (sem duplicar). | ☐ |
+| 10.19 | Os 8 kits, uma conta cada (ou a equipe aplica por script): feira, quermesse, lanchonete, açaí, hamburgueria, pizzaria, pastelaria, PF. | Cada um monta sem erro; itens inativos; grupos conforme a spec (ex.: pizzaria sem "Gigante" nem categoria "Borda"; PF com Mistura obrigatória). | ☐ |
+| 10.20 | Ajustes › Opções › **Usar modelo** (loja com kit Pizzaria). | Os modelos de pizza vêm primeiro ("Para o seu negócio"); a busca por "borda" acha o modelo; "Sabores do combo" abre com mínimo 3 e máximo 3. | ☐ |
+| 10.21 | Com a flag dos kits **desligada**. | O assistente e Ajustes ficam como antes (sem seletor de kit, sem "Usar modelo" novo, sem campo "mínimo"). | ☐ |
+| 10.22 | Sem internet na tela de completar preços. | "Sem internet"; nada é perdido ao voltar. | ☐ |
+
+## 11. Depois do teste
 1. Apague as contas fictícias criadas (ou rode o re-seed do staging).
 2. Anote o que falhou com a hora e o número do item.
 3. Produção só com ordem do João e fora do horário de uso: migrations → função → app com a flag **desligada** → ligar a flag e testar com uma conta de teste → só então liberar.
