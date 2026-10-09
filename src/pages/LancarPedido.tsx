@@ -1,3 +1,4 @@
+import { abrirLinkExterno } from '../lib/abrirExternoApp'
 import { useEffect, useMemo, useRef, useState } from 'react'
 import type { MouseEvent as ReactMouseEvent, PointerEvent as ReactPointerEvent } from 'react'
 import { useLocation, useNavigate } from 'react-router'
@@ -375,7 +376,7 @@ function ChamarEntregador({
 
   function chamar() {
     setAviso(false)
-    window.open(linkWhatsAppSemNumero(mensagem()), '_blank', 'noopener')
+    abrirLinkExterno(linkWhatsAppSemNumero(mensagem()))
     window.setTimeout(() => {
       if (!document.hidden) setAviso(true)
     }, 1500)

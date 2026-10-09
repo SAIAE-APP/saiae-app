@@ -1,3 +1,4 @@
+import { abrirLinkExterno } from '../lib/abrirExternoApp'
 import { useCallback, useEffect, useState } from 'react'
 import { useNavigate, useSearchParams } from 'react-router'
 import { useBarracaAtual } from '../layouts/contextoBarraca'
@@ -178,7 +179,7 @@ export function Assinatura() {
               size="lg"
               icon={<Icone nome="chat" size={20} />}
               className="mt-4 w-full"
-              onClick={() => window.open('https://wa.me/', '_blank', 'noopener')}
+              onClick={() => abrirLinkExterno('https://wa.me/')}
             >
               Falar no WhatsApp
             </Button>

@@ -3,6 +3,7 @@
 import { createClient } from 'jsr:@supabase/supabase-js@2'
 import { autenticarSessao } from '../_shared/clienteSessao.ts'
 import { classificarItensPedirDeNovo } from '../_shared/pedirDeNovo.ts'
+import { drenarFilaApagarIa } from '../_shared/iaApagarSupabase.ts'
 
 const CORS = {
   'Access-Control-Allow-Origin': '*',
@@ -145,7 +146,11 @@ Deno.serve(async (req: Request) => {
 
     case 'apagar': {
       const { error } = await supabase.rpc('cliente_apagar_dados', { p_cliente_id: clienteId })
-      return error ? json({ erro: 'Não foi possível apagar agora. Tente de novo.' }, 500) : json({ ok: true })
+      if (error) return json({ erro: 'Não foi possível apagar agora. Tente de novo.' }, 500)
+      // O pedido de apagar a conversa da IA no CRM já está na fila (mesma transação do apagamento). Tentar enviar agora é
+      // só pressa: se o CRM falhar, o job periódico reenvia e o cliente nunca fica sem o apagamento local.
+      await drenarFilaApagarIa(supabase).catch(() => undefined)
+      return json({ ok: true })
     }
 
     default:

@@ -1,7 +1,13 @@
 import { openDB } from 'idb'
 import type { DBSchema, IDBPDatabase } from 'idb'
 
-export type TipoOperacao = 'criar_pedido' | 'mudar_status' | 'remover_item' | 'marcar_entregue'
+export type TipoOperacao =
+  | 'criar_pedido'
+  | 'mudar_status'
+  | 'remover_item'
+  | 'marcar_entregue'
+  | 'definir_metodo'
+  | 'salvar_cliente'
 
 export type OperacaoPendente = {
   id: string
@@ -20,6 +26,9 @@ interface FilaDB extends DBSchema {
 }
 
 const EVENTO_FILA_MUDOU = 'mesaagil:fila-mudou'
+
+/** O cadastro do cliente de um pedido de Entrega não foi salvo de primeira (o reenvio já está na fila). */
+export const EVENTO_CLIENTE_NAO_SALVO = 'mesaagil:cliente-nao-salvo'
 
 let dbPromise: Promise<IDBPDatabase<FilaDB>> | null = null
 

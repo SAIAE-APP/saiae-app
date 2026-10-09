@@ -31,6 +31,8 @@ export type Barraca = {
   /** WhatsApp do dono (só dígitos) e liga/desliga do "Pagar na entrega" no cardápio. */
   whatsapp_pedidos?: string | null
   pagar_na_entrega_habilitado?: boolean
+  /** "Pagar depois" em Retirada e Entrega (padrão false). Ausente em banco/cache de antes da migration. */
+  pagamento_depois_habilitado?: boolean
   /** Estoque: true = bloqueia a venda acima do saldo; false/ausente = só avisa (padrão). */
   estoque_bloqueia?: boolean
   /** Assistente de configuração inicial (migration 20261020100000). Opcionais: banco/cache de antes não têm. */
@@ -53,6 +55,9 @@ export type Barraca = {
   ia_texto_livre?: string | null
   ia_whatsapp_dono?: string | null
   ia_codigo?: string | null
+  /** Preenchido só quando o dono do número responde CONFIRMAR no WhatsApp (rota assinada do CRM). */
+  ia_whatsapp_dono_confirmado_em?: string | null
+  ia_dono_confirmacao_pedida_em?: string | null
   /** Perfil do cliente final exigido no fechamento (padrão false). */
   perfil_cliente_obrigatorio?: boolean
   /** SAI-010a: a loja usa variações/adicionais no cardápio (padrão false). Ausente em cache antigo. */

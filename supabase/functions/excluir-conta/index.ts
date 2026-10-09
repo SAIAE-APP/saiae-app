@@ -6,6 +6,7 @@
 // Deploy fica com o dono do produto (`supabase functions deploy excluir-conta`);
 // a migration 20260928170000_excluir_dados_conta.sql precisa estar aplicada antes.
 import { createClient } from 'jsr:@supabase/supabase-js@2'
+import { drenarFilaApagarIa } from '../_shared/iaApagarSupabase.ts'
 
 const CORS_HEADERS = {
   'Access-Control-Allow-Origin': '*',
@@ -63,6 +64,10 @@ Deno.serve(async (req: Request) => {
       }
     }
   }
+
+  // Conversas da IA no CRM: os pedidos já estão na fila (mesma transação dos dados). Falha do CRM não bloqueia a
+  // exclusão da conta; o job periódico reenvia.
+  await drenarFilaApagarIa(admin).catch(() => undefined)
 
   const { error: erroAuth } = await admin.auth.admin.deleteUser(usuarioId)
   if (erroAuth) {

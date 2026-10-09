@@ -1,9 +1,11 @@
-import { useState } from 'react'
+import { useEffect, useState } from 'react'
 import { atualizarBarracaCache } from '../hooks/useBarraca'
 import { MSG_SEM_INTERNET, useRascunho, useSalvarBarraca } from '../hooks/useSalvarBarraca'
 import { supabase } from '../lib/supabase'
 import {
   MAX_TEXTO_LIVRE,
+  estadoConfirmacaoDono,
+  lerPedidoConfirmacao,
   linkWhatsappDaLoja,
   mensagemErroIa,
   validarTextoLivre,
@@ -34,6 +36,28 @@ export function SecaoAtendenteIa({ barraca }: { barraca: Barraca }) {
   const [ligando, setLigando] = useState(false)
   const [erroLigar, setErroLigar] = useState<string | null>(null)
   const [copiado, setCopiado] = useState(false)
+  const [pedindo, setPedindo] = useState(false)
+  const [avisoConfirmacao, setAvisoConfirmacao] = useState<{ texto: string; ok: boolean } | null>(null)
+  const confirmacao = estadoConfirmacaoDono(barraca)
+  const aguardando = confirmacao === 'aguardando'
+  const barracaId = barraca.id
+  const slug = barraca.slug
+
+  // Enquanto espera o dono responder no WhatsApp, relê só as duas colunas da confirmação (a resposta chega pelo CRM).
+  useEffect(() => {
+    if (!aguardando) return
+    const id = window.setInterval(() => {
+      void supabase
+        .from('barracas')
+        .select('ia_whatsapp_dono_confirmado_em, ia_dono_confirmacao_pedida_em')
+        .eq('id', barracaId)
+        .single()
+        .then(({ data }) => {
+          if (data) atualizarBarracaCache(slug, data as Partial<Barraca>)
+        })
+    }, 8000)
+    return () => window.clearInterval(id)
+  }, [aguardando, barracaId, slug])
 
   const textoR = useRascunho(barraca.ia_texto_livre ?? '')
   const donoR = useRascunho(barraca.ia_whatsapp_dono ? formatarTelefoneBR(barraca.ia_whatsapp_dono) : '')
@@ -47,6 +71,7 @@ export function SecaoAtendenteIa({ barraca }: { barraca: Barraca }) {
 
   const ligada = barraca.ia_habilitada === true
   const temDono = Boolean(barraca.ia_whatsapp_dono)
+  const podeLigar = confirmacao === 'confirmado'
   const link = linkWhatsappDaLoja(import.meta.env.VITE_WHATSAPP_NUMERO_SAIAE as string | undefined, barraca.ia_codigo)
 
   async function alternar(valor: boolean) {
@@ -64,6 +89,20 @@ export function SecaoAtendenteIa({ barraca }: { barraca: Barraca }) {
     }
     const r = data as { ia_habilitada?: boolean; ia_codigo?: string | null } | null
     atualizarBarracaCache(barraca.slug, { ia_habilitada: r?.ia_habilitada === true, ia_codigo: r?.ia_codigo ?? null })
+  }
+
+  async function pedirConfirmacao() {
+    setAvisoConfirmacao(null)
+    if (typeof navigator !== 'undefined' && navigator.onLine === false) {
+      setAvisoConfirmacao({ texto: MSG_SEM_INTERNET, ok: false })
+      return
+    }
+    setPedindo(true)
+    const { data, error } = await supabase.functions.invoke('ia-dono-pedir-confirmacao', { body: { barraca_id: barraca.id } })
+    setPedindo(false)
+    const r = error ? { enviado: false, texto: 'Não foi possível enviar a confirmação agora. Tente de novo em instantes.' } : lerPedidoConfirmacao(data)
+    setAvisoConfirmacao({ texto: r.texto, ok: r.enviado })
+    if (r.enviado) atualizarBarracaCache(barraca.slug, { ia_dono_confirmacao_pedida_em: new Date().toISOString() })
   }
 
   async function aoSalvarTexto() {
@@ -112,14 +151,16 @@ export function SecaoAtendenteIa({ barraca }: { barraca: Barraca }) {
                 ? 'Ligada: o cliente que entrar pelo link da sua loja tira dúvidas (cardápio, preços, horário, entrega) e é levado ao cardápio para pedir.'
                 : 'Desligada. Ao ligar, uma assistente automática responde dúvidas dos clientes. Ela só lê os dados da loja: nunca cria pedido nem muda preço, e chama você quando não sabe ou o assunto é sensível.'}
             </p>
-            {!ligada && !temDono && (
-              <p className="mt-1 text-xs text-mesa-text-tertiary">Para ligar, salve antes o WhatsApp do dono, abaixo.</p>
+            {!ligada && !podeLigar && (
+              <p className="mt-1 text-xs text-mesa-text-tertiary">
+                {temDono ? 'Para ligar, confirme antes o WhatsApp do dono, abaixo.' : 'Para ligar, salve e confirme antes o WhatsApp do dono, abaixo.'}
+              </p>
             )}
           </div>
           <Toggle
             checked={ligada}
             onChange={(v) => void alternar(v)}
-            disabled={ligando || (!ligada && !temDono)}
+            disabled={ligando || (!ligada && !podeLigar)}
             aria-label="Ligar a atendente automática no WhatsApp"
           />
         </div>
@@ -142,6 +183,32 @@ export function SecaoAtendenteIa({ barraca }: { barraca: Barraca }) {
             erro={salvarDono.erro}
             onSalvar={() => void aoSalvarDono()}
           />
+          {temDono && confirmacao !== 'sem_numero' && !donoR.alterado && (
+            <div className="flex flex-col items-start gap-2" aria-live="polite">
+              {confirmacao === 'confirmado' ? (
+                <p className="flex items-center gap-1.5 text-sm text-mesa-text-primary">
+                  <Icone nome="check_circle" size={16} className="text-mesa-success-500" />
+                  WhatsApp confirmado
+                </p>
+              ) : (
+                <>
+                  <p className="text-sm text-mesa-text-secondary">
+                    {aguardando
+                      ? 'Aguardando confirmação: abra o WhatsApp deste número e responda CONFIRMAR à mensagem do Sai aê.'
+                      : 'Este número ainda não foi confirmado. A IA só liga depois que o dono do número responder CONFIRMAR.'}
+                  </p>
+                  <Button variant="outline" size="md" loading={pedindo} onClick={() => void pedirConfirmacao()}>
+                    {aguardando ? 'Enviar de novo' : 'Enviar confirmação'}
+                  </Button>
+                </>
+              )}
+              {avisoConfirmacao && (
+                <p role="status" className={`text-xs ${avisoConfirmacao.ok ? 'text-mesa-text-secondary' : 'text-mesa-error-500'}`}>
+                  {avisoConfirmacao.texto}
+                </p>
+              )}
+            </div>
+          )}
         </div>
 
         <div className="mt-5 flex flex-col gap-2">

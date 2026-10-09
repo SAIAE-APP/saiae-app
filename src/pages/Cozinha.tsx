@@ -12,6 +12,9 @@ import { tocarSomPedidoCritico, tocarSomPedidoNaCozinha } from '../lib/sons'
 import { BotaoAvisarCliente } from '../components/BotaoAvisarCliente'
 import { BotoesLinkEntregador } from '../components/BotoesLinkEntregador'
 import { Badge } from '../components/ui/Badge'
+import { ROTULO_A_RECEBER, pagarDepoisLigado, pedidoAReceber } from '../lib/pagarDepois'
+import { ModalFormaPagamento } from '../components/ModalFormaPagamento'
+import type { MetodoPagamento } from '../lib/metodoPagamento'
 import { BotaoHome } from '../components/ui/BotaoHome'
 import { BottomSheet } from '../components/ui/BottomSheet'
 import { Button } from '../components/ui/Button'
@@ -238,6 +241,7 @@ function CardPedido({
             <Icone nome={iconeTipo} size={14} />
             {rotuloTipo}
           </Badge>
+          {pedidoAReceber(pedido, pagarDepoisLigado(barraca)) && <Badge variant="warning">{ROTULO_A_RECEBER}</Badge>}
           {coluna === 'a_fazer' && (
             <div className="ml-auto">
               <BotaoChecklist
@@ -490,6 +494,8 @@ export function Cozinha() {
   const [pedidoParaCancelar, setPedidoParaCancelar] = useState<PedidoComItens | null>(null)
   const [cancelando, setCancelando] = useState(false)
 
+  // "Pagar depois": pedido "A receber" que o operador está entregando (precisa dizer como o cliente pagou).
+  const [pedidoParaPagar, setPedidoParaPagar] = useState<PedidoComItens | null>(null)
   const [pedidoParaEntregaDireta, setPedidoParaEntregaDireta] = useState<PedidoComItens | null>(
     null,
   )
@@ -624,6 +630,23 @@ export function Cozinha() {
     })
   }
 
+  /** Entregue: pedido "A receber" pergunta a forma de pagamento antes; os demais finalizam direto, como sempre. */
+  function entregarPedido(pedido: PedidoComItens) {
+    if (pedidoAReceber(pedido, pagarDepoisLigado(barraca))) {
+      setPedidoParaPagar(pedido)
+      return
+    }
+    void finalizarPedido(pedido)
+  }
+
+  async function entregarComForma(pedido: PedidoComItens, metodo: MetodoPagamento) {
+    setPedidoParaPagar(null)
+    // Local primeiro (a etiqueta some na hora); a fila grava no servidor, com ou sem rede.
+    aplicarPatchPedido(pedido.id, { metodo_pagamento: metodo })
+    await enfileirar('definir_metodo', { pedido_id: pedido.id, metodo })
+    await finalizarPedido(pedido)
+  }
+
   async function desfazerFinalizacao() {
     if (!pedidoFinalizado) return
     const pedido = pedidoFinalizado
@@ -732,7 +755,7 @@ export function Cozinha() {
             onAbrirDetalhe={abrirDetalhe}
             onMoverParaPronto={moverParaPronto}
             onVoltar={voltarParaFazer}
-            onEntregar={finalizarPedido}
+            onEntregar={entregarPedido}
             onCancelar={setPedidoParaCancelar}
             onAtalhoEntregar={setPedidoParaEntregaDireta}
           />
@@ -903,6 +926,16 @@ export function Cozinha() {
           onConfirmar={cancelarPedido}
         />
       )}
+
+      <ModalFormaPagamento
+        pedido={pedidoParaPagar}
+        onEscolher={(p, m) => void entregarComForma(p, m)}
+        onReceberDepois={(p) => {
+          setPedidoParaPagar(null)
+          void finalizarPedido(p)
+        }}
+        onCancelar={() => setPedidoParaPagar(null)}
+      />
 
       {pedidoParaEntregaDireta && (
         <ModalEntregaDireta

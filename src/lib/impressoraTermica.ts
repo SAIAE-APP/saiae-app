@@ -18,6 +18,7 @@ import { faixaImpressao, tipoDoPedido } from './atendimento'
 import { formatarTelefoneBR, type DadosEntrega } from './entrega'
 import { formatarPrecoBR } from './preco'
 import { humanizarMetodo } from './metodoPagamento'
+import { linhaPagamentoAReceber } from './pagarDepois'
 import { AVISO_HOMOLOGACAO, ambienteDaNota, formatarCpf } from './fiscal'
 import { linhasRodapeProcon } from './rodapeProcon'
 import { semAcento } from './semAcento'
@@ -323,6 +324,8 @@ export type DadosComanda = {
   tipo?: TipoAtendimento | null
   observacao: string | null
   metodoPagamento?: string | null
+  /** Interruptor "Pagar depois" da barraca: com ele ligado, pedido na_entrega de Retirada/Entrega imprime "PAGAMENTO: A RECEBER". */
+  pagarDepois?: boolean
   /** Pedido de Entrega: nome, telefone e endereço abaixo da faixa. */
   entrega?: DadosEntrega | null
   /** Taxa cobrada, em linha separada do total (que já a inclui). */
@@ -370,7 +373,8 @@ export function montarComanda(dados: DadosComanda, largura: LarguraPapel): Uint8
   // Retirada x Entrega em destaque logo abaixo da senha: 2x de largura e
   // altura, "*** RETIRADA ***" (16 colunas) ainda cabe nas 32 do papel 58mm.
   const tipo = dados.tipo ?? tipoDoPedido({ tipo_atendimento: null, mesa: dados.mesa, viagem: dados.viagem })
-  const faixa = faixaImpressao(tipo)
+  // Mesa e Balcão também (pedido do cliente): "*** MESA 12 ***" no mesmo 2x. Cabe em colunas/2 (16 ou 24).
+  const faixa = faixaImpressao(tipo, { mesa: dados.mesa, colunasFaixa: Math.floor(colunas / 2) })
   if (faixa) encoder = encoder.bold(true).size(2, 2).line(faixa).size(1, 1).bold(false).newline()
 
   encoder = encoder.bold(true).line(semAcento(dados.nomeBarraca)).bold(false)
@@ -378,12 +382,6 @@ export function montarComanda(dados: DadosComanda, largura: LarguraPapel): Uint8
   if (dados.cnpj) encoder = encoder.line(`CNPJ: ${formatarCnpj(dados.cnpj)}`)
 
   encoder = encoder.line(new Date(dados.criadoEm).toLocaleString('pt-BR'))
-  if (!faixa) {
-    encoder = encoder
-      .bold(true)
-      .line(dados.mesa ? semAcento(`Mesa ${dados.mesa}`) : 'BALCAO')
-      .bold(false)
-  }
   const nomeCliente = dados.entrega ? '' : (dados.clienteNome ?? '').trim()
   if (nomeCliente) {
     encoder = encoder.bold(true).line(semAcento(`Cliente: ${nomeCliente}`)).bold(false)
@@ -435,7 +433,10 @@ export function montarComanda(dados: DadosComanda, largura: LarguraPapel): Uint8
     .size(1, 1)
     .bold(false)
 
-  if (dados.metodoPagamento) {
+  const aReceber = linhaPagamentoAReceber(dados.metodoPagamento, tipo, dados.pagarDepois === true)
+  if (aReceber) {
+    encoder = encoder.bold(true).line(aReceber).bold(false)
+  } else if (dados.metodoPagamento) {
     encoder = encoder.line(semAcento(`Pagamento: ${humanizarMetodo(dados.metodoPagamento)}`))
   }
 

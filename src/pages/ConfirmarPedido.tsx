@@ -17,6 +17,7 @@ import type {
   EstadoPedidoEnviado,
 } from '../lib/carrinho'
 import { METODOS_DISPONIVEIS, METODO_NA_ENTREGA, OPCAO_PAGAR_NA_ENTREGA, humanizarMetodo } from '../lib/metodoPagamento'
+import { opcaoPagarDepois, podeEnviarAReceber } from '../lib/pagarDepois'
 import type { MetodoPagamento } from '../lib/metodoPagamento'
 import { BotaoHome } from '../components/ui/BotaoHome'
 import { BottomSheet } from '../components/ui/BottomSheet'
@@ -141,6 +142,8 @@ export function ConfirmarPedido() {
   const opcoesPagamento: { chave: MetodoPagamento | typeof METODO_NA_ENTREGA; label: string; icone: string }[] = [
     ...METODOS_DISPONIVEIS.filter((m) => metodosAtivos.includes(m.chave)),
     ...(ehEntrega ? [OPCAO_PAGAR_NA_ENTREGA] : []),
+    // "Pagar depois" na Retirada (interruptor da barraca): o pedido vai à cozinha e a forma é dada na baixa.
+    ...(!ehEntrega && opcaoPagarDepois(barraca, estado?.tipoAtendimento) ? [opcaoPagarDepois(barraca, estado?.tipoAtendimento)!] : []),
   ]
 
   const [entregaDireta, setEntregaDireta] = useState<EntregaDiretaPorItem>(
@@ -261,7 +264,7 @@ export function ConfirmarPedido() {
   async function enviarPedido(forcarEntregaDiretaEmTudo: boolean) {
     if (enviandoRef.current || !metodoSelecionado) return
     // "Pagar na entrega" só vale no modo Entrega (o link do entregador define o método).
-    if (metodoSelecionado === METODO_NA_ENTREGA && !ehEntrega) return
+    if (metodoSelecionado === METODO_NA_ENTREGA && !podeEnviarAReceber(barraca, tipoAtendimento)) return
     if (ehEntrega && Object.keys(errosEntrega).length > 0) {
       setMostrarErrosEntrega(true)
       return
