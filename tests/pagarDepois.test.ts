@@ -77,7 +77,7 @@ describe('comanda impressa', () => {
   test('montarComanda usa a linha e mantém a de sempre quando não é pagar depois', () => {
     const f = readFileSync(new URL('../src/lib/impressoraTermica.ts', import.meta.url), 'utf8').replace(/\r\n/g, '\n')
     assert.match(f, /linhaPagamentoAReceber\(dados\.metodoPagamento, tipo, dados\.pagarDepois === true\)/)
-    assert.match(f, /\} else if \(dados\.metodoPagamento\) \{\n    encoder = encoder\.line\(semAcento\(`Pagamento: \$\{humanizarMetodo\(dados\.metodoPagamento\)\}`\)\)/)
+    assert.match(f, /\} else if \(dados\.metodoPagamento\) \{\n {4}encoder = encoder\.line\(semAcento\(`Pagamento: \$\{humanizarMetodo\(dados\.metodoPagamento\)\}`\)\)/)
   })
 
   test('os dois caminhos de impressão passam o interruptor da barraca', () => {
