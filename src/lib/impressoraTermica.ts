@@ -370,7 +370,8 @@ export function montarComanda(dados: DadosComanda, largura: LarguraPapel): Uint8
   // Retirada x Entrega em destaque logo abaixo da senha: 2x de largura e
   // altura, "*** RETIRADA ***" (16 colunas) ainda cabe nas 32 do papel 58mm.
   const tipo = dados.tipo ?? tipoDoPedido({ tipo_atendimento: null, mesa: dados.mesa, viagem: dados.viagem })
-  const faixa = faixaImpressao(tipo)
+  // Mesa e Balcão também (pedido do cliente): "*** MESA 12 ***" no mesmo 2x. Cabe em colunas/2 (16 ou 24).
+  const faixa = faixaImpressao(tipo, { mesa: dados.mesa, colunasFaixa: Math.floor(colunas / 2) })
   if (faixa) encoder = encoder.bold(true).size(2, 2).line(faixa).size(1, 1).bold(false).newline()
 
   encoder = encoder.bold(true).line(semAcento(dados.nomeBarraca)).bold(false)
@@ -378,12 +379,6 @@ export function montarComanda(dados: DadosComanda, largura: LarguraPapel): Uint8
   if (dados.cnpj) encoder = encoder.line(`CNPJ: ${formatarCnpj(dados.cnpj)}`)
 
   encoder = encoder.line(new Date(dados.criadoEm).toLocaleString('pt-BR'))
-  if (!faixa) {
-    encoder = encoder
-      .bold(true)
-      .line(dados.mesa ? semAcento(`Mesa ${dados.mesa}`) : 'BALCAO')
-      .bold(false)
-  }
   const nomeCliente = dados.entrega ? '' : (dados.clienteNome ?? '').trim()
   if (nomeCliente) {
     encoder = encoder.bold(true).line(semAcento(`Cliente: ${nomeCliente}`)).bold(false)
