@@ -6,7 +6,7 @@ import { after, before, describe, test } from 'node:test'
 import { PGlite } from '@electric-sql/pglite'
 
 const sql = (n: string) => readFileSync(new URL(`../supabase/migrations/${n}`, import.meta.url), 'utf8')
-const MIG = '20261020110000_slug_apelidos.sql'
+const MIG = '20261020120000_slug_apelidos.sql'
 
 const B1 = 'b1000000-0000-4000-8000-000000000001'
 const B2 = 'b2000000-0000-4000-8000-000000000002'
