@@ -13,6 +13,7 @@ import { SidebarDesktop } from '../components/SidebarDesktop'
 import { BannerTrial } from '../components/BannerTrial'
 import { acessoBloqueadoPorAssinatura, mostraBannerDeTrial } from '../lib/cobranca'
 import { useToast } from '../components/ui/useToast'
+import { EVENTO_CLIENTE_NAO_SALVO } from '../lib/fila'
 import { BarracaContext, SincronizacaoContext } from './contextoBarraca'
 import { PedidosContext } from './contextoPedidos'
 
@@ -43,6 +44,16 @@ export function LayoutBarraca() {
       })
     }
   }, [sincronizacao.online, mostrarToast])
+  // O cliente do pedido de Entrega não entrou no cadastro de primeira: avisa (o reenvio é automático).
+  useEffect(() => {
+    const aviso = () =>
+      mostrarToast('O cliente deste pedido ainda não foi salvo no cadastro. Vamos tentar de novo sozinhos.', {
+        variante: 'aviso',
+        duracaoMs: 6000,
+      })
+    window.addEventListener(EVENTO_CLIENTE_NAO_SALVO, aviso)
+    return () => window.removeEventListener(EVENTO_CLIENTE_NAO_SALVO, aviso)
+  }, [mostrarToast])
   const { pedidos, status, pedidosCarregados, aplicarPatchPedido, aplicarPatchItem } =
     useRealtimePedidos(barraca?.id ?? '')
   const { assinatura } = useAssinaturaBarraca(slug ?? '')

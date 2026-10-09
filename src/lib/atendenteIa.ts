@@ -59,6 +59,7 @@ export function linkWhatsappDaLoja(numeroSaiae: string | null | undefined, codig
 export function mensagemErroIa(erro: { message?: string } | null | undefined): string {
   const m = erro?.message ?? ''
   if (/ia_sem_whatsapp_dono/.test(m)) return 'Antes de ligar, informe e salve o WhatsApp do dono: é para onde a IA avisa quando precisa de você.'
+  if (/ia_dono_nao_confirmado/.test(m)) return 'Antes de ligar, confirme o WhatsApp do dono: toque em "Enviar confirmação" e responda CONFIRMAR na mensagem.'
   if (/sem acesso/.test(m)) return 'Você não tem acesso a esta loja.'
   if (/failed to fetch|networkerror|network request failed|load failed/i.test(m)) return 'Sem internet. Não foi salvo.'
   return m ? `Não foi possível salvar: ${m}` : 'Não foi possível salvar. Tente novamente.'
@@ -83,4 +84,34 @@ export function lerConsumo(corpo: unknown): ConsumoIa | null {
   if (limite !== null && (typeof limite !== 'number' || !Number.isInteger(limite) || limite < 0)) return null
   if (mes !== null && typeof mes !== 'string') return null
   return { mes: (mes as string | null) ?? null, conversas, limite }
+}
+
+export type EstadoConfirmacaoDono = 'sem_numero' | 'nao_confirmado' | 'aguardando' | 'confirmado'
+
+/** Estado do WhatsApp do dono na tela. Colunas ausentes (banco/cache de antes da migration) = `confirmado`: nada a
+ * exigir enquanto o banco não conhece a regra. */
+export function estadoConfirmacaoDono(b: {
+  ia_whatsapp_dono?: string | null
+  ia_whatsapp_dono_confirmado_em?: string | null
+  ia_dono_confirmacao_pedida_em?: string | null
+}): EstadoConfirmacaoDono {
+  if (!b.ia_whatsapp_dono) return 'sem_numero'
+  if (b.ia_whatsapp_dono_confirmado_em === undefined) return 'confirmado'
+  if (b.ia_whatsapp_dono_confirmado_em) return 'confirmado'
+  return b.ia_dono_confirmacao_pedida_em ? 'aguardando' : 'nao_confirmado'
+}
+
+/** Resposta da function `ia-dono-pedir-confirmacao` em frase para o dono; `enviado` = o pedido saiu. */
+export function lerPedidoConfirmacao(corpo: unknown): { enviado: boolean; texto: string } {
+  const falha = { enviado: false, texto: 'Não foi possível enviar a confirmação agora. Tente de novo em instantes.' }
+  if (typeof corpo !== 'object' || corpo === null) return falha
+  const { ok, estado, motivo } = corpo as Record<string, unknown>
+  if (ok === true && estado === 'enviado') {
+    return { enviado: true, texto: 'Enviamos uma mensagem para o seu WhatsApp. Responda CONFIRMAR para liberar a atendente.' }
+  }
+  if (estado === 'aguarde') return { enviado: false, texto: 'A mensagem acabou de ser enviada. Aguarde um minuto para pedir de novo.' }
+  if (estado === 'sem_whatsapp') return { enviado: false, texto: 'Salve o WhatsApp do dono antes de pedir a confirmação.' }
+  if (estado === 'ja_confirmado') return { enviado: true, texto: 'Este número já está confirmado.' }
+  if (motivo === 'limite') return { enviado: false, texto: 'Você já pediu a confirmação muitas vezes hoje. Tente amanhã.' }
+  return falha
 }

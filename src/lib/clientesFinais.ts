@@ -1,9 +1,10 @@
 import { supabase } from './supabase'
-import { normalizarTelefone, somenteDigitos, type DadosEntrega } from './entrega'
+import { normalizarTelefone, type DadosEntrega } from './entrega'
 import type { ClienteFinal } from '../types/database'
 import { emLotes, type ClienteImportado } from './importarClientes'
 import { bancoSemRecurso } from './semMigration'
 import { camposDeEndereco } from './enderecoCliente'
+import { nomeCasa, planoDeBusca } from './clientesBusca'
 
 const COLUNAS_BASE = 'id, barraca_id, nome, telefone, rua, numero, bairro, referencia, criado_em, atualizado_em'
 const COLUNAS_PERFIL = `${COLUNAS_BASE}, telefone_confirmado_em, consentimento_marketing_em`
@@ -19,51 +20,40 @@ async function comColunas<T>(consulta: (colunas: string) => PromiseLike<{ data: 
   return consulta(COLUNAS_BASE)
 }
 const LIMITE_BUSCA = 5
-/** Menos que isso é ruído: não consulta o banco. */
-const MIN_CARACTERES_NOME = 2
-const MIN_DIGITOS_TELEFONE = 4
-
-/** Escapa \ % _ pro termo digitado não virar curinga do like. */
-function escaparLike(termo: string): string {
-  return termo.replace(/[\\%_]/g, (c) => `\\${c}`)
-}
+/** O padrão de nome é largo (acento vira curinga): busca mais linhas e corta com `nomeCasa`. */
+const FOLGA_BUSCA_NOME = 6
 
 /**
- * Busca clientes da barraca por telefone (só dígitos, parcial) ou nome
- * (parcial, sem caixa). Sempre filtra por barraca_id além da RLS.
+ * Busca clientes da barraca por telefone (só dígitos, parcial) ou nome (parcial, sem caixa e sem acento, palavras na
+ * mesma ordem). Sempre filtra por barraca_id além da RLS. As regras vivem em `clientesBusca.ts`.
  */
 export async function buscarClientesFinais(
   barracaId: string,
   termo: string,
   limite = LIMITE_BUSCA,
 ): Promise<ClienteFinal[]> {
-  const texto = termo.trim()
-  const digitos = somenteDigitos(texto)
-  // "Parece telefone" = só dígitos e separadores comuns; senão é nome.
-  const pareceTelefone = digitos.length > 0 && /^[\d\s()+-]+$/.test(texto)
-
-  // "Parece telefone" sem dígitos suficientes, ou nome curto demais, não consulta o banco.
-  if (pareceTelefone && digitos.length < MIN_DIGITOS_TELEFONE) return []
-  if (!pareceTelefone && texto.length < MIN_CARACTERES_NOME) return []
+  const plano = planoDeBusca(termo)
+  if (plano.tipo === 'vazio') return []
 
   const { data, error } = await comColunas((colunas) => {
     let consulta = supabase.from('clientes_finais').select(colunas).eq('barraca_id', barracaId)
-    if (pareceTelefone) {
-      // O banco guarda sem o 55 do país. Quem digita "5511..." (ainda incompleto,
-      // então normalizarTelefone não tira o 55) também acha o "11...": busca as
-      // duas formas. Só dígitos entram no filtro, nada a escapar.
-      const semPais = digitos.startsWith('55') ? digitos.slice(2) : null
+    if (plano.tipo === 'telefone') {
+      // Só dígitos entram no filtro, nada a escapar.
       consulta =
-        semPais && semPais.length >= MIN_DIGITOS_TELEFONE
-          ? consulta.or(`telefone.like.%${digitos}%,telefone.like.%${semPais}%`)
-          : consulta.like('telefone', `%${digitos}%`)
-    } else {
-      consulta = consulta.ilike('nome', `%${escaparLike(texto)}%`)
+        plano.padroes.length > 1
+          ? consulta.or(plano.padroes.map((p) => `telefone.like.${p}`).join(','))
+          : consulta.like('telefone', plano.padroes[0])
+      return consulta.order('nome').limit(limite)
     }
-    return consulta.order('nome').limit(limite)
+    return consulta.ilike('nome', plano.padrao).order('nome').limit(limite * FOLGA_BUSCA_NOME)
   })
   if (error) throw error
-  return (data ?? []) as unknown as ClienteFinal[]
+  const linhas = (data ?? []) as unknown as ClienteFinal[]
+  if (plano.tipo === 'nome') {
+    const palavras = plano.palavras
+    return linhas.filter((c) => nomeCasa(c.nome, palavras)).slice(0, limite)
+  }
+  return linhas
 }
 
 const LIMITE_LISTA = 20
