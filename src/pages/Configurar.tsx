@@ -13,11 +13,16 @@ import { SeletorMetodos } from '../components/SeletorMetodos'
 import { SeletorModos } from '../components/SeletorModos'
 import { TODOS_OS_MODOS, modosAtivos } from '../lib/atendimento'
 import { urlPublica } from '../lib/urlPublica'
+import { filtrarEntradaPreco, reaisParaCentavos } from '../lib/preco'
 import {
   CATEGORIAS,
   MODELOS_HORARIO,
   NOMES_DIAS,
-  ORDEM_FASE_1,
+  cnpjValido,
+  formatarCepDigitando,
+  formatarCnpjDigitando,
+  mensagemDaConsulta,
+  ordemDoAssistente,
   ORIGENS,
   PASSOS,
   aplicarModelo,
@@ -40,17 +45,20 @@ import {
   carregarSemana,
   concluirAssistente,
   concluirMarca,
+  consultarCep,
+  consultarCnpj,
   criarBarraca,
   registrarEvento,
+  salvarCnpj,
+  salvarEndereco,
   salvarHorarios,
   salvarMetodos,
   salvarModos,
+  salvarTaxa,
   salvarOrigem,
   slugDisponivel,
 } from '../lib/onboardingApi'
 import type { Barraca, TipoAtendimento } from '../types/database'
-
-const ORDEM = ORDEM_FASE_1
 
 function titulo(numero: number): string {
   return PASSOS.find((p) => p.numero === numero)?.titulo ?? ''
@@ -59,17 +67,19 @@ function titulo(numero: number): string {
 /** Moldura de um passo: barra de progresso, voltar, conteúdo e rodapé (um primário mostarda por tela). */
 function MolduraPasso({
   numero,
+  ordem,
   podeVoltar,
   onVoltar,
   children,
 }: {
   numero: number
+  ordem: number[]
   podeVoltar: boolean
   onVoltar: () => void
   children: React.ReactNode
 }) {
-  const pos = posicaoNaOrdem(ORDEM, numero)
-  const pct = Math.round((pos / ORDEM.length) * 100)
+  const pos = posicaoNaOrdem(ordem, numero)
+  const pct = Math.round((pos / ordem.length) * 100)
   return (
     <div className="mx-auto flex min-h-dvh w-full max-w-xl flex-col bg-mesa-bg-base px-6 pb-8 pt-5">
       <div className="flex items-center gap-3">
@@ -87,14 +97,14 @@ function MolduraPasso({
             className="h-2 overflow-hidden rounded-mesa-full bg-mesa-neutral-100 dark:bg-mesa-neutral-700"
             role="progressbar"
             aria-valuemin={0}
-            aria-valuemax={ORDEM.length}
+            aria-valuemax={ordem.length}
             aria-valuenow={pos}
-            aria-label={`Passo ${pos} de ${ORDEM.length}`}
+            aria-label={`Passo ${pos} de ${ordem.length}`}
           >
             <div className="h-full rounded-mesa-full bg-mesa-orange-500 transition-all" style={{ width: `${pct}%` }} />
           </div>
           <p className="mt-1.5 text-xs font-medium text-mesa-text-secondary">
-            Passo {pos} de {ORDEM.length}
+            Passo {pos} de {ordem.length}
           </p>
         </div>
       </div>
@@ -512,7 +522,172 @@ function PassoModos({ inicial, onSalvar }: { inicial: TipoAtendimento[]; onSalva
   )
 }
 
-function TelaFinal({ barraca, onIrParaHub, onCadastrarItens }: { barraca: Barraca; onIrParaHub: () => void; onCadastrarItens: () => void }) {
+type EstadoBusca = 'parado' | 'buscando' | 'achou' | 'falhou'
+
+function PassoCnpj({ inicial, onSalvar, onPular }: { inicial: string; onSalvar: (d: { cnpj: string | null; semCnpj: boolean; razaoSocial: string | null }) => Promise<string | null>; onPular: () => void }) {
+  const [texto, setTexto] = useState(formatarCnpjDigitando(inicial))
+  const [semCnpj, setSemCnpj] = useState(false)
+  const [razao, setRazao] = useState<string | null>(null)
+  const [busca, setBusca] = useState<EstadoBusca>('parado')
+  const [aviso, setAviso] = useState<string | null>(null)
+  const [salvando, setSalvando] = useState(false)
+  const [erro, setErro] = useState<string | null>(null)
+  const digitos = texto.replace(/\D/g, '')
+  const valido = cnpjValido(digitos)
+
+  async function aoDigitar(valor: string) {
+    const novo = formatarCnpjDigitando(valor)
+    setTexto(novo)
+    setRazao(null)
+    setAviso(null)
+    setBusca('parado')
+    const d = novo.replace(/\D/g, '')
+    if (d.length === 14 && cnpjValido(d)) {
+      setBusca('buscando')
+      const r = await consultarCnpj(d)
+      if (r.ok) {
+        setRazao(r.dados.razao_social)
+        setAviso(r.dados.ativa ? null : `Situação na Receita: ${r.dados.situacao || 'não ativa'}.`)
+        setBusca('achou')
+      } else {
+        setAviso(mensagemDaConsulta(r.motivo))
+        setBusca('falhou')
+      }
+    }
+  }
+
+  async function continuar() {
+    setSalvando(true)
+    setErro(await onSalvar(semCnpj ? { cnpj: null, semCnpj: true, razaoSocial: null } : { cnpj: digitos, semCnpj: false, razaoSocial: razao }))
+    setSalvando(false)
+  }
+
+  const invalidoCompleto = digitos.length === 14 && !valido
+  const pode = semCnpj || valido
+
+  return (
+    <>
+      <p className="text-sm text-mesa-text-secondary">Usado para emitir nota fiscal. Buscamos o nome da empresa sozinhos.</p>
+      <Input
+        className="mt-4"
+        label="CNPJ"
+        inputMode="numeric"
+        value={semCnpj ? '' : texto}
+        disabled={semCnpj}
+        onChange={(e) => void aoDigitar(e.target.value)}
+        error={invalidoCompleto ? 'CNPJ inválido. Confira os números.' : undefined}
+      />
+      {busca === 'buscando' && <p className="mt-2 text-sm text-mesa-text-secondary">Buscando...</p>}
+      {razao && (
+        <Card className="mt-3">
+          <p className="text-xs font-semibold uppercase tracking-wider text-mesa-text-secondary">Encontramos</p>
+          <p className="mt-1 text-base font-semibold text-mesa-text-primary">{razao}</p>
+        </Card>
+      )}
+      {aviso && <p className="mt-2 text-sm text-mesa-text-secondary">{aviso}</p>}
+      <div className="mt-4">
+        <Chip checked={semCnpj} onClick={() => setSemCnpj((v) => !v)}>
+          Sou MEI / ainda não tenho CNPJ
+        </Chip>
+      </div>
+      <div className="flex-1" />
+      <Rodape desabilitado={!pode} carregando={salvando} erro={erro} onContinuar={continuar} onPular={onPular} />
+    </>
+  )
+}
+
+type CamposEndereco = { cep: string; rua: string; numero: string; complemento: string; bairro: string; cidade: string; uf: string }
+
+function PassoEndereco({ inicial, onSalvar, onPular }: { inicial: CamposEndereco; onSalvar: (e: CamposEndereco) => Promise<string | null>; onPular: () => void }) {
+  const [e, setE] = useState<CamposEndereco>({ ...inicial, cep: formatarCepDigitando(inicial.cep) })
+  const [busca, setBusca] = useState<EstadoBusca>('parado')
+  const [aviso, setAviso] = useState<string | null>(null)
+  const [salvando, setSalvando] = useState(false)
+  const [erro, setErro] = useState<string | null>(null)
+  const campo = (k: keyof CamposEndereco) => (ev: { target: { value: string } }) => setE((a) => ({ ...a, [k]: ev.target.value }))
+
+  async function aoDigitarCep(valor: string) {
+    const cep = formatarCepDigitando(valor)
+    setE((a) => ({ ...a, cep }))
+    setAviso(null)
+    if (cep.replace(/\D/g, '').length === 8) {
+      setBusca('buscando')
+      const r = await consultarCep(cep)
+      if (r.ok) {
+        setE((a) => ({ ...a, rua: r.dados.rua || a.rua, bairro: r.dados.bairro || a.bairro, cidade: r.dados.cidade, uf: r.dados.uf }))
+        setBusca('achou')
+      } else {
+        setAviso(mensagemDaConsulta(r.motivo))
+        setBusca('falhou')
+      }
+    }
+  }
+
+  async function continuar() {
+    setSalvando(true)
+    setErro(await onSalvar({ ...e, cep: e.cep.replace(/\D/g, ''), uf: e.uf.toUpperCase() }))
+    setSalvando(false)
+  }
+
+  const pode = e.rua.trim() !== '' && e.numero.trim() !== '' && e.cidade.trim() !== '' && /^[A-Za-z]{2}$/.test(e.uf.trim())
+
+  return (
+    <>
+      <p className="text-sm text-mesa-text-secondary">Digite o CEP e a gente preenche o resto. Aparece no seu cardápio.</p>
+      <div className="mt-4 flex flex-col gap-3">
+        <Input label="CEP" inputMode="numeric" value={e.cep} onChange={(ev) => void aoDigitarCep(ev.target.value)} helpText={busca === 'buscando' ? 'Buscando...' : undefined} />
+        {aviso && <p className="text-sm text-mesa-text-secondary">{aviso}</p>}
+        <Input label="Rua" value={e.rua} maxLength={120} onChange={campo('rua')} />
+        <div className="grid grid-cols-2 gap-3">
+          <Input label="Número" value={e.numero} maxLength={20} onChange={campo('numero')} />
+          <Input label="Complemento" value={e.complemento} maxLength={80} onChange={campo('complemento')} />
+        </div>
+        <Input label="Bairro" value={e.bairro} maxLength={80} onChange={campo('bairro')} />
+        <div className="grid grid-cols-[1fr_88px] gap-3">
+          <Input label="Cidade" value={e.cidade} maxLength={80} onChange={campo('cidade')} />
+          <Input label="UF" value={e.uf} maxLength={2} onChange={campo('uf')} />
+        </div>
+      </div>
+      <div className="flex-1" />
+      <Rodape desabilitado={!pode} carregando={salvando} erro={erro} onContinuar={continuar} onPular={onPular} />
+    </>
+  )
+}
+
+function PassoTaxa({ onSalvar, onPular }: { onSalvar: (habilitada: boolean, centavos: number) => Promise<string | null>; onPular: () => void }) {
+  const [modo, setModo] = useState<'unica' | 'bairro'>('unica')
+  const [valor, setValor] = useState('')
+  const [salvando, setSalvando] = useState(false)
+  const [erro, setErro] = useState<string | null>(null)
+  const centavos = valor ? reaisParaCentavos(valor) : 0
+
+  async function continuar() {
+    setSalvando(true)
+    setErro(await onSalvar(modo === 'unica' && centavos > 0, modo === 'unica' ? centavos : 0))
+    setSalvando(false)
+  }
+
+  return (
+    <>
+      <p className="text-sm text-mesa-text-secondary">Quanto você cobra pela entrega?</p>
+      <div className="mt-4 flex flex-wrap gap-2" role="radiogroup" aria-label="Como cobrar a entrega">
+        <Chip checked={modo === 'unica'} onClick={() => setModo('unica')}>Taxa única</Chip>
+        <Chip checked={modo === 'bairro'} onClick={() => setModo('bairro')}>Por bairro</Chip>
+      </div>
+      {modo === 'unica' ? (
+        <Input className="mt-4" label="Valor da taxa (R$)" inputMode="decimal" value={valor} onChange={(e) => setValor(filtrarEntradaPreco(e.target.value))} />
+      ) : (
+        <p className="mt-4 text-sm text-mesa-text-secondary">
+          Você cadastra os bairros e o valor de cada um depois, em Ajustes › Cardápio e operação › Bairros de entrega.
+        </p>
+      )}
+      <div className="flex-1" />
+      <Rodape desabilitado={modo === 'unica' && centavos <= 0} carregando={salvando} erro={erro} onContinuar={continuar} onPular={onPular} />
+    </>
+  )
+}
+
+function TelaFinal({ barraca, onIrParaHub, onCadastrarItens, onAtivarPix }: { barraca: Barraca; onIrParaHub: () => void; onCadastrarItens: () => void; onAtivarPix: () => void }) {
   const [fase, setFase] = useState<'preparando' | 'pronto' | 'erro'>('preparando')
   const [erro, setErro] = useState<string | null>(null)
   const [copiado, setCopiado] = useState(false)
@@ -580,6 +755,9 @@ function TelaFinal({ barraca, onIrParaHub, onCadastrarItens }: { barraca: Barrac
       </Card>
       <Button size="xl" className="w-full" onClick={onIrParaHub}>Ir para o início</Button>
       <Button variant="outline" size="md" className="w-full" onClick={onCadastrarItens}>Cadastrar meus itens</Button>
+      {!barraca.pagamento_online_habilitado && (
+        <Button variant="ghost" size="md" className="w-full" onClick={onAtivarPix}>Ativar o Pix online (o dinheiro cai na sua conta)</Button>
+      )}
     </div>
   )
 }
@@ -594,6 +772,9 @@ export function Configurar() {
   const [barraca, setBarraca] = useState<Barraca | null>(null)
   const [passo, setPasso] = useState(1)
   const [semanaInicial, setSemanaInicial] = useState<HorarioDia[]>(semanaFechada())
+  // O passo 9 (taxa) só existe com Entrega ligada.
+  const entregaAtiva = barraca ? modosAtivos(barraca).includes('entrega') : false
+  const ordem = useMemo(() => ordemDoAssistente(entregaAtiva), [entregaAtiva])
 
   // Retomada: acha a barraca própria com o assistente por concluir e vai para o passo seguinte ao último feito.
   useEffect(() => {
@@ -620,7 +801,7 @@ export function Configurar() {
       setBarraca(completa)
       setSemanaInicial(semanaDoBanco(await carregarSemana(completa.id)))
       if ((completa.onboarding_etapa ?? 0) < 3) await concluirMarca(completa.id)
-      setPasso(proximoPassoEm(ORDEM, Math.max(completa.onboarding_etapa ?? 0, 3)))
+      setPasso(proximoPassoEm(ordemDoAssistente(modosAtivos(completa).includes('entrega')), Math.max(completa.onboarding_etapa ?? 0, 3)))
       setPronto(true)
     })()
     return () => {
@@ -634,14 +815,14 @@ export function Configurar() {
   }, [pronto, passo, barraca?.id])
 
   const irPara = useCallback((n: number) => setPasso(n), [])
-  const seguinte = useCallback((feito: number) => setPasso(proximoPassoEm(ORDEM, feito)), [])
+  const seguinte = useCallback((feito: number) => setPasso(proximoPassoEm(ordem, feito)), [ordem])
   const anterior = useCallback(() => {
-    const i = ORDEM.indexOf(passo)
-    if (i > 0) setPasso(ORDEM[i - 1])
-  }, [passo])
+    const i = ordem.indexOf(passo)
+    if (i > 0) setPasso(ordem[i - 1])
+  }, [passo, ordem])
 
   // Voltar só até o 1º passo, e nunca para trás do passo 3 depois que a barraca existe (nome e link não mudam aqui).
-  const podeVoltar = ORDEM.indexOf(passo) > 0 && !(barraca && passo <= 6 && ORDEM[ORDEM.indexOf(passo) - 1] < 3)
+  const podeVoltar = ordem.indexOf(passo) > 0 && !(barraca && ordem[ordem.indexOf(passo) - 1] < 3)
 
   if (carregandoAuth || carregandoBarracas || !pronto) {
     return (
@@ -675,12 +856,16 @@ export function Configurar() {
           await recarregar()
           navigate(`/${barraca.slug}/ajustes/cardapio`, { replace: true })
         }}
+        onAtivarPix={async () => {
+          await recarregar()
+          navigate(`/${barraca.slug}/ajustes`, { replace: true })
+        }}
       />
     )
   }
 
   return (
-    <MolduraPasso numero={passo} podeVoltar={podeVoltar} onVoltar={anterior}>
+    <MolduraPasso numero={passo} ordem={ordem} podeVoltar={podeVoltar} onVoltar={anterior}>
       {passo === 1 && (
         <PassoOrigem
           onPular={() => pular(1)}
@@ -718,6 +903,28 @@ export function Configurar() {
           }}
         />
       )}
+      {passo === 4 && barraca && (
+        <PassoCnpj
+          inicial={barraca.cnpj ?? ''}
+          onPular={() => pular(4)}
+          onSalvar={async (d) => aposSalvar(await salvarCnpj(barraca.id, d), 4)}
+        />
+      )}
+      {passo === 5 && barraca && (
+        <PassoEndereco
+          inicial={{
+            cep: barraca.endereco_cep ?? '',
+            rua: barraca.endereco_rua ?? '',
+            numero: barraca.endereco_numero ?? '',
+            complemento: barraca.endereco_complemento ?? '',
+            bairro: barraca.endereco_bairro ?? '',
+            cidade: barraca.endereco_cidade ?? '',
+            uf: barraca.endereco_uf ?? '',
+          }}
+          onPular={() => pular(5)}
+          onSalvar={async (e) => aposSalvar(await salvarEndereco(barraca.id, e), 5)}
+        />
+      )}
       {passo === 6 && barraca && (
         <PassoHorario inicial={semanaInicial} onSalvar={async (semana) => aposSalvar(await salvarHorarios(barraca.id, semana), 6)} />
       )}
@@ -739,6 +946,12 @@ export function Configurar() {
             if (r.ok) setBarraca({ ...barraca, modos_atendimento: modos })
             return aposSalvar(r, 8)
           }}
+        />
+      )}
+      {passo === 9 && barraca && (
+        <PassoTaxa
+          onPular={() => pular(9)}
+          onSalvar={async (habilitada, centavos) => aposSalvar(await salvarTaxa(barraca.id, habilitada, centavos), 9)}
         />
       )}
       <div className="mt-6 text-center">

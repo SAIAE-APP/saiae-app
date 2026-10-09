@@ -279,8 +279,42 @@ export function onboardingConfigHabilitado(valor: unknown): boolean {
   return valor === '1'
 }
 
-/** Passos já implementados na Fase 1 (os opcionais 4, 5 e 9 chegam no PR 6). */
-export const ORDEM_FASE_1: readonly number[] = [1, 2, 3, 6, 7, 8, 10]
+/** Ordem dos passos do assistente: o 9 (taxa de entrega) só existe com Entrega ligada. */
+export function ordemDoAssistente(entregaAtiva: boolean): number[] {
+  return [1, 2, 3, 4, 5, 6, 7, 8, ...(entregaAtiva ? [9] : []), 10]
+}
+
+/** Máscara de CNPJ enquanto digita: 00.000.000/0000-00. */
+export function formatarCnpjDigitando(texto: string): string {
+  const d = String(texto ?? '').replace(/\D/g, '').slice(0, 14)
+  return d
+    .replace(/^(\d{2})(\d)/, '$1.$2')
+    .replace(/^(\d{2})\.(\d{3})(\d)/, '$1.$2.$3')
+    .replace(/\.(\d{3})(\d)/, '.$1/$2')
+    .replace(/(\d{4})(\d)/, '$1-$2')
+}
+
+/** Máscara de CEP enquanto digita: 00000-000. */
+export function formatarCepDigitando(texto: string): string {
+  const d = String(texto ?? '').replace(/\D/g, '').slice(0, 8)
+  return d.length > 5 ? `${d.slice(0, 5)}-${d.slice(5)}` : d
+}
+
+/** Resposta da função consultar-externo (já só com o necessário). */
+export type RespostaConsulta<T> = { ok: true; dados: T } | { ok: false; motivo: 'invalido' | 'nao_encontrado' | 'indisponivel' | 'limite' | 'nao_autenticado' }
+
+export function mensagemDaConsulta(motivo: string): string {
+  switch (motivo) {
+    case 'nao_encontrado':
+      return 'Não encontramos esse número. Confira ou preencha à mão.'
+    case 'limite':
+      return 'Muitas consultas seguidas. Preencha à mão ou tente em alguns minutos.'
+    case 'invalido':
+      return 'Confira o número digitado.'
+    default:
+      return 'Não deu para buscar agora. Preencha à mão.'
+  }
+}
 
 /** Próximo passo da ordem depois do último concluído; ao fim, o último (a tela final). */
 export function proximoPassoEm(ordem: readonly number[], etapaConcluida: number): number {

@@ -217,7 +217,7 @@ describe('checklist (pesos iguais)', () => {
 })
 
 import {
-  ORDEM_FASE_1,
+  ordemDoAssistente,
   mensagemErroOnboarding,
   onboardingConfigHabilitado,
   posicaoNaOrdem,
@@ -229,18 +229,24 @@ describe('Fase 1 do assistente', () => {
     assert.equal(onboardingConfigHabilitado('1'), true)
     for (const v of [undefined, '', '0', 'true', 1]) assert.equal(onboardingConfigHabilitado(v), false)
   })
-  test('ordem da Fase 1 tem os 4 obrigatórios e a tela final', () => {
-    for (const n of [3, 6, 7, 8, 10]) assert.ok(ORDEM_FASE_1.includes(n), String(n))
-    assert.deepEqual(ORDEM_FASE_1.filter((n) => PASSOS.find((p) => p.numero === n)?.obrigatorio), [3, 6, 7, 8])
+  test('ordem tem os 4 obrigatórios e a tela final; a taxa (9) só com Entrega', () => {
+    const sem = ordemDoAssistente(false)
+    for (const n of [3, 6, 7, 8, 10]) assert.ok(sem.includes(n), String(n))
+    assert.deepEqual(sem.filter((n) => PASSOS.find((p) => p.numero === n)?.obrigatorio), [3, 6, 7, 8])
+    assert.equal(sem.includes(9), false)
+    assert.deepEqual(ordemDoAssistente(true), [1, 2, 3, 4, 5, 6, 7, 8, 9, 10])
   })
-  test('retomada: segue a ordem implementada (pula 4, 5 e 9 por enquanto)', () => {
-    assert.equal(proximoPassoEm(ORDEM_FASE_1, 0), 1)
-    assert.equal(proximoPassoEm(ORDEM_FASE_1, 3), 6)
-    assert.equal(proximoPassoEm(ORDEM_FASE_1, 6), 7)
-    assert.equal(proximoPassoEm(ORDEM_FASE_1, 8), 10)
-    assert.equal(proximoPassoEm(ORDEM_FASE_1, 10), 10)
-    assert.equal(posicaoNaOrdem(ORDEM_FASE_1, 6), 4)
-    assert.equal(posicaoNaOrdem(ORDEM_FASE_1, 99), 1)
+  test('retomada: segue a ordem; sem Entrega pula a taxa', () => {
+    const sem = ordemDoAssistente(false)
+    const com = ordemDoAssistente(true)
+    assert.equal(proximoPassoEm(sem, 0), 1)
+    assert.equal(proximoPassoEm(sem, 3), 4)
+    assert.equal(proximoPassoEm(sem, 5), 6)
+    assert.equal(proximoPassoEm(sem, 8), 10)
+    assert.equal(proximoPassoEm(com, 8), 9)
+    assert.equal(proximoPassoEm(sem, 10), 10)
+    assert.equal(posicaoNaOrdem(sem, 6), 6)
+    assert.equal(posicaoNaOrdem(sem, 99), 1)
   })
   test('erros do banco viram frase simples, sem texto técnico', () => {
     assert.equal(mensagemErroOnboarding('horario_vazio'), 'Marque pelo menos um dia em que você abre.')
