@@ -54,6 +54,18 @@ export async function carregarKitEscolhido(): Promise<string | null> {
   }
 }
 
+/** O que o usuário já respondeu nos passos 1 e 2 (antes de existir barraca), para retomar de onde parou. */
+export async function carregarPerfilUsuario(): Promise<{ origem: string | null; categoria: string | null }> {
+  try {
+    const { data, error } = await supabase.from('perfis_usuario').select('origem_aquisicao, categoria_negocio').maybeSingle()
+    if (error || !data) return { origem: null, categoria: null }
+    const d = data as { origem_aquisicao: string | null; categoria_negocio: string | null }
+    return { origem: d.origem_aquisicao, categoria: d.categoria_negocio }
+  } catch {
+    return { origem: null, categoria: null }
+  }
+}
+
 export const criarBarraca = (nome: string, slug: string) => rpc<Barraca>('criar_barraca', { p_nome: nome, p_slug: slug })
 
 const salvarPasso = <T = unknown>(barracaId: string, etapa: number, dados: Record<string, unknown> = {}) =>
