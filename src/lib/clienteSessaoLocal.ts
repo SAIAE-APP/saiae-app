@@ -34,3 +34,16 @@ export function limparSessao(slug: string): void {
     /* idem */
   }
 }
+
+/** Endereço do cardápio mudou (apelido → slug novo): leva a sessão do cliente junto, para ele não confirmar o telefone
+ * de novo. Não sobrescreve sessão que já exista no slug novo; a do slug antigo é removida. */
+export function moverSessao(slugAntigo: string, slugNovo: string): void {
+  if (slugAntigo === slugNovo) return
+  try {
+    const bruto = localStorage.getItem(chave(slugAntigo))
+    if (bruto && !localStorage.getItem(chave(slugNovo))) localStorage.setItem(chave(slugNovo), bruto)
+    localStorage.removeItem(chave(slugAntigo))
+  } catch {
+    /* sem armazenamento: o cliente só terá que confirmar de novo */
+  }
+}
