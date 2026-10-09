@@ -1,6 +1,6 @@
 # Onboarding de configuração inicial — design
 
-Data: 2026-10-08. Fonte: pedido do orquestrador/João (referência de ideia: o assistente inicial da Brendi; **não** copiar marca, mascote nem texto). Status: **só especificação, aguardando revisão do dono do produto. Nenhum código.**
+Data: 2026-10-08. Fonte: pedido do orquestrador/João (referência de ideia: o assistente inicial da Brendi; **não** copiar marca, mascote nem texto). Status: **especificação com as 5 decisões do dono incorporadas (ver "Decisões fechadas"). Nenhum código ainda.**
 
 ## Objetivo
 Quem cria a conta (por e-mail ou Google) é levado a configurar, em passos curtos e um por tela, o básico que sempre fica "para depois": nome da marca com link do cardápio, CNPJ, endereço, horário, pagamento e modos de atendimento. Cada passo salva na hora, tem barra de progresso e voltar/avançar. O essencial não se pula; o resto pode ficar para depois, mas vira checklist com porcentagem no Hub até completar.
@@ -28,35 +28,35 @@ Barra de progresso no topo ("Passo 4 de 10"), botão principal mostarda "Continu
 1. **Como conheceu o Sai aê** (opcional). Chips: Anúncio, Instagram, TikTok, YouTube, Google, Indicação, Panfleto, Outro (com campo curto se "Outro"/"Indicação: quem?"). Grava `origem` do usuário (ver Dados). Passo do **usuário**, antes de existir barraca.
 2. **Categoria principal** (opcional). Cards: Lanches, Pizza, Marmita/PF, Oriental, Açaí, Doces e bolos, Pastel/salgados, Bebidas, Churrasco, Outra. Grava `categoria_negocio` (1 valor). Serve só para personalizar dicas e segmentar depois; não muda comportamento do app.
 3. **Nome da marca e link do cardápio** (obrigatório). Campo nome → **gera o slug** sem acento, minúsculo, só `a-z0-9-` (reaproveita `gerarSlug`), mostrando em tempo real o link final `app.saiae.com.br/<slug>` (via `urlPublica`) com botão "copiar". Checagem de disponibilidade **ao digitar** (RPC pública `slug_disponivel(p_slug)`, sem expor outros dados) e sugestões quando ocupado (`<slug>-2`, `<slug>-<bairro>` quando houver). O slug é editável uma vez aqui, com aviso "depois de divulgar o link, trocar quebra os links antigos". Reservados (`login`, `cadastro`, `onboarding`, `ajustes`, `e`, `selecionar-barraca`, etc.) são recusados com a mesma lista usada pelas rotas. Cria a barraca (`criar_barraca`). Resolve o "restaurante-paulo" porque o dono vê e confirma o link **antes** de seguir.
-4. **CNPJ** (opcional, liga o fiscal). Campo com máscara; ao completar 14 dígitos, **consulta automática** do nome empresarial/fantasia, situação e endereço. Escolha: edge function `consultar-cnpj` (servidor chama BrasilAPI/ReceitaWS; o navegador **não** chama terceiros e o CNPJ não vai para log) com cache curto. Resultado preenche `cnpj`, `emitente_razao_social` e **sugere** o endereço do passo 5. Alternativa explícita "Sou MEI / ainda não tenho CNPJ" (grava `sem_cnpj = true`, pendência opcional "Adicionar CNPJ" no checklist). Não habilita fiscal sozinho: só preenche; ativar NFC-e continua em Ajustes › Fiscal (token da FocusNFe).
-5. **Endereço da loja** (opcional, campo próprio novo). Busca por endereço (CEP → ViaCEP via edge function, ou texto livre) preenchendo rua, número, bairro, cidade, UF, complemento. Grava colunas próprias (ver Dados). Alimenta: cardápio público (rodapé/"Como chegar"), Procon da comanda (`procon_endereco` pode ser sugerido a partir dele) e emitente da NFC-e (sugestão, com confirmação).
-6. **Horário de funcionamento** (obrigatório, mas com padrão sugerido). **Modelos**: Almoço (11–15h), Jantar (18–23h), Almoço e Jantar (dois turnos? **v1: um intervalo por dia**, ver Fora de escopo), Fim de semana (sáb–dom), mais "Personalizado". Lista dos 7 dias com toggle aberto/fechado e dois horários; botão **"Igual ao dia anterior"** por dia. Grava em `horarios_funcionamento` (mesma tabela e mesma tela de Ajustes, que continua editando). Mostra "Aberto agora/Fechado" como prévia.
-7. **Formas de pagamento** (obrigatório ≥ 1). Aceitas no balcão/entrega/retirada: Dinheiro, Débito, Crédito (o app já suporta; valem para `metodos_pagamento_ativos`). **Vales (refeição/alimentação)**: fora da v1 (exigiria novo método no CHECK de `pedidos` e relatórios); o passo oferece "Outras formas" só como texto informativo no cardápio, sem alterar contas. Abaixo, **Pix online** como cartão separado e opcional: explica o benefício e leva para o passo guiado de Pagamento online (token do provedor colado **só** no campo seguro de Ajustes; nada de segredo no assistente). "Fazer depois" cria pendência "Ativar Pix online".
+4. **CNPJ** (opcional, liga o fiscal). Campo com máscara; ao completar 14 dígitos, **consulta automática** do nome empresarial/fantasia, situação e endereço. Edge function `consultar-cnpj` nossa (o servidor chama a **BrasilAPI**; o navegador **não** chama terceiros, nenhuma chave é exposta e o CNPJ não vai para log) com cache curto. **Falha ou lentidão nunca trava o passo**: "Não deu para buscar; preencha à mão". Resultado preenche `cnpj`, `emitente_razao_social` e **sugere** o endereço do passo 5. Alternativa explícita "Sou MEI / ainda não tenho CNPJ" (grava `sem_cnpj = true`, pendência opcional "Adicionar CNPJ" no checklist). Não habilita fiscal sozinho: só preenche; ativar NFC-e continua em Ajustes › Fiscal (token da FocusNFe).
+5. **Endereço da loja** (opcional, campo próprio novo). Busca por endereço (CEP → **ViaCEP** via edge function `buscar-cep` nossa, ou texto livre; falha nunca trava o passo) preenchendo rua, número, bairro, cidade, UF, complemento. Grava colunas próprias (ver Dados). Alimenta: cardápio público (rodapé/"Como chegar"), Procon da comanda (`procon_endereco` pode ser sugerido a partir dele) e emitente da NFC-e (sugestão, com confirmação).
+6. **Horário de funcionamento** (obrigatório, mas com padrão sugerido). **Modelos**: Almoço (11–15h), Jantar (18–23h), Fim de semana (sáb–dom), mais "Personalizado". **Um intervalo por dia** (sem mudar o schema); o modelo "Almoço e Jantar" (dois turnos) **não existe** nesta fase. Lista dos 7 dias com toggle aberto/fechado e um horário de abrir e um de fechar; botão **"Igual ao dia anterior"** por dia. Grava em `horarios_funcionamento` (mesma tabela e mesma tela de Ajustes, que continua editando). Mostra "Aberto agora/Fechado" como prévia.
+7. **Formas de pagamento** (obrigatório ≥ 1). Aceitas no balcão/entrega/retirada: Dinheiro, Débito, Crédito (o app já suporta; valem para `metodos_pagamento_ativos`). **Vales (refeição/alimentação)**: fora por enquanto (mexem na NFC-e, nas formas de pagamento, e no relatório); o passo só oferece Dinheiro, Débito e Crédito. Abaixo, **Pix online** como cartão separado e opcional: explica o benefício e leva para o passo guiado de Pagamento online (token do provedor colado **só** no campo seguro de Ajustes; nada de segredo no assistente). "Fazer depois" cria pendência "Ativar Pix online".
 8. **Modos de atendimento** (obrigatório ≥ 1): Mesa, Balcão, Retirada, Entrega (cards com explicação de uma linha). Grava `modos_atendimento` (mesma regra de "ao menos um ativo"). Marcar Entrega abre o passo 9.
 9. **Entrega: taxa** (só se Entrega; opcional com "fazer depois"). Hoje existe taxa fixa/padrão (`taxa_entrega_*`) e **por bairro** (`taxas_entrega_bairro`, com "colar lista"). O passo oferece: "Taxa única" (valor) ou "Por bairro" (adiciona bairros; ou cola a lista). **Raio/rota não existem**; não aparecem (anotar como evolução). Sem taxa definida, o checklist mantém "Definir taxa de entrega" (o cardápio público já exige Entrega finalizável).
 10. **Tela final "Preparando a cozinha…"**: animação curta (2–3 s, reduzida com `prefers-reduced-motion`), resumo do que foi feito, o **link do cardápio** com copiar/compartilhar e dois botões: "Ir para o Hub" (primário) e "Cadastrar meus itens". Marca o assistente como concluído.
 
 ## Obrigatório x opcional e retomada
 - O dono **não consegue sair** dos 4 obrigatórios sem preenchê-los: o botão fica desabilitado com a explicação do que falta. Fechar o app no meio é permitido (nada se perde); ao voltar, o `Dispatcher` manda para o passo pendente enquanto os obrigatórios não estiverem completos. A barraca já existe depois do passo 3, então o sistema não fica numa "casca": se o dono abandonar entre os passos 3 e 8, ao reabrir cai de volta no assistente.
-- Barraca **existente** (criada antes desta feature) **não** passa pelo assistente forçado: recebe o **checklist** no Hub com o que estiver faltando (calculado, ver abaixo) e pode abrir o assistente por "Configurar o que falta".
+- **Decisão do dono:** o obrigatório vale **só para contas novas**. Barraca **existente** (há clientes em produção) **nunca** é bloqueada nem redirecionada: recebe apenas o **checklist/banner de pendências** no Hub, com o que estiver faltando (calculado, ver abaixo), e pode abrir o assistente por "Configurar o que falta".
 - Quem tem várias barracas: o assistente é por barraca; novas barracas passam por ele.
 
 ## Checklist de pendências no Hub (Dashboard)
-Cartão "Falta pouco para vender" com barra e **% concluída**, visível até 100% (some sozinho; há "ocultar" por 7 dias). Itens e peso:
+Cartão "Falta pouco para vender" com barra e **% concluída**, visível até 100% (some sozinho; há "ocultar" por 7 dias). **Todos os itens têm o mesmo peso: % = itens concluídos ÷ total de itens aplicáveis** (o item de taxa só conta se Entrega estiver ligada).
 
-| Item | Critério de concluído (calculado, não digitado) | Peso |
-|---|---|---|
-| Nome e link do cardápio | barraca existe | obrigatório (sempre feito aqui) |
-| Horário | ≥ 1 dia `aberto` em `horarios_funcionamento` | 15 |
-| Formas de pagamento | `metodos_pagamento_ativos` não vazio | 10 |
-| Modos de atendimento | `modos_atendimento` não vazio | 10 |
-| Primeiro item no cardápio | ≥ 1 linha em `itens` | 20 |
-| Endereço da loja | colunas de endereço preenchidas | 10 |
-| CNPJ (ou "sem CNPJ") | `cnpj` preenchido ou `sem_cnpj` | 10 |
-| Taxa de entrega | se Entrega ligada: taxa padrão > 0 ou ≥ 1 bairro ativo | 10 |
-| Pix online | `pagamento_online_habilitado` e token configurado | 10 |
-| Logo (opcional, sugestão) | `logo_url` | 5 |
-Cada item aberto leva direto à tela certa (assistente no passo ou seção de Ajustes). Pesos ajustáveis; a % é só uma conta no cliente a partir de dados que já existem (RPC `onboarding_progresso(p_barraca_id)` para evitar 8 consultas).
+| Item | Critério de concluído (calculado, não digitado) |
+|---|---|
+| Nome e link do cardápio | barraca existe |
+| Horário | ≥ 1 dia `aberto` em `horarios_funcionamento` |
+| Formas de pagamento | `metodos_pagamento_ativos` não vazio |
+| Modos de atendimento | `modos_atendimento` não vazio |
+| Primeiro item no cardápio | ≥ 1 linha em `itens` |
+| Endereço da loja | colunas de endereço preenchidas |
+| CNPJ (ou "sem CNPJ") | `cnpj` preenchido ou `sem_cnpj` |
+| Taxa de entrega | se Entrega ligada: taxa padrão > 0 ou ≥ 1 bairro ativo |
+| Pix online | `pagamento_online_habilitado` e token configurado |
+| Logo (opcional, sugestão) | `logo_url` |
+Cada item aberto leva direto à tela certa (assistente no passo ou seção de Ajustes). A % é só uma conta no cliente a partir de dados que já existem (RPC `onboarding_progresso(p_barraca_id)` para evitar 8 consultas).
 
 ## Dados a gravar (tudo aditivo; migration única, versão ≥ a mais nova da main)
 - **Usuário** (origem e estado do assistente do dono, **não** da barraca, porque o passo 1 vem antes da barraca): tabela nova `perfis_usuario` (`usuario_id` PK → `auth.users on delete cascade`, `origem_aquisicao text` com CHECK da lista, `origem_detalhe text` ≤ 60, `criado_em`). RLS: o próprio usuário lê/insere/atualiza o seu.
@@ -93,11 +93,22 @@ Eventos em tabela `onboarding_eventos` (barraca_id/usuario_id, `passo`, `acao` =
 **Regressão:** `criar_barraca` e Ajustes continuam funcionando sem o assistente; carrossel inalterado; trial e assinatura inalterados.
 
 ## Fora de escopo
-Vales como método real; dois turnos por dia no horário (v1: um intervalo por dia; "Almoço e Jantar" aparece como modelo de **um intervalo contínuo 11–23h** com aviso, ou fica para a v2 se o dono quiser turnos); raio/rota de entrega; cadastro de itens dentro do assistente (vai ao Hub/Ajustes); importação de cardápio; assistente para funcionários; multilíngue.
+Vales como método real; dois turnos por dia (item futuro: exige várias faixas por dia em `horarios_funcionamento`); raio/rota de entrega; cadastro de itens dentro do assistente (vai ao Hub/Ajustes); importação de cardápio; assistente para funcionários; multilíngue.
 
-## Perguntas em aberto
-1. **Dois turnos por dia** ("Almoço e Jantar" de verdade) entram já ou na v2 (exige mudar `horarios_funcionamento` para várias faixas por dia)?
-2. O assistente deve ser **obrigatório para barracas antigas** também (hoje: só checklist)?
-3. Aceita a consulta de CNPJ/CEP por **terceiros gratuitos** (BrasilAPI/ViaCEP) ou prefere outro provedor?
-4. Pesos do checklist e quais itens contam para os 100%.
-5. Vales: vale a pena já neste ciclo, mesmo exigindo mexer em métodos de pagamento e relatórios?
+## Decisões fechadas (dono, 2026-10-08)
+1. **Dois turnos por dia:** NÃO agora. Um intervalo por dia, sem mudar o schema; o modelo "Almoço e Jantar" fica fora e vira item futuro.
+2. **Barracas antigas:** o obrigatório vale **só para contas novas**; barraca existente só ganha checklist/banner de pendências, **nunca bloqueio**.
+3. **CNPJ/CEP:** consulta por edge function nossa (sem expor chave), **BrasilAPI** para CNPJ e **ViaCEP** para CEP; falha nunca trava o passo.
+4. **Pesos do checklist:** todos iguais; % = passos concluídos ÷ total.
+5. **Vales:** fora por enquanto (só dinheiro, crédito e débito), porque mexem na NFC-e e no relatório.
+
+## Plano de implementação (PRs, sempre staging, atrás de flag, sem mesclar)
+Flag `VITE_ONBOARDING_CONFIG=1` (front) mais a coluna `onboarding_etapa`; sem a flag o fluxo atual (`SelecionarBarraca`) segue intacto. Cada PR pequeno, com testes, base `main`:
+1. **PR 1 — Banco (aditivo):** migration com `perfis_usuario`, colunas novas em `barracas` (categoria, endereço, `sem_cnpj`, `onboarding_etapa`, `onboarding_concluido_em`, `checklist_oculto_ate`), backfill (`onboarding_concluido_em = criada_em` das barracas antigas), RPCs `slug_disponivel`, `onboarding_salvar_passo`, `onboarding_progresso`, tabela `onboarding_eventos`. Teste estático da migration + script de staging (RLS entre usuários, idempotência, backfill).
+2. **PR 2 — Lógica pura + slug (Fase 1):** `src/lib/onboardingConfig.ts` (slug sem acento/reservados/sugestões, modelos de horário, "igual ao dia anterior", % do checklist com pesos iguais, mapeamento passo → retomada) com testes de unidade; sem UI.
+3. **PR 3 — Componentes reutilizáveis:** extrair de Ajustes `SeletorModos`, `SeletorMetodos` e `CampoHorarioDia` (Ajustes passa a usá-los, comportamento idêntico); testes de regressão.
+4. **PR 4 — Assistente, passos obrigatórios (Fase 1):** rota `/configurar`, barra de progresso e navegação; passos **3 (nome + slug + link final, cria a barraca), 6 (horário), 7 (pagamento: dinheiro/débito/crédito) e 8 (modos)** mais a tela final; `Dispatcher` leva conta nova ao assistente (atrás da flag); retomada do passo pendente; barraca antiga nunca redirecionada. Passo 1 e 2 (origem/categoria) entram aqui como opcionais simples.
+5. **PR 5 — Checklist no Hub (Fase 1):** cartão "Falta pouco para vender" com % (pesos iguais) e atalhos; também para barracas antigas (só aviso). Telemetria mínima (`onboarding_eventos`).
+6. **PR 6 — Opcionais (Fase 2):** edge functions `consultar-cnpj` (BrasilAPI) e `buscar-cep` (ViaCEP) + passos 4, 5 e 9 (taxa); Pix online guiado no passo 7.
+7. **PR 7 — Política de Privacidade, `CLAUDE.md` e roteiro E2E de staging.**
+Fase 1 = PRs 1–5 (passos obrigatórios + slug do nome + checklist). PR 6 e 7 depois. Deploy: migrations → functions → app com a flag desligada; ligar a flag no staging para testar e só depois, com ordem do dono, na produção (primeiro numa conta de teste).
