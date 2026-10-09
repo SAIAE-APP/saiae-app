@@ -39,6 +39,8 @@ export type Barraca = {
   categoria_negocio?: string | null
   /** Kit inicial aplicado (migration 20261021110000). Opcional: banco/cache de antes não têm. */
   kit_aplicado?: string | null
+  kit_aplicado_em?: string | null
+  kit_elegivel?: boolean
   endereco_cep?: string | null
   endereco_rua?: string | null
   endereco_numero?: string | null
