@@ -40,6 +40,9 @@ export type Barraca = {
   ia_texto_livre?: string | null
   ia_whatsapp_dono?: string | null
   ia_codigo?: string | null
+  /** Preenchido só quando o dono do número responde CONFIRMAR no WhatsApp (rota assinada do CRM). */
+  ia_whatsapp_dono_confirmado_em?: string | null
+  ia_dono_confirmacao_pedida_em?: string | null
   /** Perfil do cliente final exigido no fechamento (padrão false). */
   perfil_cliente_obrigatorio?: boolean
   /** SAI-010a: a loja usa variações/adicionais no cardápio (padrão false). Ausente em cache antigo. */
