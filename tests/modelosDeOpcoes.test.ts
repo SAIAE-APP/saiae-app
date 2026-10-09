@@ -145,8 +145,9 @@ describe('mínimo de escolhas (combo de sabores)', () => {
   test('sem "obrigatório" o mínimo é ignorado; sem minimoTexto continua 1 (rascunho antigo)', () => {
     const r = rascunhoDoModelo(m)
     assert.equal(limitesDoGrupo({ ...r, obrigatorio: false }).min, 0)
-    const { minimoTexto: _ignorado, ...antigo } = r
-    assert.equal(limitesDoGrupo(antigo).min, 1)
+    const antigo = { ...r } as Partial<typeof r>
+    delete antigo.minimoTexto
+    assert.equal(limitesDoGrupo(antigo as typeof r).min, 1)
   })
   test('um modelo com mínimo maior que 1 não entra num kit', () => {
     assert.throws(() => conteudoDoGrupo('s', m))
