@@ -20,6 +20,7 @@ import { CardapioPublico } from './pages/CardapioPublico'
 import { PerfilCliente } from './pages/PerfilCliente'
 import { Privacidade } from './pages/Privacidade'
 import { RevisarCardapioExemplo } from './pages/RevisarCardapioExemplo'
+import { GuardaAssistente } from './components/GuardaAssistente'
 import { ExcluirConta } from './pages/ExcluirConta'
 import { NaoEncontrado } from './pages/NaoEncontrado'
 import { Login } from './pages/Login'
@@ -91,7 +92,9 @@ function App() {
               path="/selecionar-barraca"
               element={
                 <RotaProtegida>
-                  <SelecionarBarraca />
+                  <GuardaAssistente escopo="lista">
+                    <SelecionarBarraca />
+                  </GuardaAssistente>
                 </RotaProtegida>
               }
             />
@@ -105,7 +108,9 @@ function App() {
               path="/:slug"
               element={
                 <RotaProtegida verificarSlug>
-                  <LayoutBarraca />
+                  <GuardaAssistente escopo="slug">
+                    <LayoutBarraca />
+                  </GuardaAssistente>
                 </RotaProtegida>
               }
             >

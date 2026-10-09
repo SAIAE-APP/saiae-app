@@ -31,7 +31,9 @@ import {
   gerarSlug,
   igualAoDiaAnterior,
   mensagemDoProblemaSlug,
+  passoInicialSemBarraca,
   posicaoNaOrdem,
+  resumoDoAssistente,
   problemaDoSlug,
   proximoPassoEm,
   semanaDoBanco,
@@ -61,6 +63,7 @@ import {
   slugDisponivel,
   aplicarKit,
   carregarKitEscolhido,
+  carregarPerfilUsuario,
 } from '../lib/onboardingApi'
 import type { Barraca, TipoAtendimento } from '../types/database'
 
@@ -728,18 +731,23 @@ function PassoTaxa({ onSalvar, onPular }: { onSalvar: (habilitada: boolean, cent
   )
 }
 
-function TelaFinal({ barraca, onIrParaHub, onCadastrarItens, onAtivarPix }: { barraca: Barraca; onIrParaHub: () => void; onCadastrarItens: () => void; onAtivarPix: () => void }) {
+function TelaFinal({ barraca, onIrParaHub, onCadastrarItens, onAtivarPix, onRevisar }: { barraca: Barraca; onIrParaHub: () => void; onCadastrarItens: () => void; onAtivarPix: () => void; onRevisar: () => void }) {
   const comKit = Boolean(barraca.kit_aplicado)
   const [fase, setFase] = useState<'preparando' | 'pronto' | 'erro'>('preparando')
+  const [tentativa, setTentativa] = useState(0)
   const [erro, setErro] = useState<string | null>(null)
   const [copiado, setCopiado] = useState(false)
+  const [resumo, setResumo] = useState<{ rotulo: string; valor: string }[]>([])
   const link = urlPublica(`/${barraca.slug}/cardapio`)
 
   useEffect(() => {
     let cancelado = false
     const minimo = new Promise((r) => window.setTimeout(r, 2500))
-    Promise.all([concluirAssistente(barraca.id), minimo]).then(([r]) => {
+    // O resumo é lido do banco (o que realmente ficou salvo), não do que a tela guardou na memória.
+    const recarga = Promise.all([carregarBarracaCompleta(barraca.id), carregarSemana(barraca.id)]).catch(() => [null, []] as const)
+    Promise.all([concluirAssistente(barraca.id), minimo, recarga]).then(([r, , [fresca, linhas]]) => {
       if (cancelado) return
+      if (fresca) setResumo(resumoDoAssistente(fresca, semanaDoBanco(linhas)))
       if (r.ok) {
         registrarEvento(barraca.id, 10, 'concluido')
         setFase('pronto')
@@ -751,7 +759,7 @@ function TelaFinal({ barraca, onIrParaHub, onCadastrarItens, onAtivarPix }: { ba
     return () => {
       cancelado = true
     }
-  }, [barraca.id])
+  }, [barraca.id, tentativa])
 
   async function copiar() {
     try {
@@ -777,7 +785,19 @@ function TelaFinal({ barraca, onIrParaHub, onCadastrarItens, onAtivarPix }: { ba
       <div className="mx-auto flex min-h-dvh max-w-xl flex-col items-center justify-center gap-4 bg-mesa-bg-base px-6 text-center">
         <h1 className="text-2xl font-bold text-mesa-text-primary">Quase lá</h1>
         <p role="alert" className="text-sm font-medium text-mesa-error-500">{erro}</p>
-        <Button size="xl" className="w-full" onClick={onIrParaHub}>Ir para o início</Button>
+        <p className="text-sm text-mesa-text-secondary">O sistema só é liberado depois que esta etapa termina.</p>
+        <Button
+          size="xl"
+          className="w-full"
+          onClick={() => {
+            setErro(null)
+            setFase('preparando')
+            setTentativa((n) => n + 1)
+          }}
+        >
+          Tentar de novo
+        </Button>
+        <Button variant="outline" size="md" className="w-full" onClick={onRevisar}>Revisar os passos</Button>
       </div>
     )
   }
@@ -788,7 +808,20 @@ function TelaFinal({ barraca, onIrParaHub, onCadastrarItens, onAtivarPix }: { ba
         <Icone nome="check_circle" size={32} preenchido />
       </span>
       <h1 className="text-[28px] font-bold leading-[34px] text-mesa-text-primary">Tudo pronto, {barraca.nome}!</h1>
-      <p className="text-sm text-mesa-text-secondary">Esse é o link do seu cardápio. Guarde e divulgue.</p>
+      <p className="text-sm text-mesa-text-secondary">Seu sistema já está configurado com o que você informou. Esse é o link do seu cardápio: guarde e divulgue.</p>
+      {resumo.length > 0 && (
+        <Card>
+          <p className="text-sm font-semibold text-mesa-text-primary">O que ficou configurado</p>
+          <dl className="mt-2 flex flex-col gap-1 text-sm">
+            {resumo.map((l) => (
+              <div key={l.rotulo} className="flex flex-wrap gap-x-2">
+                <dt className="font-medium text-mesa-text-secondary">{l.rotulo}:</dt>
+                <dd className="text-mesa-text-primary">{l.valor}</dd>
+              </div>
+            ))}
+          </dl>
+        </Card>
+      )}
       <Card>
         <p className="break-all font-mesa-display text-base font-semibold text-mesa-text-primary">{link}</p>
         <Button variant="outline" size="md" className="mt-3 w-full" onClick={copiar} icon={<Icone nome="content_copy" size={16} />}>
@@ -835,7 +868,9 @@ export function Configurar() {
           navigate('/', { replace: true })
           return
         }
-        setPasso(1)
+        // Conta nova que fechou o app nos passos 1 e 2: volta para o passo seguinte ao último respondido.
+        setPasso(passoInicialSemBarraca(await carregarPerfilUsuario()))
+        if (cancelado) return
         setPronto(true)
         return
       }
@@ -928,6 +963,7 @@ export function Configurar() {
           await recarregar()
           navigate(`/${barraca.slug}/ajustes`, { replace: true })
         }}
+        onRevisar={() => irPara(6)}
       />
     )
   }
