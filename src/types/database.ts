@@ -31,6 +31,8 @@ export type Barraca = {
   /** WhatsApp do dono (só dígitos) e liga/desliga do "Pagar na entrega" no cardápio. */
   whatsapp_pedidos?: string | null
   pagar_na_entrega_habilitado?: boolean
+  /** "Pagar depois" em Retirada e Entrega (padrão false). Ausente em banco/cache de antes da migration. */
+  pagamento_depois_habilitado?: boolean
   /** Estoque: true = bloqueia a venda acima do saldo; false/ausente = só avisa (padrão). */
   estoque_bloqueia?: boolean
   /** Cupons por código no cardápio digital (padrão false). Ausente em banco/cache de antes da migration. */

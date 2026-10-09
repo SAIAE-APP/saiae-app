@@ -1,7 +1,13 @@
 import { openDB } from 'idb'
 import type { DBSchema, IDBPDatabase } from 'idb'
 
-export type TipoOperacao = 'criar_pedido' | 'mudar_status' | 'remover_item' | 'marcar_entregue' | 'salvar_cliente'
+export type TipoOperacao =
+  | 'criar_pedido'
+  | 'mudar_status'
+  | 'remover_item'
+  | 'marcar_entregue'
+  | 'definir_metodo'
+  | 'salvar_cliente'
 
 export type OperacaoPendente = {
   id: string

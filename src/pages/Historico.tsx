@@ -7,6 +7,7 @@ import { MOTIVOS_CANCELAMENTO } from '../lib/cancelamento'
 import { formatarPrecoBR } from '../lib/preco'
 import { ROTULO_MODO, nomeDoCliente, rotuloAtendimento, tipoDoPedido } from '../lib/atendimento'
 import { corMetodo, humanizarMetodo, METODOS_DISPONIVEIS } from '../lib/metodoPagamento'
+import { ROTULO_A_RECEBER, pagarDepoisLigado, pedidoAReceber } from '../lib/pagarDepois'
 import { hojeISO } from '../lib/datas'
 import { calcularIntervalosRelatorio, calcularTotalPedido, ehEntregaDireta } from '../lib/relatorio'
 import { useOcultarAoRolar } from '../hooks/useOcultarAoRolar'
@@ -26,6 +27,8 @@ import { Input } from '../components/ui/Input'
 import { SegmentedControl } from '../components/ui/SegmentedControl'
 import { useToast } from '../components/ui/useToast'
 import { BotaoDefinirPagamento } from '../components/BotaoDefinirPagamento'
+import { BotaoCorrigirPagamento } from '../components/BotaoCorrigirPagamento'
+import { podeCorrigirMetodo } from '../lib/corrigirMetodo'
 import { ambienteDaNota, cpfValido, formatarCpf } from '../lib/fiscal'
 import { nomeComOpcoes } from '../lib/opcoes'
 import { textoCupomDoPedido } from '../lib/descontosCupom'
@@ -362,6 +365,7 @@ function CardHistorico({
         >
           <RotuloMetodo chave={pedido.metodo_pagamento} />
         </span>
+        {pedidoAReceber(pedido, pagarDepoisLigado(barraca)) && <Badge variant="warning">{ROTULO_A_RECEBER}</Badge>}
       </div>
 
       {cancelado && (
@@ -401,6 +405,15 @@ function CardHistorico({
           a NFC-e não emite. O operador define aqui (só online). */}
       {!cancelado && pedido.metodo_pagamento === 'na_entrega' && (
         <BotaoDefinirPagamento pedidoId={pedido.id} onDefinido={(metodo) => onMetodoDefinido(pedido.id, metodo)} />
+      )}
+
+      {/* "Pagar depois": corrigir a forma já definida, só antes da NFC-e (Histórico já fica atrás da senha administrativa). */}
+      {podeCorrigirMetodo(pedido, pagarDepoisLigado(barraca)) && (
+        <BotaoCorrigirPagamento
+          pedidoId={pedido.id}
+          metodoAtual={pedido.metodo_pagamento as string}
+          onCorrigido={(metodo) => onMetodoDefinido(pedido.id, metodo)}
+        />
       )}
 
       {!cancelado && <BotaoEmitirNota pedido={pedido} />}
