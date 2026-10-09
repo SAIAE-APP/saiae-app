@@ -215,3 +215,39 @@ describe('checklist (pesos iguais)', () => {
     assert.ok(r.porcentagem >= 0 && r.porcentagem <= 100)
   })
 })
+
+import {
+  ORDEM_FASE_1,
+  mensagemErroOnboarding,
+  onboardingConfigHabilitado,
+  posicaoNaOrdem,
+  proximoPassoEm,
+} from '../src/lib/onboardingConfig.ts'
+
+describe('Fase 1 do assistente', () => {
+  test('flag: só "1" liga', () => {
+    assert.equal(onboardingConfigHabilitado('1'), true)
+    for (const v of [undefined, '', '0', 'true', 1]) assert.equal(onboardingConfigHabilitado(v), false)
+  })
+  test('ordem da Fase 1 tem os 4 obrigatórios e a tela final', () => {
+    for (const n of [3, 6, 7, 8, 10]) assert.ok(ORDEM_FASE_1.includes(n), String(n))
+    assert.deepEqual(ORDEM_FASE_1.filter((n) => PASSOS.find((p) => p.numero === n)?.obrigatorio), [3, 6, 7, 8])
+  })
+  test('retomada: segue a ordem implementada (pula 4, 5 e 9 por enquanto)', () => {
+    assert.equal(proximoPassoEm(ORDEM_FASE_1, 0), 1)
+    assert.equal(proximoPassoEm(ORDEM_FASE_1, 3), 6)
+    assert.equal(proximoPassoEm(ORDEM_FASE_1, 6), 7)
+    assert.equal(proximoPassoEm(ORDEM_FASE_1, 8), 10)
+    assert.equal(proximoPassoEm(ORDEM_FASE_1, 10), 10)
+    assert.equal(posicaoNaOrdem(ORDEM_FASE_1, 6), 4)
+    assert.equal(posicaoNaOrdem(ORDEM_FASE_1, 99), 1)
+  })
+  test('erros do banco viram frase simples, sem texto técnico', () => {
+    assert.equal(mensagemErroOnboarding('horario_vazio'), 'Marque pelo menos um dia em que você abre.')
+    assert.match(mensagemErroOnboarding('obrigatorios_pendentes'), /Faltam passos/)
+    assert.match(mensagemErroOnboarding('Esse endereço já está em uso'), /Escolha outro/)
+    const generico = mensagemErroOnboarding('PGRST202 function not found schema cache')
+    assert.doesNotMatch(generico, /PGRST|schema|function/)
+    assert.match(mensagemErroOnboarding('TypeError: Failed to fetch'), /Sem internet/)
+  })
+})

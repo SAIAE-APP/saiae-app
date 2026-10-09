@@ -4,11 +4,19 @@ import { useAuth } from '../hooks/useAuth'
 import { useBarracasDoUsuario } from '../hooks/useBarracasDoUsuario'
 import { Button } from '../components/ui/Button'
 import { onboardingJaVisto } from '../lib/onboardingStorage'
+import { onboardingConfigHabilitado } from '../lib/onboardingConfig'
+import { useOnboardingPendente } from '../hooks/useOnboardingPendente'
 
 export function Dispatcher() {
   const navigate = useNavigate()
   const { usuario, carregando: carregandoAuth, sair } = useAuth()
   const { barracas, carregando: carregandoBarracas, erro } = useBarracasDoUsuario(usuario)
+  // Assistente de configuração: só conta nova ou barraca própria com o assistente por concluir, e só com a flag.
+  const { pendente: onboardingPendente, carregando: carregandoOnboarding } = useOnboardingPendente(
+    usuario,
+    barracas,
+    onboardingConfigHabilitado(import.meta.env.VITE_ONBOARDING_CONFIG),
+  )
 
   useEffect(() => {
     if (carregandoAuth) return
@@ -23,6 +31,12 @@ export function Dispatcher() {
 
     if (carregandoBarracas) return
     if (erro) return
+    if (carregandoOnboarding) return
+
+    if (onboardingPendente) {
+      navigate('/configurar', { replace: true })
+      return
+    }
 
     if (barracas.length === 1) {
       navigate(`/${barracas[0].barraca.slug}`, { replace: true })
@@ -32,9 +46,9 @@ export function Dispatcher() {
     // 0 barracas cai aqui também — SelecionarBarraca mostra o convite pra
     // criar a primeira, em vez de um beco sem saída.
     navigate('/selecionar-barraca', { replace: true })
-  }, [usuario, carregandoAuth, barracas, carregandoBarracas, erro, navigate])
+  }, [usuario, carregandoAuth, barracas, carregandoBarracas, erro, navigate, onboardingPendente, carregandoOnboarding])
 
-  if (carregandoAuth || (usuario && carregandoBarracas)) {
+  if (carregandoAuth || (usuario && (carregandoBarracas || carregandoOnboarding))) {
     return (
       <div className="flex min-h-dvh items-center justify-center bg-mesa-bg-base">
         <p className="text-sm text-mesa-text-secondary">Carregando...</p>

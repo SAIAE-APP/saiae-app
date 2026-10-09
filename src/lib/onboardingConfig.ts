@@ -272,3 +272,38 @@ export function mostrarChecklist(porcentagem: number, ocultoAte: string | null |
   if (porcentagem >= 100) return false
   return !(ocultoAte && Date.parse(ocultoAte) > agora)
 }
+
+// ---------------------------------------------------------------- Fase 1 do assistente (PR 4)
+/** Flag de front: sem VITE_ONBOARDING_CONFIG=1 o fluxo atual (SelecionarBarraca) segue intacto. */
+export function onboardingConfigHabilitado(valor: unknown): boolean {
+  return valor === '1'
+}
+
+/** Passos já implementados na Fase 1 (os opcionais 4, 5 e 9 chegam no PR 6). */
+export const ORDEM_FASE_1: readonly number[] = [1, 2, 3, 6, 7, 8, 10]
+
+/** Próximo passo da ordem depois do último concluído; ao fim, o último (a tela final). */
+export function proximoPassoEm(ordem: readonly number[], etapaConcluida: number): number {
+  const seguinte = ordem.find((n) => n > etapaConcluida)
+  return seguinte ?? ordem[ordem.length - 1]
+}
+
+/** Posição (1-based) do passo na barra de progresso. */
+export function posicaoNaOrdem(ordem: readonly number[], numero: number): number {
+  const i = ordem.indexOf(numero)
+  return i < 0 ? 1 : i + 1
+}
+
+/** Erros das RPCs do assistente em frase simples (nunca texto técnico do banco). */
+export function mensagemErroOnboarding(mensagem: string | null | undefined): string {
+  const m = String(mensagem ?? '')
+  if (/horario_vazio/.test(m)) return 'Marque pelo menos um dia em que você abre.'
+  if (/horarios_invalidos/.test(m)) return 'Confira os horários. Cada dia aberto precisa de hora de abrir e de fechar.'
+  if (/metodos_invalidos/.test(m)) return 'Escolha pelo menos uma forma de pagamento.'
+  if (/modos_invalidos/.test(m)) return 'Escolha pelo menos um jeito de atender.'
+  if (/obrigatorios_pendentes/.test(m)) return 'Faltam passos obrigatórios (horário, pagamento ou atendimento).'
+  if (/já está em uso|ja esta em uso/i.test(m)) return 'Esse endereço já está em uso. Escolha outro.'
+  if (/plano Essencial/i.test(m)) return 'O plano Essencial permite só 1 barraca.'
+  if (/failed to fetch|network|load failed/i.test(m)) return 'Sem internet. Tente de novo.'
+  return 'Não foi possível salvar agora. Tente de novo.'
+}
