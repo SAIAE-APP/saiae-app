@@ -1,5 +1,7 @@
 // Assistente de configuração inicial (PR 2): lógica PURA, sem React, Supabase nem Capacitor — testável no Node.
 // Spec: docs/superpowers/specs/2026-10-08-onboarding-configuracao-design.md
+import { ROTULO_MODO } from './atendimento.ts'
+import { formatarPrecoBR } from './preco.ts'
 
 // ---------------------------------------------------------------- slug do cardápio
 /** Slugs que colidem com rotas do app. TEM que ser igual a `slug_reservado()` da migration 20261020100000
@@ -375,4 +377,80 @@ export function destinoDoItemChecklist(chave: string): 'conta' | 'cardapio' {
     default:
       return 'conta' // pagamento, cnpj (Fiscal), pix_online, logo (Identidade)
   }
+}
+
+// ---------------------------------------------------------------- trava do assistente e resumo final
+/** Sem barraca ainda, retoma depois do último passo respondido: categoria => passo 3; só origem => passo 2; nada => 1. */
+export function passoInicialSemBarraca(perfil: { origem: string | null; categoria: string | null }): number {
+  if (perfil.categoria) return 3
+  if (perfil.origem) return 2
+  return 1
+}
+
+export type BarracaParaGuarda = { barraca_id: string; papel: string; slug: string }
+
+/**
+ * Trava real do assistente (atrás de VITE_ONBOARDING_CONFIG): o dono de uma barraca com o assistente por concluir só
+ * usa o sistema depois da tela final. `escopo: 'slug'` guarda qualquer URL /:slug/... daquela barraca; `'lista'` guarda
+ * a tela de escolher/criar barraca (conta sem barraca ou com barraca pendente). Funcionário e barraca concluída
+ * (inclusive toda barraca antiga) nunca são travados. `pendentesIds` já vem sem erro de leitura (falha = vazio).
+ */
+export function precisaVoltarAoAssistente(p: {
+  flagLigada: boolean
+  escopo: 'slug' | 'lista'
+  slug?: string
+  barracas: BarracaParaGuarda[]
+  pendentesIds: readonly string[]
+}): boolean {
+  if (!p.flagLigada) return false
+  if (p.escopo === 'lista') return p.barracas.length === 0 || p.pendentesIds.length > 0
+  const b = p.barracas.find((x) => x.slug === p.slug)
+  return !!b && b.papel === 'dono' && p.pendentesIds.includes(b.barraca_id)
+}
+
+const ROTULO_METODO: Record<string, string> = { dinheiro: 'Dinheiro', debito: 'Débito', credito: 'Crédito', pix: 'Pix' }
+
+/** O que o dono informou, em linhas curtas, para a tela "Tudo pronto". Só mostra o que existe. */
+export function resumoDoAssistente(
+  b: {
+    nome: string
+    modos_atendimento?: string[] | null
+    metodos_pagamento_ativos?: string[] | null
+    endereco_rua?: string | null
+    endereco_numero?: string | null
+    endereco_bairro?: string | null
+    endereco_cidade?: string | null
+    endereco_uf?: string | null
+    cnpj?: string | null
+    sem_cnpj?: boolean
+    taxa_entrega_habilitada?: boolean
+    taxa_entrega_centavos?: number
+    kit_aplicado?: string | null
+  },
+  semana: HorarioDia[],
+): { rotulo: string; valor: string }[] {
+  const linhas: { rotulo: string; valor: string }[] = []
+  const abertos = semana.filter((h) => h.aberto)
+  if (abertos.length > 0) {
+    const igual = abertos.every((h) => h.abre === abertos[0].abre && h.fecha === abertos[0].fecha)
+    linhas.push({
+      rotulo: 'Horário',
+      valor: `${abertos.length} ${abertos.length === 1 ? 'dia' : 'dias'} por semana${igual ? `, das ${abertos[0].abre} às ${abertos[0].fecha}` : ''}`,
+    })
+  }
+  const metodos = (b.metodos_pagamento_ativos ?? []).map((m) => ROTULO_METODO[m] ?? m)
+  if (metodos.length > 0) linhas.push({ rotulo: 'Pagamento', valor: metodos.join(', ') })
+  const modos = (b.modos_atendimento ?? []).map((m) => ROTULO_MODO[m as keyof typeof ROTULO_MODO] ?? m)
+  if (modos.length > 0) linhas.push({ rotulo: 'Atendimento', valor: modos.join(', ') })
+  if ((b.modos_atendimento ?? []).includes('entrega') && b.taxa_entrega_habilitada && (b.taxa_entrega_centavos ?? 0) > 0) {
+    linhas.push({ rotulo: 'Taxa de entrega', valor: formatarPrecoBR(b.taxa_entrega_centavos ?? 0) })
+  }
+  const rua = b.endereco_rua && b.endereco_numero ? `${b.endereco_rua}, ${b.endereco_numero}` : b.endereco_rua
+  const cidade = b.endereco_cidade && b.endereco_uf ? `${b.endereco_cidade}/${b.endereco_uf}` : b.endereco_cidade
+  const endereco = [rua, b.endereco_bairro, cidade].filter(Boolean).join(' · ')
+  if (endereco) linhas.push({ rotulo: 'Endereço', valor: endereco })
+  if (b.cnpj) linhas.push({ rotulo: 'CNPJ', valor: formatarCnpjDigitando(b.cnpj) })
+  else if (b.sem_cnpj) linhas.push({ rotulo: 'CNPJ', valor: 'Ainda não tenho' })
+  if (b.kit_aplicado) linhas.push({ rotulo: 'Cardápio de exemplo', valor: 'montado; falta preencher os preços' })
+  return linhas
 }

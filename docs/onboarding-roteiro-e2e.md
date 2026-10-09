@@ -53,6 +53,27 @@ Conta nova `onb-3@...`.
 | 3.2 | Entre de novo com a mesma conta. | Volta ao assistente, no passo certo (5), e não vai para o Hub nem para "Vamos criar sua barraca". | ☐ |
 | 3.3 | Abandone nos passos 6 a 8 e volte. | Enquanto os 4 obrigatórios não estiverem completos, sempre retoma no assistente. | ☐ |
 
+## 3b. Trava: o sistema só abre depois do assistente
+Com `VITE_ONBOARDING_CONFIG=1`. O dono de uma barraca com o assistente por concluir **não consegue usar o sistema** até a tela final. Use uma conta nova (`onb-trava@...`) e um navegador com a barra de endereço à mostra.
+
+| # | Faça | Esperado | ☐ |
+|---|---|---|---|
+| 3b.1 | Crie a conta e entre (ou só entre, se a conta é nova). | Cai **direto** em "Passo 1 de N" (`/configurar`). Não passa por "Vamos criar sua barraca" nem pelo início. | ☐ |
+| 3b.2 | No passo 1, digite `/selecionar-barraca` na barra de endereço. | Volta para o assistente. | ☐ |
+| 3b.3 | Complete até o passo 3 (a barraca passa a existir). No passo 4, digite `/<seu-slug>` e depois `/<seu-slug>/lancar`, `/<seu-slug>/cozinha`, `/<seu-slug>/ajustes`, `/<seu-slug>/historico`. | Todas devolvem ao assistente (no passo em que você estava). | ☐ |
+| 3b.4 | Use o botão **Voltar** do navegador várias vezes. | Nunca chega a uma tela do sistema; fica no assistente (ou sai para o login/site). | ☐ |
+| 3b.5 | Abra a URL `/<seu-slug>/cardapio` (cardápio público). | Abre normalmente: o cardápio público não é travado. | ☐ |
+| 3b.6 | Nos passos obrigatórios (3, 6, 7, 8), procure um jeito de pular. | Não existe "Fazer depois"; o botão fica desabilitado até preencher. Os opcionais (1, 2, 4, 5, 9) têm "Fazer depois". | ☐ |
+| 3b.7 | Pule todos os opcionais e chegue à tela final. | A tela final aparece ("Preparando a cozinha…" e depois "Tudo pronto") e **só então** o sistema é liberado. | ☐ |
+| 3b.8 | Na tela "Tudo pronto". | Mostra "O que ficou configurado" com horário, pagamento, atendimento e, se informados, taxa de entrega, endereço, CNPJ e o cardápio de exemplo. Os valores batem com o que você digitou. | ☐ |
+| 3b.9 | Toque "Ir para o início". | Abre o início da barraca com tudo já aplicado (confira em Ajustes: nome/link, horário, pagamento, modos, endereço, CNPJ, taxa). Daí em diante as URLs `/<slug>/...` abrem normais. | ☐ |
+| 3b.10 | Entre com um **funcionário** de uma barraca com o assistente pendente (a equipe cria no banco). | O funcionário usa o sistema normalmente (a trava é só do dono). | ☐ |
+| 3b.11 | Entre com a barraca **antiga** (a de seed) e digite várias URLs `/<slug>/...`. | Nunca é levada ao assistente. | ☐ |
+| 3b.12 | Com o assistente pendente, use "Sair da conta" e entre de novo. | Sai e entra sem laço; volta ao assistente no passo em que parou. | ☐ |
+| 3b.13 | Feche o app nos passos 1 e 2 (sem barraca) e abra de novo. | Volta ao passo seguinte ao último que você respondeu (categoria respondida => passo 3). | ☐ |
+| 3b.14 | Simule falha ao concluir na tela final (a equipe derruba a rede ou remove um obrigatório no banco). | Mostra "Tentar de novo" e "Revisar os passos"; **não** mostra "Ir para o início" (o sistema não abre sem concluir). | ☐ |
+| 3b.15 | Com a flag **desligada**. | Nenhuma trava: o fluxo antigo funciona como sempre. | ☐ |
+
 ## 4. Opcionais, "fazer depois" e checklist no Hub
 Conta nova `onb-4@...`: pule 1, 2, 4, 5 (e 9 se houver) com "Fazer depois"; preencha só 3, 6, 7 e 8.
 
