@@ -48,7 +48,76 @@ Preços reais (o app não sabe o preço de ninguém); fotos; formas de pagamento
 | Outra | Quermesse · Feira |
 | Oriental, Bebidas, Churrasco | nenhum sugerido (só "Ver outros modelos" e "Começar do zero") |
 
+## Biblioteca de modelos de opções
+Pedido do João: variações e adicionais devem cobrir **todos os tipos de foodservice**, não só os 8 kits. Os kits passam a ser **receitas que apontam para modelos da biblioteca** (`{ modelo, ajustes }`), e o dono usa os mesmos modelos sozinho em **Ajustes › Opções › "Usar modelo"**.
+
+**Onde vive.** `src/lib/modelosDeOpcoes.ts`, no app (K4). Expande `MODELOS_DE_GRUPO` de `opcoesCadastro.ts`; os ids `tamanho` e `adicionais` e o comportamento atual continuam (a lista antiga é reexportada). Cada modelo é um `RascunhoGrupo` mais metadados: `id`, `titulo`, `descricao`, `negocios[]` (ids dos kits/categorias a que pertence) e `precisaPreco` por opção.
+
+**Como o dono usa.**
+- **Ajustes › Opções › "Usar modelo":** abre a lista com os modelos do **tipo de negócio da barraca** primeiro (`categoria_negocio` ou `kit_aplicado`) e "Ver todos" com busca por nome. Tocar abre o **formulário de grupo já preenchido** (comportamento de hoje); nada é gravado até ele salvar, e opções (P) vêm sem preço, como os modelos atuais. Depois ele escolhe a quais itens ligar.
+- **Kit no onboarding:** o servidor recebe o mesmo JSON de sempre (K4); a montagem a partir dos modelos acontece no app.
+- Modelos não criam nada sozinhos e nunca alteram grupo existente (sempre grupo novo; o nome repetido ganha " (2)").
+
+**Convenções.** *Variação* = obrigatória, escolha única (min = max = 1), preço da opção **substitui** o do item. *Adicional* = preço soma. Obrigatório = `min 1`. "máx N" = limite de escolhas. **(P)** = opção com preço a preencher (nasce inativa no kit, K1). Sem (P) = preço 0 por natureza. Negócios: FE feira, QU quermesse, LA lanchonete, AÇ açaí, HB hamburgueria, PZ pizzaria, PA pastelaria, PF PF/marmita; mais categorias sem kit: OR oriental, BE bebidas/cafeteria, CH churrasco, DO doces e bolos.
+
+### Variações (tamanho e porte)
+| Id | Nome do grupo | Opções padrão | Negócios |
+|---|---|---|---|
+| `tamanho` (existe) | Tamanho | Pequeno, Médio, Grande (P) | todos |
+| `tamanho_pizza` | Tamanho | Broto, Média, Grande, Gigante (P) | PZ |
+| `tamanho_ml` | Tamanho | 300 ml, 500 ml, 700 ml (P) | AÇ, BE, LA |
+| `tamanho_marmita` | Tamanho | P, M, G (P) | PF |
+| `tamanho_pastel` | Tamanho | Comum, Gigante (P) | PA, FE, QU |
+| `carnes` | Carnes | Simples, Duplo, Triplo (P) | HB, LA |
+| `porcao` | Porção | Meia, Inteira (P) | LA, HB, CH |
+| `dose_copo` | Copo | Pequeno 300 ml, Grande 500 ml, Litro (P) | BE, FE, QU |
+
+### Adicionais de escolha obrigatória (min 1, máx 1, preço 0)
+| Id | Nome do grupo | Opções padrão | Negócios |
+|---|---|---|---|
+| `ponto_carne` | Ponto da carne | Mal passado, Ao ponto, Bem passado | HB, LA, CH |
+| `tipo_pao` | Tipo de pão | Tradicional, Australiano, Sem glúten (P) | HB, LA |
+| `mistura_pf` | Mistura | Frango grelhado, Carne de panela, Peixe frito | PF |
+| `bebida_combo` | Bebida do combo | Refrigerante, Suco, Água | HB, LA, PF, PA |
+| `acompanhamento_combo` | Acompanhamento do combo | Batata frita, Salada, Arroz | HB, LA |
+| `temperatura` | Temperatura | Gelado, Natural | BE, FE, QU, AÇ |
+| `sabor_suco` | Sabor do suco | Laranja, Limão, Maracujá, Abacaxi | BE, PF, LA, FE |
+| `sabor_doce` | Sabor | Chocolate, Cenoura, Fubá | DO, FE, QU |
+| `leite` | Leite | Integral, Desnatado, Vegetal (P) | BE |
+
+### Adicionais opcionais
+| Id | Nome do grupo | Regra | Opções padrão | Negócios |
+|---|---|---|---|---|
+| `adicionais` (existe) | Adicionais | sem limite | Queijo extra, Bacon, Ovo (P) | todos |
+| `adicionais_lanche` | Adicionais | sem limite | Bacon, Cheddar, Ovo, Cebola caramelizada (P) | HB, LA |
+| `borda` | Borda | máx 1 | Catupiry, Cheddar, Chocolate (P) | PZ |
+| `molhos` | Molhos | máx 3 | Ketchup, Maionese, Mostarda, Barbecue, Molho verde | LA, HB, PA, FE, QU |
+| `acompanhamentos_pf` | Acompanhamentos | máx 4 | Arroz, Feijão, Farofa, Salada | PF, CH |
+| `bebida_opcional` | Bebida | máx 1 | Suco, Refrigerante (P) | PF, LA, PA |
+| `acompanhamentos_acai` | Acompanhamentos | máx 3 | Leite em pó, Granola, Banana, Paçoca | AÇ |
+| `coberturas_acai` | Coberturas | máx 2 | Leite condensado, Calda de chocolate, Calda de morango | AÇ |
+| `extras_acai` | Extras | sem limite | Nutella, Morango, Ovomaltine (P) | AÇ |
+| `preferencias_bebida` | Preferências | máx 2 | Sem gelo, Pouco gelo, Sem açúcar | BE, FE, QU, AÇ |
+| `extras_oriental` | Extras | sem limite | Shoyu extra, Wasabi, Gengibre, Hashi | OR |
+| `acompanhamentos_churrasco` | Acompanhamentos | máx 3 | Vinagrete, Farofa, Pão de alho | CH |
+| `embalagem_presente` | Embalagem | máx 1 | Caixa de presente (P), Sacola de papel (P) | DO |
+
+**Contagem:** 8 variações e 22 adicionais, 30 modelos. Todo modelo passa por `validarRascunho`; nomes e opções até 60 letras; opções do kit que são (P) nascem inativas (K1).
+
+### O que a biblioteca **não** resolve com o modelo atual (fase seguinte)
+| Lacuna | Por quê não dá | O que o modelo faz hoje |
+|---|---|---|
+| **Meio a meio / vários sabores com preço pelo maior** (pizza, pastel misto) (L1) | O preço do adicional soma; não existe "pegar o maior" | Nada. Não há modelo "Sabores de pizza": um grupo que soma seria enganoso |
+| **Quantidade por opção** ("2 bacons", "3 pastéis do mesmo sabor") (L2) | O snapshot reserva o campo, fixo em 1 | Repetir a opção com outro nome ("Bacon extra") |
+| **Opções que mudam com o tamanho** (nº de sabores, preço da borda ou do extra por tamanho) (L3) | Preço do adicional é único e só há 1 variação por item | Itens duplicados por tamanho |
+| **"Primeiros N grátis, o resto pago"** no mesmo grupo | Grupo tem um só preço por opção | Dois grupos (Acompanhamentos grátis + Extras), como no açaí |
+| **Mínimo maior que 1 no formulário** ("escolha 3 sabores", combo de 3) | O banco aceita `min` até 20, mas `RascunhoGrupo` só tem "obrigatório" (min 1) | Ajuste **pequeno** (P): campo "mínimo" no formulário. Modelo `sabores_combo` (min = máx = N, sem repetir sabor) entra junto desse ajuste |
+| **Estoque por opção / combo com baixa dos componentes** (L7) | Estoque é por item | Escolha de bebida sem baixa |
+| **Preço de adicional por tamanho** (L3) | Idem | Não há |
+| **Remover ingrediente com desconto** | Não existe opção negativa | Observação por item, sem desconto |
+
 ## Os 8 kits
+Os kits abaixo são combinações dos modelos acima (mesmos nomes e opções; onde o kit renomeia ou reduz opções, é um `ajuste` do modelo). Onde um kit usa um grupo que a biblioteca nomeia diferente, vale a biblioteca.
 Convenções: **(P)** = nasce inativo com preço 0, o dono completa. Opção sem (P) nasce ativa com preço 0. "Obrigatório" = `min = 1`. Nenhum item recebe descrição nem foto. Todo kit é validado pelo mesmo `validarRascunho` do cadastro de opções.
 
 Grupos reaproveitam os modelos existentes: `Tamanho` = `MODELOS_DE_GRUPO[tamanho]` (com as opções trocadas quando indicado) e `Adicionais` = `MODELOS_DE_GRUPO[adicionais]`.
@@ -153,7 +222,7 @@ Totais por kit (todos abaixo dos tetos da seção seguinte): até 4 categorias, 
 Lista simples por categoria. Cada item: nome (editável), campo de preço (teclado numérico, `filtrarEntradaPreco`), caixa "Usar este item". Dentro, as opções que precisam de preço (variação e extras), cada uma com o seu campo. Salvar: um item marcado e com preço > 0 fica `ativo = true`; uma variação só fica ativa com preço > 0; item marcado **sem** preço mostra o erro na linha e não salva essa linha. Item de variação cujas opções continuam todas inativas permanece não pedível (e a tela diz isso). Usa as escritas que o cadastro já tem (update em `itens`, `opcoes`); não precisa de RPC nova. Offline: o kit exige internet (é ação de gestão): "Sem internet" e tenta de novo.
 
 ## Riscos
-- **R1 (Opções ligadas).** `docs/opcoes.md` manda ligar `opcoes_habilitado` só com a Cozinha mostrando as opções (SAI-010b, já na main) e com os aparelhos no build novo. Conta nova nasce no app web/PWA atual, então o risco recai em quem opera por um **Android antigo (1.9)**: **a confirmar** se o 1.9 lê opções; se não ler, o kit só liga `opcoes_habilitado` com uma verificação de versão ou o dono é avisado. Decisão antes do PR 3.
+- **R1 (Opções ligadas).** `docs/opcoes.md` manda ligar `opcoes_habilitado` só com a Cozinha mostrando as opções (SAI-010b, já na main) e com os aparelhos no build novo. **Decidido pelo João (2026-10-09):** vale só no app novo; ele vai gerar a versão nativa nova do Android, e o 1.9 não é alvo.
 - **R2 (Item sem preço ativo).** Coberto por K1 (nasce inativo) e pelo teste que tenta pedir cada item/opção do kit recém-aplicado pelo `resolver_carrinho` e espera recusa.
 - **R3 (Expectativa).** O kit não resolve pizza meio a meio, açaí por peso, etc. Mitigação: o aviso de uma linha em cada kit, no chip de escolha.
 - **R4 (Editar o catálogo depois).** Mudar texto de kit só vale para contas novas; quem já aplicou não muda (de propósito).
@@ -185,15 +254,16 @@ Lista simples por categoria. Cada item: nome (editável), campo de preço (tecla
 ## Plano de PRs (sempre staging, atrás de flag, sem mesclar)
 Flag nova `VITE_ONBOARDING_KITS=1` (além da `VITE_ONBOARDING_CONFIG`): sem ela o passo 2 e a tela final ficam como hoje. Cada PR pequeno, base `main`:
 1. **PR 1: banco (aditivo).** Migration com as colunas, o backfill de `kit_elegivel`, `onboarding_aplicar_kit`, o parâmetro `p_kit` em `onboarding_salvar_origem` e as chaves novas de `onboarding_progresso`. Teste estático da migration e `tests/kitsIniciais.staging.mjs`. **Antes do app.**
-2. **PR 2: lógica pura.** `src/lib/kitsIniciais.ts` (os 8 kits, categoria → kits, montagem do JSON a partir dos modelos de grupo, horário/modos sugeridos), `tarde_noite` em `MODELOS_HORARIO`, itens novos do checklist em `calcularChecklist`, testes de unidade. Sem UI.
-3. **PR 3: assistente.** Faixa de kit no passo 2, aplicação ao fim do passo 3 (com retomada), sugestões nos passos 6 e 8, botão da tela final. **Decidir R1 antes.**
-4. **PR 4: "Revisar cardápio de exemplo" e Hub.** A tela de preços, o item do checklist e a oferta "Montar um cardápio de exemplo".
-5. **PR 5: documentação.** Bloco "Kits" no roteiro E2E, `CLAUDE.md` e uma linha em `docs/opcoes.md`.
+2. **PR 2: lógica pura.** `src/lib/modelosDeOpcoes.ts` (os 30 modelos, `MODELOS_DE_GRUPO` reexportado) e `src/lib/kitsIniciais.ts` (os 8 kits, categoria → kits, montagem do JSON a partir dos modelos de grupo, horário/modos sugeridos), `tarde_noite` em `MODELOS_HORARIO`, itens novos do checklist em `calcularChecklist`, testes de unidade. Sem UI.
+3. **PR 3: Ajustes › Opções › "Usar modelo".** Lista os modelos do tipo de negócio da barraca primeiro, "Ver todos" com busca, abre o formulário pré-preenchido. Inclui o campo "mínimo" no formulário de grupo (e o modelo `sabores_combo`). Atrás de `VITE_ONBOARDING_KITS`.
+4. **PR 4: assistente.** Faixa de kit no passo 2, aplicação ao fim do passo 3 (com retomada), sugestões nos passos 6 e 8, botão da tela final.
+5. **PR 5: "Revisar cardápio de exemplo" e Hub.** A tela de preços, o item do checklist e a oferta "Montar um cardápio de exemplo".
+6. **PR 6: documentação.** Bloco "Kits" no roteiro E2E, `CLAUDE.md` e uma linha em `docs/opcoes.md`.
 Ordem de deploy: migration (staging, depois produção só com ordem do João e fora do horário de uso) → app com as duas flags desligadas → ligar no staging e rodar o roteiro → só então produção, primeiro numa conta de teste.
 
-## Decisões abertas para o João
-1. K1: itens e variações **inativos** até o dono preencher (recomendado) ou ativos com aviso (arriscado: cobraria R$ 0,00)?
-2. K3: horário e modos como **sugestão** nos passos 6 e 8 (recomendado) ou gravados direto pelo kit?
-3. Kit sem sugestão para Oriental, Bebidas e Churrasco: aceitar vazio por enquanto?
-4. Quermesse e Feira devem entrar já, mesmo sem ficha/evento (L9, L10)? O aviso deixa claro.
-5. R1: o Android 1.9 lê opções? Se não, liberar o kit só para web/PWA no começo?
+## Decisões do João (aprovadas em 2026-10-09)
+1. **K1 aprovada:** itens e variações nascem **inativos** até o dono pôr o preço.
+2. **K3 aprovada:** horário e modos são **sugestão** nos passos 6 e 8, não gravados pelo kit.
+3. **K5 aprovada:** sem passo novo; kit escolhido no passo 2 e aplicado ao fim do passo 3.
+4. **R1 resolvida:** o João vai gerar uma versão nativa nova do Android. Os kits (e as opções) **só valem no app novo**; o Android 1.9 não é alvo. Registrar no roteiro e no `CLAUDE.md` (PR 6) e conferir o número da versão antes de ligar `VITE_ONBOARDING_KITS` em produção.
+5. Ainda aberto (sem bloqueio): Oriental, Bebidas e Churrasco ficam sem kit sugerido por enquanto; Quermesse e Feira entram com o aviso de que ficha e evento não existem.
