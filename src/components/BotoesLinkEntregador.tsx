@@ -1,5 +1,6 @@
 import { useState } from 'react'
 import { linkDoEntregador, mensagemLinkEntregador, whatsappLinkEntregador } from '../lib/entregador'
+import { abrirLinkExterno } from '../lib/abrirExternoApp'
 import { Button } from './ui/Button'
 import { Icone } from './ui/Icone'
 
@@ -23,7 +24,7 @@ export function BotoesLinkEntregador({
 
   function enviar() {
     setAviso(false)
-    window.open(whatsappLinkEntregador(senha, token as string), '_blank', 'noopener')
+    abrirLinkExterno(whatsappLinkEntregador(senha, token as string))
     window.setTimeout(() => {
       if (!document.hidden) setAviso(true)
     }, 1500)
