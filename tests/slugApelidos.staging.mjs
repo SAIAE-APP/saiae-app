@@ -106,21 +106,25 @@ try {
   confere('voltar ao endereço antigo da própria loja é permitido', r.estado === 'ok' && r.slug === antigoA, JSON.stringify(r))
   confere('o novo vira apelido do antigo', (await slugAtual(novoA)) === antigoA)
 
-  // 7) function pública com o endereço ANTIGO (cupom-validar: antes dava 404 "Loja não encontrada")
+  // 7) function pública com o endereço ANTIGO. O corpo precisa ser VÁLIDO (com ao menos 1 linha de item), senão a função
+  // devolve 400 antes de resolver o slug e o teste não provaria nada.
   await liberarTroca(lojaA.id)
   await trocar(A, lojaA.id, novoA)
-  const resp = await fetch(`${url}/functions/v1/cupom-validar`, {
-    method: 'POST',
-    headers: { 'Content-Type': 'application/json', apikey: anon, Authorization: `Bearer ${anon}` },
-    body: JSON.stringify({ barraca_slug: antigoA, codigo: 'NAOEXISTE', itens: [] }),
-  })
-  confere('cupom-validar aceita o endereço antigo (não responde 404)', resp.status !== 404, `status ${resp.status}`)
-  const respInexistente = await fetch(`${url}/functions/v1/cupom-validar`, {
-    method: 'POST',
-    headers: { 'Content-Type': 'application/json', apikey: anon, Authorization: `Bearer ${anon}` },
-    body: JSON.stringify({ barraca_slug: slug('inexistente'), codigo: 'X', itens: [] }),
-  })
-  confere('cupom-validar com endereço inexistente continua 404', respInexistente.status === 404, `status ${respInexistente.status}`)
+  const chamarCupom = async (barracaSlug) => {
+    const r = await fetch(`${url}/functions/v1/cupom-validar`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json', apikey: anon, Authorization: `Bearer ${anon}` },
+      body: JSON.stringify({ barraca_slug: barracaSlug, codigo: 'NAOEXISTE', itens: [{ item_id: randomUUID(), quantidade: 1 }] }),
+    })
+    await r.text()
+    return r.status
+  }
+  const statusNovo = await chamarCupom(novoA)
+  const statusAntigo = await chamarCupom(antigoA)
+  const statusInexistente = await chamarCupom(slug('inexistente'))
+  confere('cupom-validar acha a loja pelo endereço NOVO (não 404)', statusNovo !== 404, `status ${statusNovo}`)
+  confere('cupom-validar acha a loja pelo endereço ANTIGO, igual ao novo', statusAntigo !== 404 && statusAntigo === statusNovo, `antigo ${statusAntigo} x novo ${statusNovo}`)
+  confere('cupom-validar com endereço inexistente continua 404', statusInexistente === 404, `status ${statusInexistente}`)
 } catch (e) {
   falhas++
   console.error(`ERRO inesperado: ${e instanceof Error ? e.message : String(e)}`)
