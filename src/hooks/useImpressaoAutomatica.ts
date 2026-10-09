@@ -100,7 +100,7 @@ function dadosEntregaDoPedido(pedido: Pedido): DadosEntrega | null {
  * cardápio digital. */
 export function dadosComandaDoPedido(
   pedido: PedidoComItens,
-  barraca: Pick<Barraca, 'nome' | 'cnpj' | 'procon_endereco'>,
+  barraca: Pick<Barraca, 'nome' | 'cnpj' | 'procon_endereco' | 'pagamento_depois_habilitado'>,
 ): DadosComanda {
   return {
     nomeBarraca: barraca.nome,
@@ -114,6 +114,7 @@ export function dadosComandaDoPedido(
     tipo: tipoDoPedido(pedido),
     observacao: pedido.observacao,
     metodoPagamento: pedido.metodo_pagamento,
+    pagarDepois: barraca.pagamento_depois_habilitado === true,
     entrega: dadosEntregaDoPedido(pedido),
     taxaEntregaCentavos: pedido.taxa_entrega_centavos ?? 0,
     itens: pedido.itens_do_pedido
@@ -266,6 +267,7 @@ export function useImpressaoAutomatica(barraca: Barraca | null) {
         tipo: (p.p_tipo_atendimento as TipoAtendimento | null | undefined) ?? null,
         observacao: (p.p_observacao as string | null) ?? null,
         metodoPagamento: (p.p_metodo_pagamento as string | null) ?? null,
+        pagarDepois: barracaRef.current?.pagamento_depois_habilitado === true,
         entrega: (p.p_entrega as DadosEntrega | null | undefined) ?? null,
         taxaEntregaCentavos: (p.p_taxa_entrega_centavos as number | undefined) ?? 0,
         itens: itens
@@ -343,7 +345,7 @@ export function useImpressaoAutomatica(barraca: Barraca | null) {
         return
       }
       const pedido = data as PedidoComItens
-      const dados = dadosComandaDoPedido(pedido, cfg)
+      const dados = dadosComandaDoPedido(pedido, { ...cfg, pagamento_depois_habilitado: barracaRef.current?.pagamento_depois_habilitado })
       if (dados.itens.length === 0) return
 
       toastRef.current(`Imprimindo comanda ${pedido.senha}...`, { variante: 'aviso', icone: 'print', duracaoMs: 2500 })

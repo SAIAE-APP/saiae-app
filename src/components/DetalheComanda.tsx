@@ -7,6 +7,7 @@ import { Icone } from './ui/Icone'
 import { textoOpcoes } from '../lib/opcoes'
 import { textoCupomDoPedido } from '../lib/descontosCupom'
 import { iconeAtendimento, nomeDoCliente, rotuloAtendimento } from '../lib/atendimento'
+import { ROTULO_A_RECEBER, pagarDepoisLigado, pedidoAReceber } from '../lib/pagarDepois'
 import type { Barraca, ItemDoPedido, PedidoComItens } from '../types/database'
 
 const DURACAO_LONGO_TOQUE_MS = 1000
@@ -271,6 +272,9 @@ export function DetalheComanda({
           <div className="flex items-center gap-1.5 text-xs font-bold uppercase tracking-wide text-mesa-neutral-400">
             <Icone nome={iconeAtendimento(pedido)} size={14} />
             {rotuloAtendimento(pedido)}
+            {pedidoAReceber(pedido, pagarDepoisLigado(barraca)) && (
+              <span className="ml-1 rounded-mesa-balao bg-mesa-warning-500/20 px-2 py-0.5 text-mesa-warning-500">{ROTULO_A_RECEBER}</span>
+            )}
           </div>
           {nomeDoCliente(pedido) && (
             <p className="mt-1 truncate text-sm font-semibold text-mesa-neutral-200">

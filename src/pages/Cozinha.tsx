@@ -12,6 +12,7 @@ import { tocarSomPedidoCritico, tocarSomPedidoNaCozinha } from '../lib/sons'
 import { BotaoAvisarCliente } from '../components/BotaoAvisarCliente'
 import { BotoesLinkEntregador } from '../components/BotoesLinkEntregador'
 import { Badge } from '../components/ui/Badge'
+import { ROTULO_A_RECEBER, pagarDepoisLigado, pedidoAReceber } from '../lib/pagarDepois'
 import { BotaoHome } from '../components/ui/BotaoHome'
 import { BottomSheet } from '../components/ui/BottomSheet'
 import { Button } from '../components/ui/Button'
@@ -238,6 +239,7 @@ function CardPedido({
             <Icone nome={iconeTipo} size={14} />
             {rotuloTipo}
           </Badge>
+          {pedidoAReceber(pedido, pagarDepoisLigado(barraca)) && <Badge variant="warning">{ROTULO_A_RECEBER}</Badge>}
           {coluna === 'a_fazer' && (
             <div className="ml-auto">
               <BotaoChecklist

@@ -18,6 +18,7 @@ import { faixaImpressao, tipoDoPedido } from './atendimento'
 import { formatarTelefoneBR, type DadosEntrega } from './entrega'
 import { formatarPrecoBR } from './preco'
 import { humanizarMetodo } from './metodoPagamento'
+import { linhaPagamentoAReceber } from './pagarDepois'
 import { AVISO_HOMOLOGACAO, ambienteDaNota, formatarCpf } from './fiscal'
 import { linhasRodapeProcon } from './rodapeProcon'
 import { semAcento } from './semAcento'
@@ -323,6 +324,8 @@ export type DadosComanda = {
   tipo?: TipoAtendimento | null
   observacao: string | null
   metodoPagamento?: string | null
+  /** Interruptor "Pagar depois" da barraca: com ele ligado, pedido na_entrega de Retirada/Entrega imprime "PAGAMENTO: A RECEBER". */
+  pagarDepois?: boolean
   /** Pedido de Entrega: nome, telefone e endereço abaixo da faixa. */
   entrega?: DadosEntrega | null
   /** Taxa cobrada, em linha separada do total (que já a inclui). */
@@ -435,7 +438,10 @@ export function montarComanda(dados: DadosComanda, largura: LarguraPapel): Uint8
     .size(1, 1)
     .bold(false)
 
-  if (dados.metodoPagamento) {
+  const aReceber = linhaPagamentoAReceber(dados.metodoPagamento, tipo, dados.pagarDepois === true)
+  if (aReceber) {
+    encoder = encoder.bold(true).line(aReceber).bold(false)
+  } else if (dados.metodoPagamento) {
     encoder = encoder.line(semAcento(`Pagamento: ${humanizarMetodo(dados.metodoPagamento)}`))
   }
 

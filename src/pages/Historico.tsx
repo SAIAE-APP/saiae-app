@@ -7,6 +7,7 @@ import { MOTIVOS_CANCELAMENTO } from '../lib/cancelamento'
 import { formatarPrecoBR } from '../lib/preco'
 import { ROTULO_MODO, nomeDoCliente, rotuloAtendimento, tipoDoPedido } from '../lib/atendimento'
 import { corMetodo, humanizarMetodo, METODOS_DISPONIVEIS } from '../lib/metodoPagamento'
+import { ROTULO_A_RECEBER, pagarDepoisLigado, pedidoAReceber } from '../lib/pagarDepois'
 import { hojeISO } from '../lib/datas'
 import { calcularIntervalosRelatorio, calcularTotalPedido, ehEntregaDireta } from '../lib/relatorio'
 import { useOcultarAoRolar } from '../hooks/useOcultarAoRolar'
@@ -362,6 +363,7 @@ function CardHistorico({
         >
           <RotuloMetodo chave={pedido.metodo_pagamento} />
         </span>
+        {pedidoAReceber(pedido, pagarDepoisLigado(barraca)) && <Badge variant="warning">{ROTULO_A_RECEBER}</Badge>}
       </div>
 
       {cancelado && (
