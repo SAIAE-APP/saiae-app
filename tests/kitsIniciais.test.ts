@@ -11,6 +11,8 @@ import {
   kitsRestantes,
   kitsSugeridos,
   mensagemDoEstadoDoKit,
+  negociosDaBarraca,
+  onboardingKitsHabilitado,
   precoPendente,
   sugestaoDoKit,
 } from '../src/lib/kitsIniciais.ts'
@@ -210,5 +212,30 @@ describe('apoio', () => {
     for (const e of ['ok', 'ja_aplicado', 'catalogo_nao_vazio', 'nao_elegivel', 'dados_invalidos', 'sem_acesso', 'qualquer']) {
       assert.ok(mensagemDoEstadoDoKit(e).length > 10 && !/rpc|sql|erro/i.test(mensagemDoEstadoDoKit(e)), e)
     }
+  })
+})
+
+describe('negócio da barraca (ordem dos modelos em Ajustes)', () => {
+  test('o kit aplicado vale mais que a categoria', () => {
+    assert.deepEqual(negociosDaBarraca('hamburgueria', 'pizza'), ['hamburgueria'])
+  })
+  test('sem kit, a categoria do onboarding indica o(s) negócio(s)', () => {
+    assert.deepEqual(negociosDaBarraca(null, 'lanches'), ['lanchonete', 'hamburgueria'])
+    assert.deepEqual(negociosDaBarraca(undefined, 'oriental'), ['oriental'])
+    assert.deepEqual(negociosDaBarraca(null, 'marmita'), ['pf'])
+  })
+  test('sem nada, nenhum negócio (a lista fica toda em "todos os modelos")', () => {
+    assert.deepEqual(negociosDaBarraca(null, null), [])
+    assert.deepEqual(negociosDaBarraca('nenhum', 'inexistente'), [])
+  })
+  test('toda categoria do passo 2 tem negócio conhecido pela biblioteca', () => {
+    for (const c of CATEGORIAS) assert.ok(negociosDaBarraca(null, c.chave).length >= 1, c.chave)
+  })
+})
+
+describe('interruptor dos kits', () => {
+  test('só o valor 1 liga', () => {
+    assert.equal(onboardingKitsHabilitado('1'), true)
+    for (const v of [undefined, '', '0', 'true', 1, null]) assert.equal(onboardingKitsHabilitado(v), false, String(v))
   })
 })
