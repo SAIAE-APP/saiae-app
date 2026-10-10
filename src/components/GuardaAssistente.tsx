@@ -4,6 +4,7 @@ import { useAuth } from '../hooks/useAuth'
 import { useBarracasDoUsuario } from '../hooks/useBarracasDoUsuario'
 import { useBarracasPendentes } from '../hooks/useBarracasPendentes'
 import { onboardingConfigHabilitado, precisaVoltarAoAssistente } from '../lib/onboardingConfig'
+import { assistenteSuspenso, registrarSalto } from '../lib/disjuntorAssistente'
 
 /**
  * Trava real do assistente de configuração (atrás de VITE_ONBOARDING_CONFIG): enquanto o dono não chegar à tela final,
@@ -34,5 +35,9 @@ export function GuardaAssistente({ escopo, children }: { escopo: 'slug' | 'lista
     barracas: barracas.map((b) => ({ barraca_id: b.barraca_id, papel: b.papel, slug: b.barraca.slug })),
     pendentesIds: pendentes,
   })
-  return voltar ? <Navigate to="/configurar" replace /> : <>{children}</>
+  if (voltar) {
+    registrarSalto()
+    if (!assistenteSuspenso()) return <Navigate to="/configurar" replace />
+  }
+  return <>{children}</>
 }

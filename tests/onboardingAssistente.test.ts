@@ -38,7 +38,7 @@ describe('nunca bloqueia quem já tem barraca', () => {
     assert.match(bloco.slice(0, 900), /catch \{\s+return \[\]/)
   })
   test('barraca antiga (backfill) que cai na página é mandada embora', () => {
-    assert.match(pagina, /if \(barracas\.length > 0\) \{\s+navigate\('\/', \{ replace: true \}\)/)
+    assert.match(pagina, /if \(barracas\.length > 0\) \{[\s\S]*?navigate\('\/', \{ replace: true \}\)/)
   })
 })
 

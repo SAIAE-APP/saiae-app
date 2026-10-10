@@ -1,3 +1,4 @@
+import { registrarSalto } from '../lib/disjuntorAssistente'
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { useNavigate } from 'react-router'
 import clsx from 'clsx'
@@ -883,6 +884,7 @@ export function Configurar() {
       if (cancelado) return
       if (pendentes.length === 0) {
         if (barracas.length > 0) {
+          registrarSalto()
           navigate('/', { replace: true })
           return
         }
