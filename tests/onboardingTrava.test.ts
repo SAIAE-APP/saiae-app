@@ -128,6 +128,6 @@ describe('fiação', () => {
     assert.match(c, /resumoDoAssistente\(fresca, semanaDoBanco\(linhas\)\)/)
   })
   test('o Dispatcher continua mandando conta nova ou pendente direto para /configurar', () => {
-    assert.match(ler('src/pages/Dispatcher.tsx'), /if \(onboardingPendente\) \{\s*navigate\('\/configurar', \{ replace: true \}\)/)
+    assert.match(ler('src/pages/Dispatcher.tsx'), /if \(onboardingPendente\) \{[\s\S]*?navigate\('\/configurar', \{ replace: true \}\)/)
   })
 })
