@@ -403,7 +403,9 @@ export function precisaVoltarAoAssistente(p: {
   pendentesIds: readonly string[]
 }): boolean {
   if (!p.flagLigada) return false
-  if (p.escopo === 'lista') return p.barracas.length === 0 || p.pendentesIds.length > 0
+  // Lista de barracas: só prende quem não tem nenhuma barraca pronta (conta nova ou TODAS as barracas ainda no assistente).
+  // Quem já tem uma barraca concluída (ou é funcionário em outra) segue usando o app; a barraca por concluir fica como retomável.
+  if (p.escopo === 'lista') return p.barracas.length === 0 || (p.pendentesIds.length > 0 && p.pendentesIds.length === p.barracas.length)
   const b = p.barracas.find((x) => x.slug === p.slug)
   return !!b && b.papel === 'dono' && p.pendentesIds.includes(b.barraca_id)
 }

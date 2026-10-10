@@ -31,7 +31,8 @@ export function useOnboardingPendente(usuario: User | null, barracas: BarracaCom
     let cancelado = false
     setPendente(null)
     barracasComOnboardingPendente(donas).then((lista) => {
-      if (!cancelado) setPendente(lista.length > 0)
+      // Só prende quem não tem nenhuma barraca pronta: se existe barraca concluída (ou funcionário em outra), não força.
+      if (!cancelado) setPendente(lista.length > 0 && lista.length === barracas.length)
     })
     return () => {
       cancelado = true
