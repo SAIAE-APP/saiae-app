@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useMemo, useState } from 'react'
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { useNavigate } from 'react-router'
 import clsx from 'clsx'
 import { useAuth } from '../hooks/useAuth'
@@ -856,9 +856,27 @@ export function Configurar() {
   const ordem = useMemo(() => ordemDoAssistente(entregaAtiva), [entregaAtiva])
 
   // Retomada: acha a barraca própria com o assistente por concluir e vai para o passo seguinte ao último feito.
+  // Dependências ESTÁVEIS: o efeito de retomada reiniciava a cada nova referência de `usuario`/`barracas`/`navigate` e, com a
+  // referência mudando a cada poucos décimos de segundo, cancelava a própria carga e nunca terminava (tela em "Carregando...").
+  // Lemos o valor mais recente por ref e só reagimos ao id do usuário e à lista de ids/papéis das barracas.
+  const barracasRef = useRef(barracas)
+  const navigateRef = useRef(navigate)
   useEffect(() => {
-    if (carregandoAuth || carregandoBarracas || !usuario || pronto) return
+    barracasRef.current = barracas
+    navigateRef.current = navigate
+  })
+  const usuarioId = usuario?.id ?? null
+  const chaveBarracas = barracas.map((b) => `${b.barraca_id}:${b.papel}`).join(',')
+
+  useEffect(() => {
+    if (carregandoAuth || carregandoBarracas || !usuarioId || pronto) return
     let cancelado = false
+    const barracas = barracasRef.current
+    const navigate = navigateRef.current
+    // Rede de segurança: nunca fica em "Carregando..." para sempre; passado o prazo, mostra o assistente.
+    const limite = window.setTimeout(() => {
+      if (!cancelado) setPronto(true)
+    }, 12000)
     ;(async () => {
       const donas = barracas.filter((b) => b.papel === 'dono').map((b) => b.barraca_id)
       const pendentes = await barracasComOnboardingPendente(donas)
@@ -899,8 +917,9 @@ export function Configurar() {
     })()
     return () => {
       cancelado = true
+      window.clearTimeout(limite)
     }
-  }, [carregandoAuth, carregandoBarracas, usuario, barracas, pronto, navigate, kitsLigado])
+  }, [carregandoAuth, carregandoBarracas, usuarioId, chaveBarracas, pronto, kitsLigado])
 
   useEffect(() => {
     if (!pronto) return
