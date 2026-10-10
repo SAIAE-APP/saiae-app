@@ -5,6 +5,7 @@ import { useBarracasDoUsuario } from '../hooks/useBarracasDoUsuario'
 import { Button } from '../components/ui/Button'
 import { onboardingJaVisto } from '../lib/onboardingStorage'
 import { onboardingConfigHabilitado } from '../lib/onboardingConfig'
+import { assistenteSuspenso, registrarSalto } from '../lib/disjuntorAssistente'
 import { useOnboardingPendente } from '../hooks/useOnboardingPendente'
 
 export function Dispatcher() {
@@ -34,8 +35,11 @@ export function Dispatcher() {
     if (carregandoOnboarding) return
 
     if (onboardingPendente) {
-      navigate('/configurar', { replace: true })
-      return
+      registrarSalto()
+      if (!assistenteSuspenso()) {
+        navigate('/configurar', { replace: true })
+        return
+      }
     }
 
     if (barracas.length === 1) {
