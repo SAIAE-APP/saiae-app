@@ -7,6 +7,7 @@ import { LayoutBarraca } from './layouts/LayoutBarraca'
 import { RotaProtegida } from './components/RotaProtegida'
 import { GateFaceId } from './components/GateFaceId'
 import { ToastProvider } from './components/ui/Toast'
+import { AvisoNovaVersao } from './components/AvisoNovaVersao'
 import { Dashboard } from './pages/Dashboard'
 import { LancarPedido } from './pages/LancarPedido'
 import { ConfirmarPedido } from './pages/ConfirmarPedido'
@@ -57,6 +58,7 @@ function App() {
           aba) — reseta bloqueado/jaTentouAuto do zero em vez de herdar
           estado de quem usou o aparelho antes. */}
       <ToastProvider>
+        <AvisoNovaVersao />
         <GateFaceId key={usuario?.id ?? 'anon'}>
           <Routes>
             <Route path="/onboarding" element={<Onboarding />} />
