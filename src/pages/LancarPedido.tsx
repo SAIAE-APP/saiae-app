@@ -35,6 +35,8 @@ import type {
   OpcoesPorLinha,
 } from '../lib/carrinho'
 import { SeletorOpcoes } from '../components/SeletorOpcoes'
+import { FolhaValorLivre } from '../components/FolhaValorLivre'
+import { chaveValorLivre } from '../lib/valorLivre'
 import { BotoesLinkEntregador } from '../components/BotoesLinkEntregador'
 import { useEntregaToken } from '../hooks/useEntregaToken'
 import { Badge } from '../components/ui/Badge'
@@ -195,6 +197,8 @@ function CardItemCardapio({
               {comOpcoes && <span className="mr-1 text-xs font-normal text-mesa-text-secondary">a partir de</span>}
               <span className="whitespace-nowrap">{formatarPrecoBR(precoCard)}</span>
             </>
+          ) : item.preco_aberto ? (
+            'Valor livre'
           ) : (
             'Sem preço'
           )}
@@ -299,6 +303,8 @@ function CardItemCardapioGrade({
             {comOpcoes && <span className="mr-1 text-xs font-normal text-mesa-text-secondary">a partir de</span>}
             <span className="whitespace-nowrap">{formatarPrecoBR(precoCard)}</span>
           </>
+        ) : item.preco_aberto ? (
+          'Valor livre'
         ) : (
           'Sem preço'
         )}
@@ -548,6 +554,7 @@ export function LancarPedido() {
   const [opcoesPorLinha, setOpcoesPorLinha] = useState<OpcoesPorLinha>(() => edicaoRecebida?.opcoesPorLinha ?? {})
   const [gruposPorItem, setGruposPorItem] = useState<Map<string, GrupoItem[]>>(() => new Map())
   const [itemSeletor, setItemSeletor] = useState<Item | null>(null)
+  const [itemValorLivre, setItemValorLivre] = useState<Item | null>(null)
   const opcoesHabilitado = barraca.opcoes_habilitado === true
   // Não editável nesta tela — só guardado pra devolver pra ConfirmarPedido
   // intacto se o operador for e voltar sem mudar nada.
@@ -885,6 +892,23 @@ export function LancarPedido() {
     setCarrinho((atual) => ({ ...atual, [chave]: (atual[chave] ?? 0) + 1 }))
     definirObservacaoItem(chave, obs)
     setItemSeletor(null)
+  }
+
+  /** Toque no + de um item de Preço aberto: abre a folha de valor (a linha só entra ao confirmar). */
+  function abrirValorLivre(item: Item) {
+    setItemValorLivre(item)
+  }
+
+  /** Cada confirmação cria uma linha própria (quantidade 1, nunca soma com outro valor). */
+  function confirmarValorLivre(item: Item, centavos: number, obs: string) {
+    const chave = chaveValorLivre(item.id, crypto.randomUUID())
+    setOpcoesPorLinha((atual) => ({
+      ...atual,
+      [chave]: { itemId: item.id, opcaoIds: [], precoUnitarioCentavos: centavos, resumo: '', snapshot: [] },
+    }))
+    setCarrinho((atual) => ({ ...atual, [chave]: 1 }))
+    definirObservacaoItem(chave, obs)
+    setItemValorLivre(null)
   }
 
   /** "−" de item com opções: tira uma unidade da última linha adicionada daquele item. */
@@ -1265,11 +1289,21 @@ export function LancarPedido() {
                           quantidade={quantidadePorItem[item.id] ?? 0}
                           observacao={observacaoPorItem[item.id] ?? ''}
                           posicaoPopular={indicePopular === -1 ? null : indicePopular}
-                          comOpcoes={gruposDoItem(item.id).length > 0}
+                          comOpcoes={gruposDoItem(item.id).length > 0 || Boolean(item.preco_aberto)}
                           precoCard={precoAPartirDe(item.preco_centavos, gruposDoItem(item.id))}
                           totalCard={totalDoItem(item.id)}
-                          onIncrementar={() => (gruposDoItem(item.id).length > 0 ? abrirSeletor(item) : incrementar(item.id))}
-                          onDecrementar={() => (gruposDoItem(item.id).length > 0 ? decrementarComOpcoes(item.id) : decrementar(item.id))}
+                          onIncrementar={() =>
+                            item.preco_aberto
+                              ? abrirValorLivre(item)
+                              : gruposDoItem(item.id).length > 0
+                                ? abrirSeletor(item)
+                                : incrementar(item.id)
+                          }
+                          onDecrementar={() =>
+                            item.preco_aberto || gruposDoItem(item.id).length > 0
+                              ? decrementarComOpcoes(item.id)
+                              : decrementar(item.id)
+                          }
                           onAbrirObservacao={() => setItemObservacaoAberta(item)}
                         />
                       )
@@ -1286,10 +1320,20 @@ export function LancarPedido() {
                           quantidade={quantidadePorItem[item.id] ?? 0}
                           observacao={observacaoPorItem[item.id] ?? ''}
                           posicaoPopular={indicePopular === -1 ? null : indicePopular}
-                          comOpcoes={gruposDoItem(item.id).length > 0}
+                          comOpcoes={gruposDoItem(item.id).length > 0 || Boolean(item.preco_aberto)}
                           precoCard={precoAPartirDe(item.preco_centavos, gruposDoItem(item.id))}
-                          onIncrementar={() => (gruposDoItem(item.id).length > 0 ? abrirSeletor(item) : incrementar(item.id))}
-                          onDecrementar={() => (gruposDoItem(item.id).length > 0 ? decrementarComOpcoes(item.id) : decrementar(item.id))}
+                          onIncrementar={() =>
+                            item.preco_aberto
+                              ? abrirValorLivre(item)
+                              : gruposDoItem(item.id).length > 0
+                                ? abrirSeletor(item)
+                                : incrementar(item.id)
+                          }
+                          onDecrementar={() =>
+                            item.preco_aberto || gruposDoItem(item.id).length > 0
+                              ? decrementarComOpcoes(item.id)
+                              : decrementar(item.id)
+                          }
                           onAbrirObservacao={() => setItemObservacaoAberta(item)}
                         />
                       )
@@ -1342,6 +1386,15 @@ export function LancarPedido() {
             </button>
           </div>
         </div>
+      )}
+
+      {itemValorLivre && (
+        <FolhaValorLivre
+          key={itemValorLivre.id}
+          nomeItem={itemValorLivre.nome}
+          onClose={() => setItemValorLivre(null)}
+          onConfirmar={(centavos, obs) => confirmarValorLivre(itemValorLivre, centavos, obs)}
+        />
       )}
 
       {itemSeletor && (
