@@ -838,8 +838,8 @@ function SecaoCardapio({ barracaId }: { barracaId: string }) {
     setNomeExclusao(item.nome)
   }
 
-  // Comportamento preservado: tenta DELETE de verdade e só cai para
-  // ativo:false quando o banco recusa (item já usado em pedidos).
+  // Tenta DELETE de verdade, inclusive de item já vendido (o pedido guarda nome e preço; migration 20261022100000
+  // solta a ligação). Só cai para ativo:false se o banco ainda for o antigo e recusar o DELETE.
   async function confirmarExclusao() {
     if (!itemParaExcluir) return
     const item = itemParaExcluir
@@ -1048,7 +1048,9 @@ function SecaoCardapio({ barracaId }: { barracaId: string }) {
         aria-label="Confirmar exclusão de item"
       >
         <h2 className="text-lg font-semibold text-mesa-text-primary">Apagar {nomeExclusao}?</h2>
-        <p className="mt-1 text-sm text-mesa-text-secondary">Essa ação não pode ser desfeita.</p>
+        <p className="mt-1 text-sm text-mesa-text-secondary">
+          Os pedidos antigos continuam no histórico e nos relatórios, com o nome e o preço de quando foram vendidos. Essa ação não pode ser desfeita.
+        </p>
         <div className="mt-6 flex flex-col gap-2">
           <Button
             variant="destructive"
