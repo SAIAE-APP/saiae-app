@@ -105,7 +105,7 @@ describe('telas (guardas estáticas)', () => {
   })
 
   test('Ajustes: a seção fica em Cardápio & Operação e some em banco sem a coluna', () => {
-    assert.match(ler('pages/Ajustes.tsx'), /<SecaoDaCategoria categoria="cardapio" atual=\{categoria\}>\n\s+<SecaoPagamentoDepois barraca=\{barraca\} \/>/)
+    assert.match(ler('pages/Ajustes.tsx'), /<SecaoDaCategoria categoria="cardapio" grupo="recebimento" atual=\{categoria\}>\n\s+<SecaoPagamentoDepois barraca=\{barraca\} \/>/)
     assert.match(ler('components/SecaoPagamentoDepois.tsx'), /if \(barraca\.pagamento_depois_habilitado === undefined\) return null/)
   })
 })
