@@ -189,6 +189,15 @@ repetir `versionCode`: subir a cada build. Validar em aparelho Android 7–11 e
   abrir e "Copiar mensagem". A comanda impressa leva faixa `*** ENTREGA ***`,
   bloco "ENTREGAR PARA" (nome, telefone, endereço) e a linha "Taxa de
   entrega" separada do total.
+- "Saiu para entrega" (2026-10-11, spec `docs/superpowers/specs/2026-10-19-saiu-para-entrega-design.md`): coluna extra do kanban da
+  Cozinha SÓ para pedidos de Entrega (A fazer → Pronto → Saiu para entrega → Entregue), atrás de `barracas.saiu_entrega_habilitado`
+  (padrão false; Ajustes > Cardápio & Operação, só com Entrega ligada) — desligado, o kanban é o de sempre; desligar depois não
+  esconde pedido (Saiu aparece em Pronto). `pedidos.status` ganhou o valor `saiu_entrega` (texto, sem CHECK) e `saiu_entrega_em`.
+  Em Pronto o botão vira "Saiu para entrega" e abre a folha do link do motoboy (Pular); em Saiu: "Voltar para Pronto", "Entregue"
+  (reaproveita "A receber"), "saiu há N min", Avisar cliente manual. O cronômetro congela em Pronto e em Saiu. O link do motoboy
+  (`entregador_confirmar`) já leva a Entregue de qualquer estado não cancelado. Evento aditivo `order.out_for_delivery` (SAI-001) para
+  o CRM enviar `pedido_saiu_entrega_v2` (1 por pedido, mesma regra do aviso "pronto"). Migration `20261022120000` antes do front; ligar o
+  interruptor só depois de atualizar TODOS os aparelhos (app antigo não mostra o pedido em Saiu). Roteiro: `docs/roteiro-saiu-entrega.md`.
 - Taxa de entrega (2026-10-04): cobrada do cliente final, entra no total do
   pedido (`pedidos.taxa_entrega_centavos`). Configurável em Ajustes
   (`SecaoTaxaEntrega`: liga/desliga, valor padrão, editável ou não no

@@ -33,3 +33,10 @@ describe('contrato SAI-001', () => {
     assert.match(ler('INTEGRACAO.md'), /`order\.out_for_delivery`/)
   })
 })
+
+describe('contrato SAI-001: status do pedido', () => {
+  test('o schema aceita o status saiu_entrega em data.status', () => {
+    const schema = ler('docs/contrato/v1/evento.schema.json')
+    assert.match(schema, /"status": \{ "enum": \["a_fazer", "pronto", "saiu_entrega", "entregue", "cancelado"\] \}/)
+  })
+})
