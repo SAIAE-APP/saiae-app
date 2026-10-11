@@ -38,7 +38,7 @@ export function BotaoAvisarCliente({
   const [copiado, setCopiado] = useState(false)
 
   const telefone = telefoneDoCliente(pedido)
-  if (barraca.aviso_pronto_habilitado === false || !telefone || pedido.status !== 'pronto') return null
+  if (barraca.aviso_pronto_habilitado === false || !telefone || (pedido.status !== 'pronto' && pedido.status !== 'saiu_entrega')) return null
 
   const avisadoEm = avisadoLocal ?? pedido.cliente_avisado_em ?? null
   const mensagem = () =>

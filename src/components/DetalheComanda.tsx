@@ -8,6 +8,7 @@ import { textoOpcoes } from '../lib/opcoes'
 import { textoCupomDoPedido } from '../lib/descontosCupom'
 import { iconeAtendimento, nomeDoCliente, rotuloAtendimento } from '../lib/atendimento'
 import { ROTULO_A_RECEBER, pagarDepoisLigado, pedidoAReceber } from '../lib/pagarDepois'
+import { cronometroCongelado } from '../lib/saiuEntrega'
 import type { Barraca, ItemDoPedido, PedidoComItens } from '../types/database'
 
 const DURACAO_LONGO_TOQUE_MS = 1000
@@ -21,7 +22,7 @@ const DURACAO_LONGO_TOQUE_MS = 1000
 // isso o cronômetro deste header continuava contando depois de pronto_em.
 function segundosDecorridos(pedido: PedidoComItens): number {
   const inicio = new Date(pedido.criado_em).getTime()
-  const fim = pedido.status === 'pronto' && pedido.pronto_em
+  const fim = cronometroCongelado(pedido.status) && pedido.pronto_em
     ? new Date(pedido.pronto_em).getTime()
     : Date.now()
   return Math.max(0, Math.floor((fim - inicio) / 1000))

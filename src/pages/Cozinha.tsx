@@ -13,6 +13,7 @@ import { BotaoAvisarCliente } from '../components/BotaoAvisarCliente'
 import { BotoesLinkEntregador } from '../components/BotoesLinkEntregador'
 import { Badge } from '../components/ui/Badge'
 import { ROTULO_A_RECEBER, pagarDepoisLigado, pedidoAReceber } from '../lib/pagarDepois'
+import { cronometroCongelado, minutosDesdeQueSaiu, podeSairParaEntrega, saiuEntregaLigado } from '../lib/saiuEntrega'
 import { ModalFormaPagamento } from '../components/ModalFormaPagamento'
 import type { MetodoPagamento } from '../lib/metodoPagamento'
 import { BotaoHome } from '../components/ui/BotaoHome'
@@ -32,7 +33,7 @@ import type { MotivoCancelamento } from '../lib/cancelamento'
 import type { Barraca, ItemDoPedido, PedidoComItens } from '../types/database'
 import type { StatusConexao } from '../hooks/useRealtimePedidos'
 
-type Coluna = 'a_fazer' | 'pronto'
+type Coluna = 'a_fazer' | 'pronto' | 'saiu'
 type CorSinal = 'verde' | 'amarelo' | 'vermelho'
 
 const DURACAO_FAIXA_FINALIZADO_MS = 5000
@@ -43,7 +44,7 @@ const INTERVALO_RELOGIO_MS = 1000
 
 function segundosDecorridos(pedido: PedidoComItens): number {
   const inicio = new Date(pedido.criado_em).getTime()
-  const fim = pedido.status === 'pronto' && pedido.pronto_em
+  const fim = cronometroCongelado(pedido.status) && pedido.pronto_em
     ? new Date(pedido.pronto_em).getTime()
     : Date.now()
   return Math.max(0, Math.floor((fim - inicio) / 1000))
@@ -158,6 +159,7 @@ function CardPedido({
   onEntregar,
   onCancelar,
   onAtalhoEntregar,
+  onSaiu,
 }: {
   pedido: PedidoComItens
   barraca: Barraca
@@ -168,6 +170,7 @@ function CardPedido({
   onEntregar: (pedido: PedidoComItens) => void
   onCancelar: (pedido: PedidoComItens) => void
   onAtalhoEntregar: (pedido: PedidoComItens) => void
+  onSaiu: (pedido: PedidoComItens) => void
 }) {
   const cor = corPorTempo(minutosDecorridos(pedido), barraca)
 
@@ -351,22 +354,45 @@ function CardPedido({
                 className="flex-1"
                 onClick={() => onVoltar(pedido)}
               >
-                Voltar
+                {coluna === 'saiu' ? 'Voltar para Pronto' : 'Voltar'}
               </Button>
-              <Button
-                variant="primary"
-                size="md"
-                icon={<Icone nome="done_all" size={16} />}
-                className="flex-1"
-                onClick={() => onEntregar(pedido)}
-              >
-                Entregue
-              </Button>
+              {coluna === 'pronto' && podeSairParaEntrega(pedido, barraca) ? (
+                <Button
+                  variant="primary"
+                  size="md"
+                  icon={<Icone nome="local_shipping" size={16} />}
+                  className="flex-1"
+                  onClick={() => onSaiu(pedido)}
+                >
+                  Saiu para entrega
+                </Button>
+              ) : (
+                <Button
+                  variant="primary"
+                  size="md"
+                  icon={<Icone nome="done_all" size={16} />}
+                  className="flex-1"
+                  onClick={() => onEntregar(pedido)}
+                >
+                  Entregue
+                </Button>
+              )}
             </>
           )}
         </div>
 
-        {coluna === 'pronto' && <BotaoAvisarCliente pedido={pedido} barraca={barraca} compacto />}
+        {coluna === 'saiu' && minutosDesdeQueSaiu(pedido.saiu_entrega_em) !== null && (
+          <p className="mt-2 text-center text-xs font-semibold text-mesa-text-secondary">
+            Saiu há {minutosDesdeQueSaiu(pedido.saiu_entrega_em)} min
+          </p>
+        )}
+        {coluna === 'saiu' && (pedido.entrega_nome || pedido.entrega_telefone) && (
+          <p className="mt-1 text-center text-xs text-mesa-text-secondary">
+            {[pedido.entrega_nome, pedido.entrega_telefone].filter(Boolean).join(' · ')}
+          </p>
+        )}
+
+        {(coluna === 'pronto' || coluna === 'saiu') && <BotaoAvisarCliente pedido={pedido} barraca={barraca} compacto />}
 
         {pedido.entrega_token && (
           <BotoesLinkEntregador token={pedido.entrega_token} senha={pedido.senha} compacto />
@@ -492,6 +518,8 @@ export function Cozinha() {
   const faixaTimeoutRef = useRef<number | null>(null)
 
   const [pedidoParaCancelar, setPedidoParaCancelar] = useState<PedidoComItens | null>(null)
+  // Folha que oferece o link do entregador logo depois de tocar "Saiu para entrega" (pode pular).
+  const [pedidoSaiu, setPedidoSaiu] = useState<PedidoComItens | null>(null)
   const [cancelando, setCancelando] = useState(false)
 
   // "Pagar depois": pedido "A receber" que o operador está entregando (precisa dizer como o cliente pagou).
@@ -603,6 +631,20 @@ export function Cozinha() {
   function moverParaProntoEFechar(pedido: PedidoComItens) {
     setPedidoSelecionadoId(null)
     moverParaPronto(pedido)
+  }
+
+  /** Pronto -> Saiu para entrega (só Entrega): vai pela fila como as demais mudanças e abre a folha do link do motoboy. */
+  async function sairParaEntrega(pedido: PedidoComItens) {
+    const agora = new Date().toISOString()
+    aplicarPatchPedido(pedido.id, { status: 'saiu_entrega', saiu_entrega_em: agora })
+    setPedidoSaiu(pedido)
+    await enfileirar('mudar_status', { pedido_id: pedido.id, status: 'saiu_entrega', saiu_entrega_em: agora })
+  }
+
+  /** Saiu para entrega -> Pronto. */
+  async function voltarParaPronto(pedido: PedidoComItens) {
+    aplicarPatchPedido(pedido.id, { status: 'pronto', saiu_entrega_em: null })
+    await enfileirar('mudar_status', { pedido_id: pedido.id, status: 'pronto', saiu_entrega_em: null })
   }
 
   async function voltarParaFazer(pedido: PedidoComItens) {
@@ -726,7 +768,10 @@ export function Cozinha() {
   }
 
   const pedidosAFazer = pedidos.filter((p) => p.status === 'a_fazer')
-  const pedidosProntos = pedidos.filter((p) => p.status === 'pronto')
+  const colunaSaiu = saiuEntregaLigado(barraca)
+  // Com a coluna desligada (ex.: o dono desligou depois), pedido em "Saiu" continua visível em Pronto: nada some do kanban.
+  const pedidosProntos = pedidos.filter((p) => p.status === 'pronto' || (!colunaSaiu && p.status === 'saiu_entrega'))
+  const pedidosSaiu = colunaSaiu ? pedidos.filter((p) => p.status === 'saiu_entrega') : []
 
   // usePedidosAtual já carrega o dia inteiro (todos os status), não só os
   // ativos — "despachados recentemente" é só filtrar por entregue, sem
@@ -754,7 +799,8 @@ export function Cozinha() {
             coluna={coluna}
             onAbrirDetalhe={abrirDetalhe}
             onMoverParaPronto={moverParaPronto}
-            onVoltar={voltarParaFazer}
+            onVoltar={coluna === 'saiu' ? voltarParaPronto : voltarParaFazer}
+            onSaiu={sairParaEntrega}
             onEntregar={entregarPedido}
             onCancelar={setPedidoParaCancelar}
             onAtalhoEntregar={setPedidoParaEntregaDireta}
@@ -807,15 +853,21 @@ export function Cozinha() {
           items={[
             { label: 'A Fazer', count: pedidosAFazer.length, icon: <Icone nome="skillet" size={16} /> },
             { label: 'Pronto', count: pedidosProntos.length, icon: <Icone nome="check_circle" size={16} /> },
+            ...(colunaSaiu
+              ? [{ label: 'Saiu', count: pedidosSaiu.length, icon: <Icone nome="local_shipping" size={16} /> }]
+              : []),
           ]}
-          activeIndex={aba === 'a_fazer' ? 0 : 1}
-          onChange={(indice) => setAba(indice === 0 ? 'a_fazer' : 'pronto')}
+          activeIndex={aba === 'a_fazer' ? 0 : aba === 'pronto' || !colunaSaiu ? 1 : 2}
+          onChange={(indice) => setAba(indice === 0 ? 'a_fazer' : indice === 1 ? 'pronto' : 'saiu')}
         />
       </div>
 
       <div className="px-4 md:hidden">
-        {renderLista(aba === 'a_fazer' ? pedidosAFazer : pedidosProntos, aba)}
-        {aba === 'pronto' && (
+        {renderLista(
+          aba === 'a_fazer' ? pedidosAFazer : aba === 'saiu' && colunaSaiu ? pedidosSaiu : pedidosProntos,
+          aba === 'saiu' && !colunaSaiu ? 'pronto' : aba,
+        )}
+        {(aba === 'pronto' || (aba === 'saiu' && !colunaSaiu)) && (
           <>
             <p className="mt-6 text-center text-sm text-mesa-text-secondary">
               O cronômetro congela ao entrar em Pronto — a cor não muda mais, o pedido só espera o
@@ -826,7 +878,7 @@ export function Cozinha() {
         )}
       </div>
 
-      <div className="hidden gap-6 px-6 md:grid md:grid-cols-2">
+      <div className={`hidden gap-6 px-6 md:grid ${colunaSaiu ? 'md:grid-cols-3' : 'md:grid-cols-2'}`}>
         <div>
           <h2 className="mb-4 text-lg font-bold text-mesa-text-primary">
             A Fazer ({pedidosAFazer.length})
@@ -844,7 +896,35 @@ export function Cozinha() {
           </p>
           <SecaoDespachados pedidos={pedidosDespachados} />
         </div>
+        {colunaSaiu && (
+          <div>
+            <h2 className="mb-4 text-lg font-bold text-mesa-text-primary">
+              Saiu para entrega ({pedidosSaiu.length})
+            </h2>
+            {renderLista(pedidosSaiu, 'saiu')}
+          </div>
+        )}
       </div>
+
+      <BottomSheet
+        open={pedidoSaiu !== null}
+        onClose={() => setPedidoSaiu(null)}
+        aria-label="Pedido saiu para entrega"
+      >
+        {pedidoSaiu && (
+          <div className="flex flex-col gap-3">
+            <h2 className="text-lg font-semibold text-mesa-text-primary">Saiu para entrega</h2>
+            <p className="text-sm text-mesa-text-secondary">
+              O pedido {pedidoSaiu.senha} foi para a coluna "Saiu para entrega". Quer mandar o link para o entregador confirmar a
+              entrega?
+            </p>
+            <BotoesLinkEntregador token={pedidoSaiu.entrega_token} senha={pedidoSaiu.senha} />
+            <Button variant="ghost" size="md" onClick={() => setPedidoSaiu(null)} className="w-full">
+              Pular
+            </Button>
+          </div>
+        )}
+      </BottomSheet>
 
       <DetalheComanda
         pedido={pedidoSelecionado}
