@@ -14,7 +14,7 @@ export function AvisoNovaVersao() {
       role="status"
       className="fixed inset-x-3 top-[calc(env(safe-area-inset-top)+8px)] z-50 mx-auto flex max-w-md items-center gap-2 rounded-mesa-xl border border-mesa-border-default bg-mesa-surface p-3 shadow-lg"
     >
-      <Icone nome="system_update" size={20} className="shrink-0 text-mesa-text-secondary" />
+      <Icone nome="download" size={20} className="shrink-0 text-mesa-text-secondary" />
       <p className="min-w-0 flex-1 text-sm font-medium text-mesa-text-primary">Nova versão disponível</p>
       <Button size="md" onClick={atualizar}>
         Atualizar
