@@ -114,9 +114,9 @@ export function SecaoIntegracaoCrm({ barraca }: { barraca: Barraca }) {
     }
   }
 
-  // Escondida para cliente novo (decisão 2026-10-09): só aparece se a barraca JÁ está conectada ou com VITE_MOSTRAR_INTEGRACAO_CRM=1.
+  // Escondida em todas as barracas, menos a de teste (decisão 2026-10-09; ver visibilidadeIaCrm.ts).
   // Esconder a tela não desliga nada: o envio de eventos ao CRM (e as mensagens de status) continua como estava.
-  if (semBanco || !mostrarIntegracaoCrm(estado, import.meta.env.VITE_MOSTRAR_INTEGRACAO_CRM)) return null
+  if (semBanco || !mostrarIntegracaoCrm(barraca, import.meta.env.VITE_MOSTRAR_INTEGRACAO_CRM)) return null
 
   return (
     <section>

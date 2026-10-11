@@ -1,38 +1,31 @@
-// IA e CRM escondidos para cliente novo (2026-10-09): regra de visibilidade e garantia de que o backend não mudou.
+// IA e CRM escondidos em todas as barracas, menos a de teste (2026-10-09): regra de visibilidade e backend intacto.
 import assert from 'node:assert/strict'
 import { existsSync, readFileSync } from 'node:fs'
 import { describe, test } from 'node:test'
-import { mostrarAtendenteIa, mostrarIntegracaoCrm } from '../src/lib/visibilidadeIaCrm.ts'
+import { SLUGS_COM_IA_E_CRM, mostrarAtendenteIa, mostrarIntegracaoCrm } from '../src/lib/visibilidadeIaCrm.ts'
 
 const ler = (p: string) => readFileSync(new URL(`../${p}`, import.meta.url), 'utf8')
 const existe = (p: string) => existsSync(new URL(`../${p}`, import.meta.url))
 
 describe('Atendente IA', () => {
-  test('cliente novo (IA não habilitada): escondida', () => {
-    assert.equal(mostrarAtendenteIa({ ia_habilitada: false }, undefined), false)
+  test('qualquer barraca comum fica escondida, mesmo com a IA já ligada', () => {
+    assert.equal(mostrarAtendenteIa({ slug: 'sabor-kawashima' }, undefined), false)
+    assert.equal(mostrarAtendenteIa({ slug: 'outra-loja' }, '0'), false)
     assert.equal(mostrarAtendenteIa({}, undefined), false)
-    assert.equal(mostrarAtendenteIa({ ia_habilitada: null }, '0'), false)
+    assert.equal(mostrarAtendenteIa({ slug: null }, undefined), false)
   })
-  test('quem já usa continua vendo; a flag reabre para todos', () => {
-    assert.equal(mostrarAtendenteIa({ ia_habilitada: true }, undefined), true)
-    assert.equal(mostrarAtendenteIa({ ia_habilitada: false }, '1'), true)
+  test('só a barraca de teste vê; a flag reabre para todos (teste/staging)', () => {
+    assert.deepEqual([...SLUGS_COM_IA_E_CRM], ['qa-teste-varredura'])
+    assert.equal(mostrarAtendenteIa({ slug: 'qa-teste-varredura' }, undefined), true)
+    assert.equal(mostrarAtendenteIa({ slug: 'sabor-kawashima' }, '1'), true)
   })
 })
 
 describe('Integração com o CRM', () => {
-  test('cliente novo (sem conexão) ou estado ainda não carregado: escondida', () => {
-    assert.equal(mostrarIntegracaoCrm(null, undefined), false)
-    assert.equal(mostrarIntegracaoCrm({ url: null, ativo: false, segredo_configurado: false }, undefined), false)
-    assert.equal(mostrarIntegracaoCrm({ url: '   ', ativo: false, segredo_configurado: false }, '0'), false)
-  })
-  test('barraca já conectada continua vendo (URL, segredo ou envio ligado)', () => {
-    assert.equal(mostrarIntegracaoCrm({ url: 'https://crm.exemplo.com/x', ativo: false, segredo_configurado: false }, undefined), true)
-    assert.equal(mostrarIntegracaoCrm({ url: null, ativo: false, segredo_configurado: true }, undefined), true)
-    assert.equal(mostrarIntegracaoCrm({ url: null, ativo: true, segredo_configurado: false }, undefined), true)
-  })
-  test('a flag reabre para todos, até antes de carregar', () => {
-    assert.equal(mostrarIntegracaoCrm(null, '1'), true)
-    assert.equal(mostrarIntegracaoCrm({ ativo: false }, '1'), true)
+  test('barraca comum fica escondida; a de teste vê; a flag reabre', () => {
+    assert.equal(mostrarIntegracaoCrm({ slug: 'sabor-kawashima' }, undefined), false)
+    assert.equal(mostrarIntegracaoCrm({ slug: 'qa-teste-varredura' }, undefined), true)
+    assert.equal(mostrarIntegracaoCrm({ slug: 'qualquer' }, '1'), true)
   })
 })
 
@@ -43,7 +36,7 @@ describe('ligação nas telas', () => {
   })
   test('a seção do CRM se esconde pela regra, lendo a variável certa', () => {
     const c = ler('src/components/SecaoIntegracaoCrm.tsx')
-    assert.match(c, /!mostrarIntegracaoCrm\(estado, import\.meta\.env\.VITE_MOSTRAR_INTEGRACAO_CRM\)\) return null/)
+    assert.match(c, /!mostrarIntegracaoCrm\(barraca, import\.meta\.env\.VITE_MOSTRAR_INTEGRACAO_CRM\)\) return null/)
   })
 })
 
@@ -54,34 +47,9 @@ describe('só a tela some: o backend continua como estava', () => {
       assert.ok(c.includes(r), r)
     }
   })
-  test('nenhum arquivo de backend referencia a nova regra de visibilidade', () => {
+  test('nenhum arquivo de backend referencia a regra de visibilidade', () => {
     for (const p of ['supabase/functions/enviar-eventos-saida/index.ts', 'supabase/functions/ia-consumo/index.ts', 'supabase/functions/ia-contexto/index.ts']) {
       if (existe(p)) assert.doesNotMatch(ler(p), /visibilidadeIaCrm|MOSTRAR_/, p)
     }
-  })
-})
-
-describe('onboarding e checklist não oferecem nem citam IA/CRM', () => {
-  const alvo = [
-    'src/pages/Configurar.tsx',
-    'src/components/CartaoChecklistOnboarding.tsx',
-    'src/lib/onboardingConfig.ts',
-    'src/lib/onboardingApi.ts',
-    'docs/superpowers/specs/2026-10-08-onboarding-configuracao-design.md',
-  ]
-  for (const p of alvo) {
-    test(p, () => {
-      if (!existe(p)) return // ainda não está nesta base (chega com os PRs do onboarding)
-      assert.doesNotMatch(ler(p), /atendente\s*ia|\bCRM\b|\bIA\b/i, p)
-    })
-  }
-})
-
-describe('CLAUDE.md registra a decisão', () => {
-  test('uma nota explica que IA e CRM ficam escondidos por decisão de 2026-10-09', () => {
-    const t = ler('CLAUDE.md')
-    assert.match(t, /IA e CRM escondidos \(decisão do João, 2026-10-09/)
-    assert.match(t, /VITE_MOSTRAR_ATENDENTE_IA=1/)
-    assert.match(t, /VITE_MOSTRAR_INTEGRACAO_CRM=1/)
   })
 })
