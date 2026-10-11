@@ -10,7 +10,7 @@
     "type": {
       "enum": [
         "order.created", "order.paid", "order.status_changed", "order.ready",
-        "order.cancelled", "customer.created", "customer.updated", "coupon.redeemed"
+        "order.out_for_delivery", "order.cancelled", "customer.created", "customer.updated", "coupon.redeemed"
       ]
     },
     "version": { "const": 1 },
