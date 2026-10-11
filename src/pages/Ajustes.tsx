@@ -147,6 +147,7 @@ function BottomSheetItem({
   onClose,
   onSalvo,
   onApagar,
+  suportaPrecoAberto,
 }: {
   item: Item | 'novo' | null
   barracaId: string
@@ -155,6 +156,8 @@ function BottomSheetItem({
   onClose: () => void
   onSalvo: (item: Item) => void
   onApagar: (item: Item) => void
+  /** O banco já tem a coluna `preco_aberto` (migration do valor livre). Sem ela, a opção não aparece. */
+  suportaPrecoAberto: boolean
 }) {
   const existente = item && item !== 'novo' ? item : null
   const [nome, setNome] = useState(() => existente?.nome ?? '')
@@ -164,6 +167,7 @@ function BottomSheetItem({
   const [ativo, setAtivo] = useState(() => existente?.ativo ?? true)
   const [esgotado, setEsgotado] = useState(() => existente?.esgotado ?? false)
   const [popular, setPopular] = useState(() => existente?.popular ?? false)
+  const [precoAberto, setPrecoAberto] = useState(() => existente?.preco_aberto ?? false)
   const [ncm, setNcm] = useState(() => existente?.ncm ?? '')
   const [cfop, setCfop] = useState(() => existente?.cfop ?? '')
   const [unidade, setUnidade] = useState(() => existente?.unidade_comercial ?? '')
@@ -208,14 +212,17 @@ function BottomSheetItem({
 
   if (!item) return null
 
-  const ligandoControle = controla && !jaControla
-  const desligandoControle = !controla && jaControla
-  const ajusteValor = jaControla && controla ? interpretarAjuste(ajusteTexto) : null
-  const ajusteInvalido = jaControla && controla && ajusteTexto.trim() !== '' && ajusteValor === null
+  const ligandoControle = controla && !jaControla && !precoAberto
+  const desligandoControle = (!controla || precoAberto) && jaControla
+  const ajusteValor = jaControla && controla && !precoAberto ? interpretarAjuste(ajusteTexto) : null
+  const ajusteInvalido = jaControla && controla && !precoAberto && ajusteTexto.trim() !== '' && ajusteValor === null
+  const fiscalIncompleto = !ncm.trim() || !cfop.trim() || !unidade.trim()
+  const mostrarPrecoAberto = suportaPrecoAberto || !!existente?.preco_aberto
 
   const alterado = existente
     ? nome.trim() !== existente.nome ||
-      reaisParaCentavos(preco) !== existente.preco_centavos ||
+      (!precoAberto && reaisParaCentavos(preco) !== existente.preco_centavos) ||
+      precoAberto !== (existente.preco_aberto ?? false) ||
       categoriaId !== (existente.categoria_id ?? null) ||
       descricao.trim() !== (existente.descricao ?? '') ||
       ativo !== existente.ativo ||
@@ -284,7 +291,8 @@ function BottomSheetItem({
 
     const campos: Record<string, unknown> = {
       nome: nome.trim(),
-      preco_centavos: reaisParaCentavos(preco),
+      // Preço aberto: o preço de reserva fica R$ 0,00 de propósito (visível; o valor real é digitado na venda).
+      preco_centavos: precoAberto ? 0 : reaisParaCentavos(preco),
       categoria_id: categoriaId,
       descricao: descricao.trim() || null,
       ativo,
@@ -294,6 +302,14 @@ function BottomSheetItem({
       cfop: cfop.trim() || null,
       unidade_comercial: unidade.trim() || null,
       foto_url: fotoUrl,
+    }
+    // Só manda a coluna quando muda (banco sem a migration não conhece `preco_aberto`).
+    if (precoAberto || existente?.preco_aberto) campos.preco_aberto = precoAberto
+    // Preço aberto não controla estoque (spec): zera o saldo e o esgotado automático.
+    if (precoAberto) {
+      campos.estoque_qtd = null
+      campos.estoque_esgotado_auto = false
+      campos.popular = false
     }
     // O dono mexeu no "Esgotado" à mão: deixa de ser esgotado automático (o sistema
     // não o desmarca sozinho quando o saldo voltar).
@@ -447,15 +463,34 @@ function BottomSheetItem({
           className="w-full"
         />
 
-        <Input
-          type="currency"
-          label="Preço"
-          inputMode="decimal"
-          value={preco}
-          onChange={(e) => setPreco(filtrarEntradaPreco(e.target.value))}
-          placeholder="0,00"
-          className="w-full"
-        />
+        {!precoAberto && (
+          <Input
+            type="currency"
+            label="Preço"
+            inputMode="decimal"
+            value={preco}
+            onChange={(e) => setPreco(filtrarEntradaPreco(e.target.value))}
+            placeholder="0,00"
+            className="w-full"
+          />
+        )}
+
+        {mostrarPrecoAberto && (
+          <div className="rounded-mesa-md border border-mesa-border-default px-3 py-1">
+            <CampoToggle
+              rotulo="Preço aberto (valor livre)"
+              descricao="O operador digita o valor e o que foi vendido a cada venda. Não aparece no cardápio digital e não controla estoque."
+              checked={precoAberto}
+              onChange={() => setPrecoAberto((v) => !v)}
+            />
+            {precoAberto && (
+              <p className="pb-3 text-xs text-mesa-text-secondary">
+                O preço de cadastro fica R$ 0,00 de propósito. Só vale para o balcão: use o app atualizado em todos os aparelhos antes de ligar.
+                {fiscalIncompleto ? ' Sem NCM, CFOP e unidade (em "Dados fiscais", abaixo), a nota fiscal deste item não sai.' : ''}
+              </p>
+            )}
+          </div>
+        )}
 
         <div>
           <p className="mb-1.5 text-xs font-semibold text-mesa-neutral-700 dark:text-mesa-neutral-300">
@@ -499,14 +534,17 @@ function BottomSheetItem({
             checked={esgotado}
             onChange={() => setEsgotado((v) => !v)}
           />
-          <CampoToggle
-            rotulo="Popular"
-            descricao="Destaca em Populares no cardápio digital"
-            checked={popular}
-            onChange={() => setPopular((v) => !v)}
-          />
+          {!precoAberto && (
+            <CampoToggle
+              rotulo="Popular"
+              descricao="Destaca em Populares no cardápio digital"
+              checked={popular}
+              onChange={() => setPopular((v) => !v)}
+            />
+          )}
         </div>
 
+        {!precoAberto && (
         <div className="rounded-mesa-md border border-mesa-border-default px-3 py-1">
           <CampoToggle
             rotulo="Controlar estoque"
@@ -583,6 +621,7 @@ function BottomSheetItem({
             </div>
           )}
         </div>
+        )}
 
         <details className="group rounded-mesa-md border border-mesa-border-default">
           <summary className="flex min-h-11 cursor-pointer list-none items-center justify-between px-3 text-sm font-medium text-mesa-text-primary">
@@ -984,7 +1023,7 @@ function SecaoCardapio({ barracaId }: { barracaId: string }) {
                       </span>
                     </span>
                     <span className="shrink-0 font-mesa-display text-base font-semibold text-mesa-text-primary">
-                      {formatarPrecoBR(item.preco_centavos)}
+                      {item.preco_aberto ? 'Valor livre' : formatarPrecoBR(item.preco_centavos)}
                     </span>
                   </button>
                   {reordenando && (
@@ -1036,6 +1075,7 @@ function SecaoCardapio({ barracaId }: { barracaId: string }) {
         proximaOrdem={itens.length > 0 ? Math.max(...itens.map((i) => i.ordem)) + 1 : 1}
         onClose={() => setItemForm(null)}
         onSalvo={aoSalvarItem}
+        suportaPrecoAberto={itens.length === 0 || itens.some((i) => i.preco_aberto !== undefined)}
         onApagar={(item) => {
           setItemForm(null)
           pedirExclusao(item)

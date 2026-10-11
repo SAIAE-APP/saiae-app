@@ -154,6 +154,8 @@ export type Item = {
   estoque_qtd?: number | null
   /** true quando o `esgotado` foi ligado pelo sistema (saldo <= 0), não pelo dono. */
   estoque_esgotado_auto?: boolean
+  /** "Preço aberto" (valor livre): o operador digita o valor na venda. Opcional: banco/cache de antes da migration não têm. */
+  preco_aberto?: boolean
 }
 
 export type MotivoMovimentoEstoque = 'venda' | 'cancelamento' | 'remocao' | 'ajuste'
