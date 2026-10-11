@@ -35,6 +35,8 @@ export type Barraca = {
   pagamento_depois_habilitado?: boolean
   /** Estoque: true = bloqueia a venda acima do saldo; false/ausente = só avisa (padrão). */
   estoque_bloqueia?: boolean
+  /** Coluna "Saiu para entrega" no kanban (só com Entrega ligada; padrão false). Ausente em banco/cache de antes da migration. */
+  saiu_entrega_habilitado?: boolean
   /** Assistente de configuração inicial (migration 20261020100000). Opcionais: banco/cache de antes não têm. */
   categoria_negocio?: string | null
   /** Kit inicial aplicado (migration 20261021110000). Opcional: banco/cache de antes não têm. */
@@ -229,7 +231,7 @@ export type MovimentoCaixa = {
   criado_em: string
 }
 
-export type StatusPedido = 'a_fazer' | 'pronto' | 'entregue' | 'cancelado'
+export type StatusPedido = 'a_fazer' | 'pronto' | 'saiu_entrega' | 'entregue' | 'cancelado'
 
 export type Pedido = {
   id: string
@@ -266,6 +268,8 @@ export type Pedido = {
   status: StatusPedido
   criado_em: string
   pronto_em: string | null
+  /** Quando o pedido de Entrega saiu com o motoboy (coluna "Saiu para entrega"). Opcional: banco/cache de antes não têm. */
+  saiu_entrega_em?: string | null
   entregue_em: string | null
   client_uuid: string | null
   motivo_cancelamento: string | null

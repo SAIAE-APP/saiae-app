@@ -33,6 +33,7 @@ import { ambienteDaNota, cpfValido, formatarCpf } from '../lib/fiscal'
 import { nomeComOpcoes } from '../lib/opcoes'
 import { textoCupomDoPedido } from '../lib/descontosCupom'
 import { descreverErroImpressao, imprimirCupomFiscal, impressoraSuportada } from '../lib/impressoraTermica'
+import { ROTULO_SAIU } from '../lib/saiuEntrega'
 import type { Item, PedidoComItens } from '../types/database'
 
 function motivoHumanizado(motivo: string | null): string {
@@ -158,6 +159,7 @@ function rotuloStatus(status: PedidoComItens['status']): string {
   if (status === 'cancelado') return 'Cancelado'
   if (status === 'entregue') return 'Entregue'
   if (status === 'pronto') return 'Pronto'
+  if (status === 'saiu_entrega') return ROTULO_SAIU
   return 'Em preparo'
 }
 

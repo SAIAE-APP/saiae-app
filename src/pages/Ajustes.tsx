@@ -38,6 +38,7 @@ import { SecaoClientesEntrega } from '../components/SecaoClientesEntrega'
 import { SecaoPagarNaEntrega } from '../components/SecaoPagarNaEntrega'
 import { EnderecoCardapio } from '../components/EnderecoCardapio'
 import { SecaoPagamentoDepois } from '../components/SecaoPagamentoDepois'
+import { SecaoSaiuEntrega } from '../components/SecaoSaiuEntrega'
 import { SecaoEstoque } from '../components/SecaoEstoque'
 import { SecaoCupons } from '../components/SecaoCupons'
 import { SecaoAtendenteIa } from '../components/SecaoAtendenteIa'
@@ -2892,6 +2893,9 @@ export function Ajustes({ categoria = 'conta' }: { categoria?: CategoriaAjustes 
           </SecaoDaCategoria>
           <SecaoDaCategoria categoria="cardapio" atual={categoria}>
             <SecaoPagamentoDepois barraca={barraca} />
+          </SecaoDaCategoria>
+          <SecaoDaCategoria categoria="cardapio" atual={categoria}>
+            <SecaoSaiuEntrega barraca={barraca} />
           </SecaoDaCategoria>
           <SecaoDaCategoria categoria="cardapio" atual={categoria}>
             <SecaoCupons barraca={barraca} />
