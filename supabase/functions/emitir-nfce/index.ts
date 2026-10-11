@@ -72,17 +72,22 @@ type ItemDoPedidoRow = {
   removido: boolean
   /** SAI-010a: snapshot de variação/adicionais ([] em item simples). */
   opcoes?: unknown
+  /** Observação do item; no item de Preço aberto é "o que foi vendido" (valor livre). */
+  observacao?: string | null
 }
 
 // NFC-e: UMA linha por item do pedido; as opções vão só na descrição (preço, NCM e CFOP são os do
 // item pai, e preco_centavos_unitario já é o preço final da unidade). Limite de 120 da descrição.
-function descricaoDoItem(nome: string, opcoes: unknown): string {
+function descricaoDoItem(nome: string, opcoes: unknown, valorLivre?: string | null): string {
   const nomes = Array.isArray(opcoes)
     ? opcoes
         .map((o) => (o && typeof o === 'object' && typeof (o as { nome?: unknown }).nome === 'string' ? (o as { nome: string }).nome.trim() : ''))
         .filter((n) => n !== '')
     : []
-  const texto = nomes.length > 0 ? `${nome} (${nomes.join(', ')})` : nome
+  const base = nomes.length > 0 ? `${nome} (${nomes.join(', ')})` : nome
+  // Valor livre (Preço aberto): descrição = nome do item + o que foi vendido (spec, decisão 2). Nunca vaga.
+  const livre = (valorLivre ?? '').trim()
+  const texto = livre ? `${base} - ${livre}` : base
   return texto.length > 120 ? `${texto.slice(0, 117)}...` : texto
 }
 
@@ -91,6 +96,7 @@ type ItemCadastroRow = {
   ncm: string | null
   cfop: string | null
   unidade_comercial: string | null
+  preco_aberto?: boolean
 }
 
 Deno.serve(async (req: Request) => {
@@ -136,7 +142,7 @@ Deno.serve(async (req: Request) => {
     .from('pedidos')
     .select(
       'id, barraca_id, metodo_pagamento, nfce_status, nfce_chave, nfce_numero, ' +
-        'itens_do_pedido(id, item_id, nome_item, quantidade, preco_centavos_unitario, removido, opcoes)',
+        'itens_do_pedido(id, item_id, nome_item, quantidade, preco_centavos_unitario, removido, opcoes, observacao)',
     )
     .eq('id', pedidoId)
     .single()
@@ -236,10 +242,18 @@ Deno.serve(async (req: Request) => {
   }
 
   const idsItens = itensAtivos.map((item) => item.item_id).filter((id): id is string => id !== null)
-  const { data: itensCadastro, error: erroItensCadastro } = await supabase
+  const idsConsulta = idsItens.length > 0 ? idsItens : ['00000000-0000-0000-0000-000000000000']
+  // `preco_aberto` só existe depois da migration do valor livre: sem ela, repete a consulta sem a coluna.
+  let { data: itensCadastro, error: erroItensCadastro } = await supabase
     .from('itens')
-    .select('id, ncm, cfop, unidade_comercial')
-    .in('id', idsItens.length > 0 ? idsItens : ['00000000-0000-0000-0000-000000000000'])
+    .select('id, ncm, cfop, unidade_comercial, preco_aberto')
+    .in('id', idsConsulta)
+  if (erroItensCadastro) {
+    ;({ data: itensCadastro, error: erroItensCadastro } = await supabase
+      .from('itens')
+      .select('id, ncm, cfop, unidade_comercial')
+      .in('id', idsConsulta))
+  }
 
   if (erroItensCadastro) {
     return jsonResponse({ erro: 'Falha ao carregar dados fiscais dos itens' }, 500)
@@ -294,7 +308,7 @@ Deno.serve(async (req: Request) => {
       tributosCentavos,
       numero_item: String(indice + 1),
       codigo_produto: item.item_id,
-      descricao: descricaoDoItem(item.nome_item, item.opcoes),
+      descricao: descricaoDoItem(item.nome_item, item.opcoes, cadastro.preco_aberto ? item.observacao : null),
       codigo_ncm: cadastro.ncm,
       cfop: cadastro.cfop,
       quantidade_comercial: item.quantidade,
