@@ -45,8 +45,8 @@ before(async () => {
     insert into public.itens (id, barraca_id, nome, preco_centavos) values ('${NORMAL}', '${B1}', 'Bala', 50);
   `)
   await db.exec(sql('20261015100000_opcoes_schema_resolver.sql'))
-  await db.exec(sql('20261021100000_valor_livre_preco_aberto.sql'))
-  await db.exec(sql('20261021100000_valor_livre_preco_aberto.sql')) // re-executável
+  await db.exec(sql('20261022110000_valor_livre_preco_aberto.sql'))
+  await db.exec(sql('20261022110000_valor_livre_preco_aberto.sql')) // re-executável
   await db.exec(
     `insert into public.itens (id, barraca_id, nome, preco_centavos, preco_aberto) values ('${LIVRE}', '${B1}', 'Valor livre', 0, true)`,
   )
