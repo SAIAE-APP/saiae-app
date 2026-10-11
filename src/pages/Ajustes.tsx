@@ -2,9 +2,9 @@
 // é feature. Se virar requisito, adicionar entre Pagamento e
 // Aparência.
 
-import { useEffect, useRef, useState } from 'react'
+import { createContext, useContext, useEffect, useRef, useState } from 'react'
 import type { ChangeEvent, FormEvent, ReactNode } from 'react'
-import { Link, useNavigate } from 'react-router'
+import { Link, useNavigate, useSearchParams } from 'react-router'
 import clsx from 'clsx'
 import { supabase } from '../lib/supabase'
 import { classesBotaoIcone } from '../lib/estiloBotaoIcone'
@@ -2785,7 +2785,10 @@ function SecaoAssinatura({ slug }: { slug: string }) {
   )
 }
 
-type CategoriaAjustes = 'conta' | 'cardapio'
+import { grupoAtivo, gruposDaCategoria, type CategoriaAjustes } from '../lib/secoesAjustes'
+
+/** Grupo mostrado no desktop (o menu à esquerda escolhe); no celular todos aparecem. */
+const GrupoAtualContext = createContext<string>('')
 
 const ABAS_CATEGORIA: { valor: CategoriaAjustes; rotulo: string; rota: string }[] = [
   { valor: 'conta', rotulo: 'Conta', rota: 'ajustes' },
@@ -2805,24 +2808,29 @@ const ABAS_CATEGORIA: { valor: CategoriaAjustes; rotulo: string; rota: string }[
  */
 function SecaoDaCategoria({
   categoria,
+  grupo,
   atual,
   children,
 }: {
   categoria: CategoriaAjustes
+  grupo: string
   atual: CategoriaAjustes
   children: ReactNode
 }) {
-  return <div className={clsx('contents', categoria !== atual && 'md:hidden')}>{children}</div>
+  const grupoAtual = useContext(GrupoAtualContext)
+  return <div className={clsx('contents', (categoria !== atual || grupo !== grupoAtual) && 'md:hidden')}>{children}</div>
 }
 
 export function Ajustes({ categoria = 'conta' }: { categoria?: CategoriaAjustes }) {
   const barraca = useBarracaAtual()
+  const [params, setParams] = useSearchParams()
+  const grupoAtual = grupoAtivo(categoria, params.get('secao'))
 
   return (
     <GateSenhaAdmin key={barraca.id} barracaId={barraca.id} slug={barraca.slug}>
       <div className="min-h-dvh">
         <div className="sticky top-0 z-[var(--mesa-z-sticky)] bg-[var(--mesa-color-surface-blur)] px-6 py-5 [backdrop-filter:blur(var(--mesa-surface-blur-strength))]">
-          <div className="md:mx-auto md:max-w-3xl">
+          <div className="md:mx-auto md:max-w-5xl">
             <Link
               to={`/${barraca.slug}`}
               aria-label="Voltar para o início"
@@ -2851,91 +2859,114 @@ export function Ajustes({ categoria = 'conta' }: { categoria?: CategoriaAjustes 
           </div>
         </div>
 
-        <div className="flex flex-col gap-8 px-6 pb-28 pt-2 md:mx-auto md:max-w-3xl">
-          <SecaoDaCategoria categoria="conta" atual={categoria}>
+        <div className="px-6 pb-28 pt-2 md:mx-auto md:grid md:max-w-5xl md:grid-cols-[14rem_minmax(0,1fr)] md:items-start md:gap-8">
+          <nav aria-label="Seções de Ajustes" className="sticky top-32 hidden flex-col gap-1 md:flex">
+            {gruposDaCategoria(categoria).map((g) => (
+              <button
+                key={g.id}
+                type="button"
+                aria-current={g.id === grupoAtual ? 'page' : undefined}
+                onClick={() => setParams({ secao: g.id }, { replace: true })}
+                className={clsx(
+                  'flex min-h-11 items-center gap-2.5 rounded-mesa-md px-3 text-left text-sm font-semibold transition-colors',
+                  g.id === grupoAtual
+                    ? 'bg-mesa-neutral-900 text-white dark:bg-mesa-neutral-50 dark:text-mesa-neutral-900'
+                    : 'text-mesa-text-secondary hover:bg-mesa-neutral-100 hover:text-mesa-text-primary dark:hover:bg-mesa-neutral-800',
+                )}
+              >
+                <Icone nome={g.icone} size={18} />
+                {g.rotulo}
+              </button>
+            ))}
+          </nav>
+          <GrupoAtualContext.Provider value={grupoAtual}>
+          <div className="flex min-w-0 flex-col gap-8">
+          <SecaoDaCategoria categoria="conta" grupo="plano" atual={categoria}>
             <SecaoAssinatura slug={barraca.slug} />
           </SecaoDaCategoria>
-          <SecaoDaCategoria categoria="conta" atual={categoria}>
+          <SecaoDaCategoria categoria="conta" grupo="plano" atual={categoria}>
             <SecaoIdentidade barraca={barraca} />
           </SecaoDaCategoria>
-          <SecaoDaCategoria categoria="cardapio" atual={categoria}>
+          <SecaoDaCategoria categoria="cardapio" grupo="cardapio" atual={categoria}>
             <SecaoCardapioDigital barraca={barraca} />
           </SecaoDaCategoria>
-          <SecaoDaCategoria categoria="cardapio" atual={categoria}>
+          <SecaoDaCategoria categoria="cardapio" grupo="cardapio" atual={categoria}>
             <SecaoCardapio barracaId={barraca.id} />
           </SecaoDaCategoria>
-          <SecaoDaCategoria categoria="cardapio" atual={categoria}>
+          <SecaoDaCategoria categoria="cardapio" grupo="cardapio" atual={categoria}>
             <SecaoOpcoes barraca={barraca} />
           </SecaoDaCategoria>
-          <SecaoDaCategoria categoria="cardapio" atual={categoria}>
+          <SecaoDaCategoria categoria="cardapio" grupo="cardapio" atual={categoria}>
             <SecaoBanners barracaId={barraca.id} />
           </SecaoDaCategoria>
-          <SecaoDaCategoria categoria="cardapio" atual={categoria}>
+          <SecaoDaCategoria categoria="cardapio" grupo="atendimento" atual={categoria}>
             <SecaoHorarioFuncionamento barraca={barraca} />
           </SecaoDaCategoria>
-          <SecaoDaCategoria categoria="cardapio" atual={categoria}>
+          <SecaoDaCategoria categoria="cardapio" grupo="atendimento" atual={categoria}>
             <SecaoModosAtendimento barraca={barraca} />
           </SecaoDaCategoria>
-          <SecaoDaCategoria categoria="cardapio" atual={categoria}>
+          <SecaoDaCategoria categoria="cardapio" grupo="atendimento" atual={categoria}>
             <SecaoTaxaEntrega barraca={barraca} />
           </SecaoDaCategoria>
-          <SecaoDaCategoria categoria="cardapio" atual={categoria}>
+          <SecaoDaCategoria categoria="cardapio" grupo="atendimento" atual={categoria}>
             <SecaoBairrosEntrega barraca={barraca} />
           </SecaoDaCategoria>
-          <SecaoDaCategoria categoria="cardapio" atual={categoria}>
+          <SecaoDaCategoria categoria="cardapio" grupo="atendimento" atual={categoria}>
             <SecaoClientesEntrega barraca={barraca} />
           </SecaoDaCategoria>
-          <SecaoDaCategoria categoria="cardapio" atual={categoria}>
+          <SecaoDaCategoria categoria="cardapio" grupo="cardapio" atual={categoria}>
             <SecaoEstoque barraca={barraca} />
           </SecaoDaCategoria>
-          <SecaoDaCategoria categoria="cardapio" atual={categoria}>
+          <SecaoDaCategoria categoria="cardapio" grupo="recebimento" atual={categoria}>
             <SecaoPagarNaEntrega barraca={barraca} />
           </SecaoDaCategoria>
-          <SecaoDaCategoria categoria="cardapio" atual={categoria}>
+          <SecaoDaCategoria categoria="cardapio" grupo="recebimento" atual={categoria}>
             <SecaoPagamentoDepois barraca={barraca} />
           </SecaoDaCategoria>
-          <SecaoDaCategoria categoria="cardapio" atual={categoria}>
+          <SecaoDaCategoria categoria="cardapio" grupo="atendimento" atual={categoria}>
             <SecaoSaiuEntrega barraca={barraca} />
           </SecaoDaCategoria>
-          <SecaoDaCategoria categoria="cardapio" atual={categoria}>
+          <SecaoDaCategoria categoria="cardapio" grupo="cardapio" atual={categoria}>
             <SecaoCupons barraca={barraca} />
           </SecaoDaCategoria>
           {/* Escondida para cliente novo (decisão 2026-10-09); quem já tem a IA ligada vê, e VITE_MOSTRAR_ATENDENTE_IA=1 reabre. */}
           {mostrarAtendenteIa(barraca, import.meta.env.VITE_MOSTRAR_ATENDENTE_IA) && (
-            <SecaoDaCategoria categoria="cardapio" atual={categoria}>
+            <SecaoDaCategoria categoria="cardapio" grupo="avisos" atual={categoria}>
               <SecaoAtendenteIa barraca={barraca} />
             </SecaoDaCategoria>
           )}
-          <SecaoDaCategoria categoria="cardapio" atual={categoria}>
+          <SecaoDaCategoria categoria="cardapio" grupo="avisos" atual={categoria}>
             <SecaoAvisoPronto barraca={barraca} />
           </SecaoDaCategoria>
-          <SecaoDaCategoria categoria="cardapio" atual={categoria}>
+          <SecaoDaCategoria categoria="cardapio" grupo="avisos" atual={categoria}>
             <SecaoIntegracaoCrm barraca={barraca} />
           </SecaoDaCategoria>
-          <SecaoDaCategoria categoria="cardapio" atual={categoria}>
+          <SecaoDaCategoria categoria="cardapio" grupo="cozinha" atual={categoria}>
             <SecaoFaixas barraca={barraca} />
           </SecaoDaCategoria>
-          <SecaoDaCategoria categoria="conta" atual={categoria}>
+          <SecaoDaCategoria categoria="conta" grupo="financeiro" atual={categoria}>
             <SecaoPagamento barraca={barraca} />
           </SecaoDaCategoria>
-          <SecaoDaCategoria categoria="conta" atual={categoria}>
+          <SecaoDaCategoria categoria="conta" grupo="financeiro" atual={categoria}>
             <SecaoFiscal barraca={barraca} />
           </SecaoDaCategoria>
-          <SecaoDaCategoria categoria="conta" atual={categoria}>
+          <SecaoDaCategoria categoria="conta" grupo="financeiro" atual={categoria}>
             <SecaoPagamentoOnline barraca={barraca} />
           </SecaoDaCategoria>
-          <SecaoDaCategoria categoria="cardapio" atual={categoria}>
+          <SecaoDaCategoria categoria="cardapio" grupo="cozinha" atual={categoria}>
             <SecaoImpressora barraca={barraca} />
           </SecaoDaCategoria>
-          <SecaoDaCategoria categoria="cardapio" atual={categoria}>
+          <SecaoDaCategoria categoria="cardapio" grupo="cozinha" atual={categoria}>
             <SecaoAparencia />
           </SecaoDaCategoria>
-          <SecaoDaCategoria categoria="conta" atual={categoria}>
+          <SecaoDaCategoria categoria="conta" grupo="ajuda" atual={categoria}>
             <SecaoAjudaSuporte barracaNome={barraca.nome} barracaSlug={barraca.slug} />
           </SecaoDaCategoria>
-          <SecaoDaCategoria categoria="conta" atual={categoria}>
+          <SecaoDaCategoria categoria="conta" grupo="ajuda" atual={categoria}>
             <Rodape barracaId={barraca.id} />
           </SecaoDaCategoria>
+          </div>
+          </GrupoAtualContext.Provider>
         </div>
       </div>
     </GateSenhaAdmin>
