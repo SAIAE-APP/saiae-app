@@ -913,7 +913,8 @@ nenhum item daqui sozinho, só quando for pedido explicitamente.
   `20260922120000_add_assinaturas_kirvano.sql`) — isso é billing SaaS
   Sai aê→cliente, problema completamente diferente do pagamento de
   pedido cliente-final→barraca citado acima, não confundir os dois.
-  Trial de 7 dias nasce no cadastro (trigger em `auth.users`, não na
+  Trial de 30 dias (era 7; 2026-10-01) do plano ESSENCIAL (era Pro; decisão do João, 2026-10-11, migration
+  `20261022130000`: só quem se cadastra depois dela) nasce no cadastro (trigger em `auth.users`, não na
   criação da barraca), 1 trial por e-mail pra sempre (mesmo se a
   conta for excluída e recriada). Fonte da verdade do acesso é
   sempre o banco (`assinatura_tem_acesso()`), nunca o relógio do
@@ -930,8 +931,8 @@ nenhum item daqui sozinho, só quando for pedido explicitamente.
   entre os dois eram só texto de marketing até 2026-09-26 — nenhuma
   era aplicada no código. Fechado nessa data: **limite de 1 barraca
   no Essencial** (`criar_barraca`, RPC, bloqueia a 2ª barraca por
-  dono no plano Essencial — trial e Pro continuam sem limite, trial
-  sempre nasce com `plan='pro'`) e **histórico de 7 dias + sem
+  dono no plano Essencial — Pro sem limite; o trial NOVO é Essencial e segue
+  o limite, trial antigo nascido Pro continua sem limite até acabar) e **histórico de 7 dias + sem
   exportar no Essencial** (`Historico.tsx`, só front-end — esconde
   Mês/Período e desabilita o botão Exportar). Ainda **não** aplicado
   de propósito: "Custo do dia, lucro e taxas da maquininha" (feature
