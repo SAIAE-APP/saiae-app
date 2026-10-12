@@ -40,7 +40,7 @@ import { chaveValorLivre } from '../lib/valorLivre'
 import { BotoesLinkEntregador } from '../components/BotoesLinkEntregador'
 import { useEntregaToken } from '../hooks/useEntregaToken'
 import { Badge } from '../components/ui/Badge'
-import { BotaoHome } from '../components/ui/BotaoHome'
+import { CabecalhoPagina } from '../components/ui/CabecalhoPagina'
 import { BottomSheet } from '../components/ui/BottomSheet'
 import { Button } from '../components/ui/Button'
 import { Card } from '../components/ui/Card'
@@ -1099,33 +1099,32 @@ export function LancarPedido() {
 
   return (
     <div className="flex min-h-dvh flex-col">
-      <div className="flex items-start justify-between gap-3 px-6 pt-[calc(env(safe-area-inset-top)+20px)]">
-        <div className="flex items-center gap-1">
-          <BotaoHome />
-          <h1 className="text-[32px] font-bold leading-[40px] text-mesa-text-primary">
-            Lançar Pedido
-          </h1>
-        </div>
-        <div className="flex shrink-0 items-start gap-2 pt-1">
-          <div className="flex flex-col items-end gap-1.5">
-            <Badge variant={online ? 'success' : 'warning'} dot>
-              {online ? 'Online' : 'Offline'}
-            </Badge>
-            {pendentes > 0 && (
-              <Badge variant="neutral">
-                {pendentes} pendente{pendentes === 1 ? '' : 's'}
-              </Badge>
-            )}
-          </div>
-          <button
-            type="button"
-            onClick={alternarTema}
-            aria-label={escuro ? 'Mudar para tema claro' : 'Mudar para tema escuro'}
-            className={classesBotaoIcone()}
-          >
-            {escuro ? <Icone nome="light_mode" size={20} /> : <Icone nome="dark_mode" size={20} />}
-          </button>
-        </div>
+      <div className="px-6 pt-[calc(env(safe-area-inset-top)+20px)]">
+        <CabecalhoPagina
+          titulo="Lançar Pedido"
+          acoes={
+            <>
+              <div className="flex flex-col items-end gap-1.5">
+                <Badge variant={online ? 'success' : 'warning'} dot>
+                  <span className="max-[380px]:hidden">{online ? 'Online' : 'Offline'}</span>
+                </Badge>
+                {pendentes > 0 && (
+                  <Badge variant="neutral">
+                    {pendentes} pendente{pendentes === 1 ? '' : 's'}
+                  </Badge>
+                )}
+              </div>
+              <button
+                type="button"
+                onClick={alternarTema}
+                aria-label={escuro ? 'Mudar para tema claro' : 'Mudar para tema escuro'}
+                className={classesBotaoIcone()}
+              >
+                {escuro ? <Icone nome="light_mode" size={20} /> : <Icone nome="dark_mode" size={20} />}
+              </button>
+            </>
+          }
+        />
       </div>
 
       {!online && (
