@@ -3,7 +3,7 @@ import assert from 'node:assert/strict'
 import { readFileSync } from 'node:fs'
 import { describe, test } from 'node:test'
 
-const nfce = readFileSync(new URL('../supabase/functions/emitir-nfce/index.ts', import.meta.url), 'utf8')
+const nfce = readFileSync(new URL('../supabase/functions/emitir-nfce/handler.ts', import.meta.url), 'utf8')
 
 describe('emitir-nfce com item de preço aberto', () => {
   test('lê a observação da linha do pedido e a flag preco_aberto do cadastro', () => {

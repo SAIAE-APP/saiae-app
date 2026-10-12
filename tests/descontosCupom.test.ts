@@ -60,7 +60,7 @@ describe('evento para o CRM', () => {
 })
 
 describe('NFC-e', () => {
-  const nfce = ler('supabase/functions/emitir-nfce/index.ts')
+  const nfce = ler('supabase/functions/emitir-nfce/handler.ts')
   test('desconto rateado por item (valor_desconto) e total da forma de pagamento já descontado; taxa fora', () => {
     assert.match(nfce, /ratearDesconto\(/)
     assert.match(nfce, /valor_desconto: descontosPorItem\[indice\] \/ 100/)

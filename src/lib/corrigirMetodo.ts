@@ -7,14 +7,16 @@ import { METODOS_REAIS } from './definirMetodoFila.ts'
 const NFCE_QUE_PERMITE = new Set<string | null>([null, 'erro', 'erro_autorizacao'])
 
 export function podeCorrigirMetodo(
-  pedido: { status: string; metodo_pagamento: string | null; nfce_status?: string | null },
+  pedido: { status: string; metodo_pagamento: string | null; nfce_status?: string | null; nfce_chave?: string | null },
   ligado: boolean,
 ): boolean {
   return (
     ligado &&
     pedido.status !== 'cancelado' &&
     (METODOS_REAIS as readonly string[]).includes(pedido.metodo_pagamento ?? '') &&
-    NFCE_QUE_PERMITE.has(pedido.nfce_status ?? null)
+    NFCE_QUE_PERMITE.has(pedido.nfce_status ?? null) &&
+    // Chave preenchida = a nota existe na SEFAZ, mesmo que o status tenha ficado em "erro" (auditoria A2).
+    !pedido.nfce_chave
   )
 }
 
