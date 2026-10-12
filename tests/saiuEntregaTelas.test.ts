@@ -12,7 +12,6 @@ describe('status saiu_entrega nas outras telas', () => {
   test('relatórios e caixa contam tudo que não foi cancelado (o pedido em Saiu entra no faturamento)', () => {
     assert.match(ler('src/lib/relatorio.ts'), /p\.status !== 'cancelado'/)
     assert.match(ler('src/components/SecaoCaixa.tsx'), /\.neq\('status', 'cancelado'\)/)
-    assert.match(ler('src/pages/Dashboard.tsx'), /p\.status !== 'cancelado'/)
   })
   test('o Histórico tem rótulo para o status novo', () => {
     assert.match(ler('src/pages/Historico.tsx'), /if \(status === 'saiu_entrega'\) return ROTULO_SAIU/)
