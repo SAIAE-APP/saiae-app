@@ -13,7 +13,7 @@ import { MOTIVOS_CANCELAMENTO } from '../lib/cancelamento'
 import { formatarPrecoBR } from '../lib/preco'
 import { PainelRelatorio } from '../components/PainelRelatorio'
 import { GateSenhaAdmin } from '../components/GateSenhaAdmin'
-import { BotaoHome } from '../components/ui/BotaoHome'
+import { CabecalhoPagina } from '../components/ui/CabecalhoPagina'
 import { Button } from '../components/ui/Button'
 import { Icone } from '../components/ui/Icone'
 import { SegmentedControl } from '../components/ui/SegmentedControl'
@@ -261,20 +261,19 @@ export function Desktop() {
     <GateSenhaAdmin key={barraca.id} barracaId={barraca.id} slug={barraca.slug}>
       <div className="min-h-dvh px-4 pb-24 pt-[calc(env(safe-area-inset-top)+24px)] md:px-8">
         <div className="mx-auto max-w-4xl">
-          <div className="flex items-center justify-between gap-3">
-            <div className="flex items-center gap-2">
-              <BotaoHome />
-              <h1 className="text-2xl font-bold leading-tight text-mesa-text-primary">Faturamento</h1>
-            </div>
-            <button
-              type="button"
-              onClick={alternarTema}
-              aria-label={escuro ? 'Mudar para tema claro' : 'Mudar para tema escuro'}
-              className={classesBotaoIcone()}
-            >
-              {escuro ? <Icone nome="light_mode" size={20} /> : <Icone nome="dark_mode" size={20} />}
-            </button>
-          </div>
+          <CabecalhoPagina
+            titulo="Faturamento"
+            acoes={
+              <button
+                type="button"
+                onClick={alternarTema}
+                aria-label={escuro ? 'Mudar para tema claro' : 'Mudar para tema escuro'}
+                className={classesBotaoIcone()}
+              >
+                {escuro ? <Icone nome="light_mode" size={20} /> : <Icone nome="dark_mode" size={20} />}
+              </button>
+            }
+          />
 
           <div className="mt-5 flex flex-col gap-3 md:flex-row md:items-center md:justify-between">
             <SegmentedControl
