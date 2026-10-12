@@ -1,0 +1,7 @@
+Categoria;Nome;Preço;Descrição;Ativo
+Pastéis;Pastel de carne;8,50;Carne moída temperada;sim
+Pastéis;Pastel de queijo;8,00;;sim
+Bebidas;Caldo de cana 500 ml;7;Gelado;sim
+Bebidas;Refrigerante lata;R$ 6,00;;não
+;Combo do dia;25.50;"Pastel + caldo; leva dois";
+Bebidas;Água;abc;;sim

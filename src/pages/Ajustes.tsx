@@ -36,6 +36,7 @@ import { SecaoBairrosEntrega } from '../components/SecaoBairrosEntrega'
 import { SecaoIntegracaoCrm } from '../components/SecaoIntegracaoCrm'
 import { SecaoOpcoes } from '../components/SecaoOpcoes'
 import { SecaoClientesEntrega } from '../components/SecaoClientesEntrega'
+import { ImportarCardapioSheet } from '../components/ImportarCardapioSheet'
 import { SecaoPagarNaEntrega } from '../components/SecaoPagarNaEntrega'
 import { EnderecoCardapio } from '../components/EnderecoCardapio'
 import { SecaoPagamentoDepois } from '../components/SecaoPagamentoDepois'
@@ -693,6 +694,9 @@ function SecaoCardapio({ barracaId }: { barracaId: string }) {
 
   const [itemForm, setItemForm] = useState<Item | 'novo' | null>(null)
   const [reordenando, setReordenando] = useState(false)
+  const [importando, setImportando] = useState(false)
+  // Sobe depois de uma importação de planilha: recarrega itens e categorias.
+  const [recarga, setRecarga] = useState(0)
 
   const [itemParaExcluir, setItemParaExcluir] = useState<Item | null>(null)
   const [nomeExclusao, setNomeExclusao] = useState('')
@@ -727,7 +731,7 @@ function SecaoCardapio({ barracaId }: { barracaId: string }) {
     return () => {
       cancelado = true
     }
-  }, [barracaId])
+  }, [barracaId, recarga])
 
   useEffect(() => {
     let cancelado = false
@@ -745,7 +749,7 @@ function SecaoCardapio({ barracaId }: { barracaId: string }) {
     return () => {
       cancelado = true
     }
-  }, [barracaId])
+  }, [barracaId, recarga])
 
   function nomeCategoria(categoriaId: string | null): string {
     if (!categoriaId) return 'Sem categoria'
@@ -915,7 +919,7 @@ function SecaoCardapio({ barracaId }: { barracaId: string }) {
           embaixo (lado a lado com o título eles vazavam da tela em 375px). */}
       <div className="mb-3 flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
         <RotuloSecao icone="restaurant">Cardápio</RotuloSecao>
-        <div className="flex items-center gap-2">
+        <div className="flex flex-wrap items-center gap-2">
           <Button
             variant="outline"
             size="md"
@@ -924,6 +928,15 @@ function SecaoCardapio({ barracaId }: { barracaId: string }) {
             className="flex-1 sm:flex-none"
           >
             Categorias
+          </Button>
+          <Button
+            variant="outline"
+            size="md"
+            icon={<Icone nome="description" size={16} />}
+            onClick={() => setImportando(true)}
+            className="flex-1 sm:flex-none"
+          >
+            Importar de planilha
           </Button>
           <Button
             size="md"
@@ -1068,6 +1081,13 @@ function SecaoCardapio({ barracaId }: { barracaId: string }) {
           </>
         )}
       </Card>
+
+      <ImportarCardapioSheet
+        aberto={importando}
+        barracaId={barracaId}
+        onFechar={() => setImportando(false)}
+        aoImportar={() => setRecarga((n) => n + 1)}
+      />
 
       <BottomSheetItem
         key={itemForm === 'novo' ? 'novo' : (itemForm?.id ?? 'fechado')}

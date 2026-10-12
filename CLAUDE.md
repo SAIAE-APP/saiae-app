@@ -332,6 +332,8 @@ repetir `versionCode`: subir a cada build. Validar em aparelho Android 7–11 e
   quem aceitou; "todos" mostra aviso de LGPD. Células que começam com = + - @
   recebem apóstrofo (sem injeção de fórmula). O app não envia mensagem em massa.
   Política de Privacidade (seção 4) descreve finalidade, revogação e exclusão.
+- Importar cardápio por planilha (Ajustes > Cardápio > "Importar de planilha", `ImportarCardapioSheet`; roteiro `docs/roteiro-importar-cardapio.md`): .csv/.xlsx, colunas Categoria, Nome, Preço, Descrição, Ativo (+ "Preço aberto"), nomes sem acento/maiúscula, máx. 300 linhas; prévia antes de gravar (novos, categorias novas, já existem, erro por linha em português); preço aceita 12, 12,5, R$ 12,50, 12.50 e recusa "1.234"/"1,234" por ambíguo; zero só com Preço aberto = sim.
+  Sem RPC nem migration: inserts em lote pela RLS (funciona para o dono e para o suporte), só INSERE (nunca apaga nem sobrescreve; item com mesma categoria + nome é pulado, categoria casa por nome sem acento/maiúscula). Não é transação, mas é repetível: depois de uma falha, importar o mesmo arquivo completa o resto. Fotos, NCM/CFOP e estoque ficam vazios. Lógica em `src/lib/importarCardapio.ts` (pura) e `cardapioImportacaoNucleo.ts` (gravação com `db` injetável); testes em `tests/importarCardapio*.test.ts` e `tests/cardapioImportacao.test.ts`.
 - Importar clientes de entrega (2026-10-07, PR #39, migration
   `20261012100000_importar_clientes_finais.sql`): botão "Importar" em
   `SecaoClientesEntrega` (`ImportarClientesSheet`; .csv/.xlsx, mesmo formato do
