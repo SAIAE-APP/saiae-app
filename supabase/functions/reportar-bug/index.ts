@@ -11,6 +11,13 @@
 // dois é aplicado por esta função; é o dono do produto que roda/aprova
 // (mesmo padrão de sempre pra secret de produção).
 import { createClient } from 'jsr:@supabase/supabase-js@2'
+import {
+  LIMITE_RELATOS_POR_HORA,
+  TIPO_LIMITE_BUG,
+  assuntoDoRelato,
+  corpoDoRelato,
+  normalizarRelato,
+} from '../_shared/reportarBug.ts'
 
 const CORS_HEADERS = {
   'Access-Control-Allow-Origin': '*',
@@ -34,24 +41,16 @@ Deno.serve(async (req: Request) => {
     return new Response('ok', { headers: CORS_HEADERS })
   }
 
-  let descricao: string | undefined
-  let esperado: string | undefined
-  let barracaNome: string | undefined
-  let barracaSlug: string | undefined
-  let userAgent: string | undefined
+  let relato: ReturnType<typeof normalizarRelato>
 
   try {
-    const body = await req.json()
-    descricao = body?.descricao
-    esperado = body?.esperado
-    barracaNome = body?.barraca_nome
-    barracaSlug = body?.barraca_slug
-    userAgent = body?.user_agent
+    // Limites de tamanho (auditoria M4): descrição 4000, esperado 2000, demais campos curtos.
+    relato = normalizarRelato(await req.json())
   } catch {
     return jsonResponse({ erro: 'JSON inválido' }, 400)
   }
 
-  if (!descricao || !descricao.trim()) {
+  if (!relato.descricao) {
     return jsonResponse({ erro: 'Descrição é obrigatória' }, 400)
   }
 
@@ -65,6 +64,17 @@ Deno.serve(async (req: Request) => {
     return jsonResponse({ erro: 'Não autenticado' }, 401)
   }
 
+  // Limite por usuário/hora (mesmo limitador do consultar-externo): o cadastro é aberto, então sem isso qualquer
+  // conta dispara e-mails sem fim para o time, pelo remetente do domínio.
+  const admin = createClient(Deno.env.get('SUPABASE_URL') ?? '', Deno.env.get('SUPABASE_SERVICE_ROLE_KEY') ?? '')
+  const { data: cabe, error: erroLimite } = await admin.rpc('consulta_externa_registrar', {
+    p_usuario_id: userData.user.id,
+    p_tipo: TIPO_LIMITE_BUG,
+    p_limite: LIMITE_RELATOS_POR_HORA,
+  })
+  if (erroLimite) return jsonResponse({ erro: 'Não foi possível enviar agora. Tente de novo em instantes.' }, 503)
+  if (cabe !== true) return jsonResponse({ erro: 'Muitos relatos em pouco tempo. Tente mais tarde.' }, 429)
+
   const resendApiKey = Deno.env.get('RESEND_API_KEY')
   const emailDestino = Deno.env.get('BUG_REPORT_EMAIL_DESTINO')
   if (!resendApiKey || !emailDestino) {
@@ -75,18 +85,6 @@ Deno.serve(async (req: Request) => {
   }
 
   const usuarioEmail = userData.user.email ?? 'sem e-mail cadastrado'
-  const corpo = [
-    `Usuário: ${usuarioEmail}`,
-    `Barraca: ${barracaNome ?? '—'} (${barracaSlug ?? '—'})`,
-    `Navegador: ${userAgent ?? '—'}`,
-    '',
-    'Descrição:',
-    descricao.trim(),
-  ]
-  if (esperado?.trim()) {
-    corpo.push('', 'O que esperava que acontecesse:', esperado.trim())
-  }
-
   let respostaResend: Response
   try {
     respostaResend = await fetch('https://api.resend.com/emails', {
@@ -99,8 +97,8 @@ Deno.serve(async (req: Request) => {
         from: EMAIL_DE,
         to: [emailDestino],
         reply_to: usuarioEmail,
-        subject: `[Bug] ${barracaNome ?? 'Sai aê'}`,
-        text: corpo.join('\n'),
+        subject: assuntoDoRelato(userData.user.id),
+        text: corpoDoRelato(usuarioEmail, relato),
       }),
     })
   } catch (erroRede) {
