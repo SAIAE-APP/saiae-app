@@ -65,6 +65,6 @@ describe('ordem das chamadas do cupom no webhook', () => {
     assert.equal((fim.match(/rpc\('cupom_liberar'/g) ?? []).length, 2)
   })
   test('liberar só atua em pendente aberto: a liberação vem depois do update condicional de status', () => {
-    assert.match(webhook, /\.eq\('status', 'pendente'\)\n\s+await supabase\.rpc\('cupom_liberar'/)
+    assert.match(webhook, /\.eq\('status', 'pendente'\)\r?\n\s+await supabase\.rpc\('cupom_liberar'/)
   })
 })
