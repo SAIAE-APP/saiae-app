@@ -48,11 +48,18 @@ describe('operadores citados na Política de Privacidade', () => {
     for (const nome of ['Supabase', 'Cloudflare', 'Anthropic', 'Meta', 'Railway']) assert.ok(privacidade.includes(nome), nome)
   })
 
-  test('Exclusão de conta avisa para cancelar a assinatura ANTES (excluir não cancela a cobrança)', () => {
+  test('Exclusão de conta: a função cancela a assinatura na Stripe ANTES de apagar, e os textos dizem isso', () => {
     const exclusao = ler('../supabase/functions/excluir-conta/index.ts')
-    assert.ok(!/stripe/i.test(exclusao), 'se a função passar a cancelar na Stripe, atualize o texto')
-    assert.match(excluir, /antes<\/strong>/)
-    assert.match(excluir, /Excluir a\s+conta não cancela a cobrança na Stripe/)
+    const nucleo = ler('../supabase/functions/_shared/excluirConta.ts')
+    const ajustes = ler('../src/pages/Ajustes.tsx')
+    assert.match(exclusao, /tratarExcluirConta/)
+    assert.match(nucleo, /method: 'DELETE'/, 'cancelamento imediato na Stripe')
+    assert.ok(nucleo.indexOf('cancelarNaStripe(deps') < nucleo.indexOf("rpc('excluir_dados_conta'"), 'a Stripe vem antes dos dados')
+    assert.match(excluir, /cancelada na hora/)
+    assert.match(excluir, /a conta não é excluída/)
+    assert.ok(!/não cancela a cobrança/.test(excluir), 'a frase antiga deixou de valer')
+    assert.match(ajustes, /ela é cancelada na hora, sem novas\s+cobranças; se não conseguirmos cancelar, a conta não é excluída/)
+    assert.ok(!/cancele-a à parte/.test(ajustes))
   })
 
   test('acesso do suporte descrito conforme a migration (24 h, uso único, 7 dias, itens e categorias, dono encerra)', () => {

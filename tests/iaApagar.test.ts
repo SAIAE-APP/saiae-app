@@ -207,10 +207,13 @@ describe('functions (guardas estáticas)', () => {
     assert.ok(c.indexOf("rpc('cliente_apagar_dados'") < c.indexOf('drenarFilaApagarIa('))
     assert.match(c, /if \(error\) return json\(\{ erro: 'Não foi possível apagar agora\. Tente de novo\.' \}, 500\)/)
     assert.match(c, /drenarFilaApagarIa\(supabase\)\.catch\(\(\) => undefined\)/)
-    const e = ler('excluir-conta')
-    assert.ok(e.indexOf("rpc('excluir_dados_conta'") < e.indexOf('drenarFilaApagarIa('))
-    assert.ok(e.indexOf('drenarFilaApagarIa(') < e.indexOf('auth.admin.deleteUser'))
-    assert.match(e, /drenarFilaApagarIa\(admin\)\.catch\(\(\) => undefined\)/)
+    // A lógica de excluir-conta vive em _shared/excluirConta.ts (executada em tests/excluirConta.test.ts); o index só
+    // liga a fila real da IA.
+    const e = readFileSync(new URL('../supabase/functions/_shared/excluirConta.ts', import.meta.url), 'utf8').replace(/\r\n/g, '\n')
+    assert.ok(e.indexOf("rpc('excluir_dados_conta'") < e.indexOf('deps.drenarFila()'))
+    assert.ok(e.indexOf('deps.drenarFila()') < e.indexOf('auth.admin.deleteUser'))
+    assert.match(e, /deps\.drenarFila\(\)\.catch\(\(\) => undefined\)/)
+    assert.match(ler('excluir-conta'), /drenarFila: \(\) => drenarFilaApagarIa\(admin\)/)
   })
 
   test('ia-apagar-processar: sem segredo do job não existe; segredo errado = 401; log fixo', () => {
