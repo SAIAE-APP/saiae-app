@@ -16,6 +16,13 @@ export function deslocarDias(iso: string, dias: number): string {
   return formatarDataISO(data)
 }
 
+/** "05/03" — pra faixas e rótulos curtos de validade (acesso de suporte, por ex.). */
+export function formatarDataCurta(data: Date): string {
+  const dia = String(data.getDate()).padStart(2, '0')
+  const mes = String(data.getMonth() + 1).padStart(2, '0')
+  return `${dia}/${mes}`
+}
+
 /** "Sábado, 5 de setembro" — Intl já devolve nesse formato em pt-BR, só falta maiúscula inicial. */
 export function formatarDataExtenso(data: Date): string {
   const texto = new Intl.DateTimeFormat('pt-BR', {
