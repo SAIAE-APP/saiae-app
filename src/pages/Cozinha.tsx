@@ -16,7 +16,7 @@ import { ROTULO_A_RECEBER, pagarDepoisLigado, pedidoAReceber } from '../lib/paga
 import { cronometroCongelado, minutosDesdeQueSaiu, podeSairParaEntrega, saiuEntregaLigado } from '../lib/saiuEntrega'
 import { ModalFormaPagamento } from '../components/ModalFormaPagamento'
 import type { MetodoPagamento } from '../lib/metodoPagamento'
-import { BotaoHome } from '../components/ui/BotaoHome'
+import { CabecalhoPagina } from '../components/ui/CabecalhoPagina'
 import { BottomSheet } from '../components/ui/BottomSheet'
 import { Button } from '../components/ui/Button'
 import { Icone } from '../components/ui/Icone'
@@ -434,20 +434,20 @@ function BadgeStatus({ status }: { status: StatusConexao }) {
   if (status === 'conectado') {
     return (
       <Badge variant="successOutline" dot>
-        {TEXTO_STATUS[status]}
+        <span className="max-[380px]:hidden">{TEXTO_STATUS[status]}</span>
       </Badge>
     )
   }
   if (status === 'offline') {
     return (
       <Badge variant="danger" dot>
-        {TEXTO_STATUS[status]}
+        <span className="max-[380px]:hidden">{TEXTO_STATUS[status]}</span>
       </Badge>
     )
   }
   return (
     <Badge variant="neutral" dot className="[&>span:first-child]:animate-pulse">
-      {TEXTO_STATUS[status]}
+      <span className="max-[380px]:hidden">{TEXTO_STATUS[status]}</span>
     </Badge>
   )
 }
@@ -818,33 +818,41 @@ export function Cozinha() {
         </p>
       )}
 
-      <div className="flex flex-col gap-2 px-4 pt-[calc(env(safe-area-inset-top)+16px)] pb-4 sm:flex-row sm:items-center sm:justify-between sm:gap-3">
-        <div className="flex items-center gap-1">
-          <BotaoHome />
-          <h1 className="text-2xl font-bold text-mesa-text-primary">Cozinha</h1>
-        </div>
-        <div className="flex flex-wrap items-center gap-2 sm:flex-nowrap">
-          {pendentes > 0 && (
-            <Badge variant="neutral">
-              {pendentes} pendente{pendentes === 1 ? '' : 's'}
-            </Badge>
-          )}
-          <BadgeStatus status={statusConexao} />
-          <button
-            type="button"
-            onClick={alternarTema}
-            aria-label={escuro ? 'Mudar para tema claro' : 'Mudar para tema escuro'}
-            className={classesBotaoIcone()}
-          >
-            {escuro ? <Icone nome="light_mode" size={20} /> : <Icone nome="dark_mode" size={20} />}
-          </button>
-          <Link
-            to={`/${barraca.slug}/historico`}
-            className="flex min-h-11 items-center rounded-mesa-full bg-mesa-neutral-100 px-4 text-sm font-semibold text-mesa-text-primary dark:bg-mesa-neutral-700"
-          >
-            Histórico
-          </Link>
-        </div>
+      <div className="px-4 pt-[calc(env(safe-area-inset-top)+16px)] pb-4">
+        <CabecalhoPagina
+          titulo="Cozinha"
+          acoes={
+            <>
+              {pendentes > 0 && (
+                <Badge variant="neutral">
+                  {pendentes} pendente{pendentes === 1 ? '' : 's'}
+                </Badge>
+              )}
+              <BadgeStatus status={statusConexao} />
+              <button
+                type="button"
+                onClick={alternarTema}
+                aria-label={escuro ? 'Mudar para tema claro' : 'Mudar para tema escuro'}
+                className={classesBotaoIcone()}
+              >
+                {escuro ? <Icone nome="light_mode" size={20} /> : <Icone nome="dark_mode" size={20} />}
+              </button>
+              <Link
+                to={`/${barraca.slug}/historico`}
+                aria-label="Histórico"
+                className={clsx(classesBotaoIcone(), 'hidden max-[380px]:flex')}
+              >
+                <Icone nome="bar_chart" size={20} />
+              </Link>
+              <Link
+                to={`/${barraca.slug}/historico`}
+                className="flex min-h-11 items-center rounded-mesa-full bg-mesa-neutral-100 px-4 text-sm font-semibold text-mesa-text-primary max-[380px]:hidden dark:bg-mesa-neutral-700"
+              >
+                Histórico
+              </Link>
+            </>
+          }
+        />
       </div>
 
       <div className="px-4 pb-4 md:hidden">
