@@ -8,6 +8,7 @@
 // IP (hash) e por barraca numa janela de tempo; idempotente por client_uuid
 // (reenvio devolve a mesma senha). Usa a service role key.
 import { createClient } from 'jsr:@supabase/supabase-js@2'
+import { hashIp, ipDoCliente, limitePorLoja, registrarTentativa } from '../_shared/antiabuso.ts'
 import {
   interpretarResolver,
   itensAcimaDoEstoque,
@@ -21,10 +22,9 @@ import { METODO_GRATIS, ehPedidoGratis } from '../_shared/pedidoGratis.ts'
 import { avaliarCupomDoPedido, reservarCupomDoPedido } from '../_shared/cupomPedido.ts'
 
 // Anti-bot, NÃO limite de volume: barraca em evento recebe centenas de pedidos em
-// poucos minutos e vários consumidores saem do mesmo IP (wifi/NAT). Por isso não
-// há teto por barraca e o teto por IP é altíssimo: só barra script em loop.
-// Cliente real nunca chega perto disso.
-const JANELA_MS = 5 * 60 * 1000
+// poucos minutos e vários consumidores saem do mesmo IP (wifi/NAT). Por isso o teto por IP é
+// altíssimo e o teto por loja (auditoria M5, padrão 400 tentativas em 5 min, configurável em
+// CARDAPIO_LIMITE_POR_LOJA) só barra botnet. Cliente real nunca chega perto disso.
 const LIMITE_POR_IP = 120
 // Envio mais rápido que isso depois de abrir o checkout não é humano.
 const MIN_MS_NO_CHECKOUT = 2000
@@ -44,23 +44,6 @@ function jsonResponse(body: unknown, status = 200) {
 }
 
 const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i
-
-async function hashIp(ip: string, barracaId: string): Promise<string> {
-  const dados = new TextEncoder().encode(`${barracaId}:${ip}`)
-  const digest = await crypto.subtle.digest('SHA-256', dados)
-  return Array.from(new Uint8Array(digest))
-    .map((b) => b.toString(16).padStart(2, '0'))
-    .join('')
-}
-
-function ipDoCliente(req: Request): string {
-  return (
-    req.headers.get('cf-connecting-ip') ??
-    req.headers.get('x-forwarded-for')?.split(',')[0]?.trim() ??
-    req.headers.get('x-real-ip') ??
-    'desconhecido'
-  )
-}
 
 Deno.serve(async (req: Request) => {
   if (req.method === 'OPTIONS') return new Response('ok', { headers: CORS_HEADERS })
@@ -301,18 +284,18 @@ Deno.serve(async (req: Request) => {
     }
   }
 
-  // Teto anti-bot por IP (hash), janela deslizante. Sem limite por barraca.
-  const desde = new Date(Date.now() - JANELA_MS).toISOString()
-  const ipHash = await hashIp(ipDoCliente(req), barracaId)
-  const { count: porIp } = await supabase
-    .from('cardapio_pedidos_log')
-    .select('id', { count: 'exact', head: true })
-    .eq('ip_hash', ipHash)
-    .gte('criado_em', desde)
-  if ((porIp ?? 0) >= LIMITE_POR_IP) {
+  // Teto anti-bot por IP (hash) e por loja, janela deslizante, contado e gravado de forma atômica.
+  const ipHash = await hashIp('pedido-entrega', ipDoCliente(req), barracaId)
+  const decisao = await registrarTentativa(supabase, {
+    barracaId,
+    ipHash,
+    clientUuid,
+    limiteIp: LIMITE_POR_IP,
+    limiteBarraca: limitePorLoja(Deno.env.get('CARDAPIO_LIMITE_POR_LOJA')),
+  })
+  if (decisao !== 'ok') {
     return jsonResponse({ erro: 'Muitos pedidos em pouco tempo. Aguarde um instante e tente de novo.' }, 429)
   }
-  await supabase.from('cardapio_pedidos_log').insert({ barraca_id: barracaId, ip_hash: ipHash, client_uuid: clientUuid })
 
   // Modo antigo (sem endereço estruturado): a comanda não tem rua, então nome,
   // telefone e endereço livre vão também na observação. Com entrega estruturada

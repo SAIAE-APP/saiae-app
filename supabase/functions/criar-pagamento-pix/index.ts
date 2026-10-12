@@ -18,7 +18,7 @@ import { chaveDoProvedor, obterProvedor, urlNotificacaoPagamento } from '../_sha
 import { buscarTokenDoProvedor } from '../_shared/pagamento/token.ts'
 import { minutosExpiracaoPix } from '../_shared/pagamento/expiracao.ts'
 import { ErroProvedor, ehProvedorValido, type QrPix } from '../_shared/pagamento/tipos.ts'
-import { hashIp, ipDoCliente, pareceBot } from '../_shared/antiabuso.ts'
+import { hashIp, ipDoCliente, limitePorLoja, pareceBot, registrarTentativa } from '../_shared/antiabuso.ts'
 import { resolverPerfilDoPedido } from '../_shared/perfilNoPedido.ts'
 import { totalCobrado } from '../_shared/cupom.ts'
 import { avaliarCupomDoPedido, liberarReservasAbandonadas, reservarCupomDoPedido } from '../_shared/cupomPedido.ts'
@@ -26,8 +26,7 @@ import { argsPedidoGratis, ehPedidoGratis, telefoneDoPedidoGratis } from '../_sh
 import { MENSAGEM_FECHADO, foraDoHorarioBloqueado } from '../_shared/horario.ts'
 import { interpretarResolver, itensAcimaDoEstoque, montarLinhas, respostaDeErros } from '../_shared/carrinho.ts'
 
-// Teto anti-bot por IP: não é limite de volume (ver comentário no ponto de uso).
-const JANELA_RATE_LIMIT_MS = 5 * 60 * 1000
+// Teto anti-bot por IP (e por loja, bem alto): não é limite de volume (ver comentário no ponto de uso).
 const LIMITE_COBRANCAS_POR_IP = 60
 
 // Expiração do QR: por barraca (barracas.pix_expiracao_minutos, 35..60, padrão 35).
@@ -111,7 +110,7 @@ Deno.serve(async (req: Request) => {
 
   // Defesas baratas que não afetam cliente real: honeypot preenchido ou envio
   // rápido demais. Resposta genérica, sem dizer qual regra pegou.
-  if (pareceBot(body)) {
+  if (pareceBot(body, Deno.env.get('EXIGIR_MS_NO_CHECKOUT') === '1')) {
     return jsonResponse({ erro: 'Não foi possível gerar o Pix. Tente de novo.' }, 400)
   }
 
@@ -179,16 +178,18 @@ Deno.serve(async (req: Request) => {
   // (escopo no hash), separado do de "Pagar na entrega". Alto de propósito: evento
   // tem muita gente no mesmo wifi/NAT; cliente real nunca chega perto.
   const ipHash = await hashIp('pix', ipDoCliente(req), barraca_id)
-  const desde = new Date(Date.now() - JANELA_RATE_LIMIT_MS).toISOString()
-  const { count: cobrancasDoIp } = await supabase
-    .from('cardapio_pedidos_log')
-    .select('id', { count: 'exact', head: true })
-    .eq('ip_hash', ipHash)
-    .gte('criado_em', desde)
-  if ((cobrancasDoIp ?? 0) >= LIMITE_COBRANCAS_POR_IP) {
+  // Conta + grava numa transação só (cardapio_registrar_tentativa): rajada paralela não passa do teto.
+  // Teto por loja (auditoria M5): botnet com IPs distintos não gera cobrança ilimitada no token do dono.
+  const decisao = await registrarTentativa(supabase, {
+    barracaId: barraca_id,
+    ipHash,
+    clientUuid: client_uuid,
+    limiteIp: LIMITE_COBRANCAS_POR_IP,
+    limiteBarraca: limitePorLoja(Deno.env.get('CARDAPIO_LIMITE_POR_LOJA')),
+  })
+  if (decisao !== 'ok') {
     return jsonResponse({ erro: 'Muitas tentativas em pouco tempo. Aguarde um instante e tente de novo.' }, 429)
   }
-  await supabase.from('cardapio_pedidos_log').insert({ barraca_id, ip_hash: ipHash, client_uuid })
 
   const { data: barraca, error: erroBarraca } = await supabase
     .from('barracas')
