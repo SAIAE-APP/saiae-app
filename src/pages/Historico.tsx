@@ -682,7 +682,7 @@ export function Historico() {
                 loading={exportando}
                 title={planoEssencial ? 'Exportar relatórios é exclusivo do plano Pro' : undefined}
               >
-                <span className="max-[380px]:hidden">Exportar</span>
+                <span className="max-[479px]:hidden">Exportar</span>
               </Button>
             </>
           }

@@ -434,20 +434,20 @@ function BadgeStatus({ status }: { status: StatusConexao }) {
   if (status === 'conectado') {
     return (
       <Badge variant="successOutline" dot>
-        <span className="max-[380px]:hidden">{TEXTO_STATUS[status]}</span>
+        <span className="max-[479px]:hidden">{TEXTO_STATUS[status]}</span>
       </Badge>
     )
   }
   if (status === 'offline') {
     return (
       <Badge variant="danger" dot>
-        <span className="max-[380px]:hidden">{TEXTO_STATUS[status]}</span>
+        <span className="max-[479px]:hidden">{TEXTO_STATUS[status]}</span>
       </Badge>
     )
   }
   return (
     <Badge variant="neutral" dot className="[&>span:first-child]:animate-pulse">
-      <span className="max-[380px]:hidden">{TEXTO_STATUS[status]}</span>
+      <span className="max-[479px]:hidden">{TEXTO_STATUS[status]}</span>
     </Badge>
   )
 }
@@ -823,12 +823,14 @@ export function Cozinha() {
           titulo="Cozinha"
           acoes={
             <>
-              {pendentes > 0 && (
-                <Badge variant="neutral">
-                  {pendentes} pendente{pendentes === 1 ? '' : 's'}
-                </Badge>
-              )}
-              <BadgeStatus status={statusConexao} />
+              <div className="flex flex-col items-end gap-1.5">
+                {pendentes > 0 && (
+                  <Badge variant="neutral">
+                    {pendentes} pendente{pendentes === 1 ? '' : 's'}
+                  </Badge>
+                )}
+                <BadgeStatus status={statusConexao} />
+              </div>
               <button
                 type="button"
                 onClick={alternarTema}
@@ -840,13 +842,13 @@ export function Cozinha() {
               <Link
                 to={`/${barraca.slug}/historico`}
                 aria-label="Histórico"
-                className={clsx(classesBotaoIcone(), 'hidden max-[380px]:flex')}
+                className={clsx(classesBotaoIcone(), 'hidden max-[479px]:flex')}
               >
                 <Icone nome="bar_chart" size={20} />
               </Link>
               <Link
                 to={`/${barraca.slug}/historico`}
-                className="flex min-h-11 items-center rounded-mesa-full bg-mesa-neutral-100 px-4 text-sm font-semibold text-mesa-text-primary max-[380px]:hidden dark:bg-mesa-neutral-700"
+                className="flex min-h-11 items-center rounded-mesa-full bg-mesa-neutral-100 px-4 text-sm font-semibold text-mesa-text-primary max-[479px]:hidden dark:bg-mesa-neutral-700"
               >
                 Histórico
               </Link>
