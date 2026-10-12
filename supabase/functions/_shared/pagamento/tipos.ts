@@ -115,3 +115,19 @@ export function valorDecimalParaCentavos(valor: unknown): number {
 export function centavosParaDecimal(centavos: number): number {
   return centavos / 100
 }
+
+/**
+ * Decisão sobre a assinatura da notificação (auditoria B1). `invalida` SEMPRE rejeita (forjada).
+ * `sem_assinatura` (o dono cadastrou o segredo, mas a notificação veio sem x-signature) só rejeita com
+ * `exigirAssinatura` (env EXIGIR_ASSINATURA_MP=1): a documentação do Mercado Pago descreve a assinatura para os
+ * webhooks configurados no painel e não garante que as notificações do `notification_url` por pagamento (o que
+ * usamos) venham assinadas. Desligado por padrão para não perder pagamento real.
+ */
+export function decidirAssinatura(
+  resultado: ResultadoAssinatura,
+  exigirAssinatura: boolean,
+): 'seguir' | 'rejeitar_invalida' | 'rejeitar_ausente' {
+  if (resultado === 'invalida') return 'rejeitar_invalida'
+  if (resultado === 'sem_assinatura') return exigirAssinatura ? 'rejeitar_ausente' : 'seguir'
+  return 'seguir'
+}

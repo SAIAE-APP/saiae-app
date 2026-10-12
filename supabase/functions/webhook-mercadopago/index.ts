@@ -23,7 +23,7 @@ import { createClient } from 'jsr:@supabase/supabase-js@2'
 import { desfechoDaCriacao } from '../_shared/pagamento/corrida.ts'
 import { chaveDoProvedor, obterProvedor } from '../_shared/pagamento/registro.ts'
 import { buscarSegredoWebhook, buscarTokenDoProvedor } from '../_shared/pagamento/token.ts'
-import { ErroProvedor, type ConsultaPagamento } from '../_shared/pagamento/tipos.ts'
+import { ErroProvedor, decidirAssinatura, type ConsultaPagamento } from '../_shared/pagamento/tipos.ts'
 import {
   STATUS_PENDENTE_ABERTOS,
   decidirAprovado,
@@ -113,9 +113,16 @@ Deno.serve(async (req: Request) => {
   if (provedor.validarNotificacao) {
     const segredo = await buscarSegredoWebhook(supabase, pendente.barraca_id, provedor.chave)
     const assinatura = await provedor.validarNotificacao(req, segredo)
-    if (assinatura === 'invalida') {
+    // EXIGIR_ASSINATURA_MP=1: com segredo cadastrado, notificação SEM assinatura também é recusada (401).
+    // Desligado por padrão: ver decidirAssinatura (tipos.ts).
+    const decisao = decidirAssinatura(assinatura, Deno.env.get('EXIGIR_ASSINATURA_MP') === '1')
+    if (decisao === 'rejeitar_invalida') {
       console.warn('webhook-mercadopago: assinatura inválida', { pendente: pendente.id })
       return jsonResponse({ ok: false, aviso: 'assinatura inválida' }, 401)
+    }
+    if (decisao === 'rejeitar_ausente') {
+      console.warn('webhook-mercadopago: assinatura ausente e EXIGIR_ASSINATURA_MP=1', { pendente: pendente.id })
+      return jsonResponse({ ok: false, aviso: 'assinatura ausente' }, 401)
     }
     if (assinatura === 'sem_assinatura') {
       console.warn('webhook-mercadopago: segredo cadastrado, mas a notificação veio sem assinatura', { pendente: pendente.id })
