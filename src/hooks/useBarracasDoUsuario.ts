@@ -7,6 +7,8 @@ export type BarracaComPapel = {
   barraca_id: string
   papel: string
   barraca: Barraca
+  /** Só presente quando `papel === 'suporte'` — até quando o acesso vale. */
+  expiraEmSuporte?: string
 }
 
 // Cache em memória do módulo — sobrevive a remounts (Dispatcher, RotaProtegida
@@ -31,18 +33,36 @@ async function buscarBarracasDoUsuario(usuarioId: string): Promise<{
   barracas: BarracaComPapel[]
   erro: string | null
 }> {
-  const { data, error } = await supabase
-    .from('usuarios_barracas')
-    .select('barraca_id, papel, barracas(id, nome, slug, logo_url, modo, verde_ate, amarelo_ate, criada_em)')
-    .eq('usuario_id', usuarioId)
+  const [normal, suporte] = await Promise.all([
+    supabase
+      .from('usuarios_barracas')
+      .select('barraca_id, papel, barracas(id, nome, slug, logo_url, modo, verde_ate, amarelo_ate, criada_em)')
+      .eq('usuario_id', usuarioId),
+    // Barracas com acesso de suporte ATIVO agora (não vem de usuarios_barracas
+    // — suporte nunca ganha linha lá). Falha aqui não derruba a lista normal:
+    // é um extra, não a fonte principal de acesso de ninguém.
+    supabase.rpc('suporte_minhas_barracas'),
+  ])
 
-  if (error) return { barracas: [], erro: error.message }
+  if (normal.error) return { barracas: [], erro: normal.error.message }
 
-  const resultado = (data ?? []).map((linha) => ({
+  const resultado: BarracaComPapel[] = (normal.data ?? []).map((linha) => ({
     barraca_id: linha.barraca_id as string,
     papel: linha.papel as string,
     barraca: linha.barracas as unknown as Barraca,
   }))
+
+  const idsNormais = new Set(resultado.map((r) => r.barraca_id))
+  type LinhaSuporte = { barraca_id: string; nome: string; slug: string; logo_url: string | null; expira_em: string }
+  for (const linha of (suporte.data ?? []) as LinhaSuporte[]) {
+    if (idsNormais.has(linha.barraca_id)) continue // nunca deveria acontecer — suporte não tem linha em usuarios_barracas
+    resultado.push({
+      barraca_id: linha.barraca_id,
+      papel: 'suporte',
+      barraca: { id: linha.barraca_id, nome: linha.nome, slug: linha.slug, logo_url: linha.logo_url } as unknown as Barraca,
+      expiraEmSuporte: linha.expira_em,
+    })
+  }
 
   return { barracas: resultado, erro: null }
 }
