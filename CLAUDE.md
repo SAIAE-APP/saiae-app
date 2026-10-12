@@ -870,7 +870,7 @@ nenhum item daqui sozinho, só quando for pedido explicitamente.
     antiga (coluna NULL): conta como produção só se a barraca está HOJE em
     produção, senão homologação (`ambienteDaNota` em `src/lib/fiscal.ts`; em
     dúvida avisa a mais). `emitir-nfce` devolve cedo se o pedido já está
-    autorizado: testar produção exige pedido novo. **Emissão de verdade implementada e
+    autorizado: testar produção exige pedido novo. **Trava e reconciliação (auditoria A2, migration `20261025100000`, aplicar ANTES do deploy da function):** `emitir-nfce` (handler em `handler.ts`, injetável nos testes) consulta `GET /nfce/{ref}` antes de enviar e antes de gravar `erro`; reivindica o pedido por UPDATE atômico (`nfce_status = processando_autorizacao` + `nfce_trava_em`, vence em 2 min); update final com erro = 500 com a chave no log; `corrigir_metodo_pagamento` e `podeCorrigirMetodo` não liberam pedido com `nfce_chave`. **Emissão de verdade implementada e
     no ar** (2026-09-26): Edge Function `emitir-nfce` (deployada via
     `supabase functions deploy`, usa a service role key, nunca a
     anon) valida fiscal habilitado → CNPJ → token → itens com NCM/

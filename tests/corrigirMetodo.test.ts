@@ -51,3 +51,11 @@ describe('Histórico (guardas estáticas)', () => {
     assert.match(c, /Sem internet\. A forma de pagamento não foi trocada\./)
   })
 })
+
+describe('podeCorrigirMetodo com chave de nota (auditoria A2)', () => {
+  test('status `erro` COM chave = nota existe na SEFAZ: não libera a correção', () => {
+    for (const nfce of [null, 'erro', 'erro_autorizacao']) assert.equal(podeCorrigirMetodo(pedido({ nfce_status: nfce, nfce_chave: '3526...' }), true), false, String(nfce))
+    assert.equal(podeCorrigirMetodo(pedido({ nfce_status: 'erro', nfce_chave: null }), true), true)
+    assert.equal(podeCorrigirMetodo(pedido({ nfce_status: 'erro', nfce_chave: '' }), true), true)
+  })
+})

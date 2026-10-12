@@ -16,7 +16,7 @@ describe('totalDaNotaCentavos', () => {
 })
 
 test('emitir-nfce recusa total zero ANTES de qualquer chamada à FocusNFe', () => {
-  const f = readFileSync(new URL('../supabase/functions/emitir-nfce/index.ts', import.meta.url), 'utf8').replace(/\r\n/g, '\n')
+  const f = readFileSync(new URL('../supabase/functions/emitir-nfce/handler.ts', import.meta.url), 'utf8').replace(/\r\n/g, '\n')
   const guarda = f.indexOf('MENSAGEM_PEDIDO_GRATIS, codigo')
   assert.ok(guarda > 0)
   assert.match(f, /=== 0\) \{\r?\n {4}return jsonResponse\(\{ erro: MENSAGEM_PEDIDO_GRATIS/)
