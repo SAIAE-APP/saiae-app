@@ -11,6 +11,7 @@
 // dois é aplicado por esta função; é o dono do produto que roda/aprova
 // (mesmo padrão de sempre pra secret de produção).
 import { createClient } from 'jsr:@supabase/supabase-js@2'
+import { comCors } from '../_shared/cors.ts'
 import {
   LIMITE_RELATOS_POR_HORA,
   TIPO_LIMITE_BUG,
@@ -19,8 +20,8 @@ import {
   normalizarRelato,
 } from '../_shared/reportarBug.ts'
 
+// O Allow-Origin vem da allowlist (comCors, _shared/cors.ts), nunca `*`.
 const CORS_HEADERS = {
-  'Access-Control-Allow-Origin': '*',
   'Access-Control-Allow-Headers': 'authorization, x-client-info, apikey, content-type',
 }
 
@@ -36,7 +37,7 @@ function jsonResponse(body: unknown, status = 200) {
 // envio mudar; não é secret porque não é sensível, só configuração.
 const EMAIL_DE = 'Sai aê <bugs@saiae.com.br>'
 
-Deno.serve(async (req: Request) => {
+async function tratar(req: Request): Promise<Response> {
   if (req.method === 'OPTIONS') {
     return new Response('ok', { headers: CORS_HEADERS })
   }
@@ -111,4 +112,6 @@ Deno.serve(async (req: Request) => {
   }
 
   return jsonResponse({ ok: true })
-})
+}
+
+Deno.serve((req: Request) => comCors(req, tratar(req)))

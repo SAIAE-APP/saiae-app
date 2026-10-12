@@ -17,6 +17,7 @@
 // produção. Agora exige um JWT de usuário válido E que esse usuário
 // pertença à barraca do pedido (mesma checagem de `usuario_tem_acesso_barraca`
 // usada em todo o resto do app).
+import { comCors } from '../_shared/cors.ts'
 import { MENSAGEM_PEDIDO_GRATIS, ratearDesconto, totalDaNotaCentavos } from '../_shared/descontoNfce.ts'
 
 const FOCUSNFE_URL_HOMOLOGACAO = 'https://homologacao.focusnfe.com.br/v2'
@@ -39,8 +40,8 @@ const FORMA_PAGAMENTO_POR_METODO: Record<string, string> = {
 const ICMS_ORIGEM = '0'
 const ICMS_SITUACAO_TRIBUTARIA = '102'
 
+// O Allow-Origin vem da allowlist (comCors, _shared/cors.ts), nunca `*`.
 const CORS_HEADERS = {
-  'Access-Control-Allow-Origin': '*',
   'Access-Control-Allow-Headers': 'authorization, x-client-info, apikey, content-type',
 }
 
@@ -113,7 +114,7 @@ export type DependenciasNfce = {
 // assumir (a primeira morreu), mas SEMPRE reconcilia com a FocusNFe antes de enviar de novo.
 export const TRAVA_NFCE_MS = 2 * 60 * 1000
 
-export function criarHandler(deps: DependenciasNfce) {
+function criarHandlerInterno(deps: DependenciasNfce) {
   const createClient = deps.criarCliente
   const fetch = deps.buscar
   return async (req: Request): Promise<Response> => {
@@ -523,4 +524,9 @@ export function criarHandler(deps: DependenciasNfce) {
     mensagem: resultado?.mensagem_sefaz ?? null,
   })
   }
+}
+
+export function criarHandler(deps: DependenciasNfce) {
+  const interno = criarHandlerInterno(deps)
+  return (req: Request): Promise<Response> => comCors(req, interno(req))
 }

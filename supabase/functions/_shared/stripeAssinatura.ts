@@ -7,6 +7,7 @@
 // Cancelamento: só cancela assinatura ativa; grava `canceled` SÓ com o fim do período devolvido pela Stripe (período
 // nulo cortaria o acesso na hora: assinatura_tem_acesso exige current_period_end > now() em 'canceled'); checa erro;
 // segue o mesmo critério de ordem do webhook (stripe_evento_em); limite de tentativas.
+import { comCors } from './cors.ts'
 import { STRIPE_API, atualizarAssinatura, periodoFimIso, type SupabaseMinimo } from './stripeWebhook.ts'
 
 export const URL_APP_PUBLICA = 'https://app.saiae.com.br'
@@ -19,8 +20,8 @@ export const MIN_TRIAL_MS = 48 * 60 * 60 * 1000 + 10 * 60 * 1000
 /** Estados da assinatura na Stripe em que uma segunda assinatura seria cobrança em dobro. */
 const STATUS_STRIPE_VIVOS = ['active', 'trialing', 'past_due', 'unpaid']
 
+// O Allow-Origin vem da allowlist (comCors, _shared/cors.ts), nunca `*`.
 const CORS_HEADERS = {
-  'Access-Control-Allow-Origin': '*',
   'Access-Control-Allow-Headers': 'authorization, x-client-info, apikey, content-type',
 }
 
@@ -60,7 +61,7 @@ async function lerCorpo(req: Request): Promise<Record<string, unknown> | null> {
 
 const TOKEN = /^[a-z0-9_-]{1,30}$/i
 
-export async function tratarCriarCheckout(req: Request, deps: DepsAssinatura): Promise<Response> {
+async function criarCheckoutInterno(req: Request, deps: DepsAssinatura): Promise<Response> {
   if (req.method === 'OPTIONS') return new Response('ok', { headers: CORS_HEADERS })
 
   const corpo = await lerCorpo(req)
@@ -198,7 +199,7 @@ export async function tratarCriarCheckout(req: Request, deps: DepsAssinatura): P
   })
 }
 
-export async function tratarCancelarAssinatura(req: Request, deps: DepsAssinatura): Promise<Response> {
+async function cancelarAssinaturaInterno(req: Request, deps: DepsAssinatura): Promise<Response> {
   if (req.method === 'OPTIONS') return new Response('ok', { headers: CORS_HEADERS })
 
   const usuario = await deps.autenticar((req.headers.get('Authorization') ?? '').replace(/^Bearer\s+/i, ''))
@@ -288,4 +289,12 @@ export async function tratarCancelarAssinatura(req: Request, deps: DepsAssinatur
     )
   }
   return json({ ok: true })
+}
+
+export function tratarCriarCheckout(req: Request, deps: DepsAssinatura): Promise<Response> {
+  return comCors(req, criarCheckoutInterno(req, deps))
+}
+
+export function tratarCancelarAssinatura(req: Request, deps: DepsAssinatura): Promise<Response> {
+  return comCors(req, cancelarAssinaturaInterno(req, deps))
 }

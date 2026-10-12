@@ -4,10 +4,11 @@
 // do terceiro devolve "indisponivel": o assistente sempre deixa preencher à mão.
 //   supabase functions deploy consultar-externo --project-ref <ref>   (COM verificação de JWT)
 import { createClient } from 'jsr:@supabase/supabase-js@2'
+import { comCors } from '../_shared/cors.ts'
 import { cepValido, cnpjValido, normalizarBrasilApi, normalizarViaCep, soDigitos } from '../_shared/consultaExterna.ts'
 
+// O Allow-Origin vem da allowlist (comCors, _shared/cors.ts), nunca `*`.
 const CORS = {
-  'Access-Control-Allow-Origin': '*',
   'Access-Control-Allow-Headers': 'authorization, x-client-info, apikey, content-type',
 }
 const LIMITE_POR_HORA = 30
@@ -27,7 +28,7 @@ async function buscar(url: string): Promise<{ status: number; corpo: unknown } |
   }
 }
 
-Deno.serve(async (req: Request) => {
+async function tratar(req: Request): Promise<Response> {
   if (req.method === 'OPTIONS') return new Response('ok', { headers: CORS })
   if (req.method !== 'POST') return json({ ok: false, motivo: 'metodo' }, 405)
 
@@ -67,4 +68,6 @@ Deno.serve(async (req: Request) => {
   if (!r || r.status >= 500 || r.status === 429) return json({ ok: false, motivo: 'indisponivel' })
   const dados = normalizarViaCep(r.corpo)
   return dados ? json({ ok: true, tipo, dados }) : json({ ok: false, motivo: 'nao_encontrado' })
-})
+}
+
+Deno.serve((req: Request) => comCors(req, tratar(req)))

@@ -6,10 +6,11 @@
 // auth.users. A assinatura vem PRIMEIRO e falha FECHADA: se a Stripe não cancelar, nada é apagado (nunca apagar a
 // conta deixando cobrança viva, sem ninguém para cancelar). Se falhar depois disso, dá pra tentar de novo: cada etapa
 // é idempotente (cancelar uma assinatura já cancelada conta como sucesso).
+import { comCors } from './cors.ts'
 import { STRIPE_API, atualizarAssinatura, type SupabaseMinimo } from './stripeWebhook.ts'
 
+// O Allow-Origin vem da allowlist (comCors, _shared/cors.ts), nunca `*`.
 const CORS_HEADERS = {
-  'Access-Control-Allow-Origin': '*',
   'Access-Control-Allow-Headers': 'authorization, x-client-info, apikey, content-type',
 }
 
@@ -71,7 +72,7 @@ async function cancelarNaStripe(deps: DepsExcluirConta, subscriptionId: string):
   }
 }
 
-export async function tratarExcluirConta(req: Request, deps: DepsExcluirConta): Promise<Response> {
+async function excluirContaInterno(req: Request, deps: DepsExcluirConta): Promise<Response> {
   if (req.method === 'OPTIONS') return new Response('ok', { headers: CORS_HEADERS })
 
   let confirmacao: string | undefined
@@ -155,4 +156,8 @@ export async function tratarExcluirConta(req: Request, deps: DepsExcluirConta): 
   }
 
   return json({ ok: true })
+}
+
+export function tratarExcluirConta(req: Request, deps: DepsExcluirConta): Promise<Response> {
+  return comCors(req, excluirContaInterno(req, deps))
 }
