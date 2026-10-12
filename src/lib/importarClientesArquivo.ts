@@ -1,4 +1,4 @@
-import { LIMITE_LINHAS_IMPORTACAO, parsearCsv } from './importarClientes'
+import { LIMITE_LINHAS_IMPORTACAO, parsearCsv } from './importarClientes.ts'
 
 /** Tamanho máximo do arquivo (uma planilha de 2000 clientes tem poucas centenas de KB). */
 export const TAMANHO_MAX_ARQUIVO_BYTES = 5 * 1024 * 1024
@@ -26,6 +26,11 @@ function textoDaCelula(valor: unknown): string {
 
 /** Lê .csv ou .xlsx (1ª aba) como tabela de texto. exceljs só é baixado ao importar .xlsx. */
 export async function lerArquivoDeClientes(arquivo: File): Promise<string[][]> {
+  return lerArquivoDeTabela(arquivo, LIMITE_LINHAS_IMPORTACAO)
+}
+
+/** Mesma leitura com limite de linhas próprio (a importação do cardápio aceita bem menos que a de clientes). */
+export async function lerArquivoDeTabela(arquivo: File, limiteLinhas: number): Promise<string[][]> {
   if (arquivo.size > TAMANHO_MAX_ARQUIVO_BYTES) {
     throw new ErroArquivoImportacao('Arquivo muito grande (máximo 5 MB).')
   }
@@ -35,7 +40,9 @@ export async function lerArquivoDeClientes(arquivo: File): Promise<string[][]> {
   if (nome.endsWith('.csv') || nome.endsWith('.txt')) return parsearCsv(decodificarCsv(buffer))
 
   if (nome.endsWith('.xlsx')) {
-    const ExcelJS = await import('exceljs')
+    const modulo = await import('exceljs')
+    // No bundle do Vite o construtor vem direto; no Node (testes) o módulo CJS expõe tudo em `default`.
+    const ExcelJS = 'Workbook' in modulo ? modulo : (modulo as unknown as { default: typeof modulo }).default
     const workbook = new ExcelJS.Workbook()
     try {
       await workbook.xlsx.load(buffer)
@@ -45,10 +52,10 @@ export async function lerArquivoDeClientes(arquivo: File): Promise<string[][]> {
     const aba = workbook.worksheets[0]
     if (!aba) throw new ErroArquivoImportacao('A planilha não tem nenhuma aba.')
     // Folga pra linhas vazias no fim; acima disso o arquivo passa do limite de qualquer jeito.
-    const ultima = Math.min(aba.rowCount, LIMITE_LINHAS_IMPORTACAO + 200)
+    const ultima = Math.min(aba.rowCount, limiteLinhas + 200)
     if (aba.rowCount > ultima) {
       throw new ErroArquivoImportacao(
-        `A planilha tem mais de ${LIMITE_LINHAS_IMPORTACAO} linhas; o máximo é ${LIMITE_LINHAS_IMPORTACAO} por arquivo. Divida em partes.`,
+        `A planilha tem mais de ${limiteLinhas} linhas; o máximo é ${limiteLinhas} por arquivo. Divida em partes.`,
       )
     }
     const colunas = Math.min(aba.columnCount, 30)

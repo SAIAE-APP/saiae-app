@@ -39,7 +39,7 @@ export function normalizarTelefoneImportado(texto: string): string {
 }
 
 /** Minúsculo, sem acento e sem pontuação: "Telefone (só dígitos)" vira "telefone so digitos". */
-function chaveCabecalho(texto: string): string {
+export function chaveCabecalho(texto: string): string {
   return texto
     .normalize('NFD')
     .replace(/\p{M}/gu, '')
@@ -50,7 +50,7 @@ function chaveCabecalho(texto: string): string {
 
 /** A exportação prefixa com apóstrofo célula que começa com = + - @ (anti-fórmula);
  * ao reimportar o apóstrofo sai, senão "+55 11 9..." viraria "'+55...". */
-function limparCelula(valor: unknown, max: number): string {
+export function limparCelula(valor: unknown, max: number): string {
   let t = String(valor ?? '')
     // eslint-disable-next-line no-control-regex -- remover caracteres de controle é o objetivo
     .replace(/[\u0000-\u0008\u000b\u000c\u000e-\u001f]/g, '')
