@@ -8,6 +8,7 @@ import { Link, useNavigate, useSearchParams } from 'react-router'
 import clsx from 'clsx'
 import { supabase } from '../lib/supabase'
 import { mensagemDoErroFuncao } from '../lib/erroFuncao'
+import { salvarCredencial } from '../lib/salvarCredencial'
 import { classesBotaoIcone } from '../lib/estiloBotaoIcone'
 import { useBarracaAtual } from '../layouts/contextoBarraca'
 import { useAuth } from '../hooks/useAuth'
@@ -1768,16 +1769,12 @@ function BottomSheetTokenFiscal({
     setProcessando(true)
     setErro(null)
 
-    const { error } = await supabase.rpc('definir_token_fiscal', {
-      p_barraca_id: barracaId,
-      p_ambiente: ambiente,
-      p_token: token.trim(),
-    })
+    const mensagem = await salvarCredencial({ tipo: 'fiscal', barracaId, ambiente, valor: token.trim() })
 
     setProcessando(false)
 
-    if (error) {
-      setErro(mensagemErroSalvar(error))
+    if (mensagem) {
+      setErro(mensagem)
       return
     }
 
@@ -2076,16 +2073,12 @@ function BottomSheetTokenPagamento({
     setProcessando(true)
     setErro(null)
 
-    const { error } = await supabase.rpc('definir_token_pagamento', {
-      p_barraca_id: barracaId,
-      p_token: token.trim(),
-      p_provedor: provedor.chave,
-    })
+    const mensagem = await salvarCredencial({ tipo: 'pagamento', barracaId, provedor: provedor.chave, valor: token.trim() })
 
     setProcessando(false)
 
-    if (error) {
-      setErro(mensagemErroSalvar(error))
+    if (mensagem) {
+      setErro(mensagem)
       return
     }
 
@@ -2168,16 +2161,12 @@ function BottomSheetSegredoWebhook({
     setProcessando(true)
     setErro(null)
 
-    const { error } = await supabase.rpc('definir_segredo_webhook_pagamento', {
-      p_barraca_id: barracaId,
-      p_segredo: segredo.trim(),
-      p_provedor: provedor.chave,
-    })
+    const mensagem = await salvarCredencial({ tipo: 'segredo_webhook', barracaId, provedor: provedor.chave, valor: segredo.trim() })
 
     setProcessando(false)
 
-    if (error) {
-      setErro(mensagemErroSalvar(error))
+    if (mensagem) {
+      setErro(mensagem)
       return
     }
 
