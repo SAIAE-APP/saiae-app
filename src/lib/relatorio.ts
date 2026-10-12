@@ -359,7 +359,8 @@ export function calcularRitmoDoDia(pedidos: PedidoComItens[]): RitmoDoDia {
   let contagemPreparo = 0
   for (const pedido of validos) {
     if (!pedido.pronto_em || ehEntregaDireta(pedido)) continue
-    somaMinutos += (new Date(pedido.pronto_em).getTime() - new Date(pedido.criado_em).getTime()) / 60000
+    // criado_em é do servidor e pronto_em do aparelho: relógio atrasado daria preparo negativo e puxaria a média pra baixo.
+    somaMinutos += Math.max(0, (new Date(pedido.pronto_em).getTime() - new Date(pedido.criado_em).getTime()) / 60000)
     contagemPreparo += 1
   }
   const tempoMedioPreparoMin = contagemPreparo > 0 ? Math.round(somaMinutos / contagemPreparo) : null
