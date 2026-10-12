@@ -34,6 +34,7 @@ import { nomeComOpcoes } from '../lib/opcoes'
 import { textoCupomDoPedido } from '../lib/descontosCupom'
 import { descreverErroImpressao, imprimirCupomFiscal, impressoraSuportada } from '../lib/impressoraTermica'
 import { ROTULO_SAIU } from '../lib/saiuEntrega'
+import { minutosEntre } from '../lib/tempoPedido'
 import type { Item, PedidoComItens } from '../types/database'
 
 function motivoHumanizado(motivo: string | null): string {
@@ -75,10 +76,6 @@ function formatarHora(iso: string): string {
 function formatarDataCurta(iso: string): string {
   const [ano, mes, dia] = iso.split('-')
   return `${dia}/${mes}/${ano}`
-}
-
-function minutosEntre(inicioIso: string, fimIso: string): number {
-  return Math.round((new Date(fimIso).getTime() - new Date(inicioIso).getTime()) / 60000)
 }
 
 const COR_CABECALHO = 'FFFFC21A' // mesa-orange-500 (Sai aê / mostarda)
