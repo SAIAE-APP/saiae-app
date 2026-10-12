@@ -13,7 +13,7 @@ import { Icone } from '../components/ui/Icone'
 // usa nenhum rastreador de terceiro (confirmado por busca no código,
 // 2026-09-28) — não há seção de cookies além da nota informativa abaixo.
 
-const DATA_VIGENCIA = '9 de outubro de 2026'
+const DATA_VIGENCIA = '12 de outubro de 2026'
 
 function Secao({ titulo, children }: { titulo: string; children: React.ReactNode }) {
   return (
@@ -128,9 +128,20 @@ export function Privacidade() {
               caixa (abertura/fechamento, sangria/suprimento).
             </ItemLista>
             <ItemLista>
-              <strong>Assinatura do Sai aê:</strong> processada pela Kirvano — não armazenamos dados de
-              cartão; guardamos apenas o status da assinatura (ativa, em trial, etc.) e identificadores da
-              transação.
+              <strong>Assinatura do Sai aê:</strong> processada pela Stripe. Os dados de pagamento são
+              informados direto na página da Stripe e não passam pelo Sai aê nem ficam guardados por nós.
+              Guardamos o status da assinatura (ativa, em teste, em atraso, cancelada), o plano, as datas do
+              período e os identificadores do cliente e da assinatura na Stripe, além do registro técnico
+              dos avisos que a Stripe nos envia sobre a assinatura.
+            </ItemLista>
+            <ItemLista>
+              <strong>Acesso do suporte (opcional, só com a sua autorização):</strong> em Ajustes, o dono
+              pode gerar um código para que uma pessoa da equipe de suporte do Sai aê ajude a montar o
+              cardápio. O código vale por 24 horas e só pode ser usado uma vez; com ele, o suporte pode,
+              por até 7 dias, ver, criar, alterar e apagar os itens e as categorias do cardápio da loja e
+              ver os dados cadastrais e as configurações da loja. O suporte não vê pedidos, caixa, clientes
+              nem senhas e chaves de integração. O dono pode encerrar esse acesso a qualquer momento em
+              Ajustes. Registramos quando o código foi gerado e usado.
             </ItemLista>
             <ItemLista>
               <strong>Impressora térmica (opcional):</strong> se o dono conectar uma impressora Bluetooth,
@@ -364,10 +375,10 @@ export function Privacidade() {
             <ItemLista><strong>Resend</strong> — envio de e-mails transacionais (confirmação de cadastro, redefinição de senha, reporte de bug).</ItemLista>
             <ItemLista><strong>Mercado Pago</strong> — processamento de pagamentos Pix no cardápio digital (quando habilitado).</ItemLista>
             <ItemLista><strong>FocusNFe</strong> — emissão de nota fiscal eletrônica (quando habilitado pelo dono da barraca).</ItemLista>
-            <ItemLista><strong>Kirvano</strong> — processamento da cobrança de assinatura do Sai aê.</ItemLista>
+            <ItemLista><strong>Stripe</strong> — processamento da cobrança de assinatura do Sai aê (recebe o e-mail do dono e os dados de pagamento informados no checkout).</ItemLista>
             <ItemLista><strong>Google Fonts</strong> — carregamento das fontes usadas na interface.</ItemLista>
             <ItemLista><strong>BrasilAPI e ViaCEP</strong> — consulta pública de CNPJ e CEP no assistente de configuração (ver seção 7).</ItemLista>
-            <ItemLista><strong>Anthropic, Meta e Railway</strong> — atendente automático por WhatsApp e atendimento a interessados (ver seções 8 e 9).</ItemLista>
+            <ItemLista><strong>Anthropic, Meta e Railway</strong> — atendente automático por WhatsApp e atendimento a interessados (ver seções 8 e 9). A Meta (WhatsApp) e a Railway também entregam o código de confirmação do perfil e os avisos sobre o pedido, quando esses recursos estão ligados (seção 3).</ItemLista>
           </ul>
           <p>
             Não usamos ferramentas de analytics, rastreamento de comportamento ou publicidade de
