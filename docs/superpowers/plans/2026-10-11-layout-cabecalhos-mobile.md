@@ -4,9 +4,9 @@
 
 **Goal:** Em Lançar Pedido, Cozinha, Histórico e Faturamento (Desktop.tsx), o título do cabeçalho nunca quebra linha e os selos/botões à direita nunca empurram ou sobrepõem o título, em 360px, 390px e 768px.
 
-**Architecture:** Extrair o padrão repetido "botão home + título + área de ações" num componente `CabecalhoPagina` (home à esquerda, título com `truncate`/`whitespace-nowrap` num container `min-w-0 flex-1`, ações à direita em container `shrink-0`). A lógica de classes do título fica numa função pura testável (convenção já usada em `estiloBotaoIcone.ts`). Selos de status (Online/Offline, Tempo real) escondem o texto abaixo de ~380px via variante Tailwind `max-[380px]:hidden`, mantendo o dot; o link "Histórico" (Cozinha) ganha uma versão ícone-only (`bar_chart`, já usado para Histórico em `BarraNavegacao`/`SidebarDesktop`) que aparece só abaixo de 380px.
+**Architecture:** Extrair o padrão repetido "botão home + título + área de ações" num componente `CabecalhoPagina` (home à esquerda, título com `truncate`/`whitespace-nowrap` num container `min-w-0 flex-1`, ações à direita em container `shrink-0`). A lógica de classes do título fica numa função pura testável (convenção já usada em `estiloBotaoIcone.ts`). Selos de status (Online/Offline, Tempo real) escondem o texto abaixo de ~479px via variante Tailwind `max-[479px]:hidden`, mantendo o dot; o link "Histórico" (Cozinha) ganha uma versão ícone-only (`bar_chart`, já usado para Histórico em `BarraNavegacao`/`SidebarDesktop`) que aparece só abaixo de 380px.
 
-**Tech Stack:** React 19 + TypeScript, Tailwind CSS v4 (variantes arbitrárias `max-[380px]:`), Node test runner (`node --test`, sem DOM/testing-library disponível no repo).
+**Tech Stack:** React 19 + TypeScript, Tailwind CSS v4 (variantes arbitrárias `max-[479px]:`), Node test runner (`node --test`, sem DOM/testing-library disponível no repo).
 
 **Spec:** Pedido do orquestrador (sprint 1, mensagem cross-session), resumido acima; sem arquivo de spec separado.
 
@@ -23,7 +23,7 @@
 
 - Título muito longo (nome de barraca extremo não se aplica aqui, mas "Faturamento"/"Lançar Pedido" em 360px com todas as ações presentes ao mesmo tempo — pendentes>0 E offline) — cobrir com teste de classes do título (nowrap/truncate) e checagem visual no pior caso (offline + pendentes).
 - `truncate` sem `min-w-0` no ancestor flex não funciona (continua empurrando) — garantir `min-w-0` no container do título em todas as 4 páginas.
-- Badge de status some o texto mas o `dot` precisa continuar visível e com `aria`/texto acessível (não remover do DOM, só escondido visualmente) — manter o texto no DOM (classe `max-[380px]:hidden`), não condicional em JS, para leitor de tela continuar lendo "Online"/"Offline".
+- Badge de status some o texto mas o `dot` precisa continuar visível e com `aria`/texto acessível (não remover do DOM, só escondido visualmente) — manter o texto no DOM (classe `max-[479px]:hidden`), não condicional em JS, para leitor de tela continuar lendo "Online"/"Offline".
 - Link "Histórico" trocando pra ícone-only precisa manter `aria-label` equivalente (Histórico) pra não perder acessibilidade ao esconder o texto visível.
 - Faturamento (Desktop.tsx) só renderiza em `md:` — o breakpoint de 768px é o único relevante lá; não assumir que precisa do comportamento de <380px (nunca ocorre nessa página).
 
@@ -109,7 +109,7 @@ git commit -m "feat(layout): componente CabecalhoPagina (home + título + açõe
 
 - [ ] **Step 1: Substituir o bloco do cabeçalho**
 
-Trocar o `<div className="flex items-start justify-between...">...</div>` por `<CabecalhoPagina titulo="Lançar Pedido" acoes={...} />`, movendo pra dentro de `acoes` o bloco atual de badges (Online/Offline + pendentes) e o botão de tema. Dentro do badge Online/Offline, envolver o texto num `<span className="max-[380px]:hidden">`, mantendo o `dot` sempre visível.
+Trocar o `<div className="flex items-start justify-between...">...</div>` por `<CabecalhoPagina titulo="Lançar Pedido" acoes={...} />`, movendo pra dentro de `acoes` o bloco atual de badges (Online/Offline + pendentes) e o botão de tema. Dentro do badge Online/Offline, envolver o texto num `<span className="max-[479px]:hidden">`, mantendo o `dot` sempre visível.
 
 - [ ] **Step 2: Verificar visualmente (ver Task 7) e commit**
 
@@ -128,7 +128,7 @@ git commit -m "feat(layout): Lançar Pedido usa CabecalhoPagina"
 
 - [ ] **Step 1: Substituir o bloco do cabeçalho**
 
-Mesmo padrão da Task 3. Dentro de `BadgeStatus`, envolver `{TEXTO_STATUS[status]}` num `<span className="max-[380px]:hidden">`. O link "Histórico" ganha uma versão ícone-only antes dele: `<Link to={...} aria-label="Histórico" className={clsx(classesBotaoIcone(), 'hidden max-[380px]:flex')}><Icone nome="bar_chart" size={20} /></Link>`, e a versão atual (texto) ganha `max-[380px]:hidden` na className existente.
+Mesmo padrão da Task 3. Dentro de `BadgeStatus`, envolver `{TEXTO_STATUS[status]}` num `<span className="max-[479px]:hidden">`. O link "Histórico" ganha uma versão ícone-only antes dele: `<Link to={...} aria-label="Histórico" className={clsx(classesBotaoIcone(), 'hidden max-[479px]:flex')}><Icone nome="bar_chart" size={20} /></Link>`, e a versão atual (texto) ganha `max-[479px]:hidden` na className existente.
 
 - [ ] **Step 2: Verificar visualmente (ver Task 7) e commit**
 
@@ -206,3 +206,13 @@ Lançar Pedido, Cozinha, Histórico, Ajustes, Faturamento — com e sem o badge 
 git add src/pages/Ajustes.tsx
 git commit -m "fix(layout): título de Ajustes também não quebra linha"
 ```
+
+## Ajustes pós-revisão (ledger)
+
+- **Ruling:** breakpoint de colapso subido de 479px (era 380px no plano original) — verificação visual com iframes na largura real da página (360/390/768) mostrou que em 390px a Cozinha com "pendentes"+offline estourava a área de ações ANTES do colapso de 380 entrar em ação, zerando o título (min-w-0 chegando a 0). Custo se errado: ação colapsa ícone-only um pouco mais cedo do que o pedido original previa; sem perda de informação (texto continua acessível via `sr-only`).
+- **Ruling:** Cozinha ganhou o mesmo empilhamento vertical de "pendentes" + status que Lançar Pedido já usava, reduzindo a largura mínima da área de ações.
+- **Fixed (revisão final, revisor-codigo):** `max-[479px]:hidden` nos selos de status e no botão Exportar trocado por `max-[479px]:sr-only` — `hidden` é `display:none` e removia o texto da árvore de acessibilidade, não só visualmente.
+- **Fixed (revisão final):** botão Exportar (Histórico) ganhou `max-[479px]:h-11` — em `size="sm"` (36px) ficava abaixo do toque mínimo de 44px ao lado dos botões de ícone (44px) no mobile.
+- **Minor (deferred):** `{acoes && ...}` em CabecalhoPagina.tsx aceitaria `0` como filho renderizável; nenhum uso atual passa `0`, custo de deixar como está é nulo hoje.
+- **Minor (deferred):** teste de `classesTituloCabecalho` usa `.includes()` (substring) em vez de checar tokens exatos da classe.
+- **Não verificado:** Histórico/Faturamento em 768px com `SidebarDesktop` visível (md:pl-64, reduz a largura útil). Cálculo manual indica folga positiva (~30px no pior caso), mas não foi confirmado visualmente — recriar exigiria o contexto completo de `LayoutBarraca`.

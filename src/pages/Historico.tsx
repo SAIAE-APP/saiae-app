@@ -676,13 +676,14 @@ export function Historico() {
               <Button
                 variant="outline"
                 size="sm"
+                className="max-[479px]:h-11"
                 icon={<Icone nome="download" size={16} />}
                 onClick={exportarPlanilha}
                 disabled={pedidosExibidos.length === 0 || planoEssencial}
                 loading={exportando}
                 title={planoEssencial ? 'Exportar relatórios é exclusivo do plano Pro' : undefined}
               >
-                <span className="max-[479px]:hidden">Exportar</span>
+                <span className="max-[479px]:sr-only">Exportar</span>
               </Button>
             </>
           }

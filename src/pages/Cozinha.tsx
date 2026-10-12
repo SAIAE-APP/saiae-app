@@ -434,20 +434,20 @@ function BadgeStatus({ status }: { status: StatusConexao }) {
   if (status === 'conectado') {
     return (
       <Badge variant="successOutline" dot>
-        <span className="max-[479px]:hidden">{TEXTO_STATUS[status]}</span>
+        <span className="max-[479px]:sr-only">{TEXTO_STATUS[status]}</span>
       </Badge>
     )
   }
   if (status === 'offline') {
     return (
       <Badge variant="danger" dot>
-        <span className="max-[479px]:hidden">{TEXTO_STATUS[status]}</span>
+        <span className="max-[479px]:sr-only">{TEXTO_STATUS[status]}</span>
       </Badge>
     )
   }
   return (
     <Badge variant="neutral" dot className="[&>span:first-child]:animate-pulse">
-      <span className="max-[479px]:hidden">{TEXTO_STATUS[status]}</span>
+      <span className="max-[479px]:sr-only">{TEXTO_STATUS[status]}</span>
     </Badge>
   )
 }

@@ -1106,7 +1106,7 @@ export function LancarPedido() {
             <>
               <div className="flex flex-col items-end gap-1.5">
                 <Badge variant={online ? 'success' : 'warning'} dot>
-                  <span className="max-[479px]:hidden">{online ? 'Online' : 'Offline'}</span>
+                  <span className="max-[479px]:sr-only">{online ? 'Online' : 'Offline'}</span>
                 </Badge>
                 {pendentes > 0 && (
                   <Badge variant="neutral">
