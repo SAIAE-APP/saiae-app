@@ -18,6 +18,7 @@
 // pertença à barraca do pedido (mesma checagem de `usuario_tem_acesso_barraca`
 // usada em todo o resto do app).
 import { comCors } from '../_shared/cors.ts'
+import { configDoEnv, lerSegredo } from '../_shared/segredoCifrado.ts'
 import { MENSAGEM_PEDIDO_GRATIS, ratearDesconto, totalDaNotaCentavos } from '../_shared/descontoNfce.ts'
 
 const FOCUSNFE_URL_HOMOLOGACAO = 'https://homologacao.focusnfe.com.br/v2'
@@ -218,13 +219,24 @@ function criarHandlerInterno(deps: DependenciasNfce) {
   // diferente) — sempre lê a coluna que corresponde ao ambiente
   // configurado na barraca, nunca mistura os dois.
   const colunaToken = barraca.fiscal_ambiente === 'producao' ? 'token_producao' : 'token_homologacao'
+  // select('*'): tolera subir a function antes da migration das colunas *_cifrado (coluna ausente não quebra a leitura).
+  // Lê "cifrado, senão texto"; sem chave configurada o resultado é exatamente o de antes (texto).
   const { data: tokenRow, error: erroToken } = await supabase
     .from('barracas_fiscal_token')
-    .select(colunaToken)
+    .select('*')
     .eq('barraca_id', barraca.id)
     .maybeSingle()
 
-  const token = (tokenRow as Record<string, string | null> | null)?.[colunaToken]
+  const linhaToken = (tokenRow ?? {}) as Record<string, unknown>
+  const token = erroToken
+    ? null
+    : (
+        await lerSegredo(
+          { texto: linhaToken[colunaToken], cifrado: linhaToken[`${colunaToken}_cifrado`] },
+          { barracaId: barraca.id, campo: colunaToken },
+          configDoEnv(deps.env),
+        )
+      ).valor
   if (erroToken || !token) {
     return jsonResponse(
       { erro: `Token de ${barraca.fiscal_ambiente === 'producao' ? 'produção' : 'homologação'} não configurado` },

@@ -111,7 +111,7 @@ Deno.serve(async (req: Request) => {
   // Sem segredo ou sem cabeçalho segue só com a consulta de volta abaixo, que é a
   // garantia de verdade (o Mercado Pago pode não assinar notificações por pagamento).
   if (provedor.validarNotificacao) {
-    const segredo = await buscarSegredoWebhook(supabase, pendente.barraca_id, provedor.chave)
+    const segredo = await buscarSegredoWebhook(supabase, pendente.barraca_id, provedor.chave, Deno.env)
     const assinatura = await provedor.validarNotificacao(req, segredo)
     // EXIGIR_ASSINATURA_MP=1: com segredo cadastrado, notificação SEM assinatura também é recusada (401).
     // Desligado por padrão: ver decidirAssinatura (tipos.ts).
@@ -129,7 +129,7 @@ Deno.serve(async (req: Request) => {
     }
   }
 
-  const tokenProvedor = await buscarTokenDoProvedor(supabase, pendente.barraca_id, provedor.chave)
+  const tokenProvedor = await buscarTokenDoProvedor(supabase, pendente.barraca_id, provedor.chave, Deno.env)
   if (!tokenProvedor) {
     return jsonResponse({ ok: true, aviso: 'token da barraca não encontrado' })
   }

@@ -155,7 +155,7 @@ Deno.serve(async (req: Request) => {
     // O QR é recuperado no MESMO provedor em que a cobrança foi emitida.
     const provedorEmitido = obterProvedor(chaveDoProvedor(pendenteExistente.provedor))
     const tokenEmitido = provedorEmitido
-      ? await buscarTokenDoProvedor(supabase, pendenteExistente.barraca_id, provedorEmitido.chave)
+      ? await buscarTokenDoProvedor(supabase, pendenteExistente.barraca_id, provedorEmitido.chave, Deno.env)
       : null
 
     if (provedorEmitido && tokenEmitido) {
@@ -223,7 +223,7 @@ Deno.serve(async (req: Request) => {
     return jsonResponse({ erro: 'Provedor de pagamento não disponível para esta barraca' }, 422)
   }
 
-  const tokenProvedor = await buscarTokenDoProvedor(supabase, barraca_id, provedor.chave)
+  const tokenProvedor = await buscarTokenDoProvedor(supabase, barraca_id, provedor.chave, Deno.env)
   if (!tokenProvedor) {
     return jsonResponse({ erro: `Token do ${provedor.nome} não configurado` }, 422)
   }

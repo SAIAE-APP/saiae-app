@@ -4,11 +4,12 @@ import assert from 'node:assert/strict'
 import { readFileSync } from 'node:fs'
 import { beforeEach, describe, mock, test } from 'node:test'
 import { TRAVA_NFCE_MS, criarHandler } from '../supabase/functions/emitir-nfce/handler.ts'
+import { cifrar as cifrarSegredo, configDoEnv } from '../supabase/functions/_shared/segredoCifrado.ts'
 
 type Linha = Record<string, unknown>
 
 /** Supabase falso: só o que o handler usa. O UPDATE avalia filtros e aplica no MESMO tick (atômico, como o Postgres). */
-function criarBanco(inicial: Linha = {}) {
+function criarBanco(inicial: Linha = {}, linhaToken: Linha = { token_homologacao: 'tok-h', token_producao: 'tok-p' }) {
   const pedido: Linha = { id: 'p1', barraca_id: 'b1', metodo_pagamento: 'pix', nfce_status: null, nfce_chave: null, nfce_numero: null, nfce_trava_em: null, ...inicial }
   const itensDoPedido = [
     { id: 'ip1', item_id: 'i1', nome_item: 'Yakisoba', quantidade: 2, preco_centavos_unitario: 1500, removido: false, opcoes: [], observacao: null },
@@ -62,7 +63,7 @@ function criarBanco(inicial: Linha = {}) {
       }
       if (tabela === 'usuarios_barracas') return { data: { usuario_id: 'u1' }, error: null }
       if (tabela === 'barracas') return { data: barraca, error: null }
-      if (tabela === 'barracas_fiscal_token') return { data: { token_homologacao: 'tok-h', token_producao: 'tok-p' }, error: null }
+      if (tabela === 'barracas_fiscal_token') return { data: linhaToken, error: null }
       if (tabela === 'itens') return { data: listaIn ? itens : [], error: null }
       throw new Error(`tabela inesperada: ${tabela}`)
     }
@@ -76,7 +77,7 @@ function criarBanco(inicial: Linha = {}) {
 /** FocusNFe falsa: guarda notas por ref; POST com ref repetida é recusado, como a API real. */
 function criarFocus() {
   const notas = new Map<string, Linha>()
-  const log = { posts: [] as string[], gets: [] as string[] }
+  const log = { posts: [] as string[], gets: [] as string[], auth: [] as string[] }
   const cfg = {
     /** POST cria a nota e depois "dá timeout" (a nota existe, a resposta se perdeu). */
     timeoutDepoisDeCriar: false,
@@ -91,6 +92,8 @@ function criarFocus() {
   const nota = (ref: string): Linha => ({ status: 'autorizado', chave_nfe: `CHAVE-${ref}`, numero: '10', serie: '1', protocolo: 'PROTO', mensagem_sefaz: 'Autorizado o uso da NFC-e' })
   const buscar = (async (url: string | URL | Request, init?: RequestInit) => {
     const u = String(url)
+    const cab = init?.headers as Record<string, string> | undefined
+    if (cab?.Authorization) log.auth.push(atob(cab.Authorization.replace('Basic ', '')).replace(/:$/, ''))
     const ref = u.split('/nfce')[1].replace(/^[/?]ref=|^\//, '')
     if ((init?.method ?? 'GET') === 'POST') {
       log.posts.push(ref)
@@ -114,13 +117,13 @@ function criarFocus() {
   return { buscar, log, cfg, notas }
 }
 
-function montar(inicial: Linha = {}) {
-  const banco = criarBanco(inicial)
+function montar(inicial: Linha = {}, linhaToken?: Linha, env: Record<string, string> = {}) {
+  const banco = criarBanco(inicial, linhaToken)
   const focus = criarFocus()
   const relogio = { agora: Date.parse('2026-10-25T12:00:00Z') }
   const handler = criarHandler({
     criarCliente: () => banco.cliente,
-    env: { get: () => 'x' },
+    env: { get: (n: string) => env[n] ?? (n.startsWith('TOKENS_') ? undefined : 'x') },
     buscar: focus.buscar,
     agora: () => relogio.agora,
     esperar: async () => {},
@@ -328,6 +331,72 @@ describe('emitir-nfce: pedidos que nunca emitem (handler executado)', () => {
     const r = await chamar()
     assert.equal(r.status, 200)
     assert.equal(r.corpo.chave, 'CHAVE-X')
+    assert.equal(focus.log.posts.length, 0)
+  })
+})
+
+describe('emitir-nfce: token "cifrado, senão texto"', () => {
+  beforeEach(() => mock.restoreAll())
+  const CHAVE = Buffer.alloc(32, 7).toString('base64')
+  const CHAVE_OUTRA = Buffer.alloc(32, 9).toString('base64')
+  const cifrar = async (texto: string, campo = 'token_homologacao') =>
+    (await cifrarSegredo(texto, { barracaId: 'b1', campo }, configDoEnv({ get: (n) => ({ TOKENS_CHAVE_V1: CHAVE })[n] }))).valor
+
+  test('só texto, sem chave: usa o texto (comportamento de hoje)', async () => {
+    const { focus, chamar } = montar()
+    assert.equal((await chamar()).status, 200)
+    assert.deepEqual(focus.log.auth.filter((a) => a), ['tok-h', 'tok-h'].slice(0, focus.log.auth.length))
+    assert.ok(focus.log.auth.every((a) => a === 'tok-h'))
+  })
+
+  test('só cifrado, com chave: decifra e usa o token do ambiente', async () => {
+    const cifrado = await cifrar('tok-cifrado-h')
+    const { focus, chamar } = montar({}, { token_homologacao: null, token_homologacao_cifrado: cifrado }, { TOKENS_CHAVE_V1: CHAVE })
+    assert.equal((await chamar()).status, 200)
+    assert.ok(focus.log.auth.length > 0 && focus.log.auth.every((a) => a === 'tok-cifrado-h'))
+  })
+
+  test('cifrado e texto, com chave: o cifrado vence', async () => {
+    const cifrado = await cifrar('tok-cifrado-h')
+    const { focus, chamar } = montar({}, { token_homologacao: 'tok-velho', token_homologacao_cifrado: cifrado }, { TOKENS_CHAVE_V1: CHAVE })
+    await chamar()
+    assert.ok(focus.log.auth.every((a) => a === 'tok-cifrado-h'))
+  })
+
+  test('cifrado e texto, SEM chave: cai no texto e a emissão segue', async () => {
+    const cifrado = await cifrar('tok-cifrado-h')
+    const avisos: unknown[][] = []
+    mock.method(console, 'warn', (...a: unknown[]) => avisos.push(a))
+    const { focus, chamar } = montar({}, { token_homologacao: 'tok-velho', token_homologacao_cifrado: cifrado })
+    assert.equal((await chamar()).status, 200)
+    assert.ok(focus.log.auth.every((a) => a === 'tok-velho'))
+    assert.ok(avisos.some((a) => a.includes('sem_chave')))
+    assert.ok(!JSON.stringify(avisos).includes('tok-'), 'o log não carrega token')
+  })
+
+  test('cifrado e texto, chave ERRADA: cai no texto', async () => {
+    const cifrado = await cifrar('tok-cifrado-h')
+    mock.method(console, 'warn', () => {})
+    const { focus, chamar } = montar({}, { token_homologacao: 'tok-velho', token_homologacao_cifrado: cifrado }, { TOKENS_CHAVE_V1: CHAVE_OUTRA })
+    assert.equal((await chamar()).status, 200)
+    assert.ok(focus.log.auth.every((a) => a === 'tok-velho'))
+  })
+
+  test('só cifrado e sem chave: 422 "não configurado", sem chamar a FocusNFe e sem vazar nada', async () => {
+    const cifrado = await cifrar('tok-cifrado-h')
+    mock.method(console, 'warn', () => {})
+    const { focus, chamar } = montar({}, { token_homologacao: null, token_homologacao_cifrado: cifrado })
+    const r = await chamar()
+    assert.equal(r.status, 422)
+    assert.match(String(r.corpo.erro), /não configurado/)
+    assert.equal(focus.log.posts.length + focus.log.gets.length, 0)
+  })
+
+  test('cifrado de OUTRO campo (produção colado em homologação) não decifra', async () => {
+    const cifradoProducao = await cifrar('tok-prod', 'token_producao')
+    mock.method(console, 'warn', () => {})
+    const { focus, chamar } = montar({}, { token_homologacao: null, token_homologacao_cifrado: cifradoProducao }, { TOKENS_CHAVE_V1: CHAVE })
+    assert.equal((await chamar()).status, 422)
     assert.equal(focus.log.posts.length, 0)
   })
 })
