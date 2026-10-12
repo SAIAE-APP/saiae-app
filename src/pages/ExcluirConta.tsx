@@ -119,8 +119,9 @@ export function ExcluirConta() {
               único dono dela.
             </ItemLista>
             <ItemLista>
-              Se você tem uma assinatura ativa via Kirvano, cancele-a separadamente pelo link de gestão
-              que você recebeu por e-mail, ou nos avise que ajudamos.
+              Se você tem uma assinatura ativa, cancele-a <strong className="font-semibold text-mesa-text-primary">antes</strong>{' '}
+              de excluir a conta, em Ajustes &gt; Assinatura &gt; &quot;Cancelar assinatura&quot;. Excluir a
+              conta não cancela a cobrança na Stripe. Se precisar de ajuda, nos avise.
             </ItemLista>
             <ItemLista>A exclusão é permanente e não pode ser desfeita.</ItemLista>
           </ul>
