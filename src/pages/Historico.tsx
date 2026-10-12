@@ -17,7 +17,7 @@ import { GateSenhaAdmin } from '../components/GateSenhaAdmin'
 import { BotaoAvisarCliente } from '../components/BotaoAvisarCliente'
 import { BotoesLinkEntregador } from '../components/BotoesLinkEntregador'
 import { Badge } from '../components/ui/Badge'
-import { BotaoHome } from '../components/ui/BotaoHome'
+import { CabecalhoPagina } from '../components/ui/CabecalhoPagina'
 import { BottomSheet } from '../components/ui/BottomSheet'
 import { Button } from '../components/ui/Button'
 import { Card } from '../components/ui/Card'
@@ -653,41 +653,40 @@ export function Historico() {
           filtrosEscondidos ? '-translate-y-full pointer-events-none' : 'translate-y-0'
         }`}
       >
-        <div className="flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between sm:gap-3">
-          <div className="flex items-center gap-2">
-            <BotaoHome />
-            <h1 className="text-2xl font-bold leading-tight text-mesa-text-primary">Histórico</h1>
-          </div>
-          <div className="flex flex-wrap items-center gap-2 sm:flex-nowrap">
-            <button
-              type="button"
-              onClick={alternarTema}
-              aria-label={escuro ? 'Mudar para tema claro' : 'Mudar para tema escuro'}
-              className={classesBotaoIcone()}
-            >
-              {escuro ? <Icone nome="light_mode" size={20} /> : <Icone nome="dark_mode" size={20} />}
-            </button>
-            <button
-              type="button"
-              onClick={esconderFiltros}
-              aria-label="Ocultar barra de filtros"
-              className={classesBotaoIcone()}
-            >
-              <Icone nome="expand_less" size={20} />
-            </button>
-            <Button
-              variant="outline"
-              size="sm"
-              icon={<Icone nome="download" size={16} />}
-              onClick={exportarPlanilha}
-              disabled={pedidosExibidos.length === 0 || planoEssencial}
-              loading={exportando}
-              title={planoEssencial ? 'Exportar relatórios é exclusivo do plano Pro' : undefined}
-            >
-              Exportar
-            </Button>
-          </div>
-        </div>
+        <CabecalhoPagina
+          titulo="Histórico"
+          acoes={
+            <>
+              <button
+                type="button"
+                onClick={alternarTema}
+                aria-label={escuro ? 'Mudar para tema claro' : 'Mudar para tema escuro'}
+                className={classesBotaoIcone()}
+              >
+                {escuro ? <Icone nome="light_mode" size={20} /> : <Icone nome="dark_mode" size={20} />}
+              </button>
+              <button
+                type="button"
+                onClick={esconderFiltros}
+                aria-label="Ocultar barra de filtros"
+                className={classesBotaoIcone()}
+              >
+                <Icone nome="expand_less" size={20} />
+              </button>
+              <Button
+                variant="outline"
+                size="sm"
+                icon={<Icone nome="download" size={16} />}
+                onClick={exportarPlanilha}
+                disabled={pedidosExibidos.length === 0 || planoEssencial}
+                loading={exportando}
+                title={planoEssencial ? 'Exportar relatórios é exclusivo do plano Pro' : undefined}
+              >
+                <span className="max-[380px]:hidden">Exportar</span>
+              </Button>
+            </>
+          }
+        />
 
         <div className="mt-4">
           <SegmentedControl
