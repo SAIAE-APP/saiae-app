@@ -537,6 +537,25 @@ repetir `versionCode`: subir a cada build. Validar em aparelho Android 7–11 e
   (`pendente_anterior_id`, `cupom_liberar_abandonadas`); retry da mesma cobrança reavalia o desconto; "pagar na
   entrega" cria o pedido e confirma o cupom na MESMA transação (`criar_pedido_com_cupom`). PEDIDO GRÁTIS (total cobrado = itens − desconto + taxa = 0): NÃO chama o provedor Pix. `criar-pagamento-pix` reserva o cupom, cria o pedido na MESMA transação que confirma o uso (`criar_pedido_com_cupom`, método novo `gratis`, migration `20261019140000`; `cupom_regras` sem o piso na `20261019130000`), marca o pendente aprovado e responde `{pedido_gratis:true, senha, pedido_id}`; retry do mesmo `client_uuid` devolve o mesmo pedido. Exige WhatsApp informado (422 `telefone_obrigatorio`; perfil confirmado quando a loja usa perfil, limite por IP e "uma vez por cliente" seguem valendo). Com taxa de entrega > 0 o total não é zero: Pix só da taxa. "Pagar na entrega" com total 0 também vira `gratis`. `emitir-nfce` NÃO emite nota de total R$ 0,00 (422 `pedido_gratis`, sem chamar a FocusNFe). Front: botão "Finalizar pedido grátis", senha sem QR; Relatório/Faturamento mostra o método "Grátis (cupom)" em linha própria e o desconto à parte. Aplicar as migrations `…130000` e `…140000` ANTES do deploy das functions. Testes de banco/functions contra o staging: `tests/cupons*.staging.mjs` (rodar com as
   variáveis do cabeçalho de cada script); o teste real do Pix fica para um Pix de valor baixo na loja de teste.
+- Acesso do suporte (migration `20261023100000_acesso_suporte.sql`): o dono gera um código de 8 caracteres
+  (Ajustes > Conta > "Acesso do suporte", `SecaoAcessoSuporte`, válido 24h, uso único) pra alguém da allowlist
+  `usuarios_suporte` (começa vazia — o dono do projeto inclui o próprio id por SQL, uma vez) entrar na loja sem
+  SQL manual e sem o PIN do cliente. `suporte_resgatar_codigo` dá um erro genérico IDÊNTICO pra "fora da
+  allowlist" e "código errado/expirado" (nunca revela a allowlist); 5 tentativas erradas bloqueiam 10 minutos
+  (`suporte_tentativas`). Resgatar grava em `acessos_suporte` (7 dias, `suporte_encerrar_acesso` pelo dono
+  encerra antes). `usuario_tem_acesso_barraca` foi ESTENDIDA (CREATE OR REPLACE aditivo, corpo original
+  intacto) pra também aceitar acesso de suporte ativo — isso dá acesso geral (cardápio, pedidos etc.), mas
+  suporte NUNCA ganha linha em `usuarios_barracas`, então fica de fora, por construção, de toda ação
+  `papel = 'dono'` (apagar barraca, excluir conta, assinatura): nenhuma trava nova foi necessária nelas.
+  `GateSenhaAdmin` pula o PIN quando `suporte_meu_acesso` diz que o acesso está ativo (nunca grava em
+  sessionStorage — confere de novo a cada carga, porque o dono pode encerrar a qualquer momento).
+  `useBarracasDoUsuario` une `usuarios_barracas` com `suporte_minhas_barracas()` (papel sintético `'suporte'`),
+  o que faz a barraca aparecer em Selecionar barraca e passar em `RotaProtegida` sem nenhuma linha extra.
+  Faixas fixas em `LayoutBarraca` (`FaixaSuporte.tsx`): "Você está como SUPORTE... até DD/MM" pro suporte,
+  "Suporte com acesso até DD/MM [Encerrar]" pro dono. Hash do código é SHA-256 via `pgcrypto.digest` (não
+  bcrypt como o PIN administrativo — a defesa aqui é validade curta + uso único + allowlist + limite de
+  tentativas, não custo computacional do hash, e o lookup precisa ser indexável). Fora de escopo: importar
+  cardápio por planilha (sprint separado) e qualquer recurso de "trocar o dono" (não existe no app).
 
 ## Regras de tema
 - Identidade visual atual é a IDV "Sai aê" (rebrand fechado em
