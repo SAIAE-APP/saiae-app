@@ -159,7 +159,7 @@ function criarHandlerInterno(deps: DependenciasNfce) {
   const { data: pedido, error: erroPedido } = await supabase
     .from('pedidos')
     .select(
-      'id, barraca_id, metodo_pagamento, nfce_status, nfce_chave, nfce_numero, ' +
+      'id, barraca_id, status, metodo_pagamento, nfce_status, nfce_chave, nfce_numero, ' +
         'itens_do_pedido(id, item_id, nome_item, quantidade, preco_centavos_unitario, removido, opcoes, observacao)',
     )
     .eq('id', pedidoId)
@@ -182,6 +182,17 @@ function criarHandlerInterno(deps: DependenciasNfce) {
 
   if (pedido.nfce_status === 'autorizado') {
     return jsonResponse({ status: pedido.nfce_status, chave: pedido.nfce_chave, numero: pedido.nfce_numero })
+  }
+
+  // Pedido cancelado não vende nada: nota fiscal seria sobre uma venda que não houve. A tela já esconde o botão, mas
+  // quem manda é o servidor (e a emissão automática/em lote usa a mesma regra). Vem antes da trava e da FocusNFe.
+  if (pedido.status === 'cancelado') {
+    return jsonResponse({ erro: 'Pedido cancelado não emite nota.', codigo: 'pedido_cancelado' }, 422)
+  }
+
+  // Método 'gratis' (cupom de 100%): total R$ 0,00, nada a faturar. Recusa antes de qualquer outra coisa.
+  if (pedido.metodo_pagamento === 'gratis') {
+    return jsonResponse({ erro: MENSAGEM_PEDIDO_GRATIS, codigo: 'pedido_gratis' }, 422)
   }
 
   const { data: barraca, error: erroBarraca } = await supabase
