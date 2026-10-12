@@ -23,4 +23,11 @@ describe('Dashboard sem valores de venda', () => {
     assert.match(desktop, /<GateSenhaAdmin /)
     assert.doesNotMatch(desktop, /Abra o Sai aê num computador/)
   })
+  test('barra do celular: Chamada some abaixo de sm; Faturamento e Ajustes ficam', () => {
+    const barra = ler('src/components/BarraNavegacao.tsx')
+    assert.match(barra, /rota: 'chamada', icone: 'campaign', ocultoNoCelular: true/)
+    assert.match(barra, /\{ rotulo: 'Faturamento', rota: 'desktop', icone: 'payments' \}/)
+    assert.match(barra, /\{ rotulo: 'Ajustes', rota: 'ajustes', icone: 'settings' \}/)
+    assert.equal(barra.match(/ocultoNoCelular: true/g)?.length, 1)
+  })
 })

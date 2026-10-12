@@ -10,13 +10,13 @@ import { usePedidosAtual } from '../layouts/contextoPedidos'
 const ITENS: { rotulo: string; rota: string; icone: string; ocultoNoCelular?: boolean }[] = [
   { rotulo: 'Lançar', rota: 'lancar', icone: 'receipt_long' },
   { rotulo: 'Cozinha', rota: 'cozinha', icone: 'skillet' },
-  { rotulo: 'Chamada', rota: 'chamada', icone: 'campaign' },
+  // Com 6 itens a barra não cabe em 360px: no celular, Chamada fica só no
+  // card do Dashboard (decisão do dono, depois do Sprint 2).
+  { rotulo: 'Chamada', rota: 'chamada', icone: 'campaign', ocultoNoCelular: true },
   { rotulo: 'Histórico', rota: 'historico', icone: 'bar_chart' },
   // Faturamento abre no celular também (Sprint 2), atrás do GateSenhaAdmin.
   { rotulo: 'Faturamento', rota: 'desktop', icone: 'payments' },
-  // Com 6 itens a barra não cabe em 360px: no celular, Ajustes fica só na
-  // engrenagem do cabeçalho do Dashboard.
-  { rotulo: 'Ajustes', rota: 'ajustes', icone: 'settings', ocultoNoCelular: true },
+  { rotulo: 'Ajustes', rota: 'ajustes', icone: 'settings' },
 ]
 
 export function BarraNavegacao() {
