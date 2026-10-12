@@ -2833,10 +2833,10 @@ export function Ajustes({ categoria = 'conta' }: { categoria?: CategoriaAjustes 
             <Link
               to={`/${barraca.slug}`}
               aria-label="Voltar para o início"
-              className="inline-flex items-center gap-2 text-mesa-text-primary"
+              className="inline-flex min-w-0 items-center gap-2 text-mesa-text-primary"
             >
-              <Icone nome="chevron_left" size={28} />
-              <h1 className="text-[32px] font-bold leading-[40px]">Ajustes</h1>
+              <Icone nome="chevron_left" size={28} className="shrink-0" />
+              <h1 className="truncate whitespace-nowrap text-[32px] font-bold leading-[40px]">Ajustes</h1>
             </Link>
 
             <div className="mt-3 flex gap-1.5">
