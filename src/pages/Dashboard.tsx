@@ -8,8 +8,6 @@ import { useBarracasDoUsuario } from '../hooks/useBarracasDoUsuario'
 import { useTheme } from '../hooks/useTheme'
 import { useEhDesktop } from '../hooks/useEhDesktop'
 import { formatarDataExtenso, turnoAtual } from '../lib/datas'
-import { formatarPrecoBR } from '../lib/preco'
-import { calcularTotalBruto } from '../lib/relatorio'
 import { Badge } from '../components/ui/Badge'
 import { Button } from '../components/ui/Button'
 import { Card } from '../components/ui/Card'
@@ -168,10 +166,9 @@ export function Dashboard() {
 
   // Mesmas fontes já assinadas em tempo real por LayoutBarraca (nenhuma
   // busca nova): contagemAFazer já vem pronta do contexto, a última senha
-  // chamada é a mesma derivação client-side que TelaChamada já faz, e o
-  // total do dia usa calcularTotalBruto sobre os pedidos do dia que
-  // useRealtimePedidos já carrega inteiros (todos os status, não só os
-  // ativos) — três métricas "de graça", sem nenhum fetch extra na tela.
+  // chamada é a mesma derivação client-side que TelaChamada já faz — sem
+  // nenhum fetch extra na tela. O total vendido do dia saiu daqui de
+  // propósito: o Dashboard não pede a senha administrativa.
   const ultimaChamada = useMemo(
     () =>
       pedidos
@@ -184,14 +181,8 @@ export function Dashboard() {
     [pedidos],
   )
 
-  const totalHojeCentavos = useMemo(() => calcularTotalBruto(pedidos), [pedidos])
   const dataFormatada = useMemo(() => formatarDataExtenso(new Date()), [])
   const turno = useMemo(() => turnoAtual(), [])
-
-  const vendasHojeCount = useMemo(
-    () => pedidos.filter((p) => p.status !== 'cancelado').length,
-    [pedidos],
-  )
 
   const esperaMediaMinutos = useMemo(
     () => calcularEsperaMediaFila(pedidos),
@@ -267,7 +258,7 @@ export function Dashboard() {
         </p>
       </div>
 
-      <div className="grid grid-cols-2 gap-3 px-6 pb-4 pt-4 md:grid-cols-4">
+      <div className="grid grid-cols-2 gap-3 px-6 pb-4 pt-4 md:grid-cols-3 xl:grid-cols-5">
         <div ref={caixaRef}>
           <CardDashboard
             icone="receipt_long"
@@ -293,12 +284,22 @@ export function Dashboard() {
           }
           onClick={() => navigate(`/${barraca.slug}/chamada`)}
         />
+        {/* Sem valores em reais: o Dashboard não tem senha administrativa,
+            e funcionário sem a senha não pode ver quanto a loja vendeu. */}
         <CardDashboard
           icone="bar_chart"
           titulo="Histórico"
-          subtitulo={`${vendasHojeCount} venda${vendasHojeCount === 1 ? '' : 's'} · ${formatarPrecoBR(totalHojeCentavos)} hoje`}
+          subtitulo="Ver pedidos anteriores"
           onClick={() => navigate(`/${barraca.slug}/historico`)}
         />
+        <div className="col-span-2 md:col-span-1">
+          <CardDashboard
+            icone="payments"
+            titulo="Faturamento"
+            subtitulo="Ver faturamento"
+            onClick={() => navigate(`/${barraca.slug}/desktop`)}
+          />
+        </div>
       </div>
 
       <div className="px-6 pb-4 md:max-w-2xl">
