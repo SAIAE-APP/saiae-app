@@ -295,3 +295,40 @@ describe('B3 — evento fora de ordem', () => {
     assert.equal(sub().status, 'past_due')
   })
 })
+
+describe('teste grátis na Stripe (checkout com trial_end): app fica ativo e coerente', () => {
+  const trial = (statusStripe: string) => {
+    rotas['subscriptions/sub_1'] = { status: 200, corpo: { status: statusStripe, items: { data: [{ price: { id: 'price_pro' }, current_period_end: FIM_1 }] } } }
+  }
+  test('no_payment_required + Stripe trialing => active com current_period_end = fim do teste', async () => {
+    trial('trialing')
+    assert.equal((await enviar(checkout('evt_t1', AGORA_S, 'no_payment_required'))).status, 200)
+    assert.equal(sub().status, 'active')
+    assert.equal(sub().current_period_end, new Date(FIM_1 * 1000).toISOString())
+    assert.equal(sub().stripe_subscription_id, 'sub_1')
+    assert.equal(sub().plan, 'pro')
+  })
+  test('no_payment_required com a assinatura ainda incompleta na Stripe NÃO ativa (só vincula)', async () => {
+    trial('incomplete')
+    assert.equal((await enviar(checkout('evt_t2', AGORA_S, 'no_payment_required'))).status, 200)
+    assert.equal(sub().status, 'trialing')
+    assert.equal(sub().stripe_subscription_id, 'sub_1')
+  })
+  test('depois: o invoice.paid da 1ª cobrança (fim do teste) estende o período e segue active', async () => {
+    trial('trialing')
+    await enviar(checkout('evt_t3', AGORA_S, 'no_payment_required'))
+    const novoFim = FIM_1 + 30 * 86400
+    rotas['subscriptions/sub_1'] = { status: 200, corpo: { status: 'active', items: { data: [{ price: { id: 'price_pro' }, current_period_end: novoFim }] } } }
+    assert.equal((await enviar(faturaPaga('evt_t4', AGORA_S + 100))).status, 200)
+    assert.equal(sub().status, 'active')
+    assert.equal(sub().current_period_end, new Date(novoFim * 1000).toISOString())
+  })
+  test('cancelar durante o teste mantém o acesso até o fim do teste (canceled + current_period_end)', async () => {
+    trial('trialing')
+    await enviar(checkout('evt_t5', AGORA_S, 'no_payment_required'))
+    const dados = { id: 'sub_1', cancel_at_period_end: true, items: { data: [{ current_period_end: FIM_1 }] } }
+    assert.equal((await enviar(ev('evt_t6', 'customer.subscription.updated', AGORA_S + 5, dados))).status, 200)
+    assert.equal(sub().status, 'canceled')
+    assert.equal(sub().current_period_end, new Date(FIM_1 * 1000).toISOString())
+  })
+})

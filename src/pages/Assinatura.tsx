@@ -3,6 +3,7 @@ import { useCallback, useEffect, useState } from 'react'
 import { useNavigate, useSearchParams } from 'react-router'
 import { useBarracaAtual } from '../layouts/contextoBarraca'
 import { supabase } from '../lib/supabase'
+import { mensagemDoErroFuncao } from '../lib/erroFuncao'
 import { PLANOS } from '../lib/planos'
 import { cobrancaAtiva } from '../lib/cobranca'
 import { useAssinaturaBarraca } from '../hooks/useAssinaturaBarraca'
@@ -62,7 +63,7 @@ export function Assinatura() {
     setErroCancelamento(null)
     const { data, error } = await supabase.functions.invoke('cancelar-assinatura-stripe')
     if (error || !data || data.erro) {
-      setErroCancelamento(data?.erro ?? 'Não foi possível cancelar agora. Tente novamente.')
+      setErroCancelamento(data?.erro ?? (await mensagemDoErroFuncao(error, 'Não foi possível cancelar agora. Tente novamente.')))
       setCancelando(false)
       return
     }

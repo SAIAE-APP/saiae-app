@@ -98,7 +98,7 @@ type FiltroAssinatura = { coluna: 'usuario_id' | 'stripe_subscription_id'; valor
  * (stripe_evento_em); e, com `exigirLinha`, lança se NENHUMA assinatura existe pro filtro (ainda não vinculada:
  * a Stripe reenvia depois). "0 linhas porque o evento é atrasado" NÃO é erro.
  */
-async function atualizarAssinatura(
+export async function atualizarAssinatura(
   supabase: SupabaseMinimo,
   filtro: FiltroAssinatura,
   campos: Record<string, unknown>,
@@ -168,7 +168,15 @@ async function processarEvento(evento: EventoStripe, deps: DepsWebhookStripe): P
         .maybeSingle()
       if (erroOferta) throw new Error(`checkout.session.completed: oferta: ${erroOferta.message}`)
 
-      // Sempre vincula a assinatura Stripe à conta (o invoice.paid precisa disso). Só ativa quando já pago.
+      // Ativa quando já pago, OU quando não há nada a cobrar agora e a Stripe confirma que a assinatura está viva:
+      // teste grátis (trial_end do checkout) e cupom de 100% chegam como 'no_payment_required'. O acesso fica 'active'
+      // com current_period_end = fim do teste (o job de expiração já ignora assinatura Stripe). Boleto pendente
+      // ('unpaid') continua só vinculando.
+      const statusStripe = assinaturaStripe.status as string | undefined
+      const ativar =
+        paymentStatus === 'paid' ||
+        (paymentStatus === 'no_payment_required' && (statusStripe === 'active' || statusStripe === 'trialing'))
+      // Sempre vincula a assinatura Stripe à conta (o invoice.paid precisa disso).
       await atualizarAssinatura(
         supabase,
         { coluna: 'usuario_id', valor: usuarioId },
@@ -178,7 +186,7 @@ async function processarEvento(evento: EventoStripe, deps: DepsWebhookStripe): P
           stripe_customer_id: customerId,
           stripe_subscription_id: subscriptionId,
           updated_at: agoraIso,
-          ...(paymentStatus === 'paid'
+          ...(ativar
             ? { status: 'active', current_period_end: periodoFimIso(assinaturaStripe), grace_until: null, canceled_at: null }
             : {}),
         },
