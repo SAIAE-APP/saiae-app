@@ -119,9 +119,10 @@ export function ExcluirConta() {
               único dono dela.
             </ItemLista>
             <ItemLista>
-              Se você tem uma assinatura ativa, cancele-a <strong className="font-semibold text-mesa-text-primary">antes</strong>{' '}
-              de excluir a conta, em Ajustes &gt; Assinatura &gt; &quot;Cancelar assinatura&quot;. Excluir a
-              conta não cancela a cobrança na Stripe. Se precisar de ajuda, nos avise.
+              Se você tem uma assinatura ativa, ela é{' '}
+              <strong className="font-semibold text-mesa-text-primary">cancelada na hora</strong> junto com a
+              exclusão da conta, sem novas cobranças. Se não conseguirmos cancelá-la, a conta não é excluída
+              e você recebe um aviso. Se precisar de ajuda, fale com o suporte.
             </ItemLista>
             <ItemLista>A exclusão é permanente e não pode ser desfeita.</ItemLista>
           </ul>

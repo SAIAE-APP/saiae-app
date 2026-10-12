@@ -7,6 +7,7 @@ import type { ChangeEvent, FormEvent, ReactNode } from 'react'
 import { Link, useNavigate, useSearchParams } from 'react-router'
 import clsx from 'clsx'
 import { supabase } from '../lib/supabase'
+import { mensagemDoErroFuncao } from '../lib/erroFuncao'
 import { classesBotaoIcone } from '../lib/estiloBotaoIcone'
 import { useBarracaAtual } from '../layouts/contextoBarraca'
 import { useAuth } from '../hooks/useAuth'
@@ -2546,7 +2547,8 @@ function BottomSheetExcluirConta({ open, onClose }: { open: boolean; onClose: ()
       body: { confirmacao: 'EXCLUIR' },
     })
     if (error || !data || data.erro) {
-      setErro(data?.erro ?? 'Não foi possível excluir a conta. Tente novamente.')
+      // Com status não-2xx (ex.: a Stripe não cancelou a assinatura) o corpo vem em error.context.
+      setErro(data?.erro ?? (await mensagemDoErroFuncao(error, 'Não foi possível excluir a conta. Tente novamente.')))
       setExcluindo(false)
       return
     }
@@ -2562,7 +2564,8 @@ function BottomSheetExcluirConta({ open, onClose }: { open: boolean; onClose: ()
       <h2 className="text-lg font-semibold text-mesa-text-primary">Excluir minha conta</h2>
       <p className="mt-1 text-sm text-mesa-text-secondary">
         Isso apaga seu login e todas as barracas em que você é o único dono, com pedidos, cardápio e
-        configurações. Não dá pra desfazer. Se você tem assinatura, cancele-a à parte.
+        configurações. Não dá pra desfazer. Se você tem assinatura ativa, ela é cancelada na hora, sem novas
+        cobranças; se não conseguirmos cancelar, a conta não é excluída.
       </p>
       <p className="mt-3 text-sm text-mesa-text-secondary">
         Para confirmar, digite <strong>EXCLUIR</strong>:
