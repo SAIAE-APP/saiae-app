@@ -88,6 +88,7 @@ export function Dashboard() {
   const ajustesRef = useRef<HTMLAnchorElement>(null)
   const caixaRef = useRef<HTMLDivElement>(null)
   const cozinhaRef = useRef<HTMLDivElement>(null)
+  const cardapioRef = useRef<HTMLDivElement>(null)
   // Alvos da SidebarDesktop (componente irmão, não filho, daqui) — achados
   // por id via document.getElementById em vez de ref={} direto.
   const sidebarOperacaoRef = useRef<HTMLElement | null>(null)
@@ -128,9 +129,9 @@ export function Dashboard() {
 
   const passosTourMobile: PassoTour[] = [
     {
-      alvo: ajustesRef,
+      alvo: cardapioRef,
       titulo: 'Comece por aqui: cadastre seu cardápio',
-      texto: 'Antes de lançar o primeiro pedido, adicione os itens que sua barraca vende em Ajustes → Cardápio.',
+      texto: 'Antes de lançar o primeiro pedido, toque em Cardápio e adicione os itens que sua barraca vende.',
     },
     {
       alvo: caixaRef,
@@ -258,7 +259,7 @@ export function Dashboard() {
         </p>
       </div>
 
-      <div className="grid grid-cols-2 gap-3 px-6 pb-4 pt-4 md:grid-cols-3 xl:grid-cols-5">
+      <div className="grid grid-cols-2 gap-3 px-6 pb-4 pt-4 md:grid-cols-3 xl:grid-cols-6">
         <div ref={caixaRef}>
           <CardDashboard
             icone="receipt_long"
@@ -292,12 +293,18 @@ export function Dashboard() {
           subtitulo="Ver pedidos anteriores"
           onClick={() => navigate(`/${barraca.slug}/historico`)}
         />
-        <div className="col-span-2 md:col-span-1">
+        <CardDashboard
+          icone="payments"
+          titulo="Faturamento"
+          subtitulo="Ver faturamento"
+          onClick={() => navigate(`/${barraca.slug}/desktop`)}
+        />
+        <div ref={cardapioRef}>
           <CardDashboard
-            icone="payments"
-            titulo="Faturamento"
-            subtitulo="Ver faturamento"
-            onClick={() => navigate(`/${barraca.slug}/desktop`)}
+            icone="restaurant_menu"
+            titulo="Cardápio"
+            subtitulo="Itens, fotos e banners"
+            onClick={() => navigate(`/${barraca.slug}/ajustes/cardapio`)}
           />
         </div>
       </div>

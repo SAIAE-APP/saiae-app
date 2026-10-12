@@ -23,6 +23,11 @@ describe('Dashboard sem valores de venda', () => {
     assert.match(desktop, /<GateSenhaAdmin /)
     assert.doesNotMatch(desktop, /Abra o Sai aê num computador/)
   })
+  test('card Cardápio leva direto à categoria Cardápio & Operação', () => {
+    const dashboard = ler('src/pages/Dashboard.tsx')
+    assert.match(dashboard, /titulo="Cardápio"\s+subtitulo="Itens, fotos e banners"\s+onClick=\{\(\) => navigate\(`\/\$\{barraca\.slug\}\/ajustes\/cardapio`\)\}/)
+    assert.doesNotMatch(dashboard, /Ajustes → Cardápio/)
+  })
   test('barra do celular: Chamada some abaixo de sm; Faturamento e Ajustes ficam', () => {
     const barra = ler('src/components/BarraNavegacao.tsx')
     assert.match(barra, /rota: 'chamada', icone: 'campaign', ocultoNoCelular: true/)

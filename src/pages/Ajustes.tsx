@@ -2796,15 +2796,13 @@ const ABAS_CATEGORIA: { valor: CategoriaAjustes; rotulo: string; rota: string }[
 ]
 
 /**
- * Só no desktop (`md:` pra cima) as 11 seções de Ajustes se separam em duas
- * categorias/rotas (pedido do dono do produto, 2026-09-27: a página tinha
- * crescido demais numa rolagem só) — no mobile continua tudo numa página só,
- * na MESMA ordem de sempre, padrão normal de configuração em app mobile.
- * Em vez de duas rotas com conteúdo totalmente separado, as 11 seções
- * continuam todas montadas (mesmo componente, mesma ordem no DOM) — cada uma
- * entra num wrapper `contents` (não afeta layout/ordem) que só ganha
- * `md:hidden` quando não pertence à categoria da rota atual. Isso preserva a
- * ordem exata do mobile sem duplicar nenhuma seção.
+ * As seções de Ajustes se separam em duas categorias/rotas (Conta e
+ * Cardápio & Operação; pedido do dono do produto, 2026-09-27, e no celular
+ * também desde o Sprint 3). As seções continuam todas montadas (mesmo
+ * componente, mesma ordem no DOM) — cada uma entra num wrapper `contents`
+ * (não afeta layout/ordem) que some em QUALQUER largura quando não pertence à
+ * categoria da rota atual. O filtro por GRUPO (menu à esquerda) é só do
+ * desktop: no celular a categoria mostra todos os grupos na ordem de sempre.
  */
 function SecaoDaCategoria({
   categoria,
@@ -2818,7 +2816,8 @@ function SecaoDaCategoria({
   children: ReactNode
 }) {
   const grupoAtual = useContext(GrupoAtualContext)
-  return <div className={clsx('contents', (categoria !== atual || grupo !== grupoAtual) && 'md:hidden')}>{children}</div>
+  if (categoria !== atual) return <div className="hidden">{children}</div>
+  return <div className={clsx('contents', grupo !== grupoAtual && 'md:hidden')}>{children}</div>
 }
 
 export function Ajustes({ categoria = 'conta' }: { categoria?: CategoriaAjustes }) {
@@ -2840,13 +2839,14 @@ export function Ajustes({ categoria = 'conta' }: { categoria?: CategoriaAjustes 
               <h1 className="text-[32px] font-bold leading-[40px]">Ajustes</h1>
             </Link>
 
-            <div className="mt-3 hidden gap-1.5 md:flex">
+            <div className="mt-3 flex gap-1.5">
               {ABAS_CATEGORIA.map((aba) => (
                 <Link
                   key={aba.valor}
                   to={`/${barraca.slug}/${aba.rota}`}
+                  aria-current={aba.valor === categoria ? 'page' : undefined}
                   className={clsx(
-                    'inline-flex min-h-9 items-center rounded-mesa-full px-3.5 text-sm font-semibold transition-colors',
+                    'inline-flex min-h-11 items-center rounded-mesa-full px-3.5 text-sm font-semibold transition-colors md:min-h-9',
                     aba.valor === categoria
                       ? 'bg-mesa-neutral-900 text-white dark:bg-mesa-neutral-50 dark:text-mesa-neutral-900'
                       : 'bg-mesa-neutral-100 text-mesa-text-secondary hover:text-mesa-text-primary dark:bg-mesa-neutral-800',
