@@ -7,9 +7,13 @@ import {
 } from '../src/lib/acessoSuporte.ts'
 import { formatarDataCurta } from '../src/lib/datas.ts'
 
-test('alfabeto não tem 0, O, 1, I e não repete caracteres', () => {
-  for (const c of '0O1I') assert.ok(!ALFABETO_CODIGO_SUPORTE.includes(c), c)
+test('alfabeto não tem 0, O, 1, I, L, não repete caracteres — e tem 31, não 32', () => {
+  for (const c of '0O1IL') assert.ok(!ALFABETO_CODIGO_SUPORTE.includes(c), c)
   assert.equal(ALFABETO_CODIGO_SUPORTE.length, new Set(ALFABETO_CODIGO_SUPORTE).size)
+  // 31 não divide 256: a geração do código (suporte_gerar_codigo, na migration)
+  // usa amostragem por rejeição por causa disso, não "% 31" direto — um teste
+  // que assumisse 32 aqui teria escondido o viés de módulo achado em revisão.
+  assert.equal(ALFABETO_CODIGO_SUPORTE.length, 31)
 })
 
 test('normaliza maiúsculas e remove espaços/traços', () => {

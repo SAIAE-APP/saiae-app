@@ -91,9 +91,11 @@ using (exists (
     and ub.papel = 'dono'
 ));
 
--- 4) Tentativas de resgate erradas, por usuário de suporte (não por IP: só
--- conta autenticada e já na allowlist chega a gastar uma tentativa aqui —
--- ver suporte_resgatar_codigo). 5 erros bloqueiam 10 minutos.
+-- 4) Tentativas de resgate erradas, por usuário autenticado (não por IP: só
+-- quem já tem sessão chega a chamar a RPC). Conta fora da allowlist também
+-- gasta tentativa — devolve o mesmo erro genérico de código errado, nunca
+-- revela se o motivo foi a allowlist ou o código (ver suporte_resgatar_codigo).
+-- 5 erros bloqueiam 10 minutos.
 create table if not exists public.suporte_tentativas (
   usuario_id uuid primary key references auth.users(id) on delete cascade,
   tentativas integer not null default 0,
@@ -171,8 +173,16 @@ security definer
 set search_path = public, extensions, pg_temp
 as $$
 declare
-  alfabeto constant text := 'ABCDEFGHJKMNPQRSTUVWXYZ23456789'; -- 32 chars: 256/32 sem viés no byte aleatório abaixo
+  -- Mesmo alfabeto de ia_gerar_codigo (migration 20261019100000_ia_atendente.sql):
+  -- sem 0/O/1/I/L pra não confundir quem digita à mão. 31 caracteres — não
+  -- divide 256 exatamente, por isso a amostragem por rejeição abaixo (não um
+  -- "% length(alfabeto)" direto, que teria viés: os 8 primeiros caracteres
+  -- sairiam com probabilidade 9/256 e o resto com 8/256).
+  alfabeto constant text := 'ABCDEFGHJKMNPQRSTUVWXYZ23456789';
+  v_tam constant integer := length(alfabeto);
+  v_limite constant integer := (256 / v_tam) * v_tam; -- maior múltiplo de v_tam que cabe em 0..255
   v_codigo text;
+  v_byte integer;
   v_expira timestamptz := now() + interval '24 hours';
 begin
   if auth.uid() is null then
@@ -186,11 +196,16 @@ begin
     return jsonb_build_object('estado', 'sem_acesso');
   end if;
 
-  -- Byte aleatório criptográfico (não random(), que não é CSPRNG) — 32
-  -- divide 256 exatamente, então o módulo não introduz viés nenhum.
+  -- Byte aleatório criptográfico (não random(), que não é CSPRNG); descarta
+  -- e sorteia de novo quando o byte cai fora do maior múltiplo de v_tam —
+  -- sem isso, o módulo enviesaria os primeiros caracteres do alfabeto.
   v_codigo := '';
   for i in 1..8 loop
-    v_codigo := v_codigo || substr(alfabeto, 1 + (get_byte(gen_random_bytes(1), 0) % length(alfabeto)), 1);
+    loop
+      v_byte := get_byte(gen_random_bytes(1), 0);
+      exit when v_byte < v_limite;
+    end loop;
+    v_codigo := v_codigo || substr(alfabeto, 1 + (v_byte % v_tam), 1);
   end loop;
 
   insert into public.codigos_suporte (barraca_id, codigo_hash, expira_em, criado_por)
