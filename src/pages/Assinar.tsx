@@ -2,6 +2,7 @@ import { useEffect, useState } from 'react'
 import { useSearchParams } from 'react-router'
 import { useAuth } from '../hooks/useAuth'
 import { supabase } from '../lib/supabase'
+import { mensagemDoErroFuncao } from '../lib/erroFuncao'
 
 /** /assinar — ponte entre a LP/o app e o checkout da Stripe.
  * Sem sessão: manda pro cadastro preservando ?plano=&ciclo=.
@@ -13,6 +14,7 @@ export function Assinar() {
   const [params] = useSearchParams()
   const { usuario, carregando } = useAuth()
   const [erro, setErro] = useState<string | null>(null)
+  const [aviso, setAviso] = useState<string | null>(null)
 
   const plano = params.get('plano')
   const ciclo = params.get('ciclo')
@@ -35,10 +37,24 @@ export function Assinar() {
 
     supabase.functions
       .invoke('criar-checkout-stripe', { body: { plano, ciclo } })
-      .then(({ data, error }) => {
-        if (cancelado) return
+      .then(async ({ data, error }) => {
         if (error || !data?.url) {
-          setErro(data?.erro ?? 'Não foi possível iniciar o checkout. Tente de novo em instantes.')
+          // Non-2xx (ex.: 409 "você já tem uma assinatura") traz a frase em error.context.
+          const mensagem = data?.erro ?? (await mensagemDoErroFuncao(error, 'Não foi possível iniciar o checkout. Tente de novo em instantes.'))
+          if (!cancelado) setErro(mensagem)
+          return
+        }
+        if (cancelado) return
+        // Deixa claro quando a cobrança começa: só no fim do teste grátis, ou agora (teste com menos de 48 h
+        // restantes não permite adiar na Stripe).
+        const aviso = data.teste_ate
+          ? `Seu teste grátis continua até ${new Date(data.teste_ate).toLocaleDateString('pt-BR')}. A cobrança começa só depois.`
+          : data.teste_curto_demais
+            ? 'Seu teste termina em menos de 2 dias, então a cobrança começa agora.'
+            : null
+        if (aviso) {
+          setAviso(aviso)
+          window.setTimeout(() => window.location.replace(data.url), 2500)
           return
         }
         window.location.replace(data.url)
@@ -54,7 +70,10 @@ export function Assinar() {
       {erro ? (
         <p className="text-sm text-mesa-error-500">{erro}</p>
       ) : (
-        <p className="text-mesa-text-secondary">Levando você pro checkout...</p>
+        <>
+          {aviso ? <p className="max-w-sm text-sm text-mesa-text-primary">{aviso}</p> : null}
+          <p className="text-mesa-text-secondary">Levando você pro checkout...</p>
+        </>
       )}
     </div>
   )
