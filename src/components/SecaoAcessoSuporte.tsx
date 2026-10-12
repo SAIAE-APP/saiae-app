@@ -50,6 +50,12 @@ export function SecaoAcessoSuporte({ barraca }: { barraca: Barraca }) {
 
   if (!ehDono) return null
 
+  async function aoEncerrar(acessoId: string) {
+    setErro(null)
+    const ok = await encerrar(acessoId)
+    if (!ok) setErro('Não foi possível encerrar o acesso. Tente de novo.')
+  }
+
   async function gerarCodigo() {
     setGerando(true)
     setErro(null)
@@ -73,8 +79,8 @@ export function SecaoAcessoSuporte({ barraca }: { barraca: Barraca }) {
       <RotuloSecao icone="lock">Acesso do suporte</RotuloSecao>
       <Card className="flex flex-col gap-4">
         <p className="text-sm text-mesa-text-secondary">
-          Quem tiver este código poderá ver e editar sua loja por 7 dias, para ajudar a montar o cardápio. Você
-          pode encerrar o acesso quando quiser.
+          Quem tiver este código poderá editar o cardápio da sua loja por 7 dias, para ajudar a montá-lo
+          (sem acesso a pedidos, pagamento ou o resto da loja). Você pode encerrar o acesso quando quiser.
         </p>
 
         {codigoGerado ? (
@@ -106,7 +112,7 @@ export function SecaoAcessoSuporte({ barraca }: { barraca: Barraca }) {
                     até {formatarDataCurta(new Date(acesso.expira_em))}
                   </span>
                 </div>
-                <Button variant="ghost" size="sm" onClick={() => encerrar(acesso.id)}>
+                <Button variant="ghost" size="sm" onClick={() => void aoEncerrar(acesso.id)}>
                   Encerrar acesso agora
                 </Button>
               </div>

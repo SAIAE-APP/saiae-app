@@ -1,5 +1,6 @@
 import { useAcessosSuporteAtivos } from '../hooks/useAcessosSuporteAtivos'
 import { formatarDataCurta } from '../lib/datas'
+import { useToast } from './ui/useToast'
 import type { BarracaComPapel } from '../hooks/useBarracasDoUsuario'
 
 const classesFaixa =
@@ -24,13 +25,19 @@ export function FaixaSuporteVisao({ barracaId, barracas }: { barracaId: string; 
  * segurança. "Encerrar" chama a mesma RPC da seção de Ajustes. */
 export function FaixaSuporteDono({ barracaId }: { barracaId: string }) {
   const { acessos, encerrar } = useAcessosSuporteAtivos(barracaId)
+  const { mostrarToast } = useToast()
   const atual = acessos[0]
   if (!atual) return null
+
+  async function aoEncerrar() {
+    const ok = await encerrar(atual!.id)
+    if (!ok) mostrarToast('Não foi possível encerrar o acesso. Tente de novo.', { variante: 'erro' })
+  }
 
   return (
     <div className={classesFaixa}>
       Suporte com acesso até {formatarDataCurta(new Date(atual.expira_em))}
-      <button type="button" onClick={() => encerrar(atual.id)} className="underline underline-offset-2">
+      <button type="button" onClick={() => void aoEncerrar()} className="underline underline-offset-2">
         Encerrar
       </button>
     </div>

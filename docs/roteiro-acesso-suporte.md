@@ -13,12 +13,17 @@ projeto) incluído manualmente em `usuarios_suporte` por SQL (`insert into usuar
    loja do dono.
 4. **Código de uso único**: tente digitar o MESMO código de novo (outra conta de suporte, ou a mesma depois de
    sair/entrar). Deve recusar.
-5. **PIN pulado**: com o acesso de suporte ativo, abra Ajustes, Histórico ou Faturamento na loja — não deve
-   pedir o PIN administrativo em nenhuma delas.
+5. **PIN pulado, mas o acesso de verdade é só cardápio**: com o acesso de suporte ativo, abra Ajustes — não
+   deve pedir o PIN. Em Ajustes > Cardápio & Operação, consegue ver e editar itens/categorias (criar, editar,
+   apagar). Histórico, Caixa, Faturamento e as demais seções de Ajustes (Identidade, Pagamento, Fiscal,
+   Pagamento online, Impressora) ficam **vazios ou com erro de carregamento** — é esperado (a RLS do banco só
+   libera cardápio pro suporte; o PIN pulado é só a tela, não dá acesso a mais nada).
 6. **Faixas fixas**: na conta de suporte, uma faixa fixa mostra "Você está como SUPORTE nesta loja até DD/MM"
    em qualquer tela da loja. Na conta do dono, aparece "Suporte com acesso até DD/MM [Encerrar]".
-7. **Limites de suporte**: ainda na conta de suporte, confirme que NÃO é possível apagar a loja (a opção nem
-   aparece — fica só na tela de Selecionar barraca pro dono) nem excluir a conta do dono.
+7. **Limites de suporte**: ainda na conta de suporte, confirme que NÃO é possível: apagar a loja (a opção nem
+   aparece — fica só na tela de Selecionar barraca pro dono); excluir a conta do dono; trocar o token de
+   pagamento, o segredo do webhook do CRM, o token fiscal ou o PIN administrativo (essas telas nem carregam,
+   RLS bloqueia); apagar pedidos ("Apagar período" em Histórico nem carrega os pedidos pro suporte).
 8. **Encerrar pelo dono**: toque "Encerrar" na faixa fixa (ou "Encerrar acesso agora" em Ajustes > Acesso do
    suporte). O acesso para na hora: reabrir Ajustes na conta de suporte volta a pedir o PIN, e a barraca some da
    lista de "Selecionar barraca" dessa conta.
