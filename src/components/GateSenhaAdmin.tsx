@@ -5,7 +5,7 @@ import { Button } from './ui/Button'
 import { Icone } from './ui/Icone'
 import { Input } from './ui/Input'
 
-type Estado = 'verificando' | 'criar' | 'digitar' | 'liberado' | 'erro_inicial'
+type Estado = 'verificando_suporte' | 'verificando' | 'criar' | 'digitar' | 'liberado' | 'erro_inicial'
 
 function chaveSessao(barracaId: string): string {
   return `mesaagil:admin_ok:${barracaId}`
@@ -40,12 +40,37 @@ export function GateSenhaAdmin({
   children: ReactNode
 }) {
   const [estado, setEstado] = useState<Estado>(() =>
-    liberadoNaSessao(barracaId) ? 'liberado' : 'verificando',
+    liberadoNaSessao(barracaId) ? 'liberado' : 'verificando_suporte',
   )
   const [pin, setPin] = useState('')
   const [pinConfirmacao, setPinConfirmacao] = useState('')
   const [processando, setProcessando] = useState(false)
   const [erro, setErro] = useState<string | null>(null)
+
+  // Acesso de suporte ativo pula o PIN inteiro (o suporte não deve ver nem
+  // apagar o PIN do cliente). Confere de novo a cada carga — nunca grava em
+  // sessionStorage, porque o dono pode encerrar o acesso a qualquer momento.
+  // Erro na chamada (offline etc.) cai no fluxo normal do PIN, nunca libera
+  // por falha.
+  useEffect(() => {
+    if (estado !== 'verificando_suporte') return
+    let cancelado = false
+
+    supabase
+      .rpc('suporte_meu_acesso', { p_barraca_id: barracaId })
+      .then(({ data, error }) => {
+        if (cancelado) return
+        if (!error && (data as { ativo?: boolean } | null)?.ativo) {
+          setEstado('liberado')
+          return
+        }
+        setEstado('verificando')
+      })
+
+    return () => {
+      cancelado = true
+    }
+  }, [estado, barracaId])
 
   useEffect(() => {
     if (estado !== 'verificando') return

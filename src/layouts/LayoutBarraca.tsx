@@ -2,6 +2,8 @@ import { useEffect, useRef } from 'react'
 import { Outlet, useLocation, useParams } from 'react-router'
 import clsx from 'clsx'
 import { useBarraca } from '../hooks/useBarraca'
+import { useAuth } from '../hooks/useAuth'
+import { useBarracasDoUsuario } from '../hooks/useBarracasDoUsuario'
 import { useResolverApelido } from '../hooks/useResolverApelido'
 import { useSincronizacao } from '../hooks/useSincronizacao'
 import { useImpressaoAutomatica } from '../hooks/useImpressaoAutomatica'
@@ -12,6 +14,7 @@ import { Planos } from '../pages/Planos'
 import { BarraNavegacao } from '../components/BarraNavegacao'
 import { SidebarDesktop } from '../components/SidebarDesktop'
 import { BannerTrial } from '../components/BannerTrial'
+import { FaixaSuporteDono, FaixaSuporteVisao } from '../components/FaixaSuporte'
 import { acessoBloqueadoPorAssinatura, mostraBannerDeTrial } from '../lib/cobranca'
 import { useToast } from '../components/ui/useToast'
 import { EVENTO_CLIENTE_NAO_SALVO } from '../lib/fila'
@@ -21,6 +24,11 @@ import { PedidosContext } from './contextoPedidos'
 export function LayoutBarraca() {
   const { slug } = useParams<{ slug: string }>()
   const { barraca, carregando, erro } = useBarraca(slug ?? '')
+  // RotaProtegida (pai desta rota) já busca essa lista — mesmo cache em
+  // memória do hook, sem round-trip novo. Usado só pra saber se o usuário
+  // atual está aqui como suporte (papel sintético, ver useBarracasDoUsuario).
+  const { usuario } = useAuth()
+  const { barracas: barracasDoUsuario } = useBarracasDoUsuario(usuario)
   // Endereço antigo (apelido): redireciona para o atual em vez de "Estabelecimento não encontrado".
   const apelido = useResolverApelido(slug, !carregando && (Boolean(erro) || !barraca))
   const sincronizacao = useSincronizacao()
@@ -134,12 +142,15 @@ export function LayoutBarraca() {
   // protegida no servidor (RLS) mesmo nesse intervalo.
   const acessoBloqueado = acessoBloqueadoPorAssinatura(assinatura, emPlanos)
   const mostraBannerTrial = mostraBannerDeTrial(assinatura, emPlanos || emCozinha || emTelaDeChamada)
+  const souDonoDestaBarraca = barracasDoUsuario.some((b) => b.barraca_id === barraca.id && b.papel === 'dono')
 
   return (
     <BarracaContext.Provider value={barraca}>
       <SincronizacaoContext.Provider value={sincronizacao}>
         <PedidosContext.Provider value={estadoPedidos}>
           {mostraBannerTrial && assinatura && <BannerTrial assinatura={assinatura} />}
+          <FaixaSuporteVisao barracaId={barraca.id} barracas={barracasDoUsuario} />
+          {souDonoDestaBarraca && <FaixaSuporteDono barracaId={barraca.id} />}
           {mostrarSidebar && !acessoBloqueado && <SidebarDesktop />}
           <div
             className={clsx(

@@ -11,6 +11,7 @@ import { Card } from '../components/ui/Card'
 import { Icone } from '../components/ui/Icone'
 import { Input } from '../components/ui/Input'
 import { BottomSheet } from '../components/ui/BottomSheet'
+import { normalizarCodigoSuporte, formatoCodigoSuporteValido } from '../lib/acessoSuporte'
 
 function gerarSlug(nome: string): string {
   return nome
@@ -184,6 +185,89 @@ function BottomSheetNovaBarraca({
   )
 }
 
+function BottomSheetCodigoSuporte({
+  open,
+  onClose,
+  onResgatado,
+}: {
+  open: boolean
+  onClose: () => void
+  onResgatado: (slug: string) => void
+}) {
+  const [codigo, setCodigo] = useState('')
+  const [enviando, setEnviando] = useState(false)
+  const [erro, setErro] = useState<string | null>(null)
+
+  function fechar() {
+    setCodigo('')
+    setErro(null)
+    onClose()
+  }
+
+  async function resgatar(e: FormEvent) {
+    e.preventDefault()
+    const normalizado = normalizarCodigoSuporte(codigo)
+    if (enviando) return
+    if (!formatoCodigoSuporteValido(normalizado)) {
+      setErro('Código inválido — confira os 8 caracteres.')
+      return
+    }
+
+    setEnviando(true)
+    setErro(null)
+
+    const { data, error } = await supabase.rpc('suporte_resgatar_codigo', { p_codigo: normalizado })
+
+    setEnviando(false)
+
+    if (error) {
+      setErro('Não foi possível conferir o código. Tente de novo.')
+      return
+    }
+
+    const resposta = data as { estado: string; slug?: string }
+    if (resposta.estado === 'bloqueado') {
+      setErro('Muitas tentativas erradas. Tente de novo em alguns minutos.')
+      return
+    }
+    if (resposta.estado !== 'ok' || !resposta.slug) {
+      setErro('Código inválido ou expirado.')
+      return
+    }
+
+    const slug = resposta.slug
+    fechar()
+    onResgatado(slug)
+  }
+
+  return (
+    <BottomSheet open={open} onClose={fechar} aria-label="Resgatar código de suporte">
+      <h2 className="text-lg font-semibold text-mesa-text-primary">Código de suporte</h2>
+      <p className="mt-1 text-sm text-mesa-text-secondary">
+        Digite o código de 8 caracteres que o dono da barraca gerou em Ajustes.
+      </p>
+
+      <form onSubmit={resgatar} className="mt-4 flex flex-col gap-4">
+        <Input
+          label="Código"
+          autoFocus
+          required
+          autoComplete="off"
+          value={codigo}
+          onChange={(e) => setCodigo(e.target.value)}
+          className="text-center uppercase tracking-[0.2em]"
+        />
+
+        {erro && <p className="text-sm font-medium text-mesa-error-500">{erro}</p>}
+
+        <Button type="submit" size="xl" loading={enviando} className="w-full">
+          Entrar
+        </Button>
+      </form>
+    </BottomSheet>
+  )
+}
+
 function BottomSheetApagarBarraca({
   barraca,
   onClose,
@@ -263,6 +347,7 @@ export function SelecionarBarraca() {
   const { usuario, sair } = useAuth()
   const { barracas, carregando, recarregar } = useBarracasDoUsuario(usuario)
   const [criandoBarraca, setCriandoBarraca] = useState(false)
+  const [codigoSuporteAberto, setCodigoSuporteAberto] = useState(false)
   const [barracaParaApagar, setBarracaParaApagar] = useState<{ id: string; nome: string } | null>(null)
   const [filaPorBarraca, setFilaPorBarraca] = useState<Record<string, number>>({})
   const [online, setOnline] = useState(() => navigator.onLine)
@@ -314,6 +399,13 @@ export function SelecionarBarraca() {
     navigate(`/${slug}`)
   }
 
+  // Mesmo motivo do aoCriarBarraca: recarrega antes de navegar, pra
+  // RotaProtegida já ver a barraca de suporte na lista (useBarracasDoUsuario).
+  async function aoResgatarCodigo(slug: string) {
+    await recarregar()
+    navigate(`/${slug}`)
+  }
+
   if (carregando) {
     return (
       <div className="flex min-h-dvh items-center justify-center bg-mesa-bg-base">
@@ -337,6 +429,9 @@ export function SelecionarBarraca() {
         <Button size="xl" onClick={() => setCriandoBarraca(true)} className="w-full max-w-xs">
           Criar minha primeira barraca
         </Button>
+        <Button variant="ghost" size="md" onClick={() => setCodigoSuporteAberto(true)}>
+          Tenho um código de suporte
+        </Button>
         <Button
           variant="ghost"
           size="md"
@@ -347,6 +442,12 @@ export function SelecionarBarraca() {
         >
           Sair
         </Button>
+
+        <BottomSheetCodigoSuporte
+          open={codigoSuporteAberto}
+          onClose={() => setCodigoSuporteAberto(false)}
+          onResgatado={aoResgatarCodigo}
+        />
 
         <BottomSheetNovaBarraca
           open={criandoBarraca}
@@ -403,6 +504,9 @@ export function SelecionarBarraca() {
       </div>
 
       <div className="mt-auto flex flex-col items-center gap-3 pt-6">
+        <Button variant="ghost" size="md" onClick={() => setCodigoSuporteAberto(true)}>
+          Tenho um código de suporte
+        </Button>
         <Button
           variant="ghost"
           size="md"
@@ -417,6 +521,12 @@ export function SelecionarBarraca() {
           {online ? 'Online' : 'Offline'}
         </Badge>
       </div>
+
+      <BottomSheetCodigoSuporte
+        open={codigoSuporteAberto}
+        onClose={() => setCodigoSuporteAberto(false)}
+        onResgatado={aoResgatarCodigo}
+      />
 
       <BottomSheetNovaBarraca
         open={criandoBarraca}

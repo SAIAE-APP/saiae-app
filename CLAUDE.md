@@ -537,6 +537,41 @@ repetir `versionCode`: subir a cada build. Validar em aparelho Android 7–11 e
   (`pendente_anterior_id`, `cupom_liberar_abandonadas`); retry da mesma cobrança reavalia o desconto; "pagar na
   entrega" cria o pedido e confirma o cupom na MESMA transação (`criar_pedido_com_cupom`). PEDIDO GRÁTIS (total cobrado = itens − desconto + taxa = 0): NÃO chama o provedor Pix. `criar-pagamento-pix` reserva o cupom, cria o pedido na MESMA transação que confirma o uso (`criar_pedido_com_cupom`, método novo `gratis`, migration `20261019140000`; `cupom_regras` sem o piso na `20261019130000`), marca o pendente aprovado e responde `{pedido_gratis:true, senha, pedido_id}`; retry do mesmo `client_uuid` devolve o mesmo pedido. Exige WhatsApp informado (422 `telefone_obrigatorio`; perfil confirmado quando a loja usa perfil, limite por IP e "uma vez por cliente" seguem valendo). Com taxa de entrega > 0 o total não é zero: Pix só da taxa. "Pagar na entrega" com total 0 também vira `gratis`. `emitir-nfce` NÃO emite nota de total R$ 0,00 (422 `pedido_gratis`, sem chamar a FocusNFe). Front: botão "Finalizar pedido grátis", senha sem QR; Relatório/Faturamento mostra o método "Grátis (cupom)" em linha própria e o desconto à parte. Aplicar as migrations `…130000` e `…140000` ANTES do deploy das functions. Testes de banco/functions contra o staging: `tests/cupons*.staging.mjs` (rodar com as
   variáveis do cabeçalho de cada script); o teste real do Pix fica para um Pix de valor baixo na loja de teste.
+- Acesso do suporte (migration `20261023100000_acesso_suporte.sql`): o dono gera um código de 8 caracteres
+  (Ajustes > Conta > "Acesso do suporte", `SecaoAcessoSuporte`, válido 24h, uso único) pra alguém da allowlist
+  `usuarios_suporte` (começa vazia — o dono do projeto inclui o próprio id por SQL, uma vez) entrar na loja sem
+  SQL manual e sem o PIN do cliente, SÓ PARA MONTAR O CARDÁPIO. `suporte_resgatar_codigo` dá um erro genérico
+  IDÊNTICO pra "fora da allowlist" e "código errado/expirado" (nunca revela a allowlist); 5 tentativas erradas
+  bloqueiam 10 minutos (`suporte_tentativas`), e `pg_advisory_xact_lock(hashtext(auth.uid()::text))` no início
+  da função serializa chamadas concorrentes do mesmo usuário (fecha a corrida do rate limit). O código é
+  reivindicado com um `UPDATE ... WHERE usado_em is null RETURNING` atômico (não SELECT seguido de UPDATE),
+  então duas chamadas concorrentes com o MESMO código nunca resgatam as duas. Resgatar grava em
+  `acessos_suporte` (7 dias, `suporte_encerrar_acesso` pelo dono encerra antes).
+  **ESCOPO DELIBERADAMENTE ESTREITO** (revisão de segurança, 2026-10-11 — a primeira versão estendia
+  `usuario_tem_acesso_barraca`, revertido): `usuario_tem_acesso_barraca` NUNCA muda — várias policies/RPCs
+  sensíveis usam só essa função sem checar `papel = 'dono'` (UPDATE de `barracas`, DELETE de `pedidos`/"Apagar
+  período", `definir_token_pagamento`, `definir_senha_admin`, `definir_token_fiscal`,
+  `integracao_crm_salvar`), e estendê-la daria ao suporte acesso a tudo isso. Em vez disso, a função nova
+  `acesso_suporte_ativo(barraca_id)` (que TAMBÉM confere a allowlist de novo, não só o prazo — tirar a conta
+  de `usuarios_suporte` encerra o acesso NA HORA) vira policy NOVA (somada às de sempre, nunca substitui) só
+  de SELECT/INSERT/UPDATE/DELETE em `itens`/`categorias` e SELECT (só leitura) em `barracas` — o suficiente
+  pra montar cardápio e nada além disso. Suporte NUNCA ganha linha em `usuarios_barracas`, então fica de fora,
+  por construção, de toda ação `papel = 'dono'` (apagar barraca, trocar dono — que nem existe —, excluir
+  conta, assinatura). Consequência aceita: Histórico, Caixa, Faturamento e as demais seções de Ajustes
+  (Pagamento, Fiscal, Pagamento online etc.) continuam vazios/bloqueados pro suporte mesmo com o PIN pulado —
+  esperado, não bug: RLS continua a barreira de verdade, `GateSenhaAdmin` é só UX.
+  `GateSenhaAdmin` pula o PIN quando `suporte_meu_acesso` diz que o acesso está ativo (nunca grava em
+  sessionStorage — confere de novo a cada carga, porque o dono pode encerrar a qualquer momento).
+  `useBarracasDoUsuario` une `usuarios_barracas` com `suporte_minhas_barracas()` (papel sintético `'suporte'`),
+  o que faz a barraca aparecer em Selecionar barraca e passar em `RotaProtegida` sem nenhuma linha extra.
+  Faixas fixas em `LayoutBarraca` (`FaixaSuporte.tsx`): "Você está como SUPORTE... até DD/MM" pro suporte,
+  "Suporte com acesso até DD/MM [Encerrar]" pro dono. Hash do código é SHA-256 via `extensions.digest` — no
+  Supabase o pgcrypto vive no schema `extensions`, não `public` (toda função que chama `digest`/
+  `gen_random_bytes` inclui `extensions` no `search_path`, mesmo padrão de `definir_senha_admin.sql`); não
+  bcrypt como o PIN administrativo — a defesa aqui é validade curta + uso único + allowlist + limite de
+  tentativas, não custo computacional do hash, e o lookup precisa ser indexável. O código em si é gerado com
+  `gen_random_bytes` (CSPRNG), não `random()`. Fora de escopo: importar cardápio por planilha (sprint
+  separado) e qualquer recurso de "trocar o dono" (não existe no app).
 
 ## Regras de tema
 - Identidade visual atual é a IDV "Sai aê" (rebrand fechado em

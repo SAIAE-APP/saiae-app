@@ -28,6 +28,7 @@ import { SecaoImpressora } from '../components/SecaoImpressora'
 import { SecaoBanners } from '../components/SecaoBanners'
 import { SecaoHorarioFuncionamento } from '../components/SecaoHorarioFuncionamento'
 import { SecaoAjudaSuporte } from '../components/SecaoAjudaSuporte'
+import { SecaoAcessoSuporte } from '../components/SecaoAcessoSuporte'
 import { BotaoSalvarCampo, ErroSalvar } from '../components/BotaoSalvarCampo'
 import { SecaoModosAtendimento } from '../components/SecaoModosAtendimento'
 import { SecaoTaxaEntrega } from '../components/SecaoTaxaEntrega'
@@ -2958,6 +2959,9 @@ export function Ajustes({ categoria = 'conta' }: { categoria?: CategoriaAjustes 
           </SecaoDaCategoria>
           <SecaoDaCategoria categoria="cardapio" grupo="cozinha" atual={categoria}>
             <SecaoAparencia />
+          </SecaoDaCategoria>
+          <SecaoDaCategoria categoria="conta" grupo="ajuda" atual={categoria}>
+            <SecaoAcessoSuporte barraca={barraca} />
           </SecaoDaCategoria>
           <SecaoDaCategoria categoria="conta" grupo="ajuda" atual={categoria}>
             <SecaoAjudaSuporte barracaNome={barraca.nome} barracaSlug={barraca.slug} />
