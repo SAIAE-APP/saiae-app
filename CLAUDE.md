@@ -947,7 +947,7 @@ nenhum item daqui sozinho, só quando for pedido explicitamente.
   que o sistema NÃO é (hoje)" no topo deste arquivo.
 - Cobrança de assinatura do Sai aê (o dono da barraca paga pelo
   uso do app): **implementada** (migration
-  `20260922120000_add_assinaturas_kirvano.sql`) — isso é billing SaaS
+  `20260922120000_add_assinaturas_kirvano.sql`; nome histórico, a cobrança hoje é Stripe) — isso é billing SaaS
   Sai aê→cliente, problema completamente diferente do pagamento de
   pedido cliente-final→barraca citado acima, não confundir os dois.
   Trial de 30 dias (era 7; 2026-10-01) do plano ESSENCIAL (era Pro; decisão do João, 2026-10-11, migration
@@ -955,7 +955,7 @@ nenhum item daqui sozinho, só quando for pedido explicitamente.
   criação da barraca), 1 trial por e-mail pra sempre (mesmo se a
   conta for excluída e recriada). Fonte da verdade do acesso é
   sempre o banco (`assinatura_tem_acesso()`), nunca o relógio do
-  celular nem o retorno do checkout — só o webhook da Kirvano (ou o
+  celular nem o retorno do checkout — só o webhook da Stripe (`webhook-stripe`; ou o
   cron de segurança horário) muda o status. Contas cadastradas
   **antes** dessa migration (22/09/2026, inclui a Sabor Kawashima)
   receberam backfill direto pra `active`/`pro` sem data de expiração
