@@ -1193,9 +1193,9 @@ export function LancarPedido() {
               <Button
                 size="md"
                 icon={<Icone nome="add" size={16} />}
-                onClick={() => navigate(`/${barraca.slug}/ajustes`)}
+                onClick={() => navigate(`/${barraca.slug}/ajustes/cardapio`)}
               >
-                Cadastrar itens em Ajustes
+                Cadastrar itens no Cardápio
               </Button>
             </div>
           )}

@@ -1,6 +1,6 @@
 // Ajustes no desktop (pedido do João, 2026-10-09/10): em vez de ~20 seções empilhadas numa rolagem só, cada categoria
-// (Conta / Cardápio & Operação) tem um menu de GRUPOS à esquerda e mostra um grupo por vez. No celular continua tudo numa
-// página só, na mesma ordem de sempre (o grupo só esconde a seção de `md:` para cima).
+// (Conta / Cardápio & Operação) tem um menu de GRUPOS à esquerda e mostra um grupo por vez. No celular as categorias também
+// se separam (Sprint 3), mas cada uma mostra todos os grupos, na mesma ordem de sempre (o grupo só esconde de `md:` para cima).
 
 export type CategoriaAjustes = 'conta' | 'cardapio'
 

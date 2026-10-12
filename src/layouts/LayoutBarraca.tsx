@@ -67,8 +67,9 @@ export function LayoutBarraca() {
   const emDashboard = location.pathname === `/${slug}` || location.pathname === `/${slug}/`
   const emPlanos = location.pathname.endsWith('/planos')
   const emHistorico = location.pathname.endsWith('/historico')
-  // /ajustes/cardapio é a 2ª categoria em que Ajustes.tsx se separa só no
-  // desktop (ver Ajustes.tsx) — mesma tela de gestão, mesma sidebar.
+  // /ajustes/cardapio é a 2ª categoria de Ajustes.tsx (Cardápio & Operação,
+  // separada em qualquer largura) — mesma tela de gestão, mesma sidebar; o
+  // item Ajustes da barra inferior fica ativo nas duas (NavLink sem `end`).
   const emAjustes = location.pathname.endsWith('/ajustes') || location.pathname.endsWith('/ajustes/cardapio')
   const emFaturamento = location.pathname.endsWith('/desktop')
   const emCaixa = location.pathname.endsWith('/caixa')

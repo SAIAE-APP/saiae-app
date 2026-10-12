@@ -1,4 +1,4 @@
-// Ajustes no desktop: menu de grupos à esquerda, um grupo por vez; celular intacto.
+// Ajustes: Conta e Cardápio & Operação separados em qualquer largura; no desktop, menu de grupos à esquerda, um grupo por vez.
 import assert from 'node:assert/strict'
 import { readFileSync } from 'node:fs'
 import { describe, test } from 'node:test'
@@ -27,8 +27,12 @@ describe('ligação em Ajustes', () => {
     const ids = new Set(GRUPOS_AJUSTES.map((g) => `${g.categoria}:${g.id}`))
     for (const [, cat, grupo] of grupos) assert.ok(ids.has(`${cat}:${grupo}`), `${cat}:${grupo}`)
   })
-  test('só o desktop esconde por grupo: o wrapper usa md:hidden (celular mostra tudo na ordem de sempre)', () => {
-    assert.match(ajustes, /\(categoria !== atual \|\| grupo !== grupoAtual\) && 'md:hidden'/)
+  test('a categoria esconde em qualquer largura; o grupo só do desktop (celular mostra a categoria inteira)', () => {
+    assert.match(ajustes, /if \(categoria !== atual\) return <div className="hidden">\{children\}<\/div>/)
+    assert.match(ajustes, /clsx\('contents', grupo !== grupoAtual && 'md:hidden'\)/)
+  })
+  test('as abas Conta / Cardápio & Operação aparecem também no celular', () => {
+    assert.match(ajustes, /<div className="mt-3 flex gap-1\.5">\s+\{ABAS_CATEGORIA\.map/)
   })
   test('o menu fica escondido no celular e lembra a escolha na URL (?secao=)', () => {
     assert.match(ajustes, /aria-label="Seções de Ajustes" className="sticky top-32 hidden flex-col gap-1 md:flex"/)
