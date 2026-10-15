@@ -1,0 +1,47 @@
+name: Android (verificação de build)
+
+# Compila o app Android (APK debug, sem a chave de upload da Play) para
+# confirmar que o projeto nativo continua montando depois de mudanças no web
+# ou no Capacitor. O .aab de produção continua sendo gerado à mão, assinado
+# com a chave da Play (ver CLAUDE.md, "Build Android").
+on:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  android:
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    env:
+      VITE_SUPABASE_URL: ${{ secrets.VITE_SUPABASE_URL }}
+      VITE_SUPABASE_ANON_KEY: ${{ secrets.VITE_SUPABASE_ANON_KEY }}
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+      - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4
+        with:
+          node-version: 24
+          cache: npm
+      - uses: actions/setup-java@cf277c60eb25467037889841efdb72551f06f6c3 # v4
+        with:
+          distribution: temurin
+          java-version: 21
+      - run: npm ci
+
+      - name: Build web + sync Android
+        run: npm run android:sync
+
+      - name: Gradle assembleDebug
+        working-directory: android
+        run: |
+          chmod +x gradlew
+          ./gradlew assembleDebug --no-daemon
+
+      - name: Conferir que o APK leva o Supabase de produção
+        run: |
+          APK=android/app/build/outputs/apk/debug/app-debug.apk
+          ls -la "$APK"
+          unzip -p "$APK" 'assets/public/assets/index-*.js' | grep -q "$VITE_SUPABASE_URL" \
+            && echo "URL do Supabase encontrada no bundle" \
+            || { echo "::error::URL do Supabase não está no bundle (app abriria em tela branca)"; exit 1; }

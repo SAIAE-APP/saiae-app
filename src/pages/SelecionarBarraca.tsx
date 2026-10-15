@@ -459,7 +459,7 @@ export function SelecionarBarraca() {
   }
 
   return (
-    <div className="flex min-h-dvh flex-col bg-mesa-bg-base p-6 md:mx-auto md:w-full md:max-w-4xl">
+    <div className="flex min-h-dvh flex-col bg-mesa-bg-base p-6 pt-[calc(env(safe-area-inset-top)+24px)] md:mx-auto md:w-full md:max-w-4xl">
       <div>
         <h1 className="text-2xl font-bold text-mesa-text-primary">Qual barraca?</h1>
         <p className="mt-1 text-sm text-mesa-text-secondary">Escolha a barraca que você vai operar agora.</p>

@@ -1,0 +1,129 @@
+name: iOS → TestFlight
+
+# Build do app iOS (Capacitor) num Mac do GitHub e envio pro App Store Connect.
+# Roda só manualmente (Actions > "iOS → TestFlight" > Run workflow).
+#
+# Secrets necessários (Settings > Secrets and variables > Actions):
+#   VITE_SUPABASE_URL, VITE_SUPABASE_ANON_KEY  — Supabase de PRODUÇÃO (senão tela branca)
+#   APPLE_TEAM_ID                              — Team ID da conta Apple Developer (10 caracteres)
+#   ASC_KEY_ID, ASC_ISSUER_ID                  — chave de API do App Store Connect (papel App Manager ou Admin)
+#   ASC_KEY_P8                                 — conteúdo do arquivo AuthKey_XXXX.p8
+# A assinatura é automática: o xcodebuild cria certificado e perfil pela chave de API.
+
+on:
+  workflow_dispatch:
+    inputs:
+      versao:
+        description: 'Versão (CFBundleShortVersionString). Vazio = a do projeto Xcode.'
+        required: false
+
+permissions:
+  contents: read
+
+jobs:
+  ios:
+    # macos-26: a Apple só aceita builds com o SDK do iOS 26 (Xcode 26), e o
+    # Xcode padrão do macos-15 é o 16.x (erro 90725 no upload).
+    runs-on: macos-26
+    timeout-minutes: 45
+    env:
+      VITE_SUPABASE_URL: ${{ secrets.VITE_SUPABASE_URL }}
+      VITE_SUPABASE_ANON_KEY: ${{ secrets.VITE_SUPABASE_ANON_KEY }}
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+      - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4
+        with:
+          node-version: 24
+          cache: npm
+      - run: npm ci
+      - run: xcodebuild -version
+
+      - name: Build web + sync iOS
+        run: |
+          node scripts/verificar-env-build.mjs
+          npm run build
+          npx cap sync ios
+
+      - name: Chave de API do App Store Connect
+        env:
+          ASC_KEY_P8: ${{ secrets.ASC_KEY_P8 }}
+          ASC_KEY_ID: ${{ secrets.ASC_KEY_ID }}
+        run: |
+          mkdir -p "$RUNNER_TEMP/asc"
+          # Colar o .p8 pelo navegador pode juntar tudo numa linha, trazer \r/espaços
+          # ou perder o cabeçalho, e o xcodebuild recusa (invalidPEMDocument). Por
+          # isso só o base64 do secret é aproveitado: vira DER e o openssl regrava
+          # o PEM inteiro. -topk8 força PKCS#8 (formato do .p8 da Apple): o LibreSSL
+          # do macOS pode gravar SEC1, que o xcodebuild aceita mas o altool não.
+          CORPO=$(printf '%s' "$ASC_KEY_P8" | sed -e 's/-----[A-Z ]*-----//g' | tr -d ' \r\n\t')
+          if ! printf '%s' "$CORPO" | openssl base64 -d -A > "$RUNNER_TEMP/asc/chave.der" \
+            || ! openssl pkcs8 -topk8 -nocrypt -inform DER -in "$RUNNER_TEMP/asc/chave.der" -out "$RUNNER_TEMP/asc/AuthKey_$ASC_KEY_ID.p8"; then
+            echo "::error::ASC_KEY_P8 não é uma chave .p8 válida (${#CORPO} caracteres em base64; o esperado é 200). Cole de novo o conteúdo inteiro do AuthKey_$ASC_KEY_ID.p8."
+            exit 1
+          fi
+          rm -f "$RUNNER_TEMP/asc/chave.der"
+          # Só o cabeçalho e o nº de linhas, nunca o conteúdo.
+          echo "Formato da chave: $(head -1 "$RUNNER_TEMP/asc/AuthKey_$ASC_KEY_ID.p8"), $(wc -l < "$RUNNER_TEMP/asc/AuthKey_$ASC_KEY_ID.p8") linhas"
+
+      - name: Archive
+        working-directory: ios/App
+        env:
+          VERSAO: ${{ inputs.versao }}
+        run: |
+          EXTRA=()
+          if [ -n "$VERSAO" ]; then EXTRA+=("MARKETING_VERSION=$VERSAO"); fi
+          xcodebuild archive \
+            -project App.xcodeproj -scheme App -configuration Release \
+            -destination 'generic/platform=iOS' \
+            -archivePath "$RUNNER_TEMP/App.xcarchive" \
+            -allowProvisioningUpdates \
+            -authenticationKeyPath "$RUNNER_TEMP/asc/AuthKey_${{ secrets.ASC_KEY_ID }}.p8" \
+            -authenticationKeyID "${{ secrets.ASC_KEY_ID }}" \
+            -authenticationKeyIssuerID "${{ secrets.ASC_ISSUER_ID }}" \
+            DEVELOPMENT_TEAM="${{ secrets.APPLE_TEAM_ID }}" \
+            CODE_SIGN_STYLE=Automatic \
+            CURRENT_PROJECT_VERSION="${{ github.run_number }}" \
+            "${EXTRA[@]}"
+
+      - name: Exportar .ipa
+        run: |
+          cat > "$RUNNER_TEMP/ExportOptions.plist" <<EOF
+          <?xml version="1.0" encoding="UTF-8"?>
+          <!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+          <plist version="1.0">
+          <dict>
+            <key>method</key><string>app-store-connect</string>
+            <key>destination</key><string>export</string>
+            <key>teamID</key><string>${{ secrets.APPLE_TEAM_ID }}</string>
+            <key>signingStyle</key><string>automatic</string>
+            <key>manageAppVersionAndBuildNumber</key><false/>
+          </dict>
+          </plist>
+          EOF
+          xcodebuild -exportArchive \
+            -archivePath "$RUNNER_TEMP/App.xcarchive" \
+            -exportOptionsPlist "$RUNNER_TEMP/ExportOptions.plist" \
+            -exportPath "$RUNNER_TEMP/export" \
+            -allowProvisioningUpdates \
+            -authenticationKeyPath "$RUNNER_TEMP/asc/AuthKey_${{ secrets.ASC_KEY_ID }}.p8" \
+            -authenticationKeyID "${{ secrets.ASC_KEY_ID }}" \
+            -authenticationKeyIssuerID "${{ secrets.ASC_ISSUER_ID }}"
+
+      # Upload pela API oficial (buildUploads): o destination=upload do
+      # exportArchive ("No Accounts with App Store Connect Access") e o altool
+      # ("Cannot verify client's JWT headers") recusam a mesma chave que a API aceita.
+      - name: Enviar ao App Store Connect
+        env:
+          ASC_KEY_ID: ${{ secrets.ASC_KEY_ID }}
+          ASC_ISSUER_ID: ${{ secrets.ASC_ISSUER_ID }}
+          ASC_APP_ID: '6822988902'
+        run: |
+          PLIST="$RUNNER_TEMP/App.xcarchive/Products/Applications/App.app/Info.plist"
+          VERSAO=$(/usr/libexec/PlistBuddy -c 'Print :CFBundleShortVersionString' "$PLIST")
+          BUILD=$(/usr/libexec/PlistBuddy -c 'Print :CFBundleVersion' "$PLIST")
+          ASC_KEY_PATH="$RUNNER_TEMP/asc/AuthKey_$ASC_KEY_ID.p8" \
+            node scripts/enviar-build-asc.mjs "$(ls "$RUNNER_TEMP"/export/*.ipa | head -1)" "$VERSAO" "$BUILD"
+
+      - name: Limpar chave
+        if: always()
+        run: rm -rf "$RUNNER_TEMP/asc"

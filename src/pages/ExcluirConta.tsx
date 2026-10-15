@@ -25,7 +25,7 @@ function ItemLista({ children }: { children: React.ReactNode }) {
 export function ExcluirConta() {
   return (
     <div className="min-h-dvh bg-mesa-bg-base">
-      <header className="border-b border-mesa-border-subtle bg-mesa-surface">
+      <header className="border-b border-mesa-border-subtle bg-mesa-surface pt-[env(safe-area-inset-top)]">
         <div className="mx-auto flex max-w-[720px] items-center justify-between px-6 py-4">
           <Link to="/" className="flex items-center gap-2.5">
             <img src="/brand/saiae-icone-cor.svg" alt="" className="h-8 w-8" />
