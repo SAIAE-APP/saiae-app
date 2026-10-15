@@ -89,7 +89,7 @@ function MolduraPasso({
   const pos = posicaoNaOrdem(ordem, numero)
   const pct = Math.round((pos / ordem.length) * 100)
   return (
-    <div className="mx-auto flex min-h-dvh w-full max-w-xl flex-col bg-mesa-bg-base px-6 pb-8 pt-5">
+    <div className="mx-auto flex min-h-dvh w-full max-w-xl flex-col bg-mesa-bg-base px-6 pb-8 pt-[calc(env(safe-area-inset-top)+20px)]">
       <div className="flex items-center gap-3">
         <button
           type="button"

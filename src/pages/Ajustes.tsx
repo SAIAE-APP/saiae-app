@@ -2841,7 +2841,7 @@ export function Ajustes({ categoria = 'conta' }: { categoria?: CategoriaAjustes 
   return (
     <GateSenhaAdmin key={barraca.id} barracaId={barraca.id} slug={barraca.slug}>
       <div className="min-h-dvh">
-        <div className="sticky top-0 z-[var(--mesa-z-sticky)] bg-[var(--mesa-color-surface-blur)] px-6 py-5 [backdrop-filter:blur(var(--mesa-surface-blur-strength))]">
+        <div className="sticky top-0 z-[var(--mesa-z-sticky)] bg-[var(--mesa-color-surface-blur)] px-6 pb-5 pt-[calc(env(safe-area-inset-top)+20px)] [backdrop-filter:blur(var(--mesa-surface-blur-strength))]">
           <div className="md:mx-auto md:max-w-5xl">
             <Link
               to={`/${barraca.slug}`}

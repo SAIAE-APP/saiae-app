@@ -98,7 +98,7 @@ export function RevisarCardapioExemplo() {
   }
 
   return (
-    <div className="mx-auto flex min-h-dvh w-full max-w-[720px] flex-col gap-5 bg-mesa-bg-base px-6 py-6 pb-28">
+    <div className="mx-auto flex min-h-dvh w-full max-w-[720px] flex-col gap-5 bg-mesa-bg-base px-6 pt-[calc(env(safe-area-inset-top)+24px)] pb-28">
       <header className="flex items-start gap-3">
         <button type="button" onClick={voltar} aria-label="Voltar" className="flex size-11 shrink-0 items-center justify-center rounded-mesa-full text-mesa-text-primary">
           <Icone nome="arrow_back" size={22} />

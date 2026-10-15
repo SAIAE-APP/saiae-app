@@ -13,7 +13,7 @@ export function Planos() {
   const { assinatura } = useAssinaturaBarraca(barraca.slug)
 
   return (
-    <div className="flex min-h-dvh flex-col gap-6 bg-mesa-bg-base p-6">
+    <div className="flex min-h-dvh flex-col gap-6 bg-mesa-bg-base p-6 pt-[calc(env(safe-area-inset-top)+24px)]">
       {!assinatura?.eh_dono && (
         <div className="rounded-mesa-lg border border-mesa-border-default bg-mesa-surface p-4 text-center text-sm text-mesa-text-secondary">
           A assinatura de <strong>{barraca.nome}</strong> está inativa. Fale com o dono da barraca pra
