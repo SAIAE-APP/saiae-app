@@ -259,7 +259,7 @@ export function Desktop() {
 
   return (
     <GateSenhaAdmin key={barraca.id} barracaId={barraca.id} slug={barraca.slug}>
-      <div className="min-h-dvh px-4 pb-24 pt-[calc(env(safe-area-inset-top)+24px)] md:px-8">
+      <div className="min-h-dvh px-4 pb-[calc(6rem+env(safe-area-inset-bottom))] pt-[calc(env(safe-area-inset-top)+24px)] md:px-8">
         <div className="mx-auto max-w-4xl">
           <CabecalhoPagina
             titulo="Faturamento"

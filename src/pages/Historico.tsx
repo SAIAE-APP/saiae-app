@@ -644,7 +644,7 @@ export function Historico() {
 
   return (
     <GateSenhaAdmin key={barraca.id} barracaId={barraca.id} slug={barraca.slug}>
-    <div className="min-h-dvh pb-24">
+    <div className="min-h-dvh pb-[calc(6rem+env(safe-area-inset-bottom))]">
       <div
         className={`sticky top-0 z-[var(--mesa-z-sticky)] bg-mesa-surface px-6 pt-[calc(env(safe-area-inset-top)+16px)] pb-4 shadow-mesa-1 transition-transform duration-300 ${
           filtrosEscondidos ? '-translate-y-full pointer-events-none' : 'translate-y-0'
