@@ -12,6 +12,12 @@ const config: CapacitorConfig = {
   appId: 'com.aia.mesaagil',
   appName: 'Sai aê',
   webDir: 'dist',
+  // iOS: WebView sob o notch/barra home; o CSS respeita env(safe-area-inset-*)
+  // (exige viewport-fit=cover no index.html). Mesma base do Android.
+  ios: {
+    contentInset: 'never',
+    backgroundColor: '#FFFFFF',
+  },
 }
 
 export default config
