@@ -2872,7 +2872,7 @@ export function Ajustes({ categoria = 'conta' }: { categoria?: CategoriaAjustes 
           </div>
         </div>
 
-        <div className="px-6 pb-28 pt-2 md:mx-auto md:grid md:max-w-5xl md:grid-cols-[14rem_minmax(0,1fr)] md:items-start md:gap-8">
+        <div className="px-6 pb-[calc(7rem+env(safe-area-inset-bottom))] pt-2 md:mx-auto md:grid md:max-w-5xl md:grid-cols-[14rem_minmax(0,1fr)] md:items-start md:gap-8">
           <nav aria-label="Seções de Ajustes" className="sticky top-32 hidden flex-col gap-1 md:flex">
             {gruposDaCategoria(categoria).map((g) => (
               <button

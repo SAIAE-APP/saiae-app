@@ -811,7 +811,7 @@ export function Cozinha() {
   }
 
   return (
-    <div className="min-h-dvh bg-mesa-bg-kanban pb-40">
+    <div className="min-h-dvh bg-mesa-bg-kanban pb-[calc(10rem+env(safe-area-inset-bottom))]">
       {!online && (
         <p className="border-l-[3px] border-mesa-error-500 bg-mesa-error-50 p-3 text-center text-sm font-medium text-mesa-error-700 dark:bg-mesa-error-500/15 dark:text-mesa-error-400">
           Sem conexão — os pedidos serão enviados quando a rede voltar
@@ -989,7 +989,7 @@ export function Cozinha() {
       </BottomSheet>
 
       {pedidoFinalizado && (
-        <div className="fixed inset-x-0 bottom-16 z-40 flex items-center justify-between gap-4 bg-mesa-neutral-800 px-6 py-4">
+        <div className="fixed inset-x-0 bottom-[calc(4rem+env(safe-area-inset-bottom))] z-40 flex items-center justify-between gap-4 bg-mesa-neutral-800 px-6 py-4">
           <span className="text-base font-medium text-white">
             Pedido {pedidoFinalizado.senha} finalizado
           </span>
