@@ -10,7 +10,7 @@ Objetivo: publicar o arquivo `saiae-2.3-vc17.aab` (versionName 2.3, versionCode 
 Passos:
 1. Play Console > app "Sai aê" > Testes > **Teste fechado**. Abra a faixa que já está em uso (a do teste fechado atual). Se houver mais de uma, use a que tem testadores ativos.
 2. Clique em "Criar nova versão".
-3. Em "Pacotes de apps", envie `saiae-2.3-vc17.aab` (pasta `D:Projetoselease`). Se pedir, mantenha a assinatura do app pelo Google Play.
+3. Em "Pacotes de apps", envie `saiae-2.3-vc17.aab` (pasta `D:\Projetos\release`). Se pedir, mantenha a assinatura do app pelo Google Play.
 4. Nome da versão: `2.3 (17)`.
 5. Notas da versão (pt-BR), em `<pt-BR>`:
    Melhorias de estabilidade, correções e novidades no cardápio digital, entregas e estoque.
