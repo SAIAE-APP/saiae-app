@@ -22,6 +22,7 @@
     "postinstall": "patch-package"
   },
   "dependencies": {
+    "@capacitor/ios": "^8.5.3",
     "@devlas/capacitor-thermal-printer": "^0.8.0",
     "@point-of-sale/receipt-printer-encoder": "^4.0.1",
     "@supabase/supabase-js": "^2.112.2",
