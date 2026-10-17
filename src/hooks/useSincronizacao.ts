@@ -1,5 +1,6 @@
 import { useEffect, useRef, useState } from 'react'
 import { supabase } from '../lib/supabase'
+import { registrarErroApp } from '../lib/erroApp'
 import {
   incrementarTentativa,
   emitirPedidoCriadoLocal,
@@ -229,6 +230,8 @@ export function useSincronizacao() {
           console.error(`[sincronizacao] falha em ${op.tipo} (tentativa ${op.tentativas + 1})`, erro)
           await incrementarTentativa(op.id)
           falhou = true
+          // Sem internet a falha é esperada (a fila segue sozinha): só conta quando estava online.
+          if (navigator.onLine && !(erro instanceof OperacaoAdiadaError)) registrarErroApp('sync', erro)
           // Operação adiada só espera; as outras seguem. Qualquer outra falha
           // (rede, erro do banco) continua parando a fila, pra preservar a ordem.
           if (erro instanceof OperacaoAdiadaError) continue

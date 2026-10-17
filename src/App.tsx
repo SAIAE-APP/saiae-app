@@ -36,6 +36,8 @@ import { Assinar } from './pages/Assinar'
 import { Assinatura } from './pages/Assinatura'
 import { Planos } from './pages/Planos'
 import { Entregador } from './pages/Entregador'
+import { AdminBarracas } from './pages/AdminBarracas'
+import { AdminBarracaLeitura } from './pages/AdminBarracaLeitura'
 
 function App() {
   // Fonte única de verdade do tema claro/escuro: preferência manual do
@@ -79,6 +81,24 @@ function App() {
             <Route path="/excluir-conta" element={<ExcluirConta />} />
 
             <Route path="/" element={<Dispatcher />} />
+
+            {/* Painel do dono do sistema (superadmin). A tela esconde para quem não é, mas a barreira é o banco. */}
+            <Route
+              path="/admin"
+              element={
+                <RotaProtegida>
+                  <AdminBarracas />
+                </RotaProtegida>
+              }
+            />
+            <Route
+              path="/admin/barraca/:barracaId"
+              element={
+                <RotaProtegida>
+                  <AdminBarracaLeitura />
+                </RotaProtegida>
+              }
+            />
 
             {/* Assistente de configuração inicial (atrás da flag VITE_ONBOARDING_CONFIG; sem ela o Dispatcher nunca vem aqui). */}
             <Route
