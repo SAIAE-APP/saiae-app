@@ -13,7 +13,7 @@ import { Icone } from '../components/ui/Icone'
 // usa nenhum rastreador de terceiro (confirmado por busca no código,
 // 2026-09-28) — não há seção de cookies além da nota informativa abaixo.
 
-const DATA_VIGENCIA = '12 de outubro de 2026'
+const DATA_VIGENCIA = '17 de outubro de 2026'
 
 function Secao({ titulo, children }: { titulo: string; children: React.ReactNode }) {
   return (
@@ -279,11 +279,19 @@ export function Privacidade() {
           </p>
         </Secao>
 
-        <Secao titulo="6. Reportar um problema">
+        <Secao titulo="6. Reportar um problema e registro de erros">
           <p>
             Ao usar o formulário "Ajuda e suporte" para reportar um bug, enviamos por e-mail à nossa
             equipe: a descrição do problema, seu e-mail de cadastro, o nome da barraca e informações
             técnicas do navegador/aparelho (user agent) — usados só para diagnosticar o problema relatado.
+          </p>
+          <p>
+            Além disso, o aplicativo registra automaticamente erros de funcionamento (falha de JavaScript,
+            de sincronização, de impressão ou tela em branco). Cada registro guarda apenas a barraca, a
+            versão do aplicativo, a plataforma (Android, iOS ou web), o tipo e uma mensagem técnica curta,
+            sem texto digitado por você e sem dados de clientes (e-mails e números longos são removidos).
+            Também guardamos qual versão do aplicativo cada barraca está usando. Esses registros ficam por
+            até 30 dias e servem para encontrar e corrigir problemas.
           </p>
         </Secao>
 
@@ -393,6 +401,16 @@ export function Privacidade() {
             direta pelo cliente — só através de funções controladas no servidor. A comunicação entre o
             aplicativo e nossos servidores é sempre criptografada (HTTPS/TLS).
           </p>
+          <p>
+            A equipe de administração do Sai aê pode abrir uma barraca em modo somente leitura para dar
+            suporte, para acompanhar o plano e o prazo da assinatura e para monitorar o funcionamento do
+            sistema. Esse acesso é restrito a contas autorizadas, não permite alterar nada, mostra
+            telefone e endereço de clientes mascarados (o dado completo só aparece se a equipe pedir
+            expressamente, e cada pedido desse tipo é registrado) e não dá acesso a senhas, tokens de
+            pagamento ou fiscais. Toda abertura é registrada, e o dono da barraca pode ver quando
+            aconteceu, por quanto tempo e quantas vezes houve acesso a dados completos de clientes em
+            Ajustes › Conta. Alterações no cardápio pela equipe só ocorrem com um código gerado por você.
+          </p>
         </Secao>
 
         <Secao titulo="12. Retenção de dados">
@@ -405,6 +423,10 @@ export function Privacidade() {
             interessados ficam no máximo 30 dias, e o lead de interessado até 12 meses sem contato (seções 8 e 9).
             Cópias de segurança (backup) do banco do atendimento, que incluem conversas e leads, são
             mantidas por até 30 dias e depois descartadas automaticamente.
+          </p>
+          <p>
+            Os registros de erros do aplicativo ficam por até 30 dias, e os registros de acesso da equipe de
+            administração à barraca (seção 11) ficam enquanto a barraca existir.
           </p>
           <p>
             O cadastro de clientes de entrega fica guardado enquanto a barraca existir ou até o dono

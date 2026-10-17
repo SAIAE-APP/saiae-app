@@ -18,6 +18,7 @@ import { FaixaSuporteDono, FaixaSuporteVisao } from '../components/FaixaSuporte'
 import { acessoBloqueadoPorAssinatura, mostraBannerDeTrial } from '../lib/cobranca'
 import { useToast } from '../components/ui/useToast'
 import { EVENTO_CLIENTE_NAO_SALVO } from '../lib/fila'
+import { definirBarracaDoErro, registrarVersaoApp } from '../lib/erroApp'
 import { BarracaContext, SincronizacaoContext } from './contextoBarraca'
 import { PedidosContext } from './contextoPedidos'
 
@@ -95,6 +96,15 @@ export function LayoutBarraca() {
   // pedido e 02-caixa. Dashboard mantém o gradiente (regra acima é só
   // sobre Cozinha/Chamada).
   const semBottomNav = emTelaDeChamada || emConfirmarPedido || emDashboard
+
+  // Observabilidade do painel do superadmin: erros passam a valer para esta barraca e a versão em uso é registrada.
+  const barracaId = barraca?.id
+  useEffect(() => {
+    if (!barracaId) return
+    definirBarracaDoErro(barracaId)
+    registrarVersaoApp(barracaId)
+    return () => definirBarracaDoErro(null)
+  }, [barracaId])
 
   useEffect(() => {
     if (!barraca) return

@@ -1,10 +1,23 @@
+import { execSync } from 'node:child_process'
 import { defineConfig } from 'vite'
 import react from '@vitejs/plugin-react'
 import tailwindcss from '@tailwindcss/vite'
 import { VitePWA } from 'vite-plugin-pwa'
 
+// Identificação do build para o painel do superadmin ver quem está em versão antiga: VITE_APP_VERSION
+// (se definida) ou o commit atual; sem git, "dev".
+function versaoDoBuild(): string {
+  if (process.env.VITE_APP_VERSION) return process.env.VITE_APP_VERSION
+  try {
+    return execSync('git rev-parse --short HEAD', { stdio: ['ignore', 'pipe', 'ignore'] }).toString().trim() || 'dev'
+  } catch {
+    return 'dev'
+  }
+}
+
 // https://vite.dev/config/
 export default defineConfig({
+  define: { __APP_VERSION__: JSON.stringify(versaoDoBuild()) },
   plugins: [
     react(),
     tailwindcss(),
