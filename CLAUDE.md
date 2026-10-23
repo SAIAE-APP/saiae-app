@@ -404,6 +404,33 @@ repetir `versionCode`: subir a cada build. Validar em aparelho Android 7–11 e
   `entregador_confirmar` também só grava quando o método atual é `na_entrega`.
   O Caixa conta pelo método vigente no momento da consulta (igual ao link do
   entregador).
+- Comanda aberta na Mesa e taxa de serviço (2026-10-23, branch `feat/comanda-aberta-mesa`; spec
+  `docs/superpowers/specs/2026-10-23-comanda-aberta-mesa-design.md`). Atrás de `barracas.comanda_aberta_habilitada`
+  (padrão false; Ajustes > Cardápio & Operação, `SecaoComandaAberta`): desligado, nada muda. Ligado, cada pedido de
+  Mesa é uma RODADA (`metodo_pagamento = 'na_entrega'`) presa a uma comanda: tabela `comandas` (uma ABERTA por barraca
+  + mesa normalizada, `normalizar_mesa`; trigger no INSERT de `pedidos` grava `pedidos.comanda_id`). Tela `/:slug/mesas`
+  (`Mesas.tsx`) lista as comandas abertas (Realtime + cache no aparelho) e fecha pela RPC `fechar_comanda(comanda,
+  metodo, cobrar_taxa)` (SECURITY DEFINER, só `authenticated`): grava o método em todas as rodadas, calcula a taxa NO
+  SERVIDOR e fecha; idempotente para o mesmo método, `ja_fechada` com outro. Sem rede vai para a fila (operação
+  `fechar_comanda`); só erro de rede vai para a fila, erro do servidor aparece na tela. Comanda sem rodada ativa (todas
+  canceladas) é "Encerrar comanda vazia": fecha com total 0, taxa 0 e método NULL, sem pedir forma de pagamento
+  (migration `20261029140000`). Rodada ainda aberta aparece como "Comanda aberta" no Histórico e na comanda impressa;
+  no Faturamento entra na linha "A definir (entrega ou comanda aberta)" até a comanda fechar (decisão: faturamento do
+  dia pode mostrar valor ainda não cobrado; João decide se muda).
+  TAXA DE SERVIÇO: `barracas.taxa_servico_habilitada` (padrão false) e `taxa_servico_bps` (bps, 1000 = 10% padrão,
+  0..3000); vem marcada no fechamento e o operador pode desmarcar naquela comanda. Gravada SÓ na comanda
+  (`comandas.taxa_servico_centavos`/`_bps`), nunca nos itens: Relatório/Faturamento mostra a seção "Taxa de serviço" à
+  parte (por `fechada_em`), nunca somada ao faturamento dos itens; o Caixa soma a taxa das comandas fechadas em
+  dinheiro no turno (e os pedidos em dinheiro dessas comandas, mesmo criados antes da abertura do caixa).
+  NFC-e: interruptor `barracas.nfce_incluir_taxas` (padrão DESLIGADO = taxa fora da nota, como sempre). Não é parecer
+  fiscal: o dono confirma com o contador antes de ligar. Ligado, a nota é POR RODADA e leva a sua parte da taxa
+  (rateio entre as rodadas, `valor_outras_despesas` por item na FocusNFe); a parte é congelada na trava da emissão em
+  `pedidos.nfce_taxa_servico_centavos` (o cupom impresso usa esse valor). A taxa de entrega continua fora.
+  Assistente de configuração: o passo dos modos pergunta "Como você cobra a Mesa?" (liga comanda e taxa). Desmarcar
+  Mesa no assistente DESLIGA `comanda_aberta_habilitada` em silêncio, mesmo com comandas abertas (elas continuam
+  listadas e fecháveis em `/:slug/mesas` pela URL).
+  ORDEM DE DEPLOY: migrations `20261029100000`, `…110000`, `…120000`, `…130000`, `…140000` → edge function
+  `emitir-nfce` → app. Ainda não validado com duas sessões concorrentes nem em staging; ligar primeiro numa conta de teste.
 - Estoque por item com baixa automática (2026-10-07, PR #29, migration
   `20261010110000_estoque_por_item.sql`; REVERTE a decisão de 2026-09-26 "só o
   toggle esgotado"). Decisões do dono: controle POR ITEM e opcional
