@@ -5,7 +5,7 @@ Loja de teste: `qa-teste-varredura`, em **staging**. Pré-requisito: a ordem de 
 ## Ordem de deploy
 
 1. CRM do Gael: rota `whatsapp-conexao`, mapeamento sessão ↔ loja, tabelas de log e o segredo `COMANDA_WHATSAPP_SEGREDO` (itens 1 a 13 de `PENDENCIAS-CRM-GAEL.md`).
-2. Migrations `20261030100000_whatsapp_avisos` e `20261030110000_whatsapp_status`.
+2. Migrations `20261030100000_whatsapp_avisos`, `20261030110000_whatsapp_status` e `20261030120000_whatsapp_proteger`, nessa ordem.
 3. Secrets do Sai aê: `WHATSAPP_CONEXAO_SEGREDO` (igual ao `COMANDA_WHATSAPP_SEGREDO`, mínimo 16 caracteres) e `CRM_WHATSAPP_CONEXAO_URL` (https público).
 4. Deploy das functions `whatsapp-conexao` e `crm-evento-sessao` (esta com `--no-verify-jwt`).
 5. App. A seção continua escondida até o João liberar lojas (`SLUGS_COM_IA_E_CRM` ou `VITE_MOSTRAR_WHATSAPP_AUTOMACAO=1`).
