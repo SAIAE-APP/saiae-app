@@ -1,5 +1,5 @@
-import { normalizarTelefone } from './entrega'
-import { numeroWhatsapp } from './pagarNaEntrega'
+import { normalizarTelefone } from './entrega.ts'
+import { numeroWhatsapp } from './pagarNaEntrega.ts'
 import type { Barraca, Pedido } from '../types/database'
 
 export const MSG_PRONTO_PADRAO = 'Olá {nome}! Seu pedido {senha} da {barraca} está pronto. Pode retirar!'
