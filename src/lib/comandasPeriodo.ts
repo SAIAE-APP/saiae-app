@@ -1,8 +1,8 @@
 import { supabase } from './supabase'
 import { paginar } from './exportarClientes'
-import type { Comanda } from '../types/database'
+import type { Comanda, PedidoComItens } from '../types/database'
 
-export type ComandaFechada = Pick<Comanda, 'fechada_em' | 'taxa_servico_centavos' | 'metodo_pagamento'> & { fechada_em: string }
+export type ComandaFechada = Pick<Comanda, 'id' | 'fechada_em' | 'taxa_servico_centavos' | 'metodo_pagamento'> & { fechada_em: string }
 
 /** Comandas fechadas com `fechada_em` em [de, ate], numa consulta paginada (sem N+1). */
 export async function buscarComandasFechadas(
@@ -22,6 +22,23 @@ export async function buscarComandasFechadas(
     if (somenteMetodo) consulta = consulta.eq('metodo_pagamento', somenteMetodo)
     return consulta.order('id').range(inicio, fim)
   })
+}
+
+/** Pedidos em dinheiro (não cancelados) das comandas dadas, em lotes de 100 ids. Lista vazia = nenhuma consulta. */
+export async function buscarPedidosDeComandas(barracaId: string, comandaIds: string[]): Promise<PedidoComItens[]> {
+  const todos: PedidoComItens[] = []
+  for (let i = 0; i < comandaIds.length; i += 100) {
+    const { data, error } = await supabase
+      .from('pedidos')
+      .select('*, itens_do_pedido(*)')
+      .eq('barraca_id', barracaId)
+      .neq('status', 'cancelado')
+      .eq('metodo_pagamento', 'dinheiro')
+      .in('comanda_id', comandaIds.slice(i, i + 100))
+    if (error) throw error
+    todos.push(...((data ?? []) as PedidoComItens[]))
+  }
+  return todos
 }
 
 export type ComandaDoPedido = Pick<Comanda, 'id' | 'mesa' | 'status' | 'taxa_servico_centavos'>

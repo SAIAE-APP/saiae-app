@@ -476,3 +476,32 @@ export function janelaDoIntervalo(intervalo: IntervaloData): { de: Date; ate: Da
   const [af, mf, df] = intervalo.fim.split('-').map(Number)
   return { de: new Date(ai, mi - 1, di, 0, 0, 0, 0), ate: new Date(af, mf - 1, df, 23, 59, 59, 999) }
 }
+
+/** Pedidos em dinheiro que contam no Caixa de uma janela [de, ate]: os criados desde `de` (regra de sempre)
+ * MAIS os de comandas fechadas na janela (`fechada_em`), mesmo criados antes dela, porque o dinheiro só
+ * entrou ao fechar. `candidatos` pode ter pedidos repetidos (duas consultas): cada pedido conta uma vez. */
+export function pedidosDinheiroDoCaixa(
+  candidatos: PedidoComItens[],
+  comandasFechadas: { id: string; fechada_em: string }[],
+  de: Date,
+  ate: Date,
+): PedidoComItens[] {
+  const naJanela = new Set(
+    comandasFechadas
+      .filter((c) => {
+        const t = new Date(c.fechada_em).getTime()
+        return t >= de.getTime() && t <= ate.getTime()
+      })
+      .map((c) => c.id),
+  )
+  const vistos = new Set<string>()
+  const contam: PedidoComItens[] = []
+  for (const p of candidatos) {
+    if (vistos.has(p.id) || p.status === 'cancelado' || p.metodo_pagamento !== 'dinheiro') continue
+    if (new Date(p.criado_em).getTime() >= de.getTime() || (p.comanda_id && naJanela.has(p.comanda_id))) {
+      vistos.add(p.id)
+      contam.push(p)
+    }
+  }
+  return contam
+}
