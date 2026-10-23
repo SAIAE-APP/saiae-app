@@ -1,8 +1,13 @@
-import { useCallback, useEffect, useState } from 'react'
+import { useCallback, useEffect, useId, useState } from 'react'
 import { supabase } from '../lib/supabase'
-import { agruparComandas, type ComandaAberta, type LinhaBanco } from '../lib/comandaAberta'
+import { agruparComandas, criarDebounce, type ComandaAberta, type LinhaBanco } from '../lib/comandaAberta'
 
 const chaveCache = (barracaId: string) => `saiae-comandas-abertas:${barracaId}`
+
+/** Há comanda aberta guardada neste aparelho? Leitura síncrona, para decidir se vale ligar o hook. */
+export function temComandasEmCache(barracaId: string): boolean {
+  return lerCache(barracaId).length > 0
+}
 
 function lerCache(barracaId: string): ComandaAberta[] {
   try {
@@ -53,9 +58,9 @@ async function buscarComandasAbertas(barracaId: string): Promise<ComandaAberta[]
 
 /**
  * Comandas abertas da barraca (Mesa). Mostra na hora o último cache do aparelho e atualiza pela rede e pelo
- * Realtime; sem rede fica o cache (erro só informativo). Nunca bloqueia a operação.
+ * Realtime; `ativo = false` não consulta nem assina nada (barraca com a opção desligada). Sem rede fica o cache (erro só informativo). Nunca bloqueia a operação.
  */
-export function useComandasAbertas(barracaId: string): {
+export function useComandasAbertas(barracaId: string, ativo = true): {
   comandas: ComandaAberta[]
   carregando: boolean
   erro: string | null
@@ -68,9 +73,11 @@ export function useComandasAbertas(barracaId: string): {
     erro: string | null
   }>(() => ({ barracaId, comandas: lerCache(barracaId), carregando: true, erro: null }))
   const [versao, setVersao] = useState(0)
+  const idInstancia = useId()
   const recarregar = useCallback(() => setVersao((v) => v + 1), [])
 
   useEffect(() => {
+    if (!ativo) return
     let cancelado = false
     buscarComandasAbertas(barracaId)
       .then((comandas) => {
@@ -94,18 +101,23 @@ export function useComandasAbertas(barracaId: string): {
     return () => {
       cancelado = true
     }
-  }, [barracaId, versao])
+  }, [barracaId, versao, ativo])
 
   useEffect(() => {
-    const canal = supabase.channel(`comandas-abertas-${barracaId}`)
+    if (!ativo) return
+    // Tópico único por instância: o realtime-js devolve o canal existente (ainda saindo) para o mesmo tópico.
+    const canal = supabase.channel(`comandas-abertas-${barracaId}-${idInstancia}`)
+    // Um pedido gera vários eventos (comanda, pedido, itens): agrupa numa só consulta.
+    const agendar = criarDebounce(recarregar, 400)
     for (const table of ['comandas', 'pedidos', 'itens_do_pedido']) {
-      canal.on('postgres_changes', { event: '*', schema: 'public', table, filter: `barraca_id=eq.${barracaId}` }, recarregar)
+      canal.on('postgres_changes', { event: '*', schema: 'public', table, filter: `barraca_id=eq.${barracaId}` }, agendar)
     }
     canal.subscribe()
     return () => {
+      agendar.cancelar()
       void supabase.removeChannel(canal)
     }
-  }, [barracaId, recarregar])
+  }, [barracaId, recarregar, ativo, idInstancia])
 
   if (estado.barracaId !== barracaId) {
     return { comandas: lerCache(barracaId), carregando: true, erro: null, recarregar }

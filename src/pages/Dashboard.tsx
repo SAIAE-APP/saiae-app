@@ -17,7 +17,7 @@ import { TourGuiado, type PassoTour } from '../components/TourGuiado'
 import { CartaoChecklistOnboarding } from '../components/CartaoChecklistOnboarding'
 import { onboardingConfigHabilitado } from '../lib/onboardingConfig'
 import { marcarTourVisto, tourJaVisto } from '../lib/tourStorage'
-import { useComandasAbertas } from '../hooks/useComandas'
+import { temComandasEmCache, useComandasAbertas } from '../hooks/useComandas'
 import { comandaAbertaLigada } from '../lib/comandaAberta'
 import { calcularEsperaMediaFila } from '../lib/esperaMedia'
 
@@ -70,7 +70,10 @@ export function Dashboard() {
   const navigate = useNavigate()
   const { online } = useSincronizacaoAtual()
   const { pedidos, contagemAFazer } = usePedidosAtual()
-  const { comandas: comandasAbertas } = useComandasAbertas(barraca.id)
+  const { comandas: comandasAbertas } = useComandasAbertas(
+    barraca.id,
+    comandaAbertaLigada(barraca) || temComandasEmCache(barraca.id),
+  )
   // Cartão aparece com a opção ligada OU com comanda aberta (barraca que desligou ainda precisa fechar as dela).
   const mostrarMesas = comandaAbertaLigada(barraca) || comandasAbertas.length > 0
   const { tema, alternarTema } = useTheme()

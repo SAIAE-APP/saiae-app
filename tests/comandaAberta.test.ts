@@ -4,6 +4,7 @@ import { test } from 'node:test'
 import {
   agruparComandas,
   comandaAbertaLigada,
+  criarDebounce,
   modoUsaComanda,
   normalizarMesa,
   subtotalDaComanda,
@@ -112,4 +113,15 @@ test('agruparComandas: comanda só com rodada cancelada continua listada, com to
   assert.equal(r.length, 1)
   assert.equal(r[0].subtotalCentavos, 0)
   assert.equal(r[0].rodadas.length, 0)
+})
+
+test('criarDebounce: rajada vira uma chamada só; cancelar impede', async () => {
+  let n = 0
+  const d = criarDebounce(() => n++, 20)
+  d(); d(); d()
+  await new Promise((r) => setTimeout(r, 60))
+  assert.equal(n, 1)
+  d(); d.cancelar()
+  await new Promise((r) => setTimeout(r, 60))
+  assert.equal(n, 1)
 })

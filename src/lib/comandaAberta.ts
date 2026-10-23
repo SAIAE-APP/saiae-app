@@ -120,3 +120,14 @@ export function totalDoFechamento(
 export function taxaPadraoMarcada(barraca: { taxa_servico_habilitada?: boolean }): boolean {
   return barraca.taxa_servico_habilitada === true
 }
+
+// Agrupa rajadas de chamadas numa só, `ms` depois da última.
+export function criarDebounce(fn: () => void, ms: number): (() => void) & { cancelar: () => void } {
+  let t: ReturnType<typeof setTimeout> | undefined
+  const chamar = () => {
+    clearTimeout(t)
+    t = setTimeout(fn, ms)
+  }
+  chamar.cancelar = () => clearTimeout(t)
+  return chamar
+}

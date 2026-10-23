@@ -2,6 +2,7 @@ import { useState } from 'react'
 import { useNavigate } from 'react-router'
 import { useBarracaAtual } from '../layouts/contextoBarraca'
 import { useComandasAbertas } from '../hooks/useComandas'
+import { comandaAbertaLigada } from '../lib/comandaAberta'
 import { minutosEntre } from '../lib/tempoPedido'
 import { formatarPrecoBR } from '../lib/preco'
 import { Button } from '../components/ui/Button'
@@ -58,16 +59,18 @@ export function Mesas() {
                 </ul>
               </Card>
             ))}
-            <Button
-              variant="outline"
-              size="lg"
-              className="min-h-11"
-              onClick={() =>
-                navigate(`/${barraca.slug}/lancar`, { state: { tipoAtendimento: 'mesa', comandaMesa: detalhe.mesa } })
-              }
-            >
-              Adicionar item à Mesa {detalhe.mesa}
-            </Button>
+            {comandaAbertaLigada(barraca) && (
+              <Button
+                variant="outline"
+                size="lg"
+                className="min-h-11"
+                onClick={() =>
+                  navigate(`/${barraca.slug}/lancar`, { state: { tipoAtendimento: 'mesa', comandaMesa: detalhe.mesa } })
+                }
+              >
+                Adicionar item à Mesa {detalhe.mesa}
+              </Button>
+            )}
             {/* Ponto de ligação da Task 7 (folha de fechamento e cobrança). */}
             <Button size="lg" className="min-h-11" disabled>
               Fechar comanda e cobrar

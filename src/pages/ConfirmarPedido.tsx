@@ -141,7 +141,7 @@ export function ConfirmarPedido() {
   // Mesa com comanda aberta: não cobra na hora, o pedido vai à cozinha como `na_entrega` e o trigger o liga à comanda.
   const modoComanda = modoUsaComanda(barraca, estado?.tipoAtendimento)
   // A mesa digitada já tem comanda aberta? undefined = ainda não se sabe (carregando, sem cache): botão neutro.
-  const comandasAbertas = useComandasAbertas(barraca.id)
+  const comandasAbertas = useComandasAbertas(barraca.id, modoComanda)
   const mesaDigitada = normalizarMesa(estado?.mesa ?? '')
   const mesaTemComanda: boolean | undefined = !modoComanda || mesaDigitada === ''
     ? undefined
