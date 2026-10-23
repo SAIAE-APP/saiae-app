@@ -78,6 +78,8 @@ export type EstadoPedidoEnviado = {
     valor: number | null
     idFila: string
     entregaDireta: boolean
+    /** Pedido de Mesa com comanda aberta: a tela de confirmação mostra a mesa e atalhos para a comanda. */
+    comandaMesa?: string
     /** Só em pedido de Entrega: base da mensagem do botão "Chamar entregador" (a senha entra depois). */
     entrega?: Omit<DadosMensagemEntrega, 'senha'>
   }

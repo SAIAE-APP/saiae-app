@@ -1,3 +1,4 @@
+import { semAcentoMaiusculo } from './atendimento.ts'
 import { humanizarMetodo } from './metodoPagamento.ts'
 import { formatarPrecoBR } from './preco.ts'
 
@@ -180,4 +181,24 @@ export function textoComandaFechada(
 ): string {
   if (vazia) return `Mesa ${mesa} encerrada sem cobrança.`
   return `Mesa ${mesa} fechada: ${formatarPrecoBR(totalServidorCentavos ?? totalTelaCentavos)}.`
+}
+
+/** Mesa de um pedido que é rodada de comanda aberta (tem comanda e mesa); null nos demais.
+ * Na rodada a identificação principal é a mesa, e a senha fica em segundo plano. */
+export function mesaDaRodada(pedido: { comanda_id?: string | null; mesa?: string | null }): string | null {
+  const mesa = (pedido.mesa ?? '').trim()
+  return pedido.comanda_id && mesa ? mesa : null
+}
+
+/** Texto da barra preta da comanda impressa. Rodada de comanda mostra "MESA 2" (sem acento, maiúsculo) e a senha vai
+ * numa linha pequena; se o nome da mesa não cabe na barra, volta a senha. */
+export function textoBarraComanda(
+  dados: { comandaMesa?: boolean; mesa: string | null; senha: number | null },
+  colunasBarra: number,
+): { barra: string; senhaNumero: string; comMesa: boolean } {
+  const senhaNumero = dados.senha !== null ? String(dados.senha).padStart(3, '0') : '---'
+  const mesa = dados.comandaMesa ? (dados.mesa ?? '').trim() : ''
+  const rotulo = mesa ? semAcentoMaiusculo(`MESA ${mesa}`) : ''
+  const comMesa = rotulo !== '' && rotulo.length <= colunasBarra
+  return { barra: comMesa ? rotulo : senhaNumero, senhaNumero, comMesa }
 }

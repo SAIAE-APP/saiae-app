@@ -1,3 +1,4 @@
+import { mesaDaRodada } from '../lib/comandaAberta'
 import { useEffect, useMemo, useRef, useState } from 'react'
 import { useNavigate } from 'react-router'
 import clsx from 'clsx'
@@ -21,7 +22,7 @@ export function TelaChamada() {
   const pedidosProntos = useMemo(
     () =>
       pedidos
-        .filter((p) => p.status === 'pronto')
+        .filter((p) => p.status === 'pronto' && !mesaDaRodada(p))
         .sort((a, b) => {
           const tempoA = a.pronto_em ? new Date(a.pronto_em).getTime() : 0
           const tempoB = b.pronto_em ? new Date(b.pronto_em).getTime() : 0

@@ -15,6 +15,7 @@ import { ThermalPrinter, bytesToBase64, type PrinterDevice } from '@devlas/capac
 import ReceiptPrinterEncoder from '@point-of-sale/receipt-printer-encoder'
 import type { Barraca, LarguraPapel, PedidoComItens, TipoAtendimento } from '../types/database'
 import { faixaImpressao, tipoDoPedido } from './atendimento'
+import { textoBarraComanda } from './comandaAberta'
 import { formatarTelefoneBR, type DadosEntrega } from './entrega'
 import { formatarPrecoBR } from './preco'
 import { humanizarMetodo, humanizarMetodoDoPedido } from './metodoPagamento'
@@ -324,6 +325,8 @@ export type DadosComanda = {
   senha: number | null
   criadoEm: string
   mesa: string | null
+  /** Rodada de comanda aberta: a barra do topo mostra a mesa ("MESA 2") e a senha vai numa linha pequena. */
+  comandaMesa?: boolean
   /** Nome do cliente (opcional, qualquer modo). Na Entrega já sai em "ENTREGAR PARA". */
   clienteNome?: string | null
   viagem: boolean
@@ -361,7 +364,7 @@ export function montarComanda(dados: DadosComanda, largura: LarguraPapel): Uint8
   // Linhas de espaço acima/abaixo (altura normal) dão corpo à barra.
   const colunasBarra = colunas / 4
   const espacosBarra = ' '.repeat(colunasBarra)
-  const senhaTexto = dados.senha !== null ? String(dados.senha).padStart(3, '0') : '---'
+  const { barra: senhaTexto, senhaNumero, comMesa: barraComMesa } = textoBarraComanda(dados, colunasBarra)
 
   let encoder = novoEncoder(colunas)
     .align('left')
@@ -376,6 +379,8 @@ export function montarComanda(dados: DadosComanda, largura: LarguraPapel): Uint8
     .invert(false)
     .newline()
     .align('center')
+
+  if (barraComMesa) encoder = encoder.bold(true).line(`SENHA ${senhaNumero}`).bold(false)
 
   // Para viagem x Entrega em destaque logo abaixo da senha: 2x de largura e
   // altura, "*** PARA VIAGEM ***" (19 colunas) perde os asteriscos nas 16 do 58mm.

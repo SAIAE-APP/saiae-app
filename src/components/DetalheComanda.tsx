@@ -1,4 +1,5 @@
 import { useEffect, useRef, useState } from 'react'
+import { mesaDaRodada } from '../lib/comandaAberta'
 import { formatarPrecoBR } from '../lib/preco'
 import type { MouseEvent, PointerEvent } from 'react'
 import clsx from 'clsx'
@@ -276,8 +277,9 @@ export function DetalheComanda({
 
           <div className="mt-4 flex items-center gap-2">
             <span className="font-mesa-display text-2xl font-black leading-none text-white">
-              #{pedido.senha}
+              {mesaDaRodada(pedido) ? `Mesa ${mesaDaRodada(pedido)}` : `#${pedido.senha}`}
             </span>
+            {mesaDaRodada(pedido) && <span className="text-xs font-semibold text-mesa-neutral-400">senha {pedido.senha}</span>}
             <button
               type="button"
               onClick={onFechar}

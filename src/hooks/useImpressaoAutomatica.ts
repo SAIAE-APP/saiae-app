@@ -1,3 +1,4 @@
+import { mesaDaRodada } from '../lib/comandaAberta'
 import { registrarErroApp } from '../lib/erroApp'
 import { useEffect, useRef } from 'react'
 import { useToast } from '../components/ui/useToast'
@@ -110,6 +111,7 @@ export function dadosComandaDoPedido(
     senha: pedido.senha,
     criadoEm: pedido.criado_em,
     mesa: pedido.mesa,
+    comandaMesa: mesaDaRodada(pedido) !== null,
     clienteNome: pedido.cliente_nome ?? null,
     viagem: pedido.viagem,
     tipo: tipoDoPedido(pedido),
@@ -264,6 +266,7 @@ export function useImpressaoAutomatica(barraca: Barraca | null) {
         senha: pedido.senha,
         criadoEm: pedido.enviadoEm,
         mesa: (p.p_mesa as string | null) ?? null,
+        comandaMesa: barracaRef.current?.comanda_aberta_habilitada === true && p.p_tipo_atendimento === 'mesa' && Boolean(p.p_mesa),
         clienteNome: (p.p_cliente_nome as string | null | undefined) ?? null,
         viagem: Boolean(p.p_viagem),
         tipo: (p.p_tipo_atendimento as TipoAtendimento | null | undefined) ?? null,

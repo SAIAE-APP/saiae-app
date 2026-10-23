@@ -133,7 +133,7 @@ export function modoInicial(ativos: TipoAtendimento[]): TipoAtendimento {
 /** Colunas de papel que a faixa pode usar quando impressa em 2x de largura (58 mm = 32 colunas → 16). */
 const COLUNAS_FAIXA_PADRAO = 16
 
-function semAcentoMaiusculo(texto: string): string {
+export function semAcentoMaiusculo(texto: string): string {
   return texto
     // NFD separa o acento da letra; o 1º replace tira as marcas combinantes (U+0300 a U+036F).
     .normalize('NFD')

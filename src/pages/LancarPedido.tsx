@@ -80,6 +80,8 @@ type SenhaConfirmada = {
   pedidoId?: string
   idFila: string
   entregaDireta: boolean
+  /** Mesa da comanda aberta (rodada): a tela mostra a mesa em vez da senha como destaque. */
+  comandaMesa?: string
   entrega?: EstadoPedidoEnviado['senhaEnviada']['entrega']
 }
 
@@ -1062,8 +1064,11 @@ export function LancarPedido() {
           />
         ) : (
           <span className="text-[96px] font-bold leading-[104px] tracking-tight text-mesa-success-700 dark:text-mesa-success-500">
-            {senha.valor}
+            {senha.comandaMesa ? `Mesa ${senha.comandaMesa}` : senha.valor}
           </span>
+        )}
+        {senha.comandaMesa && !aguardandoSenha && senha.valor !== null && (
+          <span className="text-sm font-semibold text-mesa-text-secondary">senha {senha.valor}</span>
         )}
 
         {senha.entregaDireta ? (
@@ -1099,8 +1104,30 @@ export function LancarPedido() {
           />
         )}
 
+        {senha.comandaMesa && (
+          <div className="mt-4 flex w-full max-w-xs flex-col gap-2">
+            <Button
+              size="xl"
+              onClick={() => {
+                limparFormulario()
+                setSenha(null)
+                navigate(`/${barraca.slug}/lancar`, {
+                  replace: true,
+                  state: { tipoAtendimento: 'mesa', comandaMesa: senha.comandaMesa },
+                })
+              }}
+            >
+              Adicionar à Mesa {senha.comandaMesa}
+            </Button>
+            <Button size="xl" variant="outline" onClick={() => navigate(`/${barraca.slug}/mesas`)}>
+              Ver Mesa {senha.comandaMesa}
+            </Button>
+          </div>
+        )}
+
         <Button
           size="xl"
+          variant={senha.comandaMesa ? 'ghost' : 'primary'}
           onClick={() => {
             limparFormulario()
             setSenha(null)

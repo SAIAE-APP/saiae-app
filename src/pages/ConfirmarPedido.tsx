@@ -344,6 +344,7 @@ export function ConfirmarPedido() {
           valor: null,
           idFila: operacao.id,
           entregaDireta: todosEntregaDireta,
+          comandaMesa: modoComanda && mesaDigitada ? mesaDigitada : undefined,
           entrega: ehEntrega
             ? {
                 itens: linhas.map(({ item, quantidade, itemId, resumoOpcoes }) => ({
