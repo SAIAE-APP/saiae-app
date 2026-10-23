@@ -35,6 +35,18 @@ describe('migration comanda aberta (texto)', () => {
     assert.match(sql, /function public\.normalizar_mesa/)
     assert.match(sql, /set search_path = public, pg_temp/)
   })
+
+  test('trigger trava a comanda aberta com for share nos dois selects (corrida com o fechamento)', () => {
+    const corpo = sql.slice(sql.indexOf('function public._trg_pedidos_atribuir_comanda'))
+    const selects = corpo.match(/select c\.id into v_id[^;]*;/g) ?? []
+    assert.equal(selects.length, 2)
+    for (const s of selects) assert.match(s, /status = 'aberta'\s+for share;/)
+  })
+
+  test('FK composta (comanda_id, barraca_id)', () => {
+    assert.match(sql, /unique \(id, barraca_id\)/)
+    assert.match(sql, /foreign key \(comanda_id, barraca_id\)\s*references public\.comandas \(id, barraca_id\)/)
+  })
 })
 
 describe('migration comanda aberta (PGlite)', () => {
@@ -88,7 +100,7 @@ describe('migration comanda aberta (PGlite)', () => {
     const casos: [string | null, string][] = [
       ['5', '5'], ['05', '5'], ['Mesa 5', '5'], ['mesa  5', '5'], [' MESA 005 ', '5'], ['mesa5', '5'],
       ['15', '15'], ['0', '0'], ['00', '0'], ['Mesa', ''], ['   ', ''], [null, ''], ['Varanda Á', 'varanda a'],
-      ['Mesanino', 'mesanino'],
+      ['Mesanino', 'mesanino'], ['Mesa-5', '5'], ['Mesa: 5', '5'], ['mesa #05', '5'],
     ]
     for (const [entrada, esperado] of casos) {
       const r = await db.query<{ m: string }>('select public.normalizar_mesa($1) as m', [entrada])
@@ -126,6 +138,20 @@ describe('migration comanda aberta (PGlite)', () => {
     assert.equal(await pedido(B1, null), null)
     assert.equal(await pedido(B1, 'Mesa'), null)
     assert.equal(await pedido(B1, '  '), null)
+  })
+
+  test('pedido da barraca A não aponta para comanda da barraca B (FK composta)', async () => {
+    const deB2 = await pedido(B2, '30')
+    assert.ok(deB2)
+    // dinheiro: o trigger não mexe no comanda_id, então o valor enviado chega à FK.
+    await assert.rejects(
+      db.query(
+        `insert into public.pedidos (barraca_id, mesa, tipo_atendimento, metodo_pagamento, client_uuid, comanda_id)
+         values ($1, '30', 'mesa', 'dinheiro', 'x-tenant', $2)`,
+        [B1, deB2],
+      ),
+      /pedidos_comanda_barraca_fk/,
+    )
   })
 
   test('índice único impede duas comandas abertas na mesma mesa (base do on conflict)', async () => {

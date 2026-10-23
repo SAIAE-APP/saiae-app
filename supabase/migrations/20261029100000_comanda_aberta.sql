@@ -16,7 +16,8 @@
 --  * comandas entra na publicação supabase_realtime (se a publicação existir e a tabela ainda não estiver nela).
 --
 -- Rollback: drop trigger pedidos_atribuir_comanda on public.pedidos; drop function public._trg_pedidos_atribuir_comanda();
---   alter table public.pedidos drop column comanda_id; alter publication supabase_realtime drop table public.comandas;
+--   alter table public.pedidos drop column comanda_id;
+--   (só se a tabela estiver na publicação, senão o comando falha) alter publication supabase_realtime drop table public.comandas;
 --   drop table public.comandas; drop function public.normalizar_mesa(text);
 --   alter table public.barracas drop column comanda_aberta_habilitada, drop column taxa_servico_habilitada,
 --   drop column taxa_servico_bps.
@@ -33,13 +34,18 @@ language sql
 immutable
 set search_path = public, pg_temp
 as $$
+  -- Ordem: acentos/espaços -> prefixo "mesa" (palavra inteira ou colado no número) -> pontuação inicial
+  -- ("Mesa-5", "Mesa: 5") -> zeros à esquerda ("05" -> "5", "0" continua "0").
   select regexp_replace(
     btrim(regexp_replace(
       btrim(regexp_replace(
-        translate(lower(coalesce(p_texto, '')), 'áàâãäéèêëíìîïóòôõöúùûüçñ', 'aaaaaeeeeiiiiooooouuuucn'),
-        '\s+', ' ', 'g'
+        btrim(regexp_replace(
+          translate(lower(coalesce(p_texto, '')), 'áàâãäéèêëíìîïóòôõöúùûüçñ', 'aaaaaeeeeiiiiooooouuuucn'),
+          '\s+', ' ', 'g'
+        )),
+        '^mesa(\M|(?=[0-9]))', ''
       )),
-      '^mesa(\M|(?=[0-9]))', ''
+      '^[^a-z0-9]+', ''
     )),
     '^0+([0-9])', '\1'
   );
@@ -56,7 +62,9 @@ create table if not exists public.comandas (
   fechada_por uuid,
   metodo_pagamento text,
   taxa_servico_bps integer,
-  taxa_servico_centavos integer not null default 0
+  taxa_servico_centavos integer not null default 0,
+  -- Alvo da FK composta de pedidos: a rodada só entra em comanda da MESMA barraca.
+  constraint comandas_id_barraca_unico unique (id, barraca_id)
 );
 create unique index if not exists comandas_uma_aberta_por_mesa
   on public.comandas (barraca_id, mesa_normalizada) where status = 'aberta';
@@ -73,8 +81,13 @@ create policy "comandas leitura da barraca"
   to authenticated
   using (public.usuario_tem_acesso_barraca(barraca_id));
 
+-- FK composta (comanda_id, barraca_id): pedido da barraca A nunca aponta para comanda da barraca B. MATCH SIMPLE:
+-- comanda_id nulo passa. Apagar a comanda zera só o comanda_id (barraca_id é not null).
+alter table public.pedidos add column if not exists comanda_id uuid;
+alter table public.pedidos drop constraint if exists pedidos_comanda_barraca_fk;
 alter table public.pedidos
-  add column if not exists comanda_id uuid references public.comandas(id) on delete set null;
+  add constraint pedidos_comanda_barraca_fk foreign key (comanda_id, barraca_id)
+  references public.comandas (id, barraca_id) on delete set null (comanda_id);
 create index if not exists pedidos_comanda_id on public.pedidos (comanda_id) where comanda_id is not null;
 
 create or replace function public._trg_pedidos_atribuir_comanda()
@@ -94,8 +107,12 @@ begin
     return new;
   end if;
 
+  -- for share: um fechamento concorrente (update da comanda) espera este pedido commitar, então a rodada nunca cai
+  -- numa comanda já fechada. Se o fechamento commitar antes, o Postgres reavalia status = 'aberta', não acha
+  -- linha, e o trigger abre uma comanda nova para a mesa.
   select c.id into v_id from public.comandas c
-   where c.barraca_id = new.barraca_id and c.mesa_normalizada = v_mesa and c.status = 'aberta';
+   where c.barraca_id = new.barraca_id and c.mesa_normalizada = v_mesa and c.status = 'aberta'
+   for share;
 
   if v_id is null then
     insert into public.comandas (barraca_id, mesa, mesa_normalizada)
@@ -104,9 +121,11 @@ begin
     returning id into v_id;
 
     -- Outro lançamento abriu a mesma mesa ao mesmo tempo: o insert esperou o commit dele e não fez nada.
+    -- for share pelo mesmo motivo do select acima.
     if v_id is null then
       select c.id into v_id from public.comandas c
-       where c.barraca_id = new.barraca_id and c.mesa_normalizada = v_mesa and c.status = 'aberta';
+       where c.barraca_id = new.barraca_id and c.mesa_normalizada = v_mesa and c.status = 'aberta'
+       for share;
     end if;
   end if;
 
