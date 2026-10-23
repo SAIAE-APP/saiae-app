@@ -5,6 +5,7 @@
 // PURO, testado em tests/pagarDepois.test.ts. Spec: docs/superpowers/specs/2026-10-08-pagar-depois-e-dividido-design.md.
 import { METODO_NA_ENTREGA } from './metodoPagamento.ts'
 import { tipoDoPedido } from './atendimento.ts'
+import { modoUsaComanda } from './comandaAberta.ts'
 import type { Pedido, TipoAtendimento } from '../types/database'
 
 export const ROTULO_A_RECEBER = 'A receber'
@@ -35,12 +36,17 @@ export function opcaoPagarDepois(
     : { chave: METODO_NA_ENTREGA, label: 'Pagar na entrega', icone: 'two_wheeler' }
 }
 
-/** O envio de `na_entrega` é aceito: sempre na Entrega (como já era) e na Retirada só com o interruptor ligado. */
+/** O envio de `na_entrega` é aceito: sempre na Entrega (como já era), na Retirada só com o interruptor ligado e na Mesa
+ * só com a comanda aberta ligada (o pedido entra na comanda da mesa e é cobrado no fechamento). */
 export function podeEnviarAReceber(
-  barraca: { pagamento_depois_habilitado?: boolean } | null | undefined,
+  barraca: { pagamento_depois_habilitado?: boolean; comanda_aberta_habilitada?: boolean } | null | undefined,
   tipo: TipoAtendimento | string | null | undefined,
 ): boolean {
-  return tipo === 'entrega' || (tipo === 'retirada' && pagarDepoisLigado(barraca))
+  return (
+    tipo === 'entrega' ||
+    (tipo === 'retirada' && pagarDepoisLigado(barraca)) ||
+    modoUsaComanda(barraca, tipo)
+  )
 }
 
 /** Pedido com pagamento pendente ("A receber"): interruptor ligado, método ainda `na_entrega`, Retirada/Entrega e não

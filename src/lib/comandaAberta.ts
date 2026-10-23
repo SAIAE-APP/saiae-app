@@ -27,6 +27,13 @@ export function normalizarMesa(texto: string): string {
   return s.replace(/^0+([0-9])/, '$1')
 }
 
+// Texto do botão de envio. `mesaTemComanda` undefined = ainda não se sabe (lista de comandas não carregada).
+export function textoBotaoEnviar(modoComanda: boolean, mesa: string, mesaTemComanda: boolean | undefined): string {
+  if (!modoComanda) return 'Confirmar e enviar'
+  if (mesaTemComanda === undefined) return 'Enviar para a cozinha'
+  return `${mesaTemComanda ? 'Adicionar à comanda da' : 'Abrir comanda da'} Mesa ${mesa.trim()}`
+}
+
 export function subtotalDaComanda(
   pedidos: {
     status: string

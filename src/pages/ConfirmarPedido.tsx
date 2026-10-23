@@ -18,6 +18,7 @@ import type {
 } from '../lib/carrinho'
 import { METODOS_DISPONIVEIS, METODO_NA_ENTREGA, OPCAO_PAGAR_NA_ENTREGA, humanizarMetodo } from '../lib/metodoPagamento'
 import { opcaoPagarDepois, podeEnviarAReceber } from '../lib/pagarDepois'
+import { modoUsaComanda, textoBotaoEnviar } from '../lib/comandaAberta'
 import type { MetodoPagamento } from '../lib/metodoPagamento'
 import { BotaoHome } from '../components/ui/BotaoHome'
 import { BottomSheet } from '../components/ui/BottomSheet'
@@ -136,6 +137,10 @@ export function ConfirmarPedido() {
   }, [estado, barraca.slug, navigate])
 
   const ehEntrega = estado?.tipoAtendimento === 'entrega'
+  // Mesa com comanda aberta: não cobra na hora, o pedido vai à cozinha como `na_entrega` e o trigger o liga à comanda.
+  const modoComanda = modoUsaComanda(barraca, estado?.tipoAtendimento)
+  // Task 5: trocar por useComandasAbertas (a mesa já tem comanda aberta?). undefined = ainda não se sabe.
+  const mesaTemComanda: boolean | undefined = undefined
   const metodosAtivos = barraca.metodos_pagamento_ativos ?? METODOS_PADRAO
   // "Pagar na entrega" (o entregador define a forma real pelo link) só existe no
   // modo Entrega e vale mesmo que a barraca não tenha método nenhum ativo.
@@ -155,7 +160,7 @@ export function ConfirmarPedido() {
   // dar pra editar nessa tela.
   const [observacao, setObservacao] = useState(() => estado?.observacao ?? '')
   const [metodoSelecionado, setMetodoSelecionado] = useState<MetodoPagamento | typeof METODO_NA_ENTREGA | null>(() =>
-    opcoesPagamento.length === 1 ? opcoesPagamento[0].chave : null,
+    modoComanda ? METODO_NA_ENTREGA : opcoesPagamento.length === 1 ? opcoesPagamento[0].chave : null,
   )
   const configTaxa = configTaxaEntrega(barraca)
   const bairrosTaxa = useBairrosEntrega(barraca.id)
@@ -522,6 +527,12 @@ export function ConfirmarPedido() {
         </div>
 
         <div>
+        {modoComanda ? (
+          <p className="mb-3 mt-6 rounded-mesa-md border-l-[3px] border-mesa-orange-500 bg-mesa-orange-50 p-3 text-sm font-medium text-mesa-orange-700 dark:bg-mesa-orange-500/15 dark:text-mesa-orange-400 md:mt-0">
+            O pagamento é feito no fechamento da comanda da mesa.
+          </p>
+        ) : (
+          <>
         <h2 className="mb-3 mt-6 flex items-center gap-1.5 font-mesa-sans text-xs font-semibold uppercase tracking-wider text-mesa-text-secondary md:mt-0">
           <Icone nome="credit_card" size={14} />
           Forma de pagamento
@@ -573,6 +584,8 @@ export function ConfirmarPedido() {
             })}
           </div>
         )}
+          </>
+        )}
 
         <div className="mt-8 flex flex-col gap-3">
           <Button
@@ -584,7 +597,7 @@ export function ConfirmarPedido() {
             onClick={() => enviarPedido(false)}
             className="w-full"
           >
-            Confirmar e enviar
+            {textoBotaoEnviar(modoComanda, mesa, mesaTemComanda)}
           </Button>
           <button
             type="button"
@@ -594,7 +607,7 @@ export function ConfirmarPedido() {
             Voltar e editar
           </button>
 
-          {!ehEntrega && (
+          {!ehEntrega && !modoComanda && (
           <button
             type="button"
             onClick={() => setConfirmandoEntregaDireta(true)}
