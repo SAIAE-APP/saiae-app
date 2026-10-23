@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useId, useState } from 'react'
+import { useCallback, useEffect, useState } from 'react'
 import { supabase } from '../lib/supabase'
 import { agruparComandas, criarDebounce, type ComandaAberta, type LinhaBanco } from '../lib/comandaAberta'
 
@@ -56,6 +56,9 @@ async function buscarComandasAbertas(barracaId: string): Promise<ComandaAberta[]
   return agruparComandas(linhas)
 }
 
+/** Contador dos tópicos do Realtime: cada execução do efeito assina um tópico novo. */
+let sequenciaCanal = 0
+
 /**
  * Comandas abertas da barraca (Mesa). Mostra na hora o último cache do aparelho e atualiza pela rede e pelo
  * Realtime; `ativo = false` não consulta nem assina nada (barraca com a opção desligada). Sem rede fica o cache (erro só informativo). Nunca bloqueia a operação.
@@ -73,7 +76,6 @@ export function useComandasAbertas(barracaId: string, ativo = true): {
     erro: string | null
   }>(() => ({ barracaId, comandas: lerCache(barracaId), carregando: true, erro: null }))
   const [versao, setVersao] = useState(0)
-  const idInstancia = useId()
   const recarregar = useCallback(() => setVersao((v) => v + 1), [])
 
   useEffect(() => {
@@ -105,8 +107,9 @@ export function useComandasAbertas(barracaId: string, ativo = true): {
 
   useEffect(() => {
     if (!ativo) return
-    // Tópico único por instância: o realtime-js devolve o canal existente (ainda saindo) para o mesmo tópico.
-    const canal = supabase.channel(`comandas-abertas-${barracaId}-${idInstancia}`)
+    // Tópico único por EXECUÇÃO do efeito (não por instância): o realtime-js devolve o canal existente (ainda
+    // saindo) para o mesmo tópico, e no StrictMode o efeito roda duas vezes na mesma instância.
+    const canal = supabase.channel(`comandas-abertas-${barracaId}-${++sequenciaCanal}`)
     // Um pedido gera vários eventos (comanda, pedido, itens): agrupa numa só consulta.
     const agendar = criarDebounce(recarregar, 400)
     for (const table of ['comandas', 'pedidos', 'itens_do_pedido']) {
@@ -117,7 +120,7 @@ export function useComandasAbertas(barracaId: string, ativo = true): {
       agendar.cancelar()
       void supabase.removeChannel(canal)
     }
-  }, [barracaId, recarregar, ativo, idInstancia])
+  }, [barracaId, recarregar, ativo])
 
   if (estado.barracaId !== barracaId) {
     return { comandas: lerCache(barracaId), carregando: true, erro: null, recarregar }

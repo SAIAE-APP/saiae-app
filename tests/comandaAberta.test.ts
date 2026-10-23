@@ -133,3 +133,11 @@ test('humanizarMetodoDoPedido: rodada de comanda aberta não é "A definir na en
   assert.equal(humanizarMetodoDoPedido('pix', true), 'Pix')
   assert.equal(humanizarMetodoDoPedido(null, true), 'Método não informado')
 })
+
+test('useComandasAbertas: tópico do Realtime é único por execução do efeito (StrictMode monta duas vezes)', async () => {
+  const { readFileSync } = await import('node:fs')
+  const s = readFileSync(new URL('../src/hooks/useComandas.ts', import.meta.url), 'utf8')
+  assert.doesNotMatch(s, /useId/)
+  const efeito = s.slice(s.indexOf('supabase.channel('), s.indexOf('supabase.channel(') + 80)
+  assert.match(efeito, /\+\+sequenciaCanal/)
+})
