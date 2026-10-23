@@ -1847,6 +1847,9 @@ function SecaoFiscal({ barraca }: { barraca: Barraca }) {
   const salvarHabilitado = useSalvarBarraca(barraca)
   const salvarRegime = useSalvarBarraca(barraca)
   const salvarAmbiente = useSalvarBarraca(barraca)
+  const incluirTaxasR = useRascunho(barraca.nfce_incluir_taxas === true)
+  const incluirTaxas = incluirTaxasR.valor
+  const salvarIncluirTaxas = useSalvarBarraca(barraca)
   const [erroCnpj, setErroCnpj] = useState<string | null>(null)
   const [tokensConfigurados, setTokensConfigurados] = useState<{
     homologacao: boolean
@@ -1886,6 +1889,12 @@ function SecaoFiscal({ barraca }: { barraca: Barraca }) {
     habilitadoR.definir(valor)
     await salvarHabilitado.salvar({ fiscal_habilitado: valor })
     habilitadoR.descartar()
+  }
+
+  async function alternarIncluirTaxas(valor: boolean) {
+    incluirTaxasR.definir(valor)
+    await salvarIncluirTaxas.salvar({ nfce_incluir_taxas: valor })
+    incluirTaxasR.descartar()
   }
 
   async function salvarCnpj() {
@@ -1986,6 +1995,28 @@ function SecaoFiscal({ barraca }: { barraca: Barraca }) {
             </div>
           )}
         </div>
+
+        {/* Só aparece com a coluna no banco (migration 20261029130000): antes dela, salvar daria erro. */}
+        {barraca.nfce_incluir_taxas !== undefined && (
+          <div className="mt-4">
+            <div className="flex items-center justify-between gap-3">
+              <span className="text-base text-mesa-text-primary">Incluir a taxa de serviço na NFC-e</span>
+              <Toggle
+                checked={incluirTaxas}
+                onChange={alternarIncluirTaxas}
+                aria-label="Incluir a taxa de serviço na NFC-e"
+              />
+            </div>
+            <p className="mt-1 text-sm text-mesa-text-secondary">
+              Desligado, a taxa de serviço da comanda fica fora da nota. Ligado, a nota de cada rodada inclui a sua
+              parte da taxa. A taxa de entrega continua fora.
+            </p>
+            <div className="mt-2">
+              <AvisoInline>Confirme com seu contador antes de ligar. O sistema não dá parecer fiscal.</AvisoInline>
+            </div>
+            <ErroSalvar erro={salvarIncluirTaxas.erro} className="mt-2" />
+          </div>
+        )}
 
         <div className="mt-4">
           <p className="mb-2 text-sm font-medium text-mesa-text-primary">Token da FocusNFe</p>

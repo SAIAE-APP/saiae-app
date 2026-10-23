@@ -181,10 +181,10 @@ export function montarCupomFiscal({ barraca, pedido }: DadosCupomFiscal, largura
 
   const colunas = COLUNAS_POR_LARGURA[largura]
   const itensValidos = pedido.itens_do_pedido.filter((item) => !item.removido)
-  const totalCentavos = itensValidos.reduce(
-    (soma, item) => soma + item.preco_centavos_unitario * item.quantidade,
-    0,
-  )
+  // Parte da taxa de serviço que foi na nota (interruptor nfce_incluir_taxas); NULL/0 = cupom igual ao de sempre.
+  const taxaServicoCentavos = Math.max(0, pedido.nfce_taxa_servico_centavos ?? 0)
+  const totalCentavos =
+    itensValidos.reduce((soma, item) => soma + item.preco_centavos_unitario * item.quantidade, 0) + taxaServicoCentavos
   const labelRegime = labelRegimeTributario(barraca.fiscal_regime_tributario)
   // Nota de homologação não tem valor fiscal: o aviso sai no topo e antes do corte.
   const homologacao = ambienteDaNota(pedido.nfce_ambiente, barraca.fiscal_ambiente) === 'homologacao'
@@ -226,6 +226,13 @@ export function montarCupomFiscal({ barraca, pedido }: DadosCupomFiscal, largura
           formatarPrecoBR(item.preco_centavos_unitario * item.quantidade),
         ],
       ],
+    )
+  }
+
+  if (taxaServicoCentavos > 0) {
+    encoder = encoder.table(
+      [{ width: colunas - 10 }, { width: 10, align: 'right' }],
+      [['Taxa de servico', formatarPrecoBR(taxaServicoCentavos)]],
     )
   }
 

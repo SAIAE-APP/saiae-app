@@ -20,6 +20,7 @@
 import { comCors } from '../_shared/cors.ts'
 import { configDoEnv, lerSegredo } from '../_shared/segredoCifrado.ts'
 import { MENSAGEM_PEDIDO_GRATIS, ratearDesconto, totalDaNotaCentavos } from '../_shared/descontoNfce.ts'
+import { ratearTaxaServico } from '../_shared/taxaServicoNfce.ts'
 
 const FOCUSNFE_URL_HOMOLOGACAO = 'https://homologacao.focusnfe.com.br/v2'
 const FOCUSNFE_URL_PRODUCAO = 'https://api.focusnfe.com.br/v2'
@@ -334,6 +335,50 @@ function criarHandlerInterno(deps: DependenciasNfce) {
     descontoCupomCentavos,
   )
 
+  // Taxa de serviço da comanda (interruptor `nfce_incluir_taxas`, padrão desligado = fora da nota, como sempre).
+  // Ligado e o pedido sendo rodada de comanda FECHADA com taxa: a nota leva a parte desta rodada, rateada entre as
+  // rodadas não canceladas e depois entre os itens (`valor_outras_despesas` = vOutro por item, campo da FocusNFe
+  // para NFe/NFC-e). O contador decide ligar; o sistema não dá parecer fiscal. A taxa de entrega continua fora.
+  const taxaServicoCentavos = await parteDaTaxaServico()
+  const outrasDespesasPorItem = ratearTaxaServico(
+    itensAtivos.map((i) => i.preco_centavos_unitario * i.quantidade),
+    taxaServicoCentavos,
+  )
+
+  // Leituras à parte e tolerantes: sem a migration (coluna ausente) ou qualquer falha = 0, a nota sai como hoje.
+  async function parteDaTaxaServico(): Promise<number> {
+    const { data: flag } = await supabase.from('barracas').select('nfce_incluir_taxas').eq('id', barraca.id).maybeSingle()
+    if ((flag as { nfce_incluir_taxas?: boolean } | null)?.nfce_incluir_taxas !== true) return 0
+    const { data: vinculo } = await supabase.from('pedidos').select('comanda_id').eq('id', pedidoId).maybeSingle()
+    const comandaId = (vinculo as { comanda_id?: string | null } | null)?.comanda_id
+    if (!comandaId) return 0
+    const { data: comanda } = await supabase
+      .from('comandas')
+      .select('status, taxa_servico_centavos')
+      .eq('id', comandaId)
+      .eq('barraca_id', barraca.id)
+      .maybeSingle()
+    const c = comanda as { status?: string; taxa_servico_centavos?: number } | null
+    if (c?.status !== 'fechada' || !((c.taxa_servico_centavos ?? 0) > 0)) return 0
+    const { data: rodadas, error } = await supabase
+      .from('pedidos')
+      .select('id, status, itens_do_pedido(quantidade, preco_centavos_unitario, removido)')
+      .eq('comanda_id', comandaId)
+      .eq('barraca_id', barraca.id)
+    if (error || !Array.isArray(rodadas)) return 0
+    // Mesma base de fechar_comanda (itens não removidos das rodadas não canceladas), ordenada por id: a parte de
+    // cada rodada é a mesma seja qual for a ordem de emissão das notas.
+    const validas = (rodadas as Array<{ id: string; status: string; itens_do_pedido: ItemDoPedidoRow[] | null }>)
+      .filter((r) => r.status !== 'cancelado')
+      .sort((a, b) => (a.id < b.id ? -1 : a.id > b.id ? 1 : 0))
+    const indice = validas.findIndex((r) => r.id === pedidoId)
+    if (indice < 0) return 0
+    const totais = validas.map((r) =>
+      (r.itens_do_pedido ?? []).filter((i) => !i.removido).reduce((s, i) => s + i.preco_centavos_unitario * i.quantidade, 0),
+    )
+    return ratearTaxaServico(totais, c.taxa_servico_centavos as number)[indice]
+  }
+
   const itemsPayload = itensAtivos.map((item, indice) => {
     const cadastro = cadastroPorId.get(item.item_id as string) as ItemCadastroRow
     const valorUnitario = item.preco_centavos_unitario / 100
@@ -358,6 +403,7 @@ function criarHandlerInterno(deps: DependenciasNfce) {
       valor_unitario_tributavel: valorUnitario,
       valor_bruto: valorBruto,
       ...(descontosPorItem[indice] > 0 ? { valor_desconto: descontosPorItem[indice] / 100 } : {}),
+      ...(outrasDespesasPorItem[indice] > 0 ? { valor_outras_despesas: outrasDespesasPorItem[indice] / 100 } : {}),
       unidade_comercial: cadastro.unidade_comercial,
       unidade_tributavel: cadastro.unidade_comercial,
       icms_origem: ICMS_ORIGEM,
@@ -370,9 +416,13 @@ function criarHandlerInterno(deps: DependenciasNfce) {
     ? null
     : itemsPayload.reduce((soma, i) => soma + (i.tributosCentavos ?? 0), 0)
 
-  // Em centavos inteiros (sem somar float): soma dos brutos − desconto do cupom.
+  // Em centavos inteiros (sem somar float): soma dos brutos − desconto do cupom + parte da taxa de serviço (0 com o
+  // interruptor desligado). A FocusNFe calcula vNF = produtos − desconto + outras despesas: o pagamento bate.
   const valorTotal =
-    (itensAtivos.reduce((soma, i) => soma + i.preco_centavos_unitario * i.quantidade, 0) - descontosPorItem.reduce((a, b) => a + b, 0)) / 100
+    (itensAtivos.reduce((soma, i) => soma + i.preco_centavos_unitario * i.quantidade, 0) -
+      descontosPorItem.reduce((a, b) => a + b, 0) +
+      taxaServicoCentavos) /
+    100
 
   const payload = {
     cnpj_emitente: barraca.cnpj.replace(/\D/g, ''),
@@ -430,6 +480,8 @@ function criarHandlerInterno(deps: DependenciasNfce) {
         nfce_qrcode_url: resultado?.qrcode_url ?? null,
         ...(status === 'processando_autorizacao' ? {} : { nfce_trava_em: null }),
         ...(autorizado ? { nfce_cpf_consumidor: cpfConsumidor, nfce_tributos_centavos: tributosTotalCentavos } : {}),
+        // Só com taxa na nota (interruptor ligado): desligado, o update é o de sempre.
+        ...(autorizado && taxaServicoCentavos > 0 ? { nfce_taxa_servico_centavos: taxaServicoCentavos } : {}),
       })
       .eq('id', pedidoId)
     if (error) {

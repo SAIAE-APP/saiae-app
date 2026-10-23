@@ -37,6 +37,8 @@ export type Barraca = {
   comanda_aberta_habilitada?: boolean
   taxa_servico_habilitada?: boolean
   taxa_servico_bps?: number
+  /** Incluir a taxa de serviço da comanda na NFC-e (padrão false = fora da nota). Ausente antes da migration. */
+  nfce_incluir_taxas?: boolean
   /** Estoque: true = bloqueia a venda acima do saldo; false/ausente = só avisa (padrão). */
   estoque_bloqueia?: boolean
   /** Coluna "Saiu para entrega" no kanban (só com Entrega ligada; padrão false). Ausente em banco/cache de antes da migration. */
@@ -292,6 +294,8 @@ export type Pedido = {
   nfce_ambiente?: AmbienteFiscal | null
   nfce_cpf_consumidor?: string | null
   nfce_tributos_centavos?: number | null
+  /** Parte da taxa de serviço da comanda que foi na nota autorizada (NULL = nenhuma). */
+  nfce_taxa_servico_centavos?: number | null
   /** Comanda aberta da Mesa (preenchida pelo trigger no banco). Ausente em banco/cache de antes da migration. */
   comanda_id?: string | null
 }
