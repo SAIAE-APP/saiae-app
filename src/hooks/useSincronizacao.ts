@@ -15,6 +15,7 @@ import { salvarClienteComReenvio } from '../lib/salvarClienteComReenvio'
 import { salvarClienteFinal } from '../lib/clientesFinais'
 import type { DadosEntrega } from '../lib/entrega'
 import { desfechoDefinirMetodo } from '../lib/definirMetodoFila'
+import { desfechoFecharComanda } from '../lib/fecharComandaFila'
 
 const ATRASO_INICIAL_MS = 1000
 const ATRASO_MAXIMO_MS = 30000
@@ -127,6 +128,30 @@ async function executarOperacao(op: OperacaoPendente): Promise<void> {
       if (desfecho === 'concluida') return
       if (desfecho === 'adiar') throw new OperacaoAdiadaError('Forma de pagamento aguardando o servidor (definir_metodo_pagamento)')
       throw error ?? new Error('definir_metodo_pagamento não confirmou')
+    }
+
+    case 'fechar_comanda': {
+      // Comanda aberta da Mesa: forma de pagamento + taxa de serviço (calculada no servidor). Idempotente: reenviar com
+      // o mesmo método devolve ok. Banco sem a RPC: adiada, sem travar a fila. Estado sem solução sai da fila com aviso.
+      const { comanda_id, metodo, cobrar_taxa_servico } = op.payload as {
+        comanda_id: string
+        metodo: string
+        cobrar_taxa_servico: boolean
+      }
+      const { data, error } = await supabase.rpc('fechar_comanda', {
+        p_comanda_id: comanda_id,
+        p_metodo: metodo,
+        p_cobrar_taxa_servico: cobrar_taxa_servico,
+      })
+      const resposta = data as { estado?: string } | null
+      const desfecho = desfechoFecharComanda(error, resposta)
+      if (desfecho === 'concluida') return
+      if (desfecho === 'adiar') throw new OperacaoAdiadaError('Fechamento da comanda aguardando o servidor (fechar_comanda)')
+      if (desfecho === 'falha') {
+        registrarErroApp('sync', new Error(`fechar_comanda ${comanda_id}: ${resposta?.estado}`))
+        return
+      }
+      throw error ?? new Error('fechar_comanda não confirmou')
     }
 
     case 'salvar_cliente': {

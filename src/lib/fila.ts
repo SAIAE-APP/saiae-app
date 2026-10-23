@@ -7,6 +7,7 @@ export type TipoOperacao =
   | 'remover_item'
   | 'marcar_entregue'
   | 'definir_metodo'
+  | 'fechar_comanda'
   | 'salvar_cliente'
 
 export type OperacaoPendente = {
