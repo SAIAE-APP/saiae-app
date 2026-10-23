@@ -34,3 +34,4 @@ supabase/.temp
 # Env de qualquer modo (staging, etc.): só os *.example entram no git
 .env.*
 !.env.*.example
+.superpowers/

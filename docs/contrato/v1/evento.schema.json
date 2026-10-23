@@ -37,6 +37,15 @@
         "quantidade": { "type": "integer", "minimum": 1, "description": "Sempre 1 na v1. O leitor deve tolerar valores maiores (reservado para versões futuras)." }
       }
     },
+    "aviso_config": {
+      "type": "object",
+      "required": ["ativo", "texto"],
+      "additionalProperties": false,
+      "properties": {
+        "ativo": { "type": "boolean" },
+        "texto": { "type": ["string", "null"], "maxLength": 500 }
+      }
+    },
     "pedido": {
       "type": "object",
       "required": ["pedido_id", "status", "tipo_atendimento", "itens", "total_centavos"],
@@ -69,6 +78,18 @@
         "cupom_codigo": { "type": "string", "description": "Aditivo v1 (cupons): código usado no pedido. Ausente se não houve cupom; o leitor deve tolerar." },
         "desconto_cupom_centavos": { "type": "integer", "minimum": 1, "description": "Aditivo v1 (cupons): desconto dado só sobre os itens (a taxa de entrega nunca é descontada). Ausente se não houve cupom." },
         "metodo_pagamento": { "type": ["string", "null"] },
+        "avisos": {
+          "description": "Aditivo v1 (WhatsApp e Automação): configuração dos avisos de status da barraca. Ausente = todos ativos com texto padrão; o leitor deve tolerar. texto null = texto padrão. Variáveis {nome} {senha} {barraca}.",
+          "type": "object",
+          "additionalProperties": false,
+          "properties": {
+            "recebido": { "$ref": "#/$defs/aviso_config" },
+            "pronto": { "$ref": "#/$defs/aviso_config" },
+            "saiu_entrega": { "$ref": "#/$defs/aviso_config" },
+            "entregue": { "$ref": "#/$defs/aviso_config" },
+            "cancelado": { "$ref": "#/$defs/aviso_config" }
+          }
+        },
         "cliente": {
           "type": ["object", "null"],
           "properties": {
