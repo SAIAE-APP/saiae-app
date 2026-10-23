@@ -33,6 +33,10 @@ export type Barraca = {
   pagar_na_entrega_habilitado?: boolean
   /** "Pagar depois" em Retirada e Entrega (padrão false). Ausente em banco/cache de antes da migration. */
   pagamento_depois_habilitado?: boolean
+  /** Comanda aberta na Mesa e taxa de serviço (padrão false/false/1000 = 10%). Ausentes em banco/cache de antes da migration. */
+  comanda_aberta_habilitada?: boolean
+  taxa_servico_habilitada?: boolean
+  taxa_servico_bps?: number
   /** Estoque: true = bloqueia a venda acima do saldo; false/ausente = só avisa (padrão). */
   estoque_bloqueia?: boolean
   /** Coluna "Saiu para entrega" no kanban (só com Entrega ligada; padrão false). Ausente em banco/cache de antes da migration. */
@@ -288,6 +292,27 @@ export type Pedido = {
   nfce_ambiente?: AmbienteFiscal | null
   nfce_cpf_consumidor?: string | null
   nfce_tributos_centavos?: number | null
+  /** Comanda aberta da Mesa (preenchida pelo trigger no banco). Ausente em banco/cache de antes da migration. */
+  comanda_id?: string | null
+}
+
+export type StatusComanda = 'aberta' | 'fechada'
+
+/** Comanda aberta na Mesa: agrupa as rodadas (pedidos) até o fechamento. */
+export type Comanda = {
+  id: string
+  barraca_id: string
+  /** Como foi digitada no primeiro lançamento. */
+  mesa: string
+  /** `normalizar_mesa`: "Mesa 05" -> "5". */
+  mesa_normalizada: string
+  status: StatusComanda
+  aberta_em: string
+  fechada_em: string | null
+  fechada_por: string | null
+  metodo_pagamento: string | null
+  taxa_servico_bps: number | null
+  taxa_servico_centavos: number
 }
 
 export type ItemDoPedido = {
