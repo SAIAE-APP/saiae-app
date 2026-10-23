@@ -9,7 +9,7 @@ import type { ReactNode } from 'react'
 export function LayoutAuth({ children }: { children: ReactNode }) {
   return (
     <div className="relative flex min-h-dvh flex-col md:items-center md:justify-center md:bg-mesa-bg-base md:p-6">
-      <div className="hidden md:absolute md:left-8 md:top-6 md:block">
+      <div className="hidden md:absolute md:left-8 md:top-[calc(env(safe-area-inset-top)+24px)] md:block">
         <img src="/brand/saiae-wordmark-horizontal-preto.svg" alt="Sai aê" className="h-8 w-auto dark:hidden" />
         <img
           src="/brand/saiae-wordmark-horizontal.svg"

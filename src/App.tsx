@@ -1,5 +1,6 @@
 import { useEffect } from 'react'
-import { BrowserRouter, Route, Routes } from 'react-router'
+import { BrowserRouter, Navigate, Route, Routes } from 'react-router'
+import { ehAppIOS } from './lib/plataforma'
 import { useTheme } from './hooks/useTheme'
 import { useAuth } from './hooks/useAuth'
 import { desbloquearAudio } from './lib/sons'
@@ -65,10 +66,11 @@ function App() {
           <Routes>
             <Route path="/onboarding" element={<Onboarding />} />
             <Route path="/login" element={<Login />} />
-            <Route path="/cadastro" element={<Cadastro />} />
+            {/* iOS: sem cadastro nem compra no app (Apple 3.1.1, ver lib/plataforma). */}
+            <Route path="/cadastro" element={ehAppIOS() ? <Navigate to="/login" replace /> : <Cadastro />} />
             <Route path="/esqueci-senha" element={<EsqueciSenha />} />
             <Route path="/redefinir-senha" element={<RedefinirSenha />} />
-            <Route path="/assinar" element={<Assinar />} />
+            <Route path="/assinar" element={ehAppIOS() ? <Navigate to="/login" replace /> : <Assinar />} />
 
             {/* Páginas públicas exigidas pela Play Store (política de
                 privacidade e exclusão de conta) — segmento estático, ganha
@@ -147,8 +149,8 @@ function App() {
               <Route path="ajustes" element={<Ajustes categoria="conta" />} />
               <Route path="ajustes/cardapio" element={<Ajustes categoria="cardapio" />} />
               <Route path="ajustes/cardapio/exemplo" element={<RevisarCardapioExemplo />} />
-              <Route path="planos" element={<Planos />} />
-              <Route path="assinatura" element={<Assinatura />} />
+              <Route path="planos" element={ehAppIOS() ? <Navigate to=".." replace /> : <Planos />} />
+              <Route path="assinatura" element={ehAppIOS() ? <Navigate to=".." replace /> : <Assinatura />} />
             </Route>
 
             <Route path="*" element={<NaoEncontrado />} />

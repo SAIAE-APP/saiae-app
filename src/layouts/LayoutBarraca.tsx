@@ -19,6 +19,8 @@ import { acessoBloqueadoPorAssinatura, mostraBannerDeTrial } from '../lib/cobran
 import { useToast } from '../components/ui/useToast'
 import { EVENTO_CLIENTE_NAO_SALVO } from '../lib/fila'
 import { definirBarracaDoErro, registrarVersaoApp } from '../lib/erroApp'
+import { ehAppIOS } from '../lib/plataforma'
+import { AcessoIndisponivelIOS } from '../components/AcessoIndisponivelIOS'
 import { BarracaContext, SincronizacaoContext } from './contextoBarraca'
 import { PedidosContext } from './contextoPedidos'
 
@@ -158,7 +160,7 @@ export function LayoutBarraca() {
     <BarracaContext.Provider value={barraca}>
       <SincronizacaoContext.Provider value={sincronizacao}>
         <PedidosContext.Provider value={estadoPedidos}>
-          {mostraBannerTrial && assinatura && <BannerTrial assinatura={assinatura} />}
+          {mostraBannerTrial && assinatura && !ehAppIOS() && <BannerTrial assinatura={assinatura} />}
           <FaixaSuporteVisao barracaId={barraca.id} barracas={barracasDoUsuario} />
           {souDonoDestaBarraca && <FaixaSuporteDono barracaId={barraca.id} />}
           {mostrarSidebar && !acessoBloqueado && <SidebarDesktop />}
@@ -169,7 +171,7 @@ export function LayoutBarraca() {
               mostrarSidebar && !acessoBloqueado && 'md:pl-64',
             )}
           >
-            {acessoBloqueado ? <Planos /> : <Outlet />}
+            {acessoBloqueado ? ehAppIOS() ? <AcessoIndisponivelIOS /> : <Planos /> : <Outlet />}
           </div>
           {!semBottomNav && !acessoBloqueado && (
             <div className={mostrarSidebar ? 'md:hidden' : undefined}>

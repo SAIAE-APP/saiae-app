@@ -5,6 +5,7 @@ import { Button } from '../components/ui/Button'
 import { Icone } from '../components/ui/Icone'
 
 import { marcarOnboardingVisto } from '../lib/onboardingStorage'
+import { ehAppIOS } from '../lib/plataforma'
 
 const TOTAL_SLIDES = 4
 const ULTIMO_SLIDE = TOTAL_SLIDES - 1
@@ -246,7 +247,7 @@ export function Onboarding() {
 
   function aoClicarProximo() {
     if (noUltimo) {
-      navigate('/cadastro')
+      navigate(ehAppIOS() ? '/login' : '/cadastro')
       return
     }
     irPara(atual + 1)
@@ -320,11 +321,11 @@ export function Onboarding() {
         </div>
 
         <Button size="xl" onClick={aoClicarProximo} className="w-full shadow-[0_12px_28px_-8px_rgba(255,194,26,.55)]">
-          {noUltimo ? 'Criar conta grátis' : 'Próximo'}
+          {noUltimo ? (ehAppIOS() ? 'Entrar' : 'Criar conta grátis') : 'Próximo'}
           <Icone nome="arrow_forward" size={20} />
         </Button>
 
-        {noUltimo && (
+        {noUltimo && !ehAppIOS() && (
           <button
             type="button"
             onClick={() => navigate('/login')}
