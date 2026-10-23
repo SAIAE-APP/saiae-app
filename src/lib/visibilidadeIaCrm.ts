@@ -24,3 +24,11 @@ export function mostrarIntegracaoCrm(barraca: { slug?: string | null }, flag: un
 export function mostrarWhatsappAutomacao(barraca: { slug?: string | null }, flag: unknown): boolean {
   return flag === '1' || slugLiberado(barraca.slug)
 }
+
+/** Faixa de queda: só quando o CRM avisou que a conexão caiu e a aba está liberada para a loja. */
+export function deveMostrarFaixaCaiu(
+  barraca: { slug?: string | null; whatsapp_status?: string | null },
+  flag: unknown,
+): boolean {
+  return barraca.whatsapp_status === 'caiu' && mostrarWhatsappAutomacao(barraca, flag)
+}

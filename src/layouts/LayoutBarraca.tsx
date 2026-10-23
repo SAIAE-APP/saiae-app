@@ -15,6 +15,7 @@ import { BarraNavegacao } from '../components/BarraNavegacao'
 import { SidebarDesktop } from '../components/SidebarDesktop'
 import { BannerTrial } from '../components/BannerTrial'
 import { FaixaSuporteDono, FaixaSuporteVisao } from '../components/FaixaSuporte'
+import { FaixaWhatsappCaiu } from '../components/FaixaWhatsappCaiu'
 import { acessoBloqueadoPorAssinatura, mostraBannerDeTrial } from '../lib/cobranca'
 import { useToast } from '../components/ui/useToast'
 import { EVENTO_CLIENTE_NAO_SALVO } from '../lib/fila'
@@ -163,6 +164,7 @@ export function LayoutBarraca() {
           {mostraBannerTrial && assinatura && !ehAppIOS() && <BannerTrial assinatura={assinatura} />}
           <FaixaSuporteVisao barracaId={barraca.id} barracas={barracasDoUsuario} />
           {souDonoDestaBarraca && <FaixaSuporteDono barracaId={barraca.id} />}
+          <FaixaWhatsappCaiu barraca={barraca} />
           {mostrarSidebar && !acessoBloqueado && <SidebarDesktop />}
           <div
             className={clsx(
