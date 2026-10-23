@@ -5,6 +5,7 @@ import { useComandasAbertas } from '../hooks/useComandas'
 import { comandaAbertaLigada } from '../lib/comandaAberta'
 import { minutosEntre } from '../lib/tempoPedido'
 import { formatarPrecoBR } from '../lib/preco'
+import { FecharComandaSheet } from '../components/FecharComandaSheet'
 import { Button } from '../components/ui/Button'
 import { Card } from '../components/ui/Card'
 import { CabecalhoPagina } from '../components/ui/CabecalhoPagina'
@@ -24,6 +25,7 @@ export function Mesas() {
   const navigate = useNavigate()
   const { comandas, carregando, erro } = useComandasAbertas(barraca.id)
   const [abertaId, setAbertaId] = useState<string | null>(null)
+  const [fechando, setFechando] = useState(false)
   const detalhe = comandas.find((c) => c.id === abertaId) ?? null
 
   return (
@@ -71,13 +73,23 @@ export function Mesas() {
                 Adicionar item à Mesa {detalhe.mesa}
               </Button>
             )}
-            {/* Ponto de ligação da Task 7 (folha de fechamento e cobrança). */}
-            <Button size="lg" className="min-h-11" disabled>
+            <Button size="lg" className="min-h-11" onClick={() => setFechando(true)}>
               Fechar comanda e cobrar
             </Button>
             <Button variant="ghost" size="lg" className="min-h-11" onClick={() => setAbertaId(null)}>
               Voltar às mesas
             </Button>
+            {fechando && (
+              <FecharComandaSheet
+                comanda={detalhe}
+                barraca={barraca}
+                aoCancelar={() => setFechando(false)}
+                aoFechar={() => {
+                  setFechando(false)
+                  setAbertaId(null)
+                }}
+              />
+            )}
           </div>
         ) : (
           <div className="flex flex-col gap-3">

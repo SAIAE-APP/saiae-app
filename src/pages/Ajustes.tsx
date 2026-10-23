@@ -43,6 +43,7 @@ import { ImportarCardapioSheet } from '../components/ImportarCardapioSheet'
 import { SecaoPagarNaEntrega } from '../components/SecaoPagarNaEntrega'
 import { EnderecoCardapio } from '../components/EnderecoCardapio'
 import { SecaoPagamentoDepois } from '../components/SecaoPagamentoDepois'
+import { SecaoComandaAberta } from '../components/SecaoComandaAberta'
 import { SecaoSaiuEntrega } from '../components/SecaoSaiuEntrega'
 import { SecaoEstoque } from '../components/SecaoEstoque'
 import { SecaoCupons } from '../components/SecaoCupons'
@@ -2936,6 +2937,9 @@ export function Ajustes({ categoria = 'conta' }: { categoria?: CategoriaAjustes 
           </SecaoDaCategoria>
           <SecaoDaCategoria categoria="cardapio" grupo="recebimento" atual={categoria}>
             <SecaoPagamentoDepois barraca={barraca} />
+          </SecaoDaCategoria>
+          <SecaoDaCategoria categoria="cardapio" grupo="recebimento" atual={categoria}>
+            <SecaoComandaAberta barraca={barraca} />
           </SecaoDaCategoria>
           <SecaoDaCategoria categoria="cardapio" grupo="atendimento" atual={categoria}>
             <SecaoSaiuEntrega barraca={barraca} />

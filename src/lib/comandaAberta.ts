@@ -1,3 +1,5 @@
+import { humanizarMetodo } from './metodoPagamento.ts'
+
 // Regras puras da comanda aberta por mesa e da taxa de serviço.
 // Tudo atrás de interruptor por barraca (desligado por padrão). A taxa de serviço
 // aparece à parte, nunca somada ao faturamento dos itens.
@@ -130,4 +132,35 @@ export function criarDebounce(fn: () => void, ms: number): (() => void) & { canc
   }
   chamar.cancelar = () => clearTimeout(t)
   return chamar
+}
+
+// Percentual da taxa de serviço em Ajustes: bps 1000 <-> "10", 750 <-> "7,5".
+export function percentualDeBps(bps: number): string {
+  return String(bps / 100).replace('.', ',')
+}
+
+// Texto digitado -> bps, aceitando vírgula ou ponto e até 2 casas; só de 0 a 30%. Inválido = null.
+export function bpsDePercentual(texto: string): number | null {
+  const t = texto.trim()
+  if (!/^\d{1,2}(?:[.,]\d{1,2})?$/.test(t)) return null
+  const bps = Math.round(parseFloat(t.replace(',', '.')) * 100)
+  return bps <= 3000 ? bps : null
+}
+
+/** Texto pro operador de cada resposta da RPC `fechar_comanda` que não é `ok`. */
+export function mensagemFecharComanda(estado: string | undefined, metodoAtual?: string): string {
+  switch (estado) {
+    case 'ja_fechada':
+      return `Esta comanda já foi fechada em outro aparelho com outra forma de pagamento (${humanizarMetodo(metodoAtual ?? null)}).`
+    case 'sem_itens':
+      return 'Esta comanda não tem itens ativos: não dá para cobrar.'
+    case 'metodo_invalido':
+      return 'Forma de pagamento inválida.'
+    case 'sem_acesso':
+      return 'Sem permissão para fechar esta comanda.'
+    case 'nao_autenticado':
+      return 'Sua sessão expirou. Entre de novo e tente outra vez.'
+    default:
+      return 'Não foi possível fechar a comanda. Tente de novo.'
+  }
 }
