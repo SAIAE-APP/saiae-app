@@ -339,33 +339,57 @@ function criarHandlerInterno(deps: DependenciasNfce) {
   // Ligado e o pedido sendo rodada de comanda FECHADA com taxa: a nota leva a parte desta rodada, rateada entre as
   // rodadas não canceladas e depois entre os itens (`valor_outras_despesas` = vOutro por item, campo da FocusNFe
   // para NFe/NFC-e). O contador decide ligar; o sistema não dá parecer fiscal. A taxa de entrega continua fora.
+  // Erro de leitura com a taxa possivelmente ligada: 500 ANTES da trava e da FocusNFe. Nota sem a taxa não se corrige.
   const taxaServicoCentavos = await parteDaTaxaServico()
+  if (taxaServicoCentavos === null) {
+    return jsonResponse({ erro: 'Falha ao carregar a taxa de serviço da comanda. Tente novamente.' }, 500)
+  }
   const outrasDespesasPorItem = ratearTaxaServico(
     itensAtivos.map((i) => i.preco_centavos_unitario * i.quantidade),
     taxaServicoCentavos,
   )
 
-  // Leituras à parte e tolerantes: sem a migration (coluna ausente) ou qualquer falha = 0, a nota sai como hoje.
-  async function parteDaTaxaServico(): Promise<number> {
-    const { data: flag } = await supabase.from('barracas').select('nfce_incluir_taxas').eq('id', barraca.id).maybeSingle()
-    if ((flag as { nfce_incluir_taxas?: boolean } | null)?.nfce_incluir_taxas !== true) return 0
-    const { data: vinculo } = await supabase.from('pedidos').select('comanda_id').eq('id', pedidoId).maybeSingle()
-    const comandaId = (vinculo as { comanda_id?: string | null } | null)?.comanda_id
+  // Coluna ausente (migration ainda não aplicada) = recurso inexistente, vale 0 e a nota sai como hoje. Qualquer
+  // outro erro devolve null (quem chama responde 500, nada é emitido).
+  function colunaAusente(erro: { code?: string } | null): boolean {
+    return erro?.code === '42703' || erro?.code === 'PGRST204'
+  }
+
+  async function parteDaTaxaServico(): Promise<number | null> {
+    // A parte gravada na trava (antes do POST) é a que foi para a FocusNFe: retry e reconciliação a reaproveitam,
+    // mesmo que o interruptor, a taxa ou as rodadas tenham mudado depois. O cupom impresso segue a nota.
+    const { data: vinculo, error: erroVinculo } = await supabase
+      .from('pedidos')
+      .select('comanda_id, nfce_taxa_servico_centavos')
+      .eq('id', pedidoId)
+      .maybeSingle()
+    if (erroVinculo) return colunaAusente(erroVinculo) ? 0 : null
+    const v = vinculo as { comanda_id?: string | null; nfce_taxa_servico_centavos?: number | null } | null
+    if (typeof v?.nfce_taxa_servico_centavos === 'number') return v.nfce_taxa_servico_centavos
+    const comandaId = v?.comanda_id
     if (!comandaId) return 0
-    const { data: comanda } = await supabase
+    const { data: flag, error: erroFlag } = await supabase
+      .from('barracas')
+      .select('nfce_incluir_taxas')
+      .eq('id', barraca.id)
+      .maybeSingle()
+    if (erroFlag) return colunaAusente(erroFlag) ? 0 : null
+    if ((flag as { nfce_incluir_taxas?: boolean } | null)?.nfce_incluir_taxas !== true) return 0
+    const { data: comanda, error: erroComanda } = await supabase
       .from('comandas')
       .select('status, taxa_servico_centavos')
       .eq('id', comandaId)
       .eq('barraca_id', barraca.id)
       .maybeSingle()
+    if (erroComanda) return null
     const c = comanda as { status?: string; taxa_servico_centavos?: number } | null
     if (c?.status !== 'fechada' || !((c.taxa_servico_centavos ?? 0) > 0)) return 0
-    const { data: rodadas, error } = await supabase
+    const { data: rodadas, error: erroRodadas } = await supabase
       .from('pedidos')
       .select('id, status, itens_do_pedido(quantidade, preco_centavos_unitario, removido)')
       .eq('comanda_id', comandaId)
       .eq('barraca_id', barraca.id)
-    if (error || !Array.isArray(rodadas)) return 0
+    if (erroRodadas || !Array.isArray(rodadas)) return null
     // Mesma base de fechar_comanda (itens não removidos das rodadas não canceladas), ordenada por id: a parte de
     // cada rodada é a mesma seja qual for a ordem de emissão das notas.
     const validas = (rodadas as Array<{ id: string; status: string; itens_do_pedido: ItemDoPedidoRow[] | null }>)
@@ -525,7 +549,13 @@ function criarHandlerInterno(deps: DependenciasNfce) {
   const agoraMs = deps.agora()
   const { data: reivindicado, error: erroTrava } = await supabase
     .from('pedidos')
-    .update({ nfce_status: 'processando_autorizacao', nfce_trava_em: new Date(agoraMs).toISOString(), nfce_mensagem: null })
+    .update({
+      nfce_status: 'processando_autorizacao',
+      nfce_trava_em: new Date(agoraMs).toISOString(),
+      nfce_mensagem: null,
+      // Congela a parte da taxa que vai no POST (só quando há taxa: desligado, o update é o de sempre).
+      ...(taxaServicoCentavos > 0 ? { nfce_taxa_servico_centavos: taxaServicoCentavos } : {}),
+    })
     .eq('id', pedidoId)
     .or('nfce_status.is.null,nfce_status.neq.autorizado')
     .or(`nfce_trava_em.is.null,nfce_trava_em.lt.${new Date(agoraMs - TRAVA_NFCE_MS).toISOString()}`)

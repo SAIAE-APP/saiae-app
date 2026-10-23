@@ -11,9 +11,11 @@
  * sempre as mesmas partes, seja qual for a ordem em que as notas são emitidas.
  */
 export function ratearTaxaServico(totaisItensCentavos: number[], taxaCentavos: number): number[] {
-  const totais = totaisItensCentavos.map((v) => Math.max(0, Math.floor(v)))
+  // NaN, Infinity e negativos contam como 0 (entrada inválida nunca gera centavo).
+  const limpo = (v: number) => (Number.isFinite(v) ? Math.max(0, Math.floor(v)) : 0)
+  const totais = totaisItensCentavos.map(limpo)
   const base = totais.reduce((s, v) => s + v, 0)
-  const alvo = Math.max(0, Math.floor(taxaCentavos))
+  const alvo = limpo(taxaCentavos)
   if (base === 0 || alvo === 0) return totais.map(() => 0)
 
   const parte = totais.map((v) => Math.floor((v * alvo) / base))

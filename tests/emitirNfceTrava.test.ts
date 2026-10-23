@@ -10,7 +10,7 @@ type Linha = Record<string, unknown>
 
 /** Supabase falso: só o que o handler usa. O UPDATE avalia filtros e aplica no MESMO tick (atômico, como o Postgres). */
 /** Extras da comanda (Task 10): campos a mais da barraca, a comanda e as rodadas dela (consulta por comanda_id). */
-type Extras = { barraca?: Linha; comanda?: Linha | null; rodadas?: Linha[] }
+type Extras = { barraca?: Linha; comanda?: Linha | null; rodadas?: Linha[]; erroLeitura?: (tabela: string, colunas: string) => Linha | null }
 
 function criarBanco(inicial: Linha = {}, linhaToken: Linha = { token_homologacao: 'tok-h', token_producao: 'tok-p' }, extras: Extras = {}) {
   const pedido: Linha = { id: 'p1', barraca_id: 'b1', metodo_pagamento: 'pix', nfce_status: null, nfce_chave: null, nfce_numero: null, nfce_trava_em: null, ...inicial }
@@ -42,8 +42,9 @@ function criarBanco(inicial: Linha = {}, linhaToken: Linha = { token_homologacao
     const eqs: Array<[string, unknown]> = []
     const ors: string[] = []
     let listaIn: unknown[] | null = null
+    let colunas = ''
     const q = {
-      select() { if (op === 'update') devolver = true; return q },
+      select(c = '') { if (op === 'update') devolver = true; else colunas = c; return q },
       update(v: Linha) { op = 'update'; valores = v; return q },
       eq(c: string, v: unknown) { eqs.push([c, v]); return q },
       in(_c: string, v: unknown[]) { listaIn = v; return q },
@@ -53,6 +54,8 @@ function criarBanco(inicial: Linha = {}, linhaToken: Linha = { token_homologacao
       then(ok: (v: unknown) => unknown, ko?: (e: unknown) => unknown) { return Promise.resolve(executar(false, false)).then(ok, ko) },
     }
     function executar(unico: boolean, exigir: boolean) {
+      const erroSimulado = op === 'select' ? extras.erroLeitura?.(tabela, colunas) : null
+      if (erroSimulado) return { data: null, error: erroSimulado }
       if (tabela === 'pedidos' && op === 'select' && eqs.some(([c]) => c === 'comanda_id')) return { data: extras.rodadas ?? [], error: null }
       if (tabela === 'comandas') return { data: extras.comanda ?? null, error: null }
       if (tabela === 'pedidos') {
@@ -130,7 +133,7 @@ function montar(inicial: Linha = {}, linhaToken?: Linha, env: Record<string, str
   const handler = criarHandler({
     criarCliente: () => banco.cliente,
     env: { get: (n: string) => env[n] ?? (n.startsWith('TOKENS_') ? undefined : 'x') },
-    buscar: focus.buscar,
+    buscar: (u, i) => focus.buscar(u, i),
     agora: () => relogio.agora,
     esperar: async () => {},
   })
@@ -452,6 +455,77 @@ describe('emitir-nfce: taxa de serviço da comanda na nota (interruptor nfce_inc
     assert.equal((await chamar()).status, 200)
     assert.ok(!('valor_outras_despesas' in corpoEnviado(focus).items[0]))
   })
+
+  test('retry depois de timeout: reenvia e grava a MESMA parte congelada na trava, mesmo com os dados mudados', async () => {
+    const comanda = { ...comandaFechada }
+    const vivas = rodadas.map((r) => ({ ...r }))
+    const { banco, focus, relogio, chamar } = montar({ comanda_id: 'c1' }, undefined, {}, { barraca: { nfce_incluir_taxas: true }, comanda, rodadas: vivas })
+    focus.cfg.timeoutSemCriar = true
+    assert.equal((await chamar()).status, 502)
+    assert.equal(banco.pedido.nfce_taxa_servico_centavos, 300, 'parte congelada na trava, antes do POST')
+    // Depois do POST: a taxa muda e uma rodada é cancelada (a parte "ao vivo" agora seria outra).
+    comanda.taxa_servico_centavos = 1000
+    vivas[0].status = 'cancelado'
+    focus.cfg.timeoutSemCriar = false
+    relogio.agora += TRAVA_NFCE_MS + 1
+    assert.equal((await chamar()).status, 200)
+    assert.equal(focus.log.corpos.length, 2)
+    for (const corpo of focus.log.corpos as Array<{ items: Linha[]; formas_pagamento: Linha[] }>) {
+      assert.equal(corpo.items[0].valor_outras_despesas, 3)
+      assert.equal(corpo.formas_pagamento[0].valor_pagamento, 33)
+    }
+    assert.equal(banco.pedido.nfce_status, 'autorizado')
+    assert.equal(banco.pedido.nfce_taxa_servico_centavos, 300)
+  })
+
+  test('reconciliação em outra chamada (nota criada, resposta perdida): grava a parte enviada, não a recalculada', async () => {
+    const comanda = { ...comandaFechada }
+    const { banco, focus, relogio, chamar } = montar({ comanda_id: 'c1' }, undefined, {}, { barraca: { nfce_incluir_taxas: true }, comanda, rodadas })
+    focus.cfg.timeoutDepoisDeCriar = true
+    const original = focus.buscar
+    let consultaFora = true
+    // Na 1ª chamada a consulta também falha: ela termina sem saber que a nota existe.
+    focus.buscar = (async (u: string | URL | Request, init?: RequestInit) =>
+      consultaFora && (init?.method ?? 'GET') === 'GET' ? Response.json({}, { status: 503 }) : original(u, init)) as typeof fetch
+    assert.equal((await chamar()).status, 502)
+    assert.equal(banco.pedido.nfce_taxa_servico_centavos, 300)
+    comanda.taxa_servico_centavos = 1000 // dados mudam depois do POST
+    consultaFora = false
+    relogio.agora += TRAVA_NFCE_MS + 1
+    assert.equal((await chamar()).status, 200)
+    assert.equal(focus.log.posts.length, 1, 'reconciliou sem reenviar')
+    assert.equal(banco.pedido.nfce_status, 'autorizado')
+    assert.equal(banco.pedido.nfce_taxa_servico_centavos, 300)
+  })
+
+  for (const [nome, tabela, trecho] of [
+    ['vínculo do pedido', 'pedidos', 'nfce_taxa_servico_centavos'],
+    ['interruptor', 'barracas', 'nfce_incluir_taxas'],
+    ['comanda', 'comandas', 'taxa_servico_centavos'],
+    ['rodadas', 'pedidos', 'itens_do_pedido(quantidade'],
+  ] as const) {
+    test(`erro ao ler ${nome}: 500 antes da trava, nada vai para a FocusNFe`, async () => {
+      const erroLeitura = (t: string, c: string) => (t === tabela && c.includes(trecho) ? { code: '08006', message: 'conexão caiu' } : null)
+      const { banco, focus, chamar } = montar({ comanda_id: 'c1' }, undefined, {}, { barraca: { nfce_incluir_taxas: true }, comanda: comandaFechada, rodadas, erroLeitura })
+      const r = await chamar()
+      assert.equal(r.status, 500)
+      assert.equal(focus.log.posts.length + focus.log.gets.length, 0)
+      assert.equal(banco.updates.length, 0)
+    })
+  }
+
+  for (const code of ['42703', 'PGRST204']) {
+    test(`coluna ausente (${code}, migration não aplicada): vale 0 e a nota sai como hoje`, async () => {
+      const erroLeitura = (t: string, c: string) =>
+        (t === 'pedidos' && c.includes('nfce_taxa_servico_centavos')) || (t === 'barracas' && c.includes('nfce_incluir_taxas'))
+          ? { code, message: 'column does not exist' }
+          : null
+      const { focus, chamar } = montar({ comanda_id: 'c1' }, undefined, {}, { comanda: comandaFechada, rodadas, erroLeitura })
+      assert.equal((await chamar()).status, 200)
+      assert.ok(!('valor_outras_despesas' in corpoEnviado(focus).items[0]))
+      assert.equal(corpoEnviado(focus).formas_pagamento[0].valor_pagamento, 30)
+    })
+  }
 
   test('a parte da rodada não depende da ordem em que as rodadas chegam do banco', async () => {
     const { focus, chamar } = montar({ comanda_id: 'c1' }, undefined, {}, { barraca: { nfce_incluir_taxas: true }, comanda: comandaFechada, rodadas: [...rodadas].reverse() })

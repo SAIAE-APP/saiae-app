@@ -46,4 +46,10 @@ describe('ratearTaxaServico', () => {
     assert.deepEqual(a, b)
     assert.equal(soma(a), 9792)
   })
+
+  test('NaN/Infinity/negativo contam como 0', () => {
+    assert.deepEqual(ratearTaxaServico([NaN, 1000, Infinity, -500], 100), [0, 100, 0, 0])
+    assert.deepEqual(ratearTaxaServico([1000], NaN), [0])
+    assert.deepEqual(ratearTaxaServico([1000], Infinity), [0])
+  })
 })
