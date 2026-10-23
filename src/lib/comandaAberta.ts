@@ -1,4 +1,5 @@
 import { humanizarMetodo } from './metodoPagamento.ts'
+import { formatarPrecoBR } from './preco.ts'
 
 // Regras puras da comanda aberta por mesa e da taxa de serviço.
 // Tudo atrás de interruptor por barraca (desligado por padrão). A taxa de serviço
@@ -163,4 +164,20 @@ export function mensagemFecharComanda(estado: string | undefined, metodoAtual?: 
     default:
       return 'Não foi possível fechar a comanda. Tente de novo.'
   }
+}
+
+/** Botão de Mesas: comanda sem rodada ativa (todas canceladas) só é encerrada, sem cobrança. */
+export function textoBotaoFecharComanda(rodadasAtivas: number): string {
+  return rodadasAtivas === 0 ? 'Encerrar comanda vazia' : 'Fechar comanda e cobrar'
+}
+
+/** Toast de sucesso do fechamento. Vale o total devolvido pelo servidor (a tela pode estar desatualizada). */
+export function textoComandaFechada(
+  mesa: string,
+  totalServidorCentavos: number | undefined,
+  totalTelaCentavos: number,
+  vazia: boolean,
+): string {
+  if (vazia) return `Mesa ${mesa} encerrada sem cobrança.`
+  return `Mesa ${mesa} fechada: ${formatarPrecoBR(totalServidorCentavos ?? totalTelaCentavos)}.`
 }

@@ -8,6 +8,7 @@ import { PGlite } from '@electric-sql/pglite'
 const ler = (arquivo: string) => readFileSync(new URL(`../supabase/migrations/${arquivo}`, import.meta.url), 'utf8')
 const sqlComanda = ler('20261029100000_comanda_aberta.sql')
 const sql = ler('20261029110000_fechar_comanda.sql')
+const sqlVazia = ler('20261029140000_fechar_comanda_vazia.sql')
 
 const B1 = 'b1000000-0000-4000-8000-000000000001'
 const B2 = 'b2000000-0000-4000-8000-000000000002'
@@ -124,6 +125,8 @@ describe('migration fechar comanda (PGlite)', () => {
     await db.exec(sqlComanda)
     await db.exec(sql)
     await db.exec(sql) // idempotente
+    await db.exec(sqlVazia)
+    await db.exec(sqlVazia) // idempotente
     await db.exec(`update public.barracas set comanda_aberta_habilitada = true, taxa_servico_habilitada = true`)
   })
 
@@ -172,15 +175,36 @@ describe('migration fechar comanda (PGlite)', () => {
     assert.equal((await pedido(c.id)).metodo_pagamento, 'credito')
   })
 
-  test('sem rodada ativa: sem_itens e a comanda continua aberta', async () => {
+  test('sem rodada ativa: fecha com total 0, sem taxa e sem exigir forma de pagamento', async () => {
+    const zero = { estado: 'ok', metodo: null, subtotal_centavos: 0, taxa_servico_centavos: 0, total_centavos: 0 }
     const a = await rodada(B1, '7', [[1000, 1]])
     await db.query(`update public.pedidos set status = 'cancelado' where id = $1`, [a.id])
-    assert.deepEqual(await fechar(DONO_B1, a.comanda_id, 'pix'), { estado: 'sem_itens' })
-    assert.equal((await comanda(a.comanda_id)).status, 'aberta')
-    // Comanda sem nenhum pedido.
+    assert.deepEqual(await fechar(DONO_B1, a.comanda_id, null, true), zero)
+    assert.deepEqual(await comanda(a.comanda_id), {
+      status: 'fechada', metodo_pagamento: null, taxa_servico_bps: 0, taxa_servico_centavos: 0, fechada_por: DONO_B1, fechada: true,
+    })
+    assert.equal((await pedido(a.id)).metodo_pagamento, 'na_entrega', 'rodada cancelada não recebe método')
+    // Reenvio da fila (com ou sem método): ok idempotente, nada muda.
+    assert.deepEqual(await fechar(DONO_B1, a.comanda_id, null), zero)
+    assert.deepEqual(await fechar(DONO_B1, a.comanda_id, 'pix'), zero)
+    assert.equal((await comanda(a.comanda_id)).metodo_pagamento, null)
+
+    // Comanda sem nenhum pedido, mesmo mandando um método: fecha vazia.
     const vazia = await db.query<{ id: string }>(
       `insert into public.comandas (barraca_id, mesa, mesa_normalizada) values ($1, '8', '8') returning id`, [B1])
-    assert.deepEqual(await fechar(DONO_B1, vazia.rows[0].id, 'pix'), { estado: 'sem_itens' })
+    assert.deepEqual(await fechar(DONO_B1, vazia.rows[0].id, 'pix'), zero)
+    assert.equal((await comanda(vazia.rows[0].id)).status, 'fechada')
+
+    // Com rodada ativa, a forma de pagamento continua obrigatória.
+    const b = await rodada(B1, '9', [[1000, 1]])
+    assert.deepEqual(await fechar(DONO_B1, b.comanda_id, null), { estado: 'metodo_invalido' })
+    assert.equal((await comanda(b.comanda_id)).status, 'aberta')
+
+    // Comanda vazia de outra barraca: sem_acesso, nada muda.
+    const c = await rodada(B1, '9b', [[1000, 1]])
+    await db.query(`update public.pedidos set status = 'cancelado' where id = $1`, [c.id])
+    assert.deepEqual(await fechar(DONO_B2, c.comanda_id, null), { estado: 'sem_acesso' })
+    assert.equal((await comanda(c.comanda_id)).status, 'aberta')
   })
 
   test('taxa: não cobrar = 0; barraca sem taxa habilitada = 0; 0 bps = 0', async () => {

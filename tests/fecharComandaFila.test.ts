@@ -2,7 +2,19 @@
 import assert from 'node:assert/strict'
 import { readFileSync } from 'node:fs'
 import { describe, test } from 'node:test'
-import { desfechoFecharComanda } from '../src/lib/fecharComandaFila.ts'
+import { desfechoFecharComanda, erroOnlineVaiParaFila } from '../src/lib/fecharComandaFila.ts'
+
+describe('erroOnlineVaiParaFila', () => {
+  test('erro de rede (sem código) e banco sem a RPC vão para a fila', () => {
+    assert.equal(erroOnlineVaiParaFila({ code: '', message: 'TypeError: Failed to fetch' }), true)
+    assert.equal(erroOnlineVaiParaFila({ message: 'Failed to fetch' }), true)
+    assert.equal(erroOnlineVaiParaFila({ code: 'PGRST202' }), true)
+  })
+  test('erro do servidor com código fica na tela (a fila repetiria o mesmo erro)', () => {
+    assert.equal(erroOnlineVaiParaFila({ code: '42501', message: 'permission denied' }), false)
+    assert.equal(erroOnlineVaiParaFila({ code: 'P0001' }), false)
+  })
+})
 
 describe('desfechoFecharComanda', () => {
   test('ok (inclusive o reenvio com o mesmo método) sai da fila', () => {

@@ -2,7 +2,7 @@ import { useState } from 'react'
 import { useNavigate } from 'react-router'
 import { useBarracaAtual } from '../layouts/contextoBarraca'
 import { useComandasAbertas } from '../hooks/useComandas'
-import { comandaAbertaLigada } from '../lib/comandaAberta'
+import { comandaAbertaLigada, textoBotaoFecharComanda } from '../lib/comandaAberta'
 import { minutosEntre } from '../lib/tempoPedido'
 import { formatarPrecoBR } from '../lib/preco'
 import { FecharComandaSheet } from '../components/FecharComandaSheet'
@@ -23,9 +23,10 @@ const rotuloSenha = (n: number | null) => (n == null ? 'sem senha' : `senha ${St
 export function Mesas() {
   const barraca = useBarracaAtual()
   const navigate = useNavigate()
-  const { comandas, carregando, erro } = useComandasAbertas(barraca.id)
+  const { comandas, carregando, erro, recarregar } = useComandasAbertas(barraca.id)
   const [abertaId, setAbertaId] = useState<string | null>(null)
-  const [fechando, setFechando] = useState(false)
+  // Id da comanda em fechamento (não um booleano): se ela sumir da lista, a folha não reaparece na próxima mesa.
+  const [fechandoId, setFechandoId] = useState<string | null>(null)
   const detalhe = comandas.find((c) => c.id === abertaId) ?? null
 
   return (
@@ -73,20 +74,21 @@ export function Mesas() {
                 Adicionar item à Mesa {detalhe.mesa}
               </Button>
             )}
-            <Button size="lg" className="min-h-11" onClick={() => setFechando(true)}>
-              Fechar comanda e cobrar
+            <Button size="lg" className="min-h-11" onClick={() => setFechandoId(detalhe.id)}>
+              {textoBotaoFecharComanda(detalhe.rodadas.length)}
             </Button>
             <Button variant="ghost" size="lg" className="min-h-11" onClick={() => setAbertaId(null)}>
               Voltar às mesas
             </Button>
-            {fechando && (
+            {fechandoId === detalhe.id && (
               <FecharComandaSheet
                 comanda={detalhe}
                 barraca={barraca}
-                aoCancelar={() => setFechando(false)}
-                aoFechar={() => {
-                  setFechando(false)
+                aoCancelar={() => setFechandoId(null)}
+                aoFechar={(confirmado) => {
+                  setFechandoId(null)
                   setAbertaId(null)
+                  if (confirmado) recarregar()
                 }}
               />
             )}

@@ -1,5 +1,6 @@
 // Fechar a comanda aberta da Mesa pela fila de sincronização (operação `fechar_comanda`, payload
-// `{ comanda_id, metodo, cobrar_taxa_servico }`). Idempotente no servidor: reenviar com o mesmo método devolve `ok`.
+// `{ comanda_id, metodo, cobrar_taxa_servico }`; `metodo` null = comanda sem rodada ativa, encerrada sem cobrança).
+// Idempotente no servidor: reenviar com o mesmo método devolve `ok`. `sem_itens` só vem de servidor sem a migration 20261029140000.
 // Espelha src/lib/definirMetodoFila.ts. PURO, testado em tests/fecharComandaFila.test.ts.
 
 export type DesfechoFecharNaFila =
@@ -22,4 +23,11 @@ export function desfechoFecharComanda(
   if (erro) return erro.code === 'PGRST202' ? 'adiar' : 'repetir'
   if (resposta?.estado === 'ok') return 'concluida'
   return resposta?.estado !== undefined && ESTADOS_SEM_SOLUCAO.has(resposta.estado) ? 'falha' : 'repetir'
+}
+
+/** Erro da chamada ONLINE da RPC (tela de fechar). Sem código = rede caiu: vai para a fila, que reenvia. PGRST202 =
+ * banco ainda sem a RPC: a fila adia. Qualquer outro código é erro do servidor: fica na tela, porque a fila só
+ * repetiria o mesmo erro e o operador acharia que era falta de internet. */
+export function erroOnlineVaiParaFila(erro: { code?: string } | null | undefined): boolean {
+  return !erro?.code || erro.code === 'PGRST202'
 }

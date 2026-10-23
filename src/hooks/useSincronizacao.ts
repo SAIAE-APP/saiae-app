@@ -135,7 +135,7 @@ async function executarOperacao(op: OperacaoPendente): Promise<void> {
       // o mesmo método devolve ok. Banco sem a RPC: adiada, sem travar a fila. Estado sem solução sai da fila com aviso.
       const { comanda_id, metodo, cobrar_taxa_servico } = op.payload as {
         comanda_id: string
-        metodo: string
+        metodo: string | null // null = comanda vazia (sem rodada ativa), encerrada sem cobrança
         cobrar_taxa_servico: boolean
       }
       const { data, error } = await supabase.rpc('fechar_comanda', {
