@@ -37,5 +37,9 @@ export function textoDoAviso(
   config: AvisosConfig,
   valores: { nome?: string | null; senha: number | string | null; barraca: string },
 ): string {
-  return montarMensagemPronto(config[tipo].texto ?? AVISOS_PADRAO[tipo].texto, valores)
+  // Texto que fica vazio depois de trocar as variáveis (ex.: só "{nome}" sem nome) vale como "sem texto": usa o padrão.
+  return (
+    montarMensagemPronto(config[tipo].texto ?? AVISOS_PADRAO[tipo].texto, valores) ||
+    montarMensagemPronto(AVISOS_PADRAO[tipo].texto, valores)
+  )
 }

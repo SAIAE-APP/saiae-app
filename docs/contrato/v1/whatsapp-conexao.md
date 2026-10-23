@@ -26,7 +26,7 @@ Erros: 401 (igual em toda falha de autenticação), 422 (corpo fora do contrato,
 Corpo: `{ "barraca_id": "<uuid>", "estado": "conectado" | "desconectado" | "caiu", "occurred_at": "ISO-8601", "request_id": "<uuid>" }`. Corpo máximo 4 KB. `occurred_at` mais antigo que o estado gravado é ignorado. Barraca desconhecida responde igual ao sucesso. 200 `{ "ok": true }`; 401 e 422 como acima; 503 sem segredo.
 
 ## 4. Campo `data.avisos` nos eventos `order.*`
-Ver `evento.schema.json` (`aviso_config`) e `exemplos/pedido-com-avisos.json`. Ausente = os cinco avisos ativos com texto padrão. `ativo: false` = não enviar (e registrar). `texto: null` = padrão. Variáveis `{nome}` `{senha}` `{barraca}`: variável sem valor some da frase junto do espaço antes dela.
+Ver `evento.schema.json` (`aviso_config`) e `exemplos/pedido-com-avisos.json`. Ausente = os cinco avisos ativos com texto padrão. `ativo: false` = não enviar (e registrar). `texto: null` = padrão. Variáveis `{nome}` `{senha}` `{barraca}`: variável sem valor some da frase junto do espaço antes dela. Texto que ficar vazio depois de trocar as variáveis (ex.: só `{nome}` sem nome) também vale como padrão: o CRM deve aplicar essa regra.
 
 ## 5. Quais eventos geram qual aviso
 | Aviso | Evento |

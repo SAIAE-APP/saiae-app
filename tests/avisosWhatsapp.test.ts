@@ -63,3 +63,11 @@ describe('textoDoAviso', () => {
     }
   })
 })
+
+test('texto só com variáveis vazias cai no texto padrão', async () => {
+  const { textoDoAviso, normalizarAvisos, AVISOS_PADRAO } = await import('../src/lib/avisosWhatsapp.ts')
+  const cfg = normalizarAvisos({ pronto: { ativo: true, texto: '{nome}' } })
+  const t = textoDoAviso('pronto', cfg, { nome: null, senha: null, barraca: '' })
+  assert.notEqual(t.trim(), '')
+  assert.ok(t.includes('pronto'), AVISOS_PADRAO.pronto.texto)
+})

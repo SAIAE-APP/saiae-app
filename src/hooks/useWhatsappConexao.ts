@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useState } from 'react'
 import { supabase } from '../lib/supabase'
-import { telaDaConexao, type RespostaConexao, type TelaConexao } from '../lib/estadoWhatsapp'
+import { acaoDoPoll, telaDaConexao, type RespostaConexao, type TelaConexao } from '../lib/estadoWhatsapp'
 
 type Acao = 'iniciar' | 'status' | 'desconectar' | 'historico'
 
@@ -31,10 +31,10 @@ export function useWhatsappConexao(barracaId: string) {
   const estado = resposta?.estado
   useEffect(() => {
     // eslint-disable-next-line react-hooks/set-state-in-effect
-    void chamar('status')
+    void chamar(acaoDoPoll(estado))
     const intervalo = estado === 'aguardando_qr' ? POLL_QR_MS : POLL_PADRAO_MS
     const id = window.setInterval(() => {
-      if (document.visibilityState === 'visible') void chamar('status')
+      if (document.visibilityState === 'visible') void chamar(acaoDoPoll(estado))
     }, intervalo)
     return () => window.clearInterval(id)
   }, [chamar, estado])

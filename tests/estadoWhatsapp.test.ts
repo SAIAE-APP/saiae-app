@@ -44,3 +44,11 @@ describe('mascararNumero', () => {
     }
   })
 })
+
+describe('acaoDoPoll', () => {
+  test('conectado busca o histórico; os outros estados só o status', async () => {
+    const { acaoDoPoll } = await import('../src/lib/estadoWhatsapp.ts')
+    assert.equal(acaoDoPoll('conectado'), 'historico')
+    for (const e of [undefined, 'sem_sessao', 'aguardando_qr', 'desconectado'] as const) assert.equal(acaoDoPoll(e), 'status')
+  })
+})

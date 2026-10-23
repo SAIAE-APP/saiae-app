@@ -43,3 +43,8 @@ export function telaDaConexao(r: RespostaConexao | null, erro: boolean): TelaCon
       return { tipo: 'sem_sessao' }
   }
 }
+
+/** Só a ação `historico` devolve os avisos (contrato §2); os outros estados precisam apenas do status. */
+export function acaoDoPoll(estado: RespostaConexao['estado'] | undefined): 'status' | 'historico' {
+  return estado === 'conectado' ? 'historico' : 'status'
+}

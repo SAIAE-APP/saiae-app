@@ -58,11 +58,15 @@ function EditorAvisos({ barraca }: { barraca: Barraca }) {
       setErro('Sem internet. Não foi salvo.')
       return
     }
+    // Texto em branco = texto padrão (null); o CRM só entende null como "usar o padrão".
+    const limpo = Object.fromEntries(
+      AVISO_TIPOS.map((t) => [t, { ativo: rascunho.valor[t].ativo, texto: rascunho.valor[t].texto?.trim() || null }]),
+    ) as AvisosConfig
     setSalvando(true)
     try {
       const { data, error } = await supabase.rpc('whatsapp_avisos_salvar', {
         p_barraca_id: barraca.id,
-        p_avisos: rascunho.valor,
+        p_avisos: limpo,
       })
       if (error) throw error
       const estado = (data as { estado?: string } | null)?.estado
@@ -74,7 +78,7 @@ function EditorAvisos({ barraca }: { barraca: Barraca }) {
         )
         return
       }
-      atualizarBarracaCache(barraca.slug, { whatsapp_avisos: rascunho.valor })
+      atualizarBarracaCache(barraca.slug, { whatsapp_avisos: limpo })
       rascunho.descartar()
       setSalvo(true)
     } catch (e) {
@@ -222,7 +226,6 @@ export function SecaoWhatsappAutomacao({ barraca }: { barraca: Barraca }) {
             >
               Desconectar
             </Button>
-            <EditorAvisos barraca={barraca} />
             <div className="mt-4 border-t border-mesa-border-subtle pt-4">
               <p className="text-sm font-medium text-mesa-text-primary">Últimos avisos</p>
               {avisos.length === 0 ? (
@@ -240,6 +243,7 @@ export function SecaoWhatsappAutomacao({ barraca }: { barraca: Barraca }) {
             </div>
           </>
         )}
+        <EditorAvisos barraca={barraca} />
       </Card>
     </section>
   )
