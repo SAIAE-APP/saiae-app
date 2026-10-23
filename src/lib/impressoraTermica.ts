@@ -17,7 +17,7 @@ import type { Barraca, LarguraPapel, PedidoComItens, TipoAtendimento } from '../
 import { faixaImpressao, tipoDoPedido } from './atendimento'
 import { formatarTelefoneBR, type DadosEntrega } from './entrega'
 import { formatarPrecoBR } from './preco'
-import { humanizarMetodo } from './metodoPagamento'
+import { humanizarMetodo, humanizarMetodoDoPedido } from './metodoPagamento'
 import { linhaPagamentoAReceber } from './pagarDepois'
 import { AVISO_HOMOLOGACAO, ambienteDaNota, formatarCpf } from './fiscal'
 import { linhasRodapeProcon } from './rodapeProcon'
@@ -444,7 +444,8 @@ export function montarComanda(dados: DadosComanda, largura: LarguraPapel): Uint8
   if (aReceber) {
     encoder = encoder.bold(true).line(aReceber).bold(false)
   } else if (dados.metodoPagamento) {
-    encoder = encoder.line(semAcento(`Pagamento: ${humanizarMetodo(dados.metodoPagamento)}`))
+    // Mesa com 'na_entrega' só existe como rodada de comanda aberta: sai "Comanda aberta".
+    encoder = encoder.line(semAcento(`Pagamento: ${humanizarMetodoDoPedido(dados.metodoPagamento, tipo === 'mesa')}`))
   }
 
   // PROCON: a autuação exige o 151 e a sede em tudo que é entregue ao consumidor.

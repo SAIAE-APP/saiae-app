@@ -6,7 +6,7 @@ import { useTheme } from '../hooks/useTheme'
 import { MOTIVOS_CANCELAMENTO } from '../lib/cancelamento'
 import { formatarPrecoBR } from '../lib/preco'
 import { ROTULO_MODO, nomeDoCliente, rotuloAtendimento, tipoDoPedido } from '../lib/atendimento'
-import { corMetodo, humanizarMetodo, METODOS_DISPONIVEIS } from '../lib/metodoPagamento'
+import { corMetodo, humanizarMetodoDoPedido, METODOS_DISPONIVEIS } from '../lib/metodoPagamento'
 import { ROTULO_A_RECEBER, pagarDepoisLigado, pedidoAReceber } from '../lib/pagarDepois'
 import { hojeISO } from '../lib/datas'
 import { calcularIntervalosRelatorio, calcularTotalPedido, ehEntregaDireta } from '../lib/relatorio'
@@ -42,9 +42,9 @@ function motivoHumanizado(motivo: string | null): string {
   return MOTIVOS_CANCELAMENTO.find((m) => m.valor === motivo)?.rotulo ?? motivo ?? 'não informado'
 }
 
-function RotuloMetodo({ chave }: { chave: string | null }) {
+function RotuloMetodo({ chave, daComanda }: { chave: string | null; daComanda: boolean }) {
   const metodo = METODOS_DISPONIVEIS.find((m) => m.chave === chave)
-  if (!metodo) return <>{humanizarMetodo(chave)}</>
+  if (!metodo) return <>{humanizarMetodoDoPedido(chave, daComanda)}</>
   return (
     <span className="inline-flex items-center gap-1">
       <Icone nome={metodo.icone} size={14} />
@@ -368,7 +368,7 @@ function CardHistorico({
         <span
           className={`inline-flex items-center rounded-mesa-balao px-3 py-1 text-xs font-medium ${corMetodo(pedido.metodo_pagamento)}`}
         >
-          <RotuloMetodo chave={pedido.metodo_pagamento} />
+          <RotuloMetodo chave={pedido.metodo_pagamento} daComanda={!!pedido.comanda_id} />
         </span>
         {pedidoAReceber(pedido, pagarDepoisLigado(barraca)) && <Badge variant="warning">{ROTULO_A_RECEBER}</Badge>}
       </div>

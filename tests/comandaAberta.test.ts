@@ -125,3 +125,11 @@ test('criarDebounce: rajada vira uma chamada só; cancelar impede', async () => 
   await new Promise((r) => setTimeout(r, 60))
   assert.equal(n, 1)
 })
+
+test('humanizarMetodoDoPedido: rodada de comanda aberta não é "A definir na entrega"', async () => {
+  const { humanizarMetodoDoPedido } = await import('../src/lib/metodoPagamento.ts')
+  assert.equal(humanizarMetodoDoPedido('na_entrega', true), 'Comanda aberta')
+  assert.equal(humanizarMetodoDoPedido('na_entrega', false), 'A definir na entrega')
+  assert.equal(humanizarMetodoDoPedido('pix', true), 'Pix')
+  assert.equal(humanizarMetodoDoPedido(null, true), 'Método não informado')
+})
