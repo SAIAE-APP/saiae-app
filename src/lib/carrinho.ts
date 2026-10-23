@@ -46,6 +46,8 @@ export type EstadoParaConfirmar = {
   clienteNome?: string
   /** WhatsApp opcional (só pra avisar "pedido pronto"). */
   clienteTelefone?: string
+  /** Mesa travada de uma comanda aberta (vem de Mesas > Adicionar item); volta intacta em "Voltar e editar". */
+  comandaMesa?: string
 }
 
 /** ConfirmarPedido → LancarPedido, ao clicar "Voltar e editar". */
@@ -62,6 +64,7 @@ export type EstadoParaEditar = {
   entrega?: DadosEntrega
   clienteNome?: string
   clienteTelefone?: string
+  comandaMesa?: string
 }
 
 /** ConfirmarPedido → LancarPedido, depois de enviar com sucesso — LancarPedido

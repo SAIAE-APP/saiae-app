@@ -15,6 +15,7 @@ import { Cozinha } from './pages/Cozinha'
 import { Historico } from './pages/Historico'
 import { Desktop } from './pages/Desktop'
 import { Caixa } from './pages/Caixa'
+import { Mesas } from './pages/Mesas'
 import { TelaChamada } from './pages/TelaChamada'
 import { Ajustes } from './pages/Ajustes'
 import { CardapioPublico } from './pages/CardapioPublico'
@@ -143,6 +144,7 @@ function App() {
               <Route path="historico" element={<Historico />} />
               <Route path="desktop" element={<Desktop />} />
               <Route path="caixa" element={<Caixa />} />
+              <Route path="mesas" element={<Mesas />} />
               <Route path="chamada" element={<TelaChamada />} />
               <Route path="ajustes" element={<Ajustes categoria="conta" />} />
               <Route path="ajustes/cardapio" element={<Ajustes categoria="cardapio" />} />

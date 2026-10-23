@@ -1023,6 +1023,7 @@ export function LancarPedido() {
         entrega: tipoEfetivo === 'entrega' ? entregaHerdada : undefined,
         clienteNome: clienteNomeHerdado,
         clienteTelefone: clienteTelefoneHerdado,
+        comandaMesa: comandaMesaRecebida ?? undefined,
       } satisfies EstadoParaConfirmar,
     })
   }
@@ -1158,7 +1159,7 @@ export function LancarPedido() {
           aria-label="Buscar item do cardápio"
         />
 
-        {modosDisponiveis.length > 1 && !comandaMesaRecebida && (
+        {modosDisponiveis.length > 1 && !(comandaMesaRecebida && tipoEfetivo === 'mesa') && (
           <div className="mt-4">
             <SegmentedControl
               aria-label="Tipo de atendimento"

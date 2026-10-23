@@ -2,12 +2,14 @@
 import assert from 'node:assert/strict'
 import { test } from 'node:test'
 import {
+  agruparComandas,
   comandaAbertaLigada,
   modoUsaComanda,
   normalizarMesa,
   subtotalDaComanda,
   taxaPadraoMarcada,
   taxaServicoCentavos,
+  textoBotaoEnviar,
   totalDoFechamento,
 } from '../src/lib/comandaAberta.ts'
 
@@ -77,4 +79,37 @@ test('taxaPadraoMarcada: só true literal', () => {
   assert.equal(taxaPadraoMarcada({ taxa_servico_habilitada: true }), true)
   assert.equal(taxaPadraoMarcada({ taxa_servico_habilitada: false }), false)
   assert.equal(taxaPadraoMarcada({}), false)
+})
+
+test('textoBotaoEnviar: não repete "Mesa" quando o operador já digitou', () => {
+  assert.equal(textoBotaoEnviar(true, 'Mesa 5', false), 'Abrir comanda da Mesa 5')
+  assert.equal(textoBotaoEnviar(true, 'mesa-5', true), 'Adicionar à comanda da Mesa 5')
+  assert.equal(textoBotaoEnviar(true, 'MESA: 5', true), 'Adicionar à comanda da Mesa 5')
+  assert.equal(textoBotaoEnviar(true, ' 5 ', false), 'Abrir comanda da Mesa 5')
+  assert.equal(textoBotaoEnviar(true, 'Mesanino', false), 'Abrir comanda da Mesa Mesanino')
+})
+
+test('agruparComandas: duas rodadas viram uma comanda com subtotal somado, da mais antiga à mais nova', () => {
+  const item = (q: number, p: number, removido = false) => ({ nome_item: 'X', quantidade: q, preco_centavos_unitario: p, removido })
+  const linhas = [
+    { comanda_id: 'b', mesa: '7', aberta_em: '2026-10-23T12:00:00Z', pedido_id: 'p3', senha: 3, criado_em: '2026-10-23T12:00:00Z', status: 'a_fazer', itens: [item(1, 500)] },
+    { comanda_id: 'a', mesa: '5', aberta_em: '2026-10-23T11:00:00Z', pedido_id: 'p2', senha: 2, criado_em: '2026-10-23T11:30:00Z', status: 'pronto', itens: [item(2, 1000), item(1, 300, true)] },
+    { comanda_id: 'a', mesa: '5', aberta_em: '2026-10-23T11:00:00Z', pedido_id: 'p1', senha: 1, criado_em: '2026-10-23T11:00:00Z', status: 'a_fazer', itens: [item(1, 250)] },
+    { comanda_id: 'a', mesa: '5', aberta_em: '2026-10-23T11:00:00Z', pedido_id: 'p9', senha: 9, criado_em: '2026-10-23T11:40:00Z', status: 'cancelado', itens: [item(9, 9999)] },
+  ]
+  const r = agruparComandas(linhas)
+  assert.deepEqual(r.map((c) => c.id), ['a', 'b'])
+  assert.equal(r[0].subtotalCentavos, 2250)
+  assert.deepEqual(r[0].rodadas.map((x) => x.pedidoId), ['p1', 'p2'])
+  assert.equal(r[0].rodadas[1].itens.length, 1)
+  assert.equal(r[1].subtotalCentavos, 500)
+})
+
+test('agruparComandas: comanda só com rodada cancelada continua listada, com total zero', () => {
+  const r = agruparComandas([
+    { comanda_id: 'c', mesa: '1', aberta_em: '2026-10-23T10:00:00Z', pedido_id: 'p', senha: 1, criado_em: '2026-10-23T10:00:00Z', status: 'cancelado', itens: [{ nome_item: 'X', quantidade: 1, preco_centavos_unitario: 100, removido: false }] },
+  ])
+  assert.equal(r.length, 1)
+  assert.equal(r[0].subtotalCentavos, 0)
+  assert.equal(r[0].rodadas.length, 0)
 })

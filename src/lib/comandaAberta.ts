@@ -31,7 +31,59 @@ export function normalizarMesa(texto: string): string {
 export function textoBotaoEnviar(modoComanda: boolean, mesa: string, mesaTemComanda: boolean | undefined): string {
   if (!modoComanda) return 'Confirmar e enviar'
   if (mesaTemComanda === undefined) return 'Enviar para a cozinha'
-  return `${mesaTemComanda ? 'Adicionar à comanda da' : 'Abrir comanda da'} Mesa ${mesa.trim()}`
+  // Se o operador já digitou "Mesa 5", não vira "Mesa Mesa 5".
+  const numero = mesa.trim().replace(/^mesa(?:(?![\p{L}\p{N}_])|(?=[0-9]))[^\p{L}\p{N}]*/iu, '')
+  return `${mesaTemComanda ? 'Adicionar à comanda da' : 'Abrir comanda da'} Mesa ${numero}`
+}
+
+export type ComandaAberta = {
+  id: string
+  mesa: string
+  abertaEm: string
+  subtotalCentavos: number
+  rodadas: {
+    pedidoId: string
+    senha: number | null
+    criadoEm: string
+    status: string
+    itens: { nome: string; quantidade: number }[]
+  }[]
+}
+
+// Uma linha por pedido (rodada) de comanda aberta, já com os dados da comanda.
+export type LinhaBanco = {
+  comanda_id: string
+  mesa: string
+  aberta_em: string
+  pedido_id: string
+  senha: number | null
+  criado_em: string
+  status: string
+  itens: { nome_item: string; quantidade: number; preco_centavos_unitario: number; removido?: boolean }[]
+}
+
+// Agrupa as rodadas por comanda. Rodada cancelada e item removido não entram no subtotal nem na lista;
+// a comanda aberta continua listada mesmo sem rodada ativa (o operador ainda precisa fechá-la).
+export function agruparComandas(linhas: LinhaBanco[]): ComandaAberta[] {
+  const porId = new Map<string, ComandaAberta>()
+  for (const l of [...linhas].sort((a, b) => a.criado_em.localeCompare(b.criado_em))) {
+    let c = porId.get(l.comanda_id)
+    if (!c) {
+      c = { id: l.comanda_id, mesa: l.mesa, abertaEm: l.aberta_em, subtotalCentavos: 0, rodadas: [] }
+      porId.set(l.comanda_id, c)
+    }
+    if (l.status === 'cancelado') continue
+    const itens = l.itens.filter((i) => !i.removido)
+    c.subtotalCentavos += subtotalDaComanda([{ status: l.status, itens }])
+    c.rodadas.push({
+      pedidoId: l.pedido_id,
+      senha: l.senha,
+      criadoEm: l.criado_em,
+      status: l.status,
+      itens: itens.map((i) => ({ nome: i.nome_item, quantidade: i.quantidade })),
+    })
+  }
+  return [...porId.values()].sort((a, b) => a.abertaEm.localeCompare(b.abertaEm))
 }
 
 export function subtotalDaComanda(

@@ -18,7 +18,8 @@ import type {
 } from '../lib/carrinho'
 import { METODOS_DISPONIVEIS, METODO_NA_ENTREGA, OPCAO_PAGAR_NA_ENTREGA, humanizarMetodo } from '../lib/metodoPagamento'
 import { opcaoPagarDepois, podeEnviarAReceber } from '../lib/pagarDepois'
-import { modoUsaComanda, textoBotaoEnviar } from '../lib/comandaAberta'
+import { modoUsaComanda, normalizarMesa, textoBotaoEnviar } from '../lib/comandaAberta'
+import { useComandasAbertas } from '../hooks/useComandas'
 import type { MetodoPagamento } from '../lib/metodoPagamento'
 import { BotaoHome } from '../components/ui/BotaoHome'
 import { BottomSheet } from '../components/ui/BottomSheet'
@@ -139,8 +140,16 @@ export function ConfirmarPedido() {
   const ehEntrega = estado?.tipoAtendimento === 'entrega'
   // Mesa com comanda aberta: não cobra na hora, o pedido vai à cozinha como `na_entrega` e o trigger o liga à comanda.
   const modoComanda = modoUsaComanda(barraca, estado?.tipoAtendimento)
-  // Task 5: trocar por useComandasAbertas (a mesa já tem comanda aberta?). undefined = ainda não se sabe.
-  const mesaTemComanda: boolean | undefined = undefined
+  // A mesa digitada já tem comanda aberta? undefined = ainda não se sabe (carregando, sem cache): botão neutro.
+  const comandasAbertas = useComandasAbertas(barraca.id)
+  const mesaDigitada = normalizarMesa(estado?.mesa ?? '')
+  const mesaTemComanda: boolean | undefined = !modoComanda || mesaDigitada === ''
+    ? undefined
+    : comandasAbertas.comandas.some((c) => normalizarMesa(c.mesa) === mesaDigitada)
+      ? true
+      : comandasAbertas.carregando || comandasAbertas.erro
+        ? undefined
+        : false
   const metodosAtivos = barraca.metodos_pagamento_ativos ?? METODOS_PADRAO
   // "Pagar na entrega" (o entregador define a forma real pelo link) só existe no
   // modo Entrega e vale mesmo que a barraca não tenha método nenhum ativo.
@@ -253,6 +262,7 @@ export function ConfirmarPedido() {
         entrega: ehEntrega ? entrega : undefined,
         clienteNome,
         clienteTelefone,
+        comandaMesa: estado?.comandaMesa,
       } satisfies EstadoParaEditar,
     })
   }

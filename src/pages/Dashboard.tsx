@@ -17,6 +17,8 @@ import { TourGuiado, type PassoTour } from '../components/TourGuiado'
 import { CartaoChecklistOnboarding } from '../components/CartaoChecklistOnboarding'
 import { onboardingConfigHabilitado } from '../lib/onboardingConfig'
 import { marcarTourVisto, tourJaVisto } from '../lib/tourStorage'
+import { useComandasAbertas } from '../hooks/useComandas'
+import { comandaAbertaLigada } from '../lib/comandaAberta'
 import { calcularEsperaMediaFila } from '../lib/esperaMedia'
 
 function formatarSenha(senha: number): string {
@@ -68,6 +70,9 @@ export function Dashboard() {
   const navigate = useNavigate()
   const { online } = useSincronizacaoAtual()
   const { pedidos, contagemAFazer } = usePedidosAtual()
+  const { comandas: comandasAbertas } = useComandasAbertas(barraca.id)
+  // Cartão aparece com a opção ligada OU com comanda aberta (barraca que desligou ainda precisa fechar as dela).
+  const mostrarMesas = comandaAbertaLigada(barraca) || comandasAbertas.length > 0
   const { tema, alternarTema } = useTheme()
   const { usuario, sair } = useAuth()
   const { barracas: barracasDoUsuario } = useBarracasDoUsuario(usuario)
@@ -277,6 +282,14 @@ export function Dashboard() {
             onClick={() => navigate(`/${barraca.slug}/cozinha`)}
           />
         </div>
+        {mostrarMesas && (
+          <CardDashboard
+            icone="table_restaurant"
+            titulo="Mesas abertas"
+            subtitulo={`${comandasAbertas.length} comanda${comandasAbertas.length === 1 ? '' : 's'} em aberto`}
+            onClick={() => navigate(`/${barraca.slug}/mesas`)}
+          />
+        )}
         <CardDashboard
           icone="campaign"
           titulo="Chamada"
