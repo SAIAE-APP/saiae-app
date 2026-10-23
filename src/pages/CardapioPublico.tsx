@@ -5,7 +5,7 @@ import { useResolverApelido } from '../hooks/useResolverApelido'
 import clsx from 'clsx'
 import { supabase } from '../lib/supabase'
 import { formatarPrecoBR } from '../lib/preco'
-import { DESCRICAO_CARDAPIO_MODO, ICONE_MODO, ROTULO_MODO, modosDoCardapioPublico } from '../lib/atendimento'
+import { DESCRICAO_CARDAPIO_MODO, ICONE_MODO, ROTULO_MODO_CARDAPIO, modosDoCardapioPublico } from '../lib/atendimento'
 import type { TipoAtendimento } from '../types/database'
 import { Button } from '../components/ui/Button'
 import { BottomSheet } from '../components/ui/BottomSheet'
@@ -568,7 +568,7 @@ function EscolhaModo({
             >
               <span className="flex items-center gap-2 text-base font-bold">
                 <Icone nome={ICONE_MODO[modo]} size={24} preenchido={ativo} />
-                {ROTULO_MODO[modo]}
+                {ROTULO_MODO_CARDAPIO[modo]}
                 {ativo && <Icone nome="check_circle" size={18} preenchido className="ml-auto" />}
               </span>
               <span className={`text-xs ${ativo ? 'text-mesa-neutral-900/80' : 'text-mesa-text-secondary'}`}>
@@ -1650,10 +1650,10 @@ export function CardapioPublico() {
             </div>
 
             <p className="text-sm text-mesa-text-secondary">
-              {modosPublicos.length > 1 ? 'Como receber' : 'Só ' + ROTULO_MODO[modoEfetivo].toLowerCase()}
+              {modosPublicos.length > 1 ? 'Como receber' : 'Só ' + ROTULO_MODO_CARDAPIO[modoEfetivo].toLowerCase()}
               {modosPublicos.length > 1 && ': '}
               {modosPublicos.length > 1 && (
-                <span className="font-semibold text-mesa-text-primary">{ROTULO_MODO[modoEfetivo]}</span>
+                <span className="font-semibold text-mesa-text-primary">{ROTULO_MODO_CARDAPIO[modoEfetivo]}</span>
               )}
             </p>
 

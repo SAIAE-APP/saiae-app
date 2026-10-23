@@ -17,6 +17,12 @@ export const MODOS_PADRAO: TipoAtendimento[] = ['mesa', 'balcao', 'retirada']
 export const ROTULO_MODO: Record<TipoAtendimento, string> = {
   mesa: 'Mesa',
   balcao: 'Balcão',
+  retirada: 'Para viagem',
+  entrega: 'Entrega',
+}
+
+/** Rótulo pro CLIENTE no cardápio público: lá continua "Retirada". */
+export const ROTULO_MODO_CARDAPIO: Record<'retirada' | 'entrega', string> = {
   retirada: 'Retirada',
   entrega: 'Entrega',
 }
@@ -24,7 +30,7 @@ export const ROTULO_MODO: Record<TipoAtendimento, string> = {
 export const DESCRICAO_MODO: Record<TipoAtendimento, string> = {
   mesa: 'Consumo no local, com número ou nome da mesa',
   balcao: 'Consumo no local, sem mesa',
-  retirada: 'O cliente leva embora',
+  retirada: 'O cliente leva embalado',
   entrega: 'O motoboy leva até o cliente',
 }
 
@@ -39,6 +45,33 @@ export const ICONE_MODO: Record<TipoAtendimento, string> = {
   balcao: 'storefront',
   retirada: 'takeout_dining',
   entrega: 'two_wheeler',
+}
+
+/** Ajuda curta de cada tipo no seletor de Lançar Pedido. */
+export function ajudaDoModo(
+  tipo: TipoAtendimento,
+  barraca: { comanda_aberta_habilitada?: boolean; pagamento_depois_habilitado?: boolean } | null,
+): string {
+  if (tipo === 'mesa') {
+    return barraca?.comanda_aberta_habilitada ? 'Comer aqui · conta aberta, paga no fim' : 'Comer aqui · paga agora'
+  }
+  if (tipo === 'balcao') return 'Comer aqui · paga agora'
+  if (tipo === 'retirada') {
+    return barraca?.pagamento_depois_habilitado ? 'Embalado · paga agora ou depois' : 'Embalado · paga agora'
+  }
+  return 'Embalado + endereço · paga agora'
+}
+
+const AVISO_COZINHA: Record<TipoAtendimento, string> = {
+  mesa: 'MESA (comer aqui)',
+  balcao: 'BALCÃO (comer aqui)',
+  retirada: 'PARA VIAGEM (embalar)',
+  entrega: 'ENTREGA (embalar)',
+}
+
+/** Linha de apoio: o que a cozinha vai ver na comanda deste tipo. */
+export function avisoCozinha(tipo: TipoAtendimento): string {
+  return `Cozinha vai receber: ${AVISO_COZINHA[tipo]}`
 }
 
 /** Modos ligados da barraca, na ordem fixa. Cache antigo sem o campo (ou valor
@@ -111,7 +144,7 @@ function semAcentoMaiusculo(texto: string): string {
 }
 
 /** Faixa em destaque, logo abaixo da senha da comanda impressa (2x de largura e altura): "*** MESA 12 ***",
- * "*** BALCAO ***", "*** RETIRADA ***" ou "*** ENTREGA ***". Sem acento, para a térmica genérica. Sempre cabe nas
+ * "*** BALCAO ***", "*** PARA VIAGEM ***" ou "*** ENTREGA ***". Sem acento, para a térmica genérica. Sempre cabe nas
  * `colunasFaixa` colunas (16 no papel de 58 mm, 24 no de 80 mm): mesa com nome comprido perde os asteriscos e,
  * se ainda não couber, é truncada. */
 export function faixaImpressao(
@@ -119,13 +152,13 @@ export function faixaImpressao(
   opcoes: { mesa?: string | null; colunasFaixa?: number } = {},
 ): string | null {
   if (tipo === 'entrega') return '*** ENTREGA ***'
-  if (tipo === 'retirada') return '*** RETIRADA ***'
   if (tipo === 'balcao') return '*** BALCAO ***'
   const mesa = semAcentoMaiusculo(opcoes.mesa ?? '')
-  if (!mesa) return '*** BALCAO ***'
+  if (tipo === 'mesa' && !mesa) return '*** BALCAO ***'
   const max = opcoes.colunasFaixa ?? COLUNAS_FAIXA_PADRAO
-  const comEstrelas = `*** MESA ${mesa} ***`
+  const texto = tipo === 'retirada' ? 'PARA VIAGEM' : `MESA ${mesa}`
+  const comEstrelas = `*** ${texto} ***`
   if (comEstrelas.length <= max) return comEstrelas
-  const simples = `MESA ${mesa}`
+  const simples = texto
   return simples.length <= max ? simples : simples.slice(0, max).trimEnd()
 }
