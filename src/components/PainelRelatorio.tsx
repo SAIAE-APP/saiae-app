@@ -1,3 +1,4 @@
+import { ROTULO_MODO } from '../lib/atendimento'
 import { useMemo, useState } from 'react'
 import type { ReactNode } from 'react'
 import clsx from 'clsx'
@@ -408,7 +409,7 @@ export function PainelRelatorio({
               },
               {
                 chave: 'retirada',
-                rotulo: 'Retirada',
+                rotulo: ROTULO_MODO.retirada,
                 valor: retirada.valor,
                 rotuloValor: `${retirada.quantidade} comanda${retirada.quantidade === 1 ? '' : 's'}`,
               },

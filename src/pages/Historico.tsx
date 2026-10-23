@@ -65,7 +65,7 @@ type TipoConsumo = 'todos' | 'mesa' | 'retirada' | 'entrega'
 const ROTULO_FILTRO_CONSUMO: Record<TipoConsumo, string> = {
   todos: 'Todos',
   mesa: 'No local',
-  retirada: 'Retirada',
+  retirada: ROTULO_MODO.retirada,
   entrega: 'Entrega',
 }
 

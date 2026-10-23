@@ -168,7 +168,7 @@ repetir `versionCode`: subir a cada build. Validar em aparelho Android 7–11 e
   bairro e Entrega no cardápio"): `cardapio_publico` devolve
   `barraca_modos_atendimento` e `modosDoCardapioPublico` trata resposta
   antiga ou barraca só com Entrega como modos padrão.
-  Comanda impressa traz `*** RETIRADA ***`/`*** ENTREGA ***` em 2x logo
+  Comanda impressa traz `*** PARA VIAGEM ***`/`*** ENTREGA ***` em 2x logo
   abaixo da senha. Mesa só pede número no modo Mesa. A migration
   `20261004120000_modos_atendimento.sql` PRECISA estar aplicada antes do
   deploy do app: o front manda `p_tipo_atendimento` no `criar_pedido`.

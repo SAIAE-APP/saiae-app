@@ -4,6 +4,8 @@ import clsx from 'clsx'
 export interface SegmentedControlItem {
   label: string
   count?: number
+  /** Linha de apoio sob o rótulo (opcional). */
+  sublabel?: string
   icon?: ReactNode
 }
 
@@ -67,7 +69,7 @@ export function SegmentedControl({ items, activeIndex, onChange, className, ...r
             onClick={() => onChange(index)}
             onKeyDown={(event) => handleKeyDown(event, index)}
             className={clsx(
-              'relative z-10 flex flex-1 items-center justify-center gap-1.5 rounded-mesa-sm px-3 py-2 text-sm font-medium outline-none',
+              'relative z-10 flex min-h-11 flex-1 items-center justify-center gap-1.5 rounded-mesa-sm px-3 py-2 text-sm font-medium outline-none',
               'transition-colors duration-[var(--mesa-duration-short)]',
               isActive ? 'text-mesa-neutral-900 dark:text-white' : 'text-mesa-neutral-500',
             )}
@@ -80,6 +82,7 @@ export function SegmentedControl({ items, activeIndex, onChange, className, ...r
             <span>
               {item.label}
               {item.count !== undefined && ` · ${item.count}`}
+              {item.sublabel && <span className="block text-xs font-normal text-mesa-text-secondary">{item.sublabel}</span>}
             </span>
           </button>
         )

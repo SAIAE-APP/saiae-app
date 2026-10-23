@@ -1147,17 +1147,16 @@ export function LancarPedido() {
           <div className="mt-4">
             <SegmentedControl
               aria-label="Tipo de atendimento"
-              items={modosDisponiveis.map((modo) => ({ label: ROTULO_MODO[modo] }))}
+              items={modosDisponiveis.map((modo) => ({ label: ROTULO_MODO[modo], sublabel: ajudaDoModo(modo, barraca) }))}
               activeIndex={modosDisponiveis.indexOf(tipoEfetivo)}
               onChange={(indice) => selecionarModo(modosDisponiveis[indice])}
             />
           </div>
         )}
 
-        <p className="mt-2 text-xs text-mesa-text-secondary">
-          {modosDisponiveis.length > 1 && <>{ajudaDoModo(tipoEfetivo, barraca)}<br /></>}
-          {avisoCozinha(tipoEfetivo)}
-        </p>
+        {tipoEfetivo && (
+          <p className="mt-2 text-xs text-mesa-text-secondary">{avisoCozinha(tipoEfetivo)}</p>
+        )}
 
         {tipoEfetivo === 'mesa' && (
           <Input

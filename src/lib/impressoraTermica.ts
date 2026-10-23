@@ -370,8 +370,8 @@ export function montarComanda(dados: DadosComanda, largura: LarguraPapel): Uint8
     .newline()
     .align('center')
 
-  // Retirada x Entrega em destaque logo abaixo da senha: 2x de largura e
-  // altura, "*** RETIRADA ***" (16 colunas) ainda cabe nas 32 do papel 58mm.
+  // Para viagem x Entrega em destaque logo abaixo da senha: 2x de largura e
+  // altura, "*** PARA VIAGEM ***" (19 colunas) perde os asteriscos nas 16 do 58mm.
   const tipo = dados.tipo ?? tipoDoPedido({ tipo_atendimento: null, mesa: dados.mesa, viagem: dados.viagem })
   // Mesa e Balcão também (pedido do cliente): "*** MESA 12 ***" no mesmo 2x. Cabe em colunas/2 (16 ou 24).
   const faixa = faixaImpressao(tipo, { mesa: dados.mesa, colunasFaixa: Math.floor(colunas / 2) })

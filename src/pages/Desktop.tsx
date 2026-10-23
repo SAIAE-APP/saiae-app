@@ -1,3 +1,4 @@
+import { ROTULO_MODO } from '../lib/atendimento'
 import { useEffect, useState } from 'react'
 import { supabase } from '../lib/supabase'
 import { classesBotaoIcone } from '../lib/estiloBotaoIcone'
@@ -170,7 +171,7 @@ export function Desktop() {
       const { retirada, entrega, mesaComNumero, mesaSemNumero, taxaEntrega } = atual.divisaoPorConsumo
       consumo.addRow({ modo: 'No local (com mesa)', valor: formatarPrecoBR(mesaComNumero.valor), quantidade: mesaComNumero.quantidade })
       consumo.addRow({ modo: 'No local (sem mesa)', valor: formatarPrecoBR(mesaSemNumero.valor), quantidade: mesaSemNumero.quantidade })
-      consumo.addRow({ modo: 'Retirada', valor: formatarPrecoBR(retirada.valor), quantidade: retirada.quantidade })
+      consumo.addRow({ modo: ROTULO_MODO.retirada, valor: formatarPrecoBR(retirada.valor), quantidade: retirada.quantidade })
       consumo.addRow({ modo: 'Entrega', valor: formatarPrecoBR(entrega.valor), quantidade: entrega.quantidade })
       // Taxa de entrega fica à parte, fora dos valores acima e do faturamento dos itens.
       consumo.addRow({ modo: 'Taxas de entrega (à parte)', valor: formatarPrecoBR(taxaEntrega.valor), quantidade: taxaEntrega.quantidade })
