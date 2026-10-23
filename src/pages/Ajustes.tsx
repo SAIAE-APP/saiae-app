@@ -10,6 +10,7 @@ import { supabase } from '../lib/supabase'
 import { mensagemDoErroFuncao } from '../lib/erroFuncao'
 import { salvarCredencial } from '../lib/salvarCredencial'
 import { classesBotaoIcone } from '../lib/estiloBotaoIcone'
+import { ehAppIOS } from '../lib/plataforma'
 import { useBarracaAtual } from '../layouts/contextoBarraca'
 import { useAuth } from '../hooks/useAuth'
 import { useTheme } from '../hooks/useTheme'
@@ -2797,7 +2798,8 @@ function SecaoAssinatura({ slug }: { slug: string }) {
   const navigate = useNavigate()
   const { assinatura } = useAssinaturaBarraca(slug)
 
-  if (!assinatura?.eh_dono) return null
+  // iOS: plano e assinatura ficam fora do app (Apple, 3.1.1 — ver lib/plataforma).
+  if (!assinatura?.eh_dono || ehAppIOS()) return null
 
   const rotuloStatus = !cobrancaAtiva(assinatura)
     ? 'Cobrança desativada por enquanto'

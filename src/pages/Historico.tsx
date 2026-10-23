@@ -1,6 +1,7 @@
 import { useEffect, useMemo, useState } from 'react'
 import { supabase } from '../lib/supabase'
 import { classesBotaoIcone } from '../lib/estiloBotaoIcone'
+import { ehAppIOS } from '../lib/plataforma'
 import { useBarracaAtual } from '../layouts/contextoBarraca'
 import { useTheme } from '../hooks/useTheme'
 import { MOTIVOS_CANCELAMENTO } from '../lib/cancelamento'
@@ -718,7 +719,7 @@ export function Historico() {
             activeIndex={periodosDisponiveis.findIndex((p) => p.valor === periodo)}
             onChange={(indice) => setPeriodo(periodosDisponiveis[indice].valor)}
           />
-          {planoEssencial && (
+          {planoEssencial && !ehAppIOS() && (
             <p className="mt-1.5 text-xs text-mesa-text-tertiary">
               Plano Essencial mostra até 7 dias — o Pro libera o histórico completo.
             </p>

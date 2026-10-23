@@ -2,6 +2,7 @@ import { ROTULO_MODO } from '../lib/atendimento'
 import { useEffect, useState } from 'react'
 import { supabase } from '../lib/supabase'
 import { classesBotaoIcone } from '../lib/estiloBotaoIcone'
+import { ehAppIOS } from '../lib/plataforma'
 import { useBarracaAtual } from '../layouts/contextoBarraca'
 import { useTheme } from '../hooks/useTheme'
 import { useAssinaturaBarraca } from '../hooks/useAssinaturaBarraca'
@@ -301,7 +302,7 @@ export function Desktop() {
               Exportar
             </Button>
           </div>
-          {planoEssencial && (
+          {planoEssencial && !ehAppIOS() && (
             <p className="mt-1.5 text-xs text-mesa-text-tertiary">
               Exportar é exclusivo do plano Pro — fale com o suporte pra fazer upgrade.
             </p>
