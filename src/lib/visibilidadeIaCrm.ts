@@ -19,3 +19,8 @@ export function mostrarAtendenteIa(barraca: { slug?: string | null }, flag: unkn
 export function mostrarIntegracaoCrm(barraca: { slug?: string | null }, flag: unknown): boolean {
   return flag === '1' || slugLiberado(barraca.slug)
 }
+
+/** VITE_MOSTRAR_WHATSAPP_AUTOMACAO=1 (só staging/teste) reabre a aba para todos. */
+export function mostrarWhatsappAutomacao(barraca: { slug?: string | null }, flag: unknown): boolean {
+  return flag === '1' || slugLiberado(barraca.slug)
+}

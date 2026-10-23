@@ -12,7 +12,7 @@ const TIPOS = ['recebido', 'pronto', 'saiu_entrega', 'entregue', 'cancelado']
 function avisosValidos(avisos: unknown): boolean {
   const def = schema.$defs.pedido.properties.avisos
   if (typeof avisos !== 'object' || avisos === null || Array.isArray(avisos)) return false
-  for (const [chave, cfg] of Object.entries(avisos as Record<string, any>)) {
+  for (const [chave, cfg] of Object.entries(avisos as Record<string, { ativo?: unknown; texto?: unknown }>)) {
     if (!(chave in def.properties)) return false
     if (typeof cfg?.ativo !== 'boolean') return false
     if (cfg.texto !== null && (typeof cfg.texto !== 'string' || cfg.texto.length > 500)) return false
