@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react'
+import { useEffect, useMemo, useState } from 'react'
 import { supabase } from '../lib/supabase'
 import { classesBotaoIcone } from '../lib/estiloBotaoIcone'
 import { useBarracaAtual } from '../layouts/contextoBarraca'
@@ -32,6 +32,7 @@ import { podeCorrigirMetodo } from '../lib/corrigirMetodo'
 import { ambienteDaNota, cpfValido, formatarCpf } from '../lib/fiscal'
 import { nomeComOpcoes } from '../lib/opcoes'
 import { textoCupomDoPedido } from '../lib/descontosCupom'
+import { buscarComandasPorIds, textoComandaDoPedido, type ComandaDoPedido } from '../lib/comandasPeriodo'
 import { descreverErroImpressao, imprimirCupomFiscal, impressoraSuportada } from '../lib/impressoraTermica'
 import { ROTULO_SAIU } from '../lib/saiuEntrega'
 import { minutosEntre } from '../lib/tempoPedido'
@@ -299,7 +300,9 @@ function CardHistorico({
   pedido,
   onRestaurar,
   onMetodoDefinido,
+  comanda,
 }: {
+  comanda?: ComandaDoPedido
   pedido: PedidoComItens
   onRestaurar: (pedido: PedidoComItens) => void
   onMetodoDefinido: (pedidoId: string, metodo: string) => void
@@ -339,6 +342,9 @@ function CardHistorico({
             </p>
           )}
           {textoCupomDoPedido(pedido) && <p className="text-xs text-mesa-text-tertiary">{textoCupomDoPedido(pedido)}</p>}
+          {textoComandaDoPedido(comanda, formatarPrecoBR) && (
+            <p className="text-xs text-mesa-text-tertiary">{textoComandaDoPedido(comanda, formatarPrecoBR)}</p>
+          )}
         </div>
         <div className="text-right text-sm text-mesa-text-secondary">
           <p>Entrada {formatarHora(pedido.criado_em)}</p>
@@ -456,6 +462,25 @@ export function Historico() {
   const [busca, setBusca] = useState('')
   const [tipoConsumo, setTipoConsumo] = useState<TipoConsumo>('todos')
   const [metodoFiltrado, setMetodoFiltrado] = useState<string | null>(null)
+
+  // Comandas dos pedidos listados (uma consulta por lote); sem pedido de comanda no período = nenhuma consulta.
+  const [comandasPorId, setComandasPorId] = useState<Map<string, ComandaDoPedido>>(new Map())
+  const idsComandas = useMemo(
+    () => [...new Set(pedidos.map((p) => p.comanda_id).filter((id): id is string => !!id))].sort().join(','),
+    [pedidos],
+  )
+  useEffect(() => {
+    if (!idsComandas) return
+    let cancelado = false
+    buscarComandasPorIds(barraca.id, idsComandas.split(','))
+      .then((mapa) => {
+        if (!cancelado) setComandasPorId(mapa)
+      })
+      .catch(() => {}) // etiqueta é informativa: sem ela o card segue como antes
+    return () => {
+      cancelado = true
+    }
+  }, [barraca.id, idsComandas])
 
   const [itensCardapio, setItensCardapio] = useState<Item[]>([])
   const [itemFiltradoId, setItemFiltradoId] = useState<string | null>(null)
@@ -837,6 +862,7 @@ export function Historico() {
               <CardHistorico
                 key={pedido.id}
                 pedido={pedido}
+                comanda={pedido.comanda_id ? comandasPorId.get(pedido.comanda_id) : undefined}
                 onRestaurar={restaurarPedido}
                 onMetodoDefinido={metodoDefinido}
               />

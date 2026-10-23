@@ -1,7 +1,9 @@
 import { useEffect, useState, type ReactNode } from 'react'
 import { supabase } from '../lib/supabase'
 import { formatarPrecoBR, reaisParaCentavos } from '../lib/preco'
-import { calcularTotalPedido } from '../lib/relatorio'
+import { calcularTotalPedido, somarTaxasServico } from '../lib/relatorio'
+import { buscarComandasFechadas } from '../lib/comandasPeriodo'
+import { comandaAbertaLigada } from '../lib/comandaAberta'
 import { hojeISO } from '../lib/datas'
 import { Button } from './ui/Button'
 import { Input } from './ui/Input'
@@ -309,6 +311,20 @@ export function SecaoCaixa({ barraca }: { barraca: Barraca }) {
       (soma, pedido) => soma + calcularTotalPedido(pedido),
       0,
     )
+    // Taxa de serviço de comanda fechada em dinheiro dentro do turno (fechada_em desde a abertura até agora)
+    // entrou na gaveta. Só consulta com o interruptor ligado ou com pedido de comanda no turno; débito, crédito
+    // e Pix nunca entram no dinheiro esperado.
+    let taxaServicoDinheiro = 0
+    if (comandaAbertaLigada(barraca) || ((pedidos ?? []) as PedidoComItens[]).some((p) => p.comanda_id)) {
+      const de = new Date(caixa.aberto_em)
+      const ate = new Date()
+      try {
+        const comandas = await buscarComandasFechadas(barraca.id, de, ate, 'dinheiro')
+        taxaServicoDinheiro = somarTaxasServico(comandas, de, ate).porMetodo.dinheiro ?? 0
+      } catch {
+        return false // sem a taxa o esperado sairia errado: não fecha com número errado
+      }
+    }
     const totalSuprimento = movimentos
       .filter((m) => m.tipo === 'suprimento')
       .reduce((soma, m) => soma + m.valor_centavos, 0)
@@ -316,7 +332,7 @@ export function SecaoCaixa({ barraca }: { barraca: Barraca }) {
       .filter((m) => m.tipo === 'sangria')
       .reduce((soma, m) => soma + m.valor_centavos, 0)
 
-    const valorEsperado = caixa.valor_abertura_centavos + totalDinheiro + totalSuprimento - totalSangria
+    const valorEsperado = caixa.valor_abertura_centavos + totalDinheiro + taxaServicoDinheiro + totalSuprimento - totalSangria
     const diferenca = valorContadoCentavos - valorEsperado
 
     const { data, error } = await supabase

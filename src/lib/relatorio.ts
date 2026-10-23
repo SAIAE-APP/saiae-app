@@ -1,6 +1,6 @@
-import { deslocarDias, hojeISO } from './datas'
+import { deslocarDias, hojeISO } from './datas.ts'
 import type { MetodoPagamento } from './metodoPagamento'
-import { tipoDoPedido } from './atendimento'
+import { tipoDoPedido } from './atendimento.ts'
 import type { PedidoComItens } from '../types/database'
 
 /** `na_entrega`: pedido do cardápio digital cujo método real só se define na entrega. */
@@ -446,4 +446,33 @@ export function calcularIntervalosRelatorio(filtro: FiltroRelatorio): {
   const fim = filtro.dataFim && filtro.dataFim >= inicio ? filtro.dataFim : inicio
   const atual = { inicio, fim }
   return { atual, comparacao: periodoAnterior(atual) }
+}
+
+export type TaxasServico = { totalCentavos: number; porMetodo: Record<string, number> }
+
+/** Taxa de serviço das comandas FECHADAS no período, à parte do faturamento dos itens.
+ * Janela por `fechada_em`, inclusiva nas duas pontas (`de` <= fechada_em <= `ate`).
+ * Taxa 0 não gera linha; método nulo cai em `nao_informado`. */
+export function somarTaxasServico(
+  comandas: { fechada_em: string; taxa_servico_centavos: number; metodo_pagamento: string | null }[],
+  de: Date,
+  ate: Date,
+): TaxasServico {
+  const porMetodo: Record<string, number> = {}
+  let totalCentavos = 0
+  for (const c of comandas) {
+    const quando = new Date(c.fechada_em).getTime()
+    if (!(c.taxa_servico_centavos > 0) || quando < de.getTime() || quando > ate.getTime()) continue
+    const chave = c.metodo_pagamento ?? 'nao_informado'
+    porMetodo[chave] = (porMetodo[chave] ?? 0) + c.taxa_servico_centavos
+    totalCentavos += c.taxa_servico_centavos
+  }
+  return { totalCentavos, porMetodo }
+}
+
+/** Intervalo de datas do relatório (dia local) como instantes: 00:00:00.000 do início até 23:59:59.999 do fim. */
+export function janelaDoIntervalo(intervalo: IntervaloData): { de: Date; ate: Date } {
+  const [ai, mi, di] = intervalo.inicio.split('-').map(Number)
+  const [af, mf, df] = intervalo.fim.split('-').map(Number)
+  return { de: new Date(ai, mi - 1, di, 0, 0, 0, 0), ate: new Date(af, mf - 1, df, 23, 59, 59, 999) }
 }

@@ -1,4 +1,5 @@
-import { useRef } from 'react'
+import { useEffect, useRef, useState } from 'react'
+import { formatarPrecoBR } from '../lib/preco'
 import type { MouseEvent, PointerEvent } from 'react'
 import clsx from 'clsx'
 import { BottomSheet } from './ui/BottomSheet'
@@ -6,6 +7,7 @@ import { Button } from './ui/Button'
 import { Icone } from './ui/Icone'
 import { textoOpcoes } from '../lib/opcoes'
 import { textoCupomDoPedido } from '../lib/descontosCupom'
+import { buscarComandasPorIds, textoComandaDoPedido, type ComandaDoPedido } from '../lib/comandasPeriodo'
 import { iconeAtendimento, nomeDoCliente, rotuloAtendimento } from '../lib/atendimento'
 import { ROTULO_A_RECEBER, pagarDepoisLigado, pedidoAReceber } from '../lib/pagarDepois'
 import { cronometroCongelado } from '../lib/saiuEntrega'
@@ -232,6 +234,23 @@ export function DetalheComanda({
   const entreguesCount = itensParaCozinha.filter((i) => i.entregue).length
   const progresso = totalAtivos > 0 ? (entreguesCount / totalAtivos) * 100 : 0
 
+  // Uma consulta só quando o pedido aberto pertence a uma comanda (nunca por card da lista).
+  const comandaId = pedido?.comanda_id ?? null
+  const [carregada, setCarregada] = useState<ComandaDoPedido | undefined>()
+  const comanda = carregada?.id === comandaId ? carregada : undefined
+  useEffect(() => {
+    if (!comandaId) return
+    let cancelado = false
+    buscarComandasPorIds(barraca.id, [comandaId])
+      .then((mapa) => {
+        if (!cancelado) setCarregada(mapa.get(comandaId))
+      })
+      .catch(() => {})
+    return () => {
+      cancelado = true
+    }
+  }, [barraca.id, comandaId])
+
   const segundos = pedido ? segundosDecorridos(pedido) : 0
   const cor = pedido ? corSemaforo(Math.floor(segundos / 60), barraca) : 'verde'
 
@@ -283,6 +302,9 @@ export function DetalheComanda({
             </p>
           )}
           {textoCupomDoPedido(pedido) && <p className="mt-1 truncate text-xs text-mesa-neutral-400">{textoCupomDoPedido(pedido)}</p>}
+          {textoComandaDoPedido(comanda, formatarPrecoBR) && (
+            <p className="mt-1 truncate text-xs text-mesa-neutral-400">{textoComandaDoPedido(comanda, formatarPrecoBR)}</p>
+          )}
 
           <p className="mt-4 text-sm text-mesa-neutral-400">Marque os itens conforme forem saindo</p>
 

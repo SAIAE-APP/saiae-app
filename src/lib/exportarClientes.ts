@@ -50,7 +50,7 @@ function formatarData(iso: string | null | undefined): string {
   return new Date(iso).toLocaleDateString('pt-BR')
 }
 
-async function paginar<T>(buscar: (de: number, ate: number) => PromiseLike<{ data: T[] | null; error: Error | null }>): Promise<T[]> {
+export async function paginar<T>(buscar: (de: number, ate: number) => PromiseLike<{ data: T[] | null; error: Error | null }>): Promise<T[]> {
   const todos: T[] = []
   for (let de = 0; ; de += PAGINA) {
     const { data, error } = await buscar(de, de + PAGINA - 1)

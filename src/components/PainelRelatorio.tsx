@@ -8,7 +8,7 @@ import { calcularIntervalosRelatorio, METODOS_OU_NAO_INFORMADO } from '../lib/re
 import type { DetalhamentoLiquido, IntervaloData, MetodoOuNaoInformado } from '../lib/relatorio'
 import { formatarPrecoBR } from '../lib/preco'
 import { bpsParaPercentual } from '../lib/taxas'
-import { METODOS_DISPONIVEIS } from '../lib/metodoPagamento'
+import { humanizarMetodo, METODOS_DISPONIVEIS } from '../lib/metodoPagamento'
 import { MOTIVOS_CANCELAMENTO } from '../lib/cancelamento'
 import { GraficoBarras } from './charts/GraficoBarras'
 import { ListaBarras } from './charts/ListaBarras'
@@ -461,6 +461,21 @@ export function PainelRelatorio({
             <strong className="font-mesa-display text-mesa-text-primary">
               {formatarPrecoBR(atual.totalBruto - atual.descontosCupom.valor)}
             </strong>
+          </p>
+        </SecaoRelatorio>
+      )}
+
+      {atual.taxaServico.totalCentavos > 0 && (
+        <SecaoRelatorio titulo="Taxa de serviço" icone="receipt_long">
+          <p className="text-sm text-mesa-text-secondary">
+            Taxa de serviço:{' '}
+            <strong className="font-mesa-display text-mesa-text-primary">{formatarPrecoBR(atual.taxaServico.totalCentavos)}</strong>{' '}
+            em comandas fechadas no período. Fica à parte: o faturamento acima é a soma dos itens.
+          </p>
+          <p className="mt-2 text-xs text-mesa-text-tertiary">
+            {Object.entries(atual.taxaServico.porMetodo)
+              .map(([metodo, valor]) => `${humanizarMetodo(metodo === 'nao_informado' ? null : metodo)}: ${formatarPrecoBR(valor)}`)
+              .join(' · ')}
           </p>
         </SecaoRelatorio>
       )}
