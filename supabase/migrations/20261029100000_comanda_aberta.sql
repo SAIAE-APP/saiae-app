@@ -16,7 +16,8 @@
 --  * comandas entra na publicação supabase_realtime (se a publicação existir e a tabela ainda não estiver nela).
 --
 -- Rollback: drop trigger pedidos_atribuir_comanda on public.pedidos; drop function public._trg_pedidos_atribuir_comanda();
---   alter table public.pedidos drop column comanda_id;
+--   alter table public.pedidos drop constraint pedidos_comanda_barraca_fk, drop column comanda_id;
+--   alter table public.comandas drop constraint comandas_id_barraca_unico;
 --   (só se a tabela estiver na publicação, senão o comando falha) alter publication supabase_realtime drop table public.comandas;
 --   drop table public.comandas; drop function public.normalizar_mesa(text);
 --   alter table public.barracas drop column comanda_aberta_habilitada, drop column taxa_servico_habilitada,
@@ -82,12 +83,23 @@ create policy "comandas leitura da barraca"
   using (public.usuario_tem_acesso_barraca(barraca_id));
 
 -- FK composta (comanda_id, barraca_id): pedido da barraca A nunca aponta para comanda da barraca B. MATCH SIMPLE:
--- comanda_id nulo passa. Apagar a comanda zera só o comanda_id (barraca_id é not null).
+-- comanda_id nulo passa. Sem ação no delete (NO ACTION): comanda nunca é apagada.
+-- pedidos_comanda_id_fkey: FK de uma coluna da primeira versão desta migration (já aplicada em algum banco).
 alter table public.pedidos add column if not exists comanda_id uuid;
+alter table public.pedidos drop constraint if exists pedidos_comanda_id_fkey;
 alter table public.pedidos drop constraint if exists pedidos_comanda_barraca_fk;
+-- A 1ª versão criou comandas sem esse unique; o create table if not exists acima não o acrescenta.
+do $$
+begin
+  if not exists (select 1 from pg_constraint
+                  where conrelid = 'public.comandas'::regclass and conname = 'comandas_id_barraca_unico') then
+    alter table public.comandas add constraint comandas_id_barraca_unico unique (id, barraca_id);
+  end if;
+end;
+$$;
 alter table public.pedidos
   add constraint pedidos_comanda_barraca_fk foreign key (comanda_id, barraca_id)
-  references public.comandas (id, barraca_id) on delete set null (comanda_id);
+  references public.comandas (id, barraca_id);
 create index if not exists pedidos_comanda_id on public.pedidos (comanda_id) where comanda_id is not null;
 
 create or replace function public._trg_pedidos_atribuir_comanda()

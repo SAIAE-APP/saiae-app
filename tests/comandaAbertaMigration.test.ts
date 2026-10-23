@@ -45,7 +45,9 @@ describe('migration comanda aberta (texto)', () => {
 
   test('FK composta (comanda_id, barraca_id)', () => {
     assert.match(sql, /unique \(id, barraca_id\)/)
-    assert.match(sql, /foreign key \(comanda_id, barraca_id\)\s*references public\.comandas \(id, barraca_id\)/)
+    assert.match(sql, /foreign key \(comanda_id, barraca_id\)\s*references public\.comandas \(id, barraca_id\);/)
+    // set null (coluna) exige Postgres 15+: não usar.
+    assert.doesNotMatch(sql, /set null \(/)
   })
 })
 
@@ -152,6 +154,19 @@ describe('migration comanda aberta (PGlite)', () => {
       ),
       /pedidos_comanda_barraca_fk/,
     )
+  })
+
+  test('banco com a 1ª versão (FK de uma coluna): reaplicar troca pela FK composta', async () => {
+    // Volta o esquema ao da 1ª versão: sem FK composta, sem o unique (id, barraca_id), FK de uma coluna.
+    await db.exec(`
+      alter table public.pedidos drop constraint pedidos_comanda_barraca_fk;
+      alter table public.comandas drop constraint comandas_id_barraca_unico;
+      alter table public.pedidos add constraint pedidos_comanda_id_fkey foreign key (comanda_id) references public.comandas(id);
+    `)
+    await db.exec(sql)
+    const r = await db.query<{ conname: string }>(
+      `select conname from pg_constraint where conrelid = 'public.pedidos'::regclass and contype = 'f' and conname like 'pedidos_comanda%' order by 1`)
+    assert.deepEqual(r.rows.map((x) => x.conname), ['pedidos_comanda_barraca_fk'])
   })
 
   test('índice único impede duas comandas abertas na mesma mesa (base do on conflict)', async () => {
