@@ -74,7 +74,12 @@ const salvarPasso = <T = unknown>(barracaId: string, etapa: number, dados: Recor
 export const concluirMarca = (barracaId: string) => salvarPasso(barracaId, 3)
 export const salvarHorarios = (barracaId: string, semana: HorarioDia[]) => salvarPasso(barracaId, 6, { horarios: horariosParaRpc(semana) })
 export const salvarMetodos = (barracaId: string, metodos: string[]) => salvarPasso(barracaId, 7, { metodos })
-export const salvarModos = (barracaId: string, modos: string[]) => salvarPasso(barracaId, 8, { modos })
+/** `cobranca` só vai quando a pergunta da Mesa apareceu; sem ela o banco não muda a comanda (app/banco antigos). */
+export const salvarModos = (
+  barracaId: string,
+  modos: string[],
+  cobranca?: { comanda_aberta_habilitada: boolean; taxa_servico_habilitada: boolean },
+) => salvarPasso(barracaId, 8, { modos, ...cobranca })
 export const salvarCnpj = (barracaId: string, d: { cnpj: string | null; semCnpj: boolean; razaoSocial: string | null }) =>
   salvarPasso(barracaId, 4, { cnpj: d.cnpj, sem_cnpj: d.semCnpj, razao_social: d.razaoSocial })
 export const salvarEndereco = (barracaId: string, e: { cep: string; rua: string; numero: string; complemento: string; bairro: string; cidade: string; uf: string }) =>

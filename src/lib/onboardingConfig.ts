@@ -2,6 +2,7 @@
 // Spec: docs/superpowers/specs/2026-10-08-onboarding-configuracao-design.md
 import { ROTULO_MODO } from './atendimento.ts'
 import { formatarPrecoBR } from './preco.ts'
+import { percentualDeBps } from './comandaAberta.ts'
 
 // ---------------------------------------------------------------- slug do cardápio
 /** Slugs que colidem com rotas do app. TEM que ser igual a `slug_reservado()` da migration 20261020100000
@@ -77,6 +78,13 @@ export function sugerirSlugs(slugBase: string, bairro?: string | null, ocupados:
   }
   return saida.slice(0, 3)
 }
+
+// ---------------------------------------------------------------- passo 8: como a Mesa é cobrada
+/** Pergunta do passo 8, só com a Mesa marcada. "Paga na hora" é o padrão (nada muda para quem não responder). */
+export const opcoesCobrancaMesa: { chave: 'na_hora' | 'comanda_aberta'; titulo: string; descricao: string }[] = [
+  { chave: 'na_hora', titulo: 'Paga na hora', descricao: 'Cada pedido da mesa é pago quando é lançado, como no balcão.' },
+  { chave: 'comanda_aberta', titulo: 'Comanda aberta', descricao: 'A mesa pede várias vezes e paga tudo no fim, de uma vez.' },
+]
 
 // ---------------------------------------------------------------- listas do passo 1 e 2
 export const ORIGENS = [
@@ -428,6 +436,9 @@ export function resumoDoAssistente(
     taxa_entrega_habilitada?: boolean
     taxa_entrega_centavos?: number
     kit_aplicado?: string | null
+    comanda_aberta_habilitada?: boolean
+    taxa_servico_habilitada?: boolean
+    taxa_servico_bps?: number
   },
   semana: HorarioDia[],
 ): { rotulo: string; valor: string }[] {
@@ -446,6 +457,14 @@ export function resumoDoAssistente(
   if (modos.length > 0) linhas.push({ rotulo: 'Atendimento', valor: modos.join(', ') })
   if ((b.modos_atendimento ?? []).includes('entrega') && b.taxa_entrega_habilitada && (b.taxa_entrega_centavos ?? 0) > 0) {
     linhas.push({ rotulo: 'Taxa de entrega', valor: formatarPrecoBR(b.taxa_entrega_centavos ?? 0) })
+  }
+  if ((b.modos_atendimento ?? []).includes('mesa') && b.comanda_aberta_habilitada) {
+    linhas.push({
+      rotulo: 'Mesa',
+      valor: b.taxa_servico_habilitada
+        ? `Comanda aberta, com ${percentualDeBps(b.taxa_servico_bps ?? 1000)}% de taxa de serviço`
+        : 'Comanda aberta, sem taxa de serviço',
+    })
   }
   const rua = b.endereco_rua && b.endereco_numero ? `${b.endereco_rua}, ${b.endereco_numero}` : b.endereco_rua
   const cidade = b.endereco_cidade && b.endereco_uf ? `${b.endereco_cidade}/${b.endereco_uf}` : b.endereco_cidade

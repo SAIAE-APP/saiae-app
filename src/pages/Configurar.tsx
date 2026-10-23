@@ -17,6 +17,7 @@ import { urlPublica } from '../lib/urlPublica'
 import { KIT_NENHUM, kitDoId, mensagemDoEstadoDoKit, onboardingKitsHabilitado, sugestoesDoKit, type KitId } from '../lib/kitsIniciais'
 import { SeletorDeKit } from '../components/SeletorDeKit'
 import { filtrarEntradaPreco, reaisParaCentavos } from '../lib/preco'
+import { percentualDeBps } from '../lib/comandaAberta'
 import {
   CATEGORIAS,
   MODELOS_HORARIO,
@@ -32,6 +33,7 @@ import {
   gerarSlug,
   igualAoDiaAnterior,
   mensagemDoProblemaSlug,
+  opcoesCobrancaMesa,
   passoInicialSemBarraca,
   posicaoNaOrdem,
   resumoDoAssistente,
@@ -513,17 +515,30 @@ function PassoPagamento({ inicial, onSalvar }: { inicial: string[]; onSalvar: (m
   )
 }
 
+type CobrancaMesa = (typeof opcoesCobrancaMesa)[number]['chave']
+type RespostaCobranca = { comanda_aberta_habilitada: boolean; taxa_servico_habilitada: boolean }
+
 function PassoModos({
   inicial,
   sugestaoDe,
+  cobrancaInicial,
+  taxaInicial,
+  taxaBps,
   onSalvar,
 }: {
   inicial: TipoAtendimento[]
   /** Nome do modelo de negócio que sugeriu estes modos (kit); null = sem sugestão. */
   sugestaoDe: string | null
-  onSalvar: (modos: TipoAtendimento[]) => Promise<string | null>
+  /** O que já está salvo; null = banco/cache sem a coluna da comanda (a pergunta não aparece). */
+  cobrancaInicial: CobrancaMesa | null
+  taxaInicial: boolean
+  taxaBps: number
+  onSalvar: (modos: TipoAtendimento[], cobranca?: RespostaCobranca) => Promise<string | null>
 }) {
   const [ativos, setAtivos] = useState<TipoAtendimento[]>(inicial)
+  const perguntaCobranca = cobrancaInicial !== null
+  const [cobranca, setCobranca] = useState<CobrancaMesa>(cobrancaInicial ?? 'na_hora')
+  const [taxa, setTaxa] = useState(taxaInicial)
   const [salvando, setSalvando] = useState(false)
   const [erro, setErro] = useState<string | null>(null)
   const [aviso, setAviso] = useState<string | null>(null)
@@ -540,7 +555,9 @@ function PassoModos({
 
   async function continuar() {
     setSalvando(true)
-    setErro(await onSalvar(ativos))
+    // Sem Mesa a comanda não faz sentido: grava desligada (o banco também força).
+    const comanda = ativos.includes('mesa') && cobranca === 'comanda_aberta'
+    setErro(await onSalvar(ativos, perguntaCobranca ? { comanda_aberta_habilitada: comanda, taxa_servico_habilitada: comanda && taxa } : undefined))
     setSalvando(false)
   }
 
@@ -556,6 +573,29 @@ function PassoModos({
         {aviso && <p className="mb-2 text-sm font-medium text-mesa-warning-700">{aviso}</p>}
         <SeletorModos ativos={ativos} onAlternar={alternar} prefixoId="onb-modo" />
       </Card>
+      {perguntaCobranca && ativos.includes('mesa') && (
+        <Card className="mt-4">
+          <p id="onb-cobranca-mesa" className="text-base font-medium text-mesa-text-primary">Como você cobra a Mesa?</p>
+          <div className="mt-3 flex flex-wrap gap-2" role="radiogroup" aria-labelledby="onb-cobranca-mesa">
+            {opcoesCobrancaMesa.map((o) => (
+              <Chip key={o.chave} checked={cobranca === o.chave} className="min-h-11" onClick={() => setCobranca(o.chave)}>
+                {o.titulo}
+              </Chip>
+            ))}
+          </div>
+          <p className="mt-2 text-xs text-mesa-text-secondary">{opcoesCobrancaMesa.find((o) => o.chave === cobranca)?.descricao}</p>
+          {cobranca === 'comanda_aberta' && (
+            <div className="mt-4 border-t border-mesa-border-subtle pt-3">
+              <p id="onb-taxa-servico" className="text-sm font-medium text-mesa-text-primary">Cobrar {percentualDeBps(taxaBps)}% de taxa de serviço?</p>
+              <div className="mt-2 flex gap-2" role="radiogroup" aria-labelledby="onb-taxa-servico">
+                <Chip checked={taxa} className="min-h-11" onClick={() => setTaxa(true)}>Sim</Chip>
+                <Chip checked={!taxa} className="min-h-11" onClick={() => setTaxa(false)}>Não</Chip>
+              </div>
+              <p className="mt-2 text-xs text-mesa-text-secondary">Na hora de fechar a comanda dá para tirar a taxa. O percentual muda em Ajustes.</p>
+            </div>
+          )}
+        </Card>
+      )}
       {ativos.includes('entrega') && (
         <p className="mt-3 text-xs text-mesa-text-secondary">
           A taxa de entrega você define depois, em Ajustes › Cardápio e operação.
@@ -1089,9 +1129,12 @@ export function Configurar() {
         <PassoModos
           inicial={sugestaoModos ? sugestaoModos.modos : modosAtivos(barraca)}
           sugestaoDe={sugestaoModos ? sugestaoModos.rotulo : null}
-          onSalvar={async (modos) => {
-            const r = await salvarModos(barraca.id, modos)
-            if (r.ok) setBarraca({ ...barraca, modos_atendimento: modos })
+          cobrancaInicial={barraca.comanda_aberta_habilitada === undefined ? null : barraca.comanda_aberta_habilitada === true ? 'comanda_aberta' : 'na_hora'}
+          taxaInicial={barraca.taxa_servico_habilitada === true}
+          taxaBps={barraca.taxa_servico_bps ?? 1000}
+          onSalvar={async (modos, cobranca) => {
+            const r = await salvarModos(barraca.id, modos, cobranca)
+            if (r.ok) setBarraca({ ...barraca, modos_atendimento: modos, ...cobranca })
             return aposSalvar(r, 8)
           }}
         />
