@@ -1,8 +1,8 @@
-// Visibilidade da aba "WhatsApp e Automação" (escondida em todas as barracas, menos a de teste, até o João liberar).
+// Visibilidade da aba "WhatsApp e Automação" (escondida em todas as barracas, menos as liberadas abaixo, até o João liberar).
 // As telas de Atendente IA e Integração com o CRM foram removidas; backend, eventos SAI-001 e RPCs seguem como estavam.
 
-/** Única barraca que vê a aba (a de testes do João). */
-export const SLUGS_COM_IA_E_CRM: readonly string[] = ['qa-teste-varredura']
+/** Barracas que veem a aba: a de testes do João e a D'Helena (piloto do módulo, liberada em 2026-10-24). */
+export const SLUGS_COM_IA_E_CRM: readonly string[] = ['qa-teste-varredura', 'dhelenarestaurante']
 
 function slugLiberado(slug: string | null | undefined): boolean {
   return !!slug && SLUGS_COM_IA_E_CRM.includes(slug)
