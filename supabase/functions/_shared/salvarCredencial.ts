@@ -4,7 +4,8 @@
 // passa por RPC/PostgREST nem é devolvido. Fica em _shared, sem imports de jsr:/Deno, para os testes EXECUTAREM o handler
 // (tests/salvarCredencial.test.ts); salvar-credencial/index.ts só liga as dependências reais.
 //
-// Quem pode gravar: só quem tem linha em `usuarios_barracas` da loja (mesmo critério do emitir-nfce). O acesso de
+// Quem pode gravar: só quem tem linha em `usuarios_barracas` da loja (mesmo critério do emitir-nfce); única exceção: o
+// SUPERADMIN (tabela `superadmins`) grava o token `fiscal` de qualquer loja. O acesso de
 // SUPORTE (`acesso_suporte_ativo`, migration 20261023100000) NÃO cria linha ali e esta função não consulta
 // `acessos_suporte`: o suporte nunca grava credencial. Sem chave configurada a função RECUSA (503): nunca grava em texto.
 import { cifrar, configDoEnv, ErroSegredo, type EnvMinimo } from './segredoCifrado.ts'
@@ -80,7 +81,16 @@ export async function tratarSalvarCredencial(req: Request, deps: DepsSalvarCrede
     console.error('salvar-credencial: acesso', erroAcesso.message)
     return json({ erro: MSG_SALVAR_FALHA }, 500)
   }
-  if (!acesso) return json({ erro: 'Sem acesso a esta barraca' }, 403)
+  if (!acesso) {
+    // Exceção estreita: o superadmin grava SÓ o token fiscal de qualquer loja (conta mestre da Focus). Erro na consulta = não é superadmin.
+    let superadmin = false
+    if (tipo === 'fiscal') {
+      const { data, error } = await supabase.from('superadmins').select('usuario_id').eq('usuario_id', usuario.id).maybeSingle()
+      if (error) console.error('salvar-credencial: superadmin', error.message)
+      else superadmin = !!data
+    }
+    if (!superadmin) return json({ erro: 'Sem acesso a esta barraca' }, 403)
+  }
 
   const { data: cabe, error: erroLimite } = await supabase.rpc('consulta_externa_registrar', {
     p_usuario_id: usuario.id,
