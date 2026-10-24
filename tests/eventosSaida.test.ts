@@ -5,6 +5,7 @@ import { describe, test } from 'node:test'
 import {
   assinarEvento,
   cabecalhosDoEvento,
+  destinoDePlataforma,
   segredosIguais,
   urlPermitida,
 } from '../supabase/functions/_shared/eventosSaida.ts'
@@ -61,5 +62,31 @@ describe('segredosIguais', () => {
     assert.equal(segredosIguais('abc', undefined), false)
     assert.equal(segredosIguais(null, 'abc'), false)
     assert.equal(segredosIguais('', ''), false)
+  })
+})
+
+describe('destino de plataforma (barraca sem integração própria)', () => {
+  const SEGREDO = 'segredo-de-plataforma-com-16+'
+  const CONEXAO = 'https://crm.exemplo.test/api/integracao/comanda/v1/whatsapp-conexao'
+
+  test('deriva a URL de eventos da URL de conexão', () => {
+    assert.deepEqual(destinoDePlataforma({ WHATSAPP_CONEXAO_SEGREDO: SEGREDO, CRM_WHATSAPP_CONEXAO_URL: CONEXAO }), {
+      url: 'https://crm.exemplo.test/api/integracao/comanda/v1/eventos',
+      segredo: SEGREDO,
+    })
+  })
+  test('CRM_EVENTOS_URL tem prioridade e a lista de rotação assina com o primeiro segredo', () => {
+    const r = destinoDePlataforma({
+      WHATSAPP_CONEXAO_SEGREDO: `${SEGREDO}, outro-segredo-antigo-longo`,
+      CRM_EVENTOS_URL: 'https://outro.exemplo.test/api/integracao/comanda/v1/eventos',
+      CRM_WHATSAPP_CONEXAO_URL: CONEXAO,
+    })
+    assert.deepEqual(r, { url: 'https://outro.exemplo.test/api/integracao/comanda/v1/eventos', segredo: SEGREDO })
+  })
+  test('sem segredo, segredo curto ou URL que não termina em /eventos: null', () => {
+    assert.equal(destinoDePlataforma({ CRM_WHATSAPP_CONEXAO_URL: CONEXAO }), null)
+    assert.equal(destinoDePlataforma({ WHATSAPP_CONEXAO_SEGREDO: 'curto', CRM_WHATSAPP_CONEXAO_URL: CONEXAO }), null)
+    assert.equal(destinoDePlataforma({ WHATSAPP_CONEXAO_SEGREDO: SEGREDO }), null)
+    assert.equal(destinoDePlataforma({ WHATSAPP_CONEXAO_SEGREDO: SEGREDO, CRM_WHATSAPP_CONEXAO_URL: 'https://crm.exemplo.test/outra-rota' }), null)
   })
 })

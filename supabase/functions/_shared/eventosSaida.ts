@@ -61,6 +61,19 @@ export function urlPermitida(url: string): boolean {
   return true
 }
 
+/**
+ * Destino dos eventos de barraca SEM integração própria (só conectou o WhatsApp): o CRM e o segredo de plataforma,
+ * os mesmos da conexão do WhatsApp. URL = CRM_EVENTOS_URL ou, se faltar, a de conexão
+ * (`.../v1/whatsapp-conexao`) trocando o final por `/eventos`. Segredo = WHATSAPP_CONEXAO_SEGREDO (com lista de
+ * rotação, assina com o primeiro). Devolve null se falta algum dos dois.
+ */
+export function destinoDePlataforma(env: Record<string, string | undefined>): { url: string; segredo: string } | null {
+  const segredo = (env.WHATSAPP_CONEXAO_SEGREDO ?? '').split(',')[0].trim()
+  const url = env.CRM_EVENTOS_URL?.trim() || env.CRM_WHATSAPP_CONEXAO_URL?.trim().replace(/\/whatsapp-conexao\/?$/, '/eventos')
+  if (segredo.length < 16 || !url || !/\/eventos\/?$/.test(url)) return null
+  return { url, segredo }
+}
+
 /** Comparação em tempo constante do segredo do worker. */
 export function segredosIguais(a: string | null, b: string | undefined): boolean {
   if (!a || !b || a.length !== b.length) return false

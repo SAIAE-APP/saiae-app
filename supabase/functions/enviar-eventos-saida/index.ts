@@ -10,11 +10,12 @@
 //   supabase functions deploy enviar-eventos-saida --no-verify-jwt --project-ref <ref>
 import { createClient } from 'jsr:@supabase/supabase-js@2'
 import { processarFila } from '../_shared/filaEventos.ts'
-import { cabecalhosDoEvento, segredosIguais, urlPermitida } from '../_shared/eventosSaida.ts'
+import { cabecalhosDoEvento, destinoDePlataforma, segredosIguais, urlPermitida } from '../_shared/eventosSaida.ts'
 
 const TIMEOUT_MS = 10_000
 
-type Reservado = { evento_id: string; url: string; segredo: string; corpo: Record<string, unknown> | null }
+// url e segredo nulos: barraca sem integração própria, vale o destino de plataforma (ver destinoDePlataforma).
+type Reservado = { evento_id: string; url: string | null; segredo: string | null; corpo: Record<string, unknown> | null }
 
 function json(corpo: unknown, status = 200): Response {
   return new Response(JSON.stringify(corpo), { status, headers: { 'Content-Type': 'application/json' } })
@@ -22,13 +23,15 @@ function json(corpo: unknown, status = 200): Response {
 
 async function enviar(ev: Reservado): Promise<{ ok: boolean; erro: string }> {
   if (!ev.corpo) return { ok: false, erro: 'pedido não encontrado' }
-  if (!urlPermitida(ev.url)) return { ok: false, erro: 'URL do CRM não permitida (precisa ser https público)' }
+  const destino = ev.url && ev.segredo ? { url: ev.url, segredo: ev.segredo } : destinoDePlataforma(Deno.env.toObject())
+  if (!destino) return { ok: false, erro: 'destino de plataforma não configurado (WHATSAPP_CONEXAO_SEGREDO e CRM_WHATSAPP_CONEXAO_URL)' }
+  if (!urlPermitida(destino.url)) return { ok: false, erro: 'URL do CRM não permitida (precisa ser https público)' }
   try {
     const corpo = JSON.stringify(ev.corpo)
     const timestamp = Math.floor(Date.now() / 1000)
-    const resposta = await fetch(ev.url, {
+    const resposta = await fetch(destino.url, {
       method: 'POST',
-      headers: await cabecalhosDoEvento(ev.segredo, ev.evento_id, timestamp, corpo),
+      headers: await cabecalhosDoEvento(destino.segredo, ev.evento_id, timestamp, corpo),
       body: corpo,
       redirect: 'manual',
       signal: AbortSignal.timeout(TIMEOUT_MS),
