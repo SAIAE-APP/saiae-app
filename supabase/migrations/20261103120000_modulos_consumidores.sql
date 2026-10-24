@@ -5,7 +5,8 @@
 -- Só o gate muda; assinaturas, grants, security mode e search_path são os das últimas definições. ADITIVA (create or replace).
 --   * integracao_avaliacao_config: ativo = avaliacao_ativa e avisos vigente (não depende mais de disparos).
 --   * whatsapp_avaliacao_salvar: exige avisos.   * disparos_publico (e a contagem, que a chama) e registrar_contato_marketing: exigem disparos.
---   * montar_evento_saida: sem data.avisos quando avisos não vigente.   * integracao_cardapio: ia_habilitada só com o bot vigente.
+--   * montar_evento_saida: sem avisos vigente, order.* sai com os cinco avisos ativo:false (ausente = ativo no CRM).
+--   * integracao_cardapio: ia_habilitada só com o bot vigente.
 --   * ia_ligar: ligar sem o módulo bot levanta modulo_desligado; desligar continua permitido.
 
 -- montar_evento_saida: definição de 20261030100000, trocando só a leitura de v_avisos.
@@ -54,9 +55,15 @@ begin
   where i.pedido_id = p.id and not i.removido;
 
   select nome, whatsapp_avisos into v_barraca_nome, v_avisos from public.barracas where id = p.barraca_id;
-  -- Sem o módulo de avisos vigente o evento sai sem data.avisos (o CRM não envia mensagem ao cliente).
+  -- Sem o módulo de avisos vigente: o CRM trata data.avisos ausente como tudo ativo, então o evento order.* sai com os
+  -- cinco avisos explicitamente desligados (ativo:false, texto null). O evento continua sendo emitido; só o aviso não sai.
   if not public.modulo_ativo(p.barraca_id, 'whatsapp_avisos') then
-    v_avisos := null;
+    v_avisos := jsonb_build_object(
+      'recebido', jsonb_build_object('ativo', false, 'texto', null),
+      'pronto', jsonb_build_object('ativo', false, 'texto', null),
+      'saiu_entrega', jsonb_build_object('ativo', false, 'texto', null),
+      'entregue', jsonb_build_object('ativo', false, 'texto', null),
+      'cancelado', jsonb_build_object('ativo', false, 'texto', null));
   end if;
   v_taxa := coalesce(p.taxa_entrega_centavos, 0);
   v_desconto := coalesce(p.desconto_cupom_centavos, 0);

@@ -142,10 +142,14 @@ describe('consumidores exigem módulo vigente', () => {
     assert.equal((await um<{ estado: string }>(`select public.registrar_contato_marketing('${B}', '11999990000', 'Ana') as r`)).estado, 'ok')
   })
 
-  test('eventos saem sem data.avisos quando avisos não vigente', async () => {
-    const evento = () => um<{ data: { avisos?: unknown } }>(`select public.montar_evento_saida('${EVENTO}') as r`)
+  test('sem avisos vigente o evento order.* sai com os cinco avisos ativo:false', async () => {
+    const evento = () => um<{ type: string; data: { avisos?: unknown; senha: number } }>(`select public.montar_evento_saida('${EVENTO}') as r`)
     await modulos(['whatsapp_avisos', 'suspenso'])
-    assert.equal('avisos' in (await evento()).data, false)
+    const e = await evento()
+    assert.equal(e.type, 'order.created')
+    assert.equal(e.data.senha, 7)
+    const off = { ativo: false, texto: null }
+    assert.deepEqual(e.data.avisos, { recebido: off, pronto: off, saiu_entrega: off, entregue: off, cancelado: off })
     await modulos(['whatsapp_avisos', 'ativo'])
     assert.deepEqual((await evento()).data.avisos, { recebido: true })
   })
