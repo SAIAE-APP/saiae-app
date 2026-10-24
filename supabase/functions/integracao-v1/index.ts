@@ -19,6 +19,7 @@ import {
   lojaDoBot,
   recusaDaAcao,
   telefoneSemPais,
+  totalDivergente,
   totalDoPendente,
   validarCorpoIntegracao,
   verificarAssinaturaLista,
@@ -37,9 +38,19 @@ const json = (corpo: unknown, status = 200) =>
 
 const negocio = (codigo: string, mensagem: string) => json({ ok: false, codigo, mensagem })
 const barracaInvalida = () => negocio('barraca_invalida', 'Loja não encontrada.')
+const uuidEmUso = () => negocio('client_uuid_em_uso', 'Identificador de pedido já usado.')
+// O total que o cliente viu não vale mais: devolve o atual para o bot reconfirmar. Nada foi criado.
+const totalMudou = (total: number) =>
+  json({ ok: false, codigo: 'total_mudou', mensagem: 'O total mudou. Confirme o novo valor.', total_centavos: total })
+
+// Só o que as recusas, o estoque e o Pix leem: nunca select('*') (a linha tem dados que o bot não usa).
+const COLUNAS_LOJA =
+  'nome, slug, modos_atendimento, pagar_na_entrega_habilitado, pagamento_online_habilitado, perfil_cliente_obrigatorio, ia_habilitada, fuso, estoque_bloqueia, pagamento_provedor, pix_expiracao_minutos'
 
 async function carregarLoja(supabase: Supabase, barracaId: string) {
-  const { data: barraca, error } = await supabase.from('barracas').select('*').eq('id', barracaId).maybeSingle()
+  const { data: barraca, error } = await supabase.from('barracas')
+    .select(COLUNAS_LOJA)
+    .eq('id', barracaId).maybeSingle()
   if (error) throw new FalhaInterna('barracas')
   if (!barraca) return null
   const { data: horarios, error: erroHorarios } = await supabase
@@ -93,6 +104,7 @@ async function acaoCardapio(supabase: Supabase, c: Corpo<'cardapio'>) {
 async function acaoRascunho(supabase: Supabase, c: Corpo<'rascunho'>) {
   const r = await resolverCarrinho(supabase, c.barracaId, c.itens)
   if (!r.ok) return r.resposta
+  if (totalDivergente(c.totalEsperado, r.total)) return totalMudou(r.total)
   return json({ ok: true, linhas: r.linhas, total_centavos: r.total })
 }
 
@@ -106,7 +118,7 @@ async function pedidoJaCriado(supabase: Supabase, clientUuid: string, barracaId:
   if (error) throw new FalhaInterna('pedidos')
   if (!pedido) return null
   // O client_uuid é único no banco inteiro: de outra loja é conflito, nunca o pedido alheio.
-  if (pedido.barraca_id !== barracaId) return negocio('client_uuid_em_uso', 'Identificador de pedido já usado.')
+  if (pedido.barraca_id !== barracaId) return uuidEmUso()
   const { data: linhas, error: erroLinhas } = await supabase
     .from('itens_do_pedido')
     .select('quantidade, preco_centavos_unitario')
@@ -123,6 +135,14 @@ async function pedidoJaCriado(supabase: Supabase, clientUuid: string, barracaId:
 async function acaoPedido(supabase: Supabase, c: Corpo<'pedido'>) {
   const repetido = await pedidoJaCriado(supabase, c.clientUuid, c.barracaId)
   if (repetido) return repetido
+  // O mesmo uuid já é de uma cobrança Pix (qualquer loja): o pedido dela nasce pelo webhook, nunca por aqui.
+  const { data: pendente, error: erroPendente } = await supabase
+    .from('pagamentos_pendentes')
+    .select('id')
+    .eq('client_uuid', c.clientUuid)
+    .maybeSingle()
+  if (erroPendente) throw new FalhaInterna('pagamentos_pendentes')
+  if (pendente) return uuidEmUso()
 
   const loja = await carregarLoja(supabase, c.barracaId)
   if (!loja) return barracaInvalida()
@@ -142,6 +162,7 @@ async function acaoPedido(supabase: Supabase, c: Corpo<'pedido'>) {
     if (!t.permitido) return negocio('bairro_nao_atendido', 'Não entregamos nesse bairro.')
     taxa = t.taxa_centavos
   }
+  if (totalDivergente(c.totalEsperado, r.total + taxa)) return totalMudou(r.total + taxa)
 
   if (loja.barraca.estoque_bloqueia === true) {
     const acima = await acimaDoEstoque(supabase, c.barracaId, r.linhas)
@@ -192,7 +213,7 @@ const copiaCola = (r: { copiaECola: string | null }) => {
 async function acaoPix(supabase: Supabase, c: Corpo<'pix'>) {
   const { data: existente, error: erroExistente } = await supabase
     .from('pagamentos_pendentes')
-    .select('*')
+    .select('id, barraca_id, status, provedor, mercadopago_order_id, expira_em, itens, taxa_entrega_centavos')
     .eq('client_uuid', c.clientUuid)
     .maybeSingle()
   if (erroExistente) throw new FalhaInterna('pagamentos_pendentes')
@@ -200,7 +221,7 @@ async function acaoPix(supabase: Supabase, c: Corpo<'pix'>) {
 
   if (pendenteAntigo) {
     // O client_uuid é único no banco inteiro: de outra loja é conflito, nunca a cobrança alheia.
-    if (pendenteAntigo.barraca_id !== c.barracaId) return negocio('client_uuid_em_uso', 'Identificador de pedido já usado.')
+    if (pendenteAntigo.barraca_id !== c.barracaId) return uuidEmUso()
     if (pendenteAntigo.status === 'aprovado') return negocio('ja_pago', 'Este pagamento já foi confirmado.')
     if (pendenteAntigo.status !== 'pendente' || (pendenteAntigo.expira_em && Date.parse(pendenteAntigo.expira_em) <= Date.now())) {
       return negocio('pix_expirado', 'O Pix venceu. Peça pelo cardápio ou gere um novo pedido.')
@@ -212,11 +233,14 @@ async function acaoPix(supabase: Supabase, c: Corpo<'pix'>) {
       if (!emitido || !tokenEmitido) return negocio('sem_pix', 'Pix indisponível nesta loja.')
       try {
         const qr = await emitido.recuperarQr({ token: tokenEmitido, idExterno: pendenteAntigo.mercadopago_order_id })
+        // Retry devolve o QR e o total JÁ emitidos, nunca recalcula.
+        const totalEmitido = totalDoPendente(pendenteAntigo.itens, pendenteAntigo.taxa_entrega_centavos)
+        if (totalDivergente(c.totalEsperado, totalEmitido)) return totalMudou(totalEmitido)
         return json({
           ok: true,
           copia_cola: copiaCola(qr),
           expira_em: pendenteAntigo.expira_em,
-          total_centavos: totalDoPendente(pendenteAntigo.itens, pendenteAntigo.taxa_entrega_centavos),
+          total_centavos: totalEmitido,
           pendente_id: pendenteAntigo.id,
         })
       } catch (erro) {
@@ -224,6 +248,14 @@ async function acaoPix(supabase: Supabase, c: Corpo<'pix'>) {
         throw erro
       }
     }
+  }
+
+  // Sem pendente deste uuid, um pedido com ele (qualquer loja) é de outra origem: conflito. Com pendente da mesma loja
+  // o pedido (pago) é o do próprio fluxo e já foi tratado acima.
+  if (!pendenteAntigo) {
+    const { data: pedido, error: erroPedido } = await supabase.from('pedidos').select('id').eq('client_uuid', c.clientUuid).maybeSingle()
+    if (erroPedido) throw new FalhaInterna('pedidos')
+    if (pedido) return uuidEmUso()
   }
 
   const loja = await carregarLoja(supabase, c.barracaId)
@@ -244,29 +276,42 @@ async function acaoPix(supabase: Supabase, c: Corpo<'pix'>) {
     if (acima.length > 0) return json({ ok: false, codigo: 'sem_estoque', mensagem: 'Sem estoque suficiente.', itens: acima })
   }
 
-  // Cobrança anterior sem QR (falha do provedor): reaproveita a linha em vez de estourar a unique do client_uuid.
-  const telefone = telefoneSemPais(c.clienteTelefone)
-  const dados = {
-    mesa: null,
-    viagem: true,
-    observacao: null,
-    itens: r.linhas,
-    tipo_atendimento: 'retirada',
-    cliente_nome: c.clienteNome,
-    cliente_telefone: telefone,
-    conversa_id: c.conversaId,
-    provedor: provedor.chave,
-  }
-  const gravacao = pendenteAntigo
-    ? supabase.from('pagamentos_pendentes').update(dados).eq('id', pendenteAntigo.id).eq('status', 'pendente')
-    : supabase.from('pagamentos_pendentes').insert({ ...dados, barraca_id: c.barracaId, client_uuid: c.clientUuid })
-  const { data: gravado, error: erroGravar } = await gravacao.select('id').single()
-  if (erroGravar || !gravado) throw new FalhaInterna('gravar_pendente')
-  const pendente = gravado as { id: string }
+  if (totalDivergente(c.totalEsperado, r.total)) return totalMudou(r.total)
 
+  // Reivindica o pendente ANTES de chamar o provedor (lock por client_uuid no banco): dois pedidos simultâneos não
+  // emitem duas cobranças. Cobrança anterior sem QR (falha do provedor) é reaproveitada pela mesma RPC.
   const expiraEm = new Date(Date.now() + minutosExpiracaoPix(loja.barraca.pix_expiracao_minutos) * 60 * 1000)
-  const { error: erroExpira } = await supabase.from('pagamentos_pendentes').update({ expira_em: expiraEm.toISOString() }).eq('id', pendente.id)
-  if (erroExpira) throw new FalhaInterna('expira_em')
+  const { data: reserva, error: erroReserva } = await supabase.rpc('integracao_pix_reservar', {
+    p_barraca_id: c.barracaId,
+    p_client_uuid: c.clientUuid,
+    p_dados: {
+      itens: r.linhas,
+      cliente_nome: c.clienteNome,
+      cliente_telefone: telefoneSemPais(c.clienteTelefone),
+      conversa_id: c.conversaId,
+      provedor: provedor.chave,
+    },
+    p_expira_em: expiraEm.toISOString(),
+  })
+  const estadoReserva = (reserva as { estado?: string; id?: string } | null) ?? null
+  if (erroReserva || !estadoReserva?.estado) throw new FalhaInterna('reservar_pendente')
+  switch (estadoReserva.estado) {
+    case 'reivindicado':
+      break
+    case 'outra_loja':
+      return uuidEmUso()
+    case 'ja_pago':
+      return negocio('ja_pago', 'Este pagamento já foi confirmado.')
+    case 'expirado':
+      return negocio('pix_expirado', 'O Pix venceu. Peça pelo cardápio ou gere um novo pedido.')
+    case 'emitido':
+    case 'em_andamento':
+      // Outra chamada do mesmo pedido está emitindo (ou acabou de emitir): o bot repete e cai no retry do QR.
+      return negocio('pix_em_andamento', 'O Pix deste pedido está sendo gerado. Tente de novo em instantes.')
+    default:
+      throw new FalhaInterna('reservar_pendente')
+  }
+  const pendente = { id: estadoReserva.id as string }
 
   let cobranca
   try {
@@ -280,6 +325,8 @@ async function acaoPix(supabase: Supabase, c: Corpo<'pix'>) {
     })
   } catch (erro) {
     // O detalhe do provedor pode conter dados do cliente: nada dele sai nem vai para o log.
+    // Libera a reivindicação: o cliente pode tentar de novo na hora, sem esperar a janela de 60 s.
+    await supabase.from('pagamentos_pendentes').update({ emissao_iniciada_em: null }).eq('id', pendente.id)
     if (erro instanceof ErroProvedor) return negocio('provedor_indisponivel', 'Não foi possível gerar o Pix agora.')
     throw erro
   }
@@ -306,6 +353,8 @@ Deno.serve(async (req: Request) => {
   const segredos = Deno.env.get('WHATSAPP_CONEXAO_SEGREDO')
   if (!haSegredoValido(segredos)) return new Response(null, { status: 503 })
 
+  // Corpo declarado grande demais: recusa sem ler (o limite real, em bytes, é conferido de novo depois da leitura).
+  if (Number(req.headers.get('content-length') ?? 0) > TAMANHO_MAX_CORPO) return new Response(null, { status: 413 })
   // O corpo é lido UMA vez, em texto: é exatamente esse texto que foi assinado.
   const corpoBruto = await req.text()
   if (new TextEncoder().encode(corpoBruto).length > TAMANHO_MAX_CORPO) return new Response(null, { status: 413 })

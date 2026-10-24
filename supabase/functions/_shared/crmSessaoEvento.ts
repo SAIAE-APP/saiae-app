@@ -1,7 +1,8 @@
 // Evento de sessão do WhatsApp (CRM → Sai aê, contrato v1 §3): validação do corpo e tratamento da requisição.
 // Funções puras (sem Deno/Supabase), testadas em tests/crmSessaoEvento.test.ts. A assinatura é a mesma da rota
 // ia-contexto (iaAssinatura.ts), com o segredo de plataforma WHATSAPP_CONEXAO_SEGREDO.
-import { TAMANHO_MAX_CORPO, verificarAssinaturaIa } from './iaAssinatura.ts'
+import { TAMANHO_MAX_CORPO } from './iaAssinatura.ts'
+import { haSegredoValido, verificarAssinaturaLista } from './integracaoV1.ts'
 
 export type EventoSessao = { barracaId: string; estado: 'conectado' | 'desconectado' | 'caiu'; em: string }
 export type RespostaSessao = { status: number; corpo?: { ok: true } }
@@ -34,9 +35,10 @@ export async function tratarEventoSessao(
   gravar: (e: EventoSessao) => Promise<'ok' | 'ignorado' | 'erro'>,
 ): Promise<RespostaSessao> {
   // Sem segredo de verdade a rota não existe: nunca aceita nada.
-  if (!r.segredo || r.segredo.length < 16) return { status: 503 }
+  // `segredo` pode ser uma lista separada por vírgula (rotação), como na integracao-v1.
+  if (!haSegredoValido(r.segredo)) return { status: 503 }
   if (new TextEncoder().encode(r.corpoBruto).length > TAMANHO_MAX_CORPO) return { status: 413 }
-  if (!(await verificarAssinaturaIa(r.segredo, r.timestamp, r.assinatura, r.corpoBruto, r.agoraMs))) return { status: 401 }
+  if (!(await verificarAssinaturaLista(r.segredo, r.timestamp, r.assinatura, r.corpoBruto, r.agoraMs))) return { status: 401 }
   let json: unknown
   try {
     json = JSON.parse(r.corpoBruto)

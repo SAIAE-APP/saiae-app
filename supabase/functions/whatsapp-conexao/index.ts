@@ -5,6 +5,7 @@
 //   supabase functions deploy whatsapp-conexao --project-ref <ref>   (com JWT: quem chama é o usuário logado)
 import { createClient } from 'jsr:@supabase/supabase-js@2'
 import { type AcaoConexao, chamarConexaoCrm, podeExecutar } from '../_shared/crmConexao.ts'
+import { primeiroSegredo } from '../_shared/integracaoV1.ts'
 
 const CORS = {
   'Access-Control-Allow-Origin': '*',
@@ -48,9 +49,10 @@ Deno.serve(async (req: Request) => {
   if (!vinculo || !podeExecutar(acao, vinculo.papel ?? null)) return json({ erro: 'Sem acesso a esta loja' }, 403)
 
   const url = Deno.env.get('CRM_WHATSAPP_CONEXAO_URL')
-  const segredo = Deno.env.get('WHATSAPP_CONEXAO_SEGREDO')
+  // Lista de rotação: assina com o primeiro, como o resto das rotas de plataforma.
+  const segredo = primeiroSegredo(Deno.env.get('WHATSAPP_CONEXAO_SEGREDO'))
   const r =
-    url && segredo && segredo.length >= 16
+    url && segredo.length >= 16
       ? await chamarConexaoCrm({ url, segredo, barracaId, acao, requestId: crypto.randomUUID() })
       : null
   if (!r || !r.ok) {

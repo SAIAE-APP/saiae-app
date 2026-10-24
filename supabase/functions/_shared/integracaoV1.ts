@@ -13,6 +13,7 @@ const TELEFONE = /^[0-9]{10,13}$/
 
 export type Entrega = { rua: string; numero: string; bairro: string; referencia: string | null }
 type Base = { barracaId: string }
+type Total = { totalEsperado: number | null }
 type Cliente = {
   clientUuid: string
   clienteNome: string | null
@@ -22,16 +23,16 @@ type Cliente = {
 
 export type CorpoIntegracao =
   | (Base & { acao: 'cardapio' })
-  | (Base & { acao: 'rascunho'; itens: LinhaCarrinho[] })
-  | (Base & Cliente & { acao: 'pedido'; tipoAtendimento: 'retirada' | 'entrega'; entrega: Entrega | null })
-  | (Base & Cliente & { acao: 'pix'; tipoAtendimento: 'retirada'; conversaId: string })
+  | (Base & Total & { acao: 'rascunho'; itens: LinhaCarrinho[] })
+  | (Base & Total & Cliente & { acao: 'pedido'; tipoAtendimento: 'retirada' | 'entrega'; entrega: Entrega | null })
+  | (Base & Total & Cliente & { acao: 'pix'; tipoAtendimento: 'retirada'; conversaId: string })
 
 // Chaves aceitas por ação: qualquer outra chave é corpo fora do contrato (422, sem ecoar valores).
 const CHAVES: Record<string, string[]> = {
   cardapio: ['barraca_id', 'acao'],
-  rascunho: ['barraca_id', 'acao', 'itens'],
-  pedido: ['barraca_id', 'acao', 'itens', 'client_uuid', 'cliente_nome', 'cliente_telefone', 'tipo_atendimento', 'entrega'],
-  pix: ['barraca_id', 'acao', 'itens', 'client_uuid', 'cliente_nome', 'cliente_telefone', 'tipo_atendimento', 'conversa_id'],
+  rascunho: ['barraca_id', 'acao', 'itens', 'total_esperado_centavos'],
+  pedido: ['barraca_id', 'acao', 'itens', 'client_uuid', 'cliente_nome', 'cliente_telefone', 'tipo_atendimento', 'entrega', 'total_esperado_centavos'],
+  pix: ['barraca_id', 'acao', 'itens', 'client_uuid', 'cliente_nome', 'cliente_telefone', 'tipo_atendimento', 'conversa_id', 'total_esperado_centavos'],
 }
 
 const texto = (v: unknown, max: number) => (typeof v === 'string' ? v.trim().slice(0, max) : '')
@@ -62,7 +63,11 @@ export function validarCorpoIntegracao(corpo: unknown): { ok: true; valor: Corpo
 
   const montada = montarLinhas(o.itens, { maxLinhas: MAX_LINHAS_BOT, maxQuantidade: null })
   if (!montada.ok) return recusa
-  if (acao === 'rascunho') return { ok: true, valor: { acao, barracaId, itens: montada.linhas } }
+  // Total que o cliente viu no resumo (opcional): se divergir do calculado agora, a function recusa com total_mudou.
+  const esperado = o.total_esperado_centavos
+  if (esperado !== undefined && (typeof esperado !== 'number' || !Number.isSafeInteger(esperado) || esperado < 0)) return recusa
+  const totalEsperado = esperado ?? null
+  if (acao === 'rascunho') return { ok: true, valor: { acao, barracaId, itens: montada.linhas, totalEsperado } }
 
   if (typeof o.client_uuid !== 'string' || !UUID.test(o.client_uuid)) return recusa
   if (typeof o.cliente_telefone !== 'string' || !TELEFONE.test(o.cliente_telefone)) return recusa
@@ -78,19 +83,19 @@ export function validarCorpoIntegracao(corpo: unknown): { ok: true; valor: Corpo
     // Pix só para Retirada nesta fase; conversa_id é opaco (o Sai aê só guarda).
     if (o.tipo_atendimento !== undefined && o.tipo_atendimento !== 'retirada') return recusa
     if (typeof o.conversa_id !== 'string' || o.conversa_id.length < 1 || o.conversa_id.length > 200) return recusa
-    return { ok: true, valor: { acao, barracaId, ...cliente, tipoAtendimento: 'retirada', conversaId: o.conversa_id } }
+    return { ok: true, valor: { acao, barracaId, totalEsperado, ...cliente, tipoAtendimento: 'retirada', conversaId: o.conversa_id } }
   }
 
   const tipo = o.tipo_atendimento ?? 'retirada'
   if (tipo !== 'retirada' && tipo !== 'entrega') return recusa
   if (tipo === 'retirada') {
     if (o.entrega !== undefined && o.entrega !== null) return recusa
-    return { ok: true, valor: { acao: 'pedido', barracaId, ...cliente, tipoAtendimento: 'retirada', entrega: null } }
+    return { ok: true, valor: { acao: 'pedido', barracaId, totalEsperado, ...cliente, tipoAtendimento: 'retirada', entrega: null } }
   }
   // Entrega: o endereço é obrigatório e o nome do cliente também (vai na comanda e no link do entregador).
   const entrega = validarEntrega(o.entrega)
   if (!entrega || !cliente.clienteNome || cliente.clienteNome.length < 2) return recusa
-  return { ok: true, valor: { acao: 'pedido', barracaId, ...cliente, tipoAtendimento: 'entrega', entrega } }
+  return { ok: true, valor: { acao: 'pedido', barracaId, totalEsperado, ...cliente, tipoAtendimento: 'entrega', entrega } }
 }
 
 /** `segredos` é a lista separada por vírgula (rotação): vale se QUALQUER um confere. Segredo curto é ignorado;
@@ -112,6 +117,16 @@ export async function verificarAssinaturaLista(
     if (await verificarAssinaturaIa(s, timestamp, assinatura, corpoBruto, agoraMs)) confere = true
   }
   return confere
+}
+
+/** Segredo de ASSINATURA de saída: o primeiro da lista (os demais só servem para verificar na rotação). */
+export function primeiroSegredo(segredos: string | undefined): string {
+  return (segredos ?? '').split(',')[0].trim()
+}
+
+/** O total que o cliente viu não bate com o calculado agora. Sem total esperado, nunca diverge. */
+export function totalDivergente(esperado: number | null, atual: number): boolean {
+  return esperado !== null && esperado !== atual
 }
 
 /** Há segredo configurado que valha? Sem isso a rota responde 503 e nunca aceita nada. */
