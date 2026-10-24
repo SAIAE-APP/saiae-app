@@ -5,9 +5,10 @@ Loja de teste: `qa-teste-varredura`, em **staging**. Pré-requisito: a ordem de 
 ## Ordem de deploy
 
 1. CRM do Gael: rota `whatsapp-conexao`, mapeamento sessão ↔ loja, tabelas de log e o segredo `COMANDA_WHATSAPP_SEGREDO` (itens 1 a 13 de `PENDENCIAS-CRM-GAEL.md`).
-2. Migrations `20261030100000_whatsapp_avisos`, `20261030110000_whatsapp_status` e `20261030120000_whatsapp_proteger`, nessa ordem.
-3. Secrets do Sai aê: `WHATSAPP_CONEXAO_SEGREDO` (igual ao `COMANDA_WHATSAPP_SEGREDO`, mínimo 16 caracteres) e `CRM_WHATSAPP_CONEXAO_URL` (https público).
-4. Deploy das functions `whatsapp-conexao` e `crm-evento-sessao` (esta com `--no-verify-jwt`).
+   A rota `/api/integracao/comanda/v1/eventos` do CRM aceita o `COMANDA_WHATSAPP_SEGREDO` para loja sem segredo próprio em `COMANDA_WEBHOOK_SECRETS`; loja com segredo próprio continua só com o dele.
+2. Migrations `20261030100000_whatsapp_avisos`, `20261030110000_whatsapp_status`, `20261030120000_whatsapp_proteger` e `20261030130000_eventos_loja_com_whatsapp`, nessa ordem.
+3. Secrets do Sai aê: `WHATSAPP_CONEXAO_SEGREDO` (igual ao `COMANDA_WHATSAPP_SEGREDO`, mínimo 16 caracteres) e `CRM_WHATSAPP_CONEXAO_URL` (https público). Opcional: `CRM_EVENTOS_URL` (padrão: a URL de conexão com o final trocado por `/eventos`).
+4. Deploy das functions `whatsapp-conexao`, `crm-evento-sessao` (esta com `--no-verify-jwt`) e `enviar-eventos-saida` (`--no-verify-jwt`).
 5. App. A seção continua escondida até o João liberar lojas (`SLUGS_COM_IA_E_CRM` ou `VITE_MOSTRAR_WHATSAPP_AUTOMACAO=1`).
 
 ## Passos
@@ -25,3 +26,7 @@ Loja de teste: `qa-teste-varredura`, em **staging**. Pré-requisito: a ordem de 
 11. Entrar com a segunda loja de teste. Esperado: ela não enxerga o QR, o número nem o histórico da primeira.
 12. Pedido de balcão que nasce `entregue`. Esperado: não envia o aviso "entregue".
 13. Usuário que não é dono (operador/suporte) abre a aba. Esperado: vê estado e histórico, mas "Conectar" e "Desconectar" são recusados.
+
+## Privacidade (LGPD)
+
+Toda loja com o WhatsApp conectado passa a enviar ao CRM os eventos `order.*` do pedido, com telefone, nome e itens do cliente, mesmo sem a "Integração com o CRM" configurada. O CRM usa esses dados só para os avisos do pedido. A Política de Privacidade deve citar isso antes de liberar a seção para todas as lojas.

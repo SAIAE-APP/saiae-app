@@ -28,6 +28,9 @@ export function mascararNumero(digitos: string): string {
   return `(${ddd}) ${primeiro}••••-${nacional.slice(-4)}`
 }
 
+/** Falhas seguidas do proxy antes de a tela mostrar o erro: uma falha isolada do CRM não deve piscar o banner. */
+export const FALHAS_PARA_ERRO = 2
+
 export function telaDaConexao(r: RespostaConexao | null, erro: boolean): TelaConexao {
   if (erro) return { tipo: 'erro' }
   if (!r) return { tipo: 'carregando' }

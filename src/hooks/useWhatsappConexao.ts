@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useState } from 'react'
 import { supabase } from '../lib/supabase'
-import { acaoDoPoll, telaDaConexao, type RespostaConexao, type TelaConexao } from '../lib/estadoWhatsapp'
+import { acaoDoPoll, FALHAS_PARA_ERRO, telaDaConexao, type RespostaConexao, type TelaConexao } from '../lib/estadoWhatsapp'
 
 type Acao = 'iniciar' | 'status' | 'desconectar' | 'historico'
 
@@ -10,7 +10,7 @@ const POLL_PADRAO_MS = 15_000
 /** Estado da conexão do WhatsApp da loja (proxy `whatsapp-conexao`). Polling parado com a aba escondida. */
 export function useWhatsappConexao(barracaId: string) {
   const [resposta, setResposta] = useState<RespostaConexao | null>(null)
-  const [erro, setErro] = useState(false)
+  const [falhas, setFalhas] = useState(0)
 
   const chamar = useCallback(
     async (acao: Acao) => {
@@ -20,9 +20,9 @@ export function useWhatsappConexao(barracaId: string) {
         })
         if (error || !data?.ok) throw new Error('indisponivel')
         setResposta(data as RespostaConexao)
-        setErro(false)
+        setFalhas(0)
       } catch {
-        setErro(true)
+        setFalhas((n) => n + 1)
       }
     },
     [barracaId],
@@ -39,7 +39,7 @@ export function useWhatsappConexao(barracaId: string) {
     return () => window.clearInterval(id)
   }, [chamar, estado])
 
-  const tela: TelaConexao = telaDaConexao(resposta, erro)
+  const tela: TelaConexao = telaDaConexao(resposta, falhas >= FALHAS_PARA_ERRO)
   return {
     tela,
     avisos: resposta?.avisos ?? [],

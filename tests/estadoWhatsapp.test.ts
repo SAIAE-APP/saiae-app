@@ -11,6 +11,13 @@ const r = (estado: RespostaConexao['estado'], extra: Partial<RespostaConexao> = 
   ...extra,
 })
 
+describe('FALHAS_PARA_ERRO', () => {
+  test('só mostra o erro depois de 2 falhas seguidas', async () => {
+    const { FALHAS_PARA_ERRO } = await import('../src/lib/estadoWhatsapp.ts')
+    assert.equal(FALHAS_PARA_ERRO, 2)
+  })
+})
+
 describe('telaDaConexao', () => {
   test('null sem erro é carregando; erro vence', () => {
     assert.equal(telaDaConexao(null, false).tipo, 'carregando')
