@@ -175,7 +175,7 @@ describe('integracao-v1: avaliacao_config', () => {
 })
 
 describe('function whatsapp-disparos: guardas estáticas', () => {
-  const codigo = readFileSync(new URL('../supabase/functions/whatsapp-disparos/index.ts', import.meta.url), 'utf8').replace(/\/\/.*$/gm, '')
+  const codigo = readFileSync(new URL('../supabase/functions/whatsapp-disparos/handler.ts', import.meta.url), 'utf8').replace(/\/\/.*$/gm, '')
   const pos = (t: string) => {
     const i = codigo.indexOf(t)
     assert.ok(i >= 0, t)

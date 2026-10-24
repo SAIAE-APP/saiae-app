@@ -10,7 +10,7 @@ type Linha = Record<string, unknown>
 
 /** Supabase falso: só o que o handler usa. O UPDATE avalia filtros e aplica no MESMO tick (atômico, como o Postgres). */
 /** Extras da comanda (Task 10): campos a mais da barraca, a comanda e as rodadas dela (consulta por comanda_id). */
-type Extras = { barraca?: Linha; comanda?: Linha | null; rodadas?: Linha[]; erroLeitura?: (tabela: string, colunas: string) => Linha | null }
+type Extras = { fiscalVigente?: boolean; barraca?: Linha; comanda?: Linha | null; rodadas?: Linha[]; erroLeitura?: (tabela: string, colunas: string) => Linha | null }
 
 function criarBanco(inicial: Linha = {}, linhaToken: Linha = { token_homologacao: 'tok-h', token_producao: 'tok-p' }, extras: Extras = {}) {
   const pedido: Linha = { id: 'p1', barraca_id: 'b1', metodo_pagamento: 'pix', nfce_status: null, nfce_chave: null, nfce_numero: null, nfce_trava_em: null, ...inicial }
@@ -78,8 +78,10 @@ function criarBanco(inicial: Linha = {}, linhaToken: Linha = { token_homologacao
     return q
   }
 
-  const cliente = { auth: { getUser: async () => ({ data: { user: { id: 'u1' } }, error: null }) }, from: consulta }
-  return { pedido, updates, estado, cliente }
+  const rpcs: Array<[string, Linha]> = []
+  const rpc = async (fn: string, args: Linha) => (rpcs.push([fn, args]), { data: extras.fiscalVigente ?? true, error: null })
+  const cliente = { auth: { getUser: async () => ({ data: { user: { id: 'u1' } }, error: null }) }, from: consulta, rpc }
+  return { pedido, updates, estado, cliente, rpcs }
 }
 
 /** FocusNFe falsa: guarda notas por ref; POST com ref repetida é recusado, como a API real. */
@@ -156,6 +158,24 @@ describe('emitir-nfce: trava e reconciliação (handler executado)', () => {
     assert.equal(banco.pedido.nfce_status, 'autorizado')
     assert.equal(banco.pedido.nfce_chave, 'CHAVE-p1')
     assert.equal(banco.pedido.nfce_trava_em, null)
+  })
+
+  test('módulo fiscal desligado responde 403 {erro:modulo_desligado} e não chama a FocusNFe', async () => {
+    const { banco, focus, chamar } = montar({}, undefined, {}, { fiscalVigente: false })
+    const r = await chamar()
+    assert.equal(r.status, 403)
+    assert.deepEqual(r.corpo, { erro: 'modulo_desligado' })
+    assert.deepEqual(focus.log.posts, [])
+    assert.deepEqual(focus.log.gets, [])
+    assert.equal(banco.updates.length, 0) // nem trava
+    assert.deepEqual(banco.rpcs[0], ['modulo_ativo', { p_barraca_id: 'b1', p_modulo: 'fiscal' }])
+  })
+
+  test('módulo fiscal vigente emite mesmo com fiscal_habilitado=false (a coluna é só espelho)', async () => {
+    const { focus, chamar } = montar({}, undefined, {}, { barraca: { fiscal_habilitado: false } })
+    const r = await chamar()
+    assert.equal(r.status, 200)
+    assert.deepEqual(focus.log.posts, ['p1'])
   })
 
   test('duas chamadas em paralelo = UM POST à FocusNFe e nenhum `erro` gravado', async () => {

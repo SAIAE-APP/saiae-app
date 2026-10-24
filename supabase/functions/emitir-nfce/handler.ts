@@ -21,6 +21,7 @@ import { comCors } from '../_shared/cors.ts'
 import { configDoEnv, lerSegredo } from '../_shared/segredoCifrado.ts'
 import { MENSAGEM_PEDIDO_GRATIS, ratearDesconto, totalDaNotaCentavos } from '../_shared/descontoNfce.ts'
 import { ratearTaxaServico } from '../_shared/taxaServicoNfce.ts'
+import { moduloAtivo } from '../_shared/modulos.ts'
 
 const FOCUSNFE_URL_HOMOLOGACAO = 'https://homologacao.focusnfe.com.br/v2'
 const FOCUSNFE_URL_PRODUCAO = 'https://api.focusnfe.com.br/v2'
@@ -199,7 +200,7 @@ function criarHandlerInterno(deps: DependenciasNfce) {
 
   const { data: barraca, error: erroBarraca } = await supabase
     .from('barracas')
-    .select('id, cnpj, fiscal_habilitado, fiscal_ambiente, tributos_aprox_bps')
+    .select('id, cnpj, fiscal_ambiente, tributos_aprox_bps')
     .eq('id', pedido.barraca_id)
     .single()
 
@@ -207,8 +208,9 @@ function criarHandlerInterno(deps: DependenciasNfce) {
     return jsonResponse({ erro: 'Barraca não encontrada' }, 404)
   }
 
-  if (!barraca.fiscal_habilitado) {
-    return jsonResponse({ erro: 'Emissão fiscal não habilitada para esta barraca' }, 422)
+  // Permissão = módulo fiscal vigente (fail-closed). `fiscal_habilitado` virou só espelho legado. Vem antes da trava e da FocusNFe.
+  if (!(await moduloAtivo(supabase, barraca.id, 'fiscal'))) {
+    return jsonResponse({ erro: 'modulo_desligado' }, 403)
   }
 
   if (!barraca.cnpj) {
