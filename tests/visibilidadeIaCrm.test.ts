@@ -10,9 +10,10 @@ describe('aba WhatsApp e Automação', () => {
     assert.equal(mostrarWhatsappAutomacao({}, undefined), false)
   })
   test('as barracas liberadas e a variável de staging liberam', () => {
-    assert.deepEqual([...SLUGS_COM_IA_E_CRM], ['qa-teste-varredura', 'dhelenarestaurante'])
+    assert.deepEqual([...SLUGS_COM_IA_E_CRM], ['qa-teste-varredura', 'dhelenarestaurante', 'sai-ae-uma-barraca'])
     assert.equal(mostrarWhatsappAutomacao({ slug: 'qa-teste-varredura' }, undefined), true)
     assert.equal(mostrarWhatsappAutomacao({ slug: 'dhelenarestaurante' }, undefined), true)
+    assert.equal(mostrarWhatsappAutomacao({ slug: 'sai-ae-uma-barraca' }, undefined), true)
     assert.equal(mostrarWhatsappAutomacao({ slug: 'qualquer' }, '1'), true)
   })
 })
