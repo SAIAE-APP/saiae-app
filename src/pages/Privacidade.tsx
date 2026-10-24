@@ -13,7 +13,7 @@ import { Icone } from '../components/ui/Icone'
 // usa nenhum rastreador de terceiro (confirmado por busca no código,
 // 2026-09-28) — não há seção de cookies além da nota informativa abaixo.
 
-const DATA_VIGENCIA = '17 de outubro de 2026'
+const DATA_VIGENCIA = '24 de outubro de 2026'
 
 function Secao({ titulo, children }: { titulo: string; children: React.ReactNode }) {
   return (
@@ -234,19 +234,21 @@ export function Privacidade() {
               conecta ao WhatsApp e não recebe cópia dela.
             </ItemLista>
             <ItemLista>
-              <strong>WhatsApp para avisar "pedido pronto" (opcional):</strong> o cliente pode informar o
+              <strong>WhatsApp para avisar sobre o pedido (opcional):</strong> o cliente pode informar o
               número ao fazer o pedido (na barraca ou no cardápio digital). Ele serve <strong>somente</strong>{' '}
-              para a barraca avisar que aquele pedido ficou pronto, abrindo o WhatsApp do aparelho dela. Não
-              entra no cadastro de clientes de entrega, não é usado para ofertas e fica guardado junto do
-              pedido, sendo apagado quando o pedido é apagado (Apagar período ou exclusão da barraca).
+              para avisos sobre aquele pedido (pedido pronto e, se a barraca ligar, os demais avisos e o
+              pedido de avaliação descritos na seção 9). Sem a caixa de promoções, ele não entra no
+              cadastro de clientes de entrega, não é usado para ofertas e fica guardado junto do pedido,
+              sendo apagado quando o pedido é apagado (Apagar período ou exclusão da barraca).
             </ItemLista>
             <ItemLista>
-              <strong>Contato comercial (opcional):</strong> no cardápio digital, quem pede entrega pode
-              marcar, em uma caixa separada, que aceita receber ofertas e novidades da loja por WhatsApp.
-              Sem essa marcação os dados servem só para entregar o pedido. A barraca pode exportar uma
-              lista dos clientes que aceitaram, para usar no próprio contato; o Sai aê não envia
-              mensagens em massa. Quem aceitou pode revogar a qualquer momento pedindo à barraca, e o dono
-              da barraca pode excluir o cadastro do cliente em Ajustes, na seção "Clientes de entrega".
+              <strong>Contato comercial (opcional):</strong> no cardápio digital e no lançamento do pedido
+              pela barraca, o cliente pode marcar, em uma caixa separada, que aceita receber promoções da
+              loja por WhatsApp. Sem essa marcação os dados servem só para entregar o pedido e avisar sobre
+              ele. Só quem marcou entra na lista de promoções da loja (seção 9). A barraca pode também
+              exportar essa lista. Quem aceitou pode revogar a qualquer momento respondendo{' '}
+              <strong>SAIR</strong> a qualquer mensagem de promoção ou pedindo à barraca, e o dono da
+              barraca pode excluir o cadastro do cliente em Ajustes, na seção "Clientes de entrega".
             </ItemLista>
             <ItemLista>
               <strong>Link do entregador:</strong> a barraca pode enviar ao entregador um link (por
@@ -265,7 +267,7 @@ export function Privacidade() {
             <strong>Excluir:</strong> o dono da barraca pode excluir o cadastro de um cliente em Ajustes,
             na seção "Clientes de entrega". Isso apaga o cadastro; os pedidos já feitos continuam no
             Histórico com os dados da entrega, e só são apagados pelo "Apagar período" ou ao excluir a
-            barraca (ver "Retenção de dados", seção 12). O cliente final que quiser corrigir ou apagar os próprios
+            barraca (ver "Retenção de dados", seção 13). O cliente final que quiser corrigir ou apagar os próprios
             dados pode pedir à barraca ou diretamente a nós pelo e-mail de contato abaixo.
           </p>
         </Secao>
@@ -350,7 +352,45 @@ export function Privacidade() {
           </p>
         </Secao>
 
-        <Secao titulo="9. Quem fala com o Sai aê pelo WhatsApp (panfleto e interessados)">
+        <Secao titulo="9. Avisos, avaliação e promoções pelo WhatsApp da loja (módulo opcional)">
+          <p>
+            A barraca pode ligar o módulo de <strong>WhatsApp e Automação</strong> e conectar o próprio
+            número de WhatsApp (por QR Code, em Ajustes). As mensagens saem desse número, em nome da
+            barraca, a partir de servidores do Sai aê na <strong>Railway</strong>. A barraca é quem decide
+            usar o módulo e escolhe os textos; o Sai aê opera o envio para ela.
+          </p>
+          <ul className="flex flex-col gap-2">
+            <ItemLista>
+              <strong>Avisos sobre o pedido:</strong> recebido, pronto, saiu para entrega, entregue e
+              cancelado, enviados ao número informado no pedido. Fazem parte do serviço contratado pelo
+              cliente ao pedir e não são promoção.
+            </ItemLista>
+            <ItemLista>
+              <strong>Pedido de avaliação:</strong> cerca de 30 minutos depois de entregue, o cliente
+              recebe uma mensagem pedindo uma nota de 1 a 5 e, se quiser, um comentário. A nota e o
+              comentário (até 300 caracteres) ficam registrados e são enviados ao WhatsApp do dono da
+              barraca; nota baixa o chama para falar com o cliente. Telefone e nome ficam guardados apenas
+              enquanto a avaliação está agendada ou aguardando resposta (no máximo 48 horas) e depois são
+              apagados.
+            </ItemLista>
+            <ItemLista>
+              <strong>Promoções:</strong> a barraca só envia promoções a quem marcou a caixa própria de
+              aceite (seção 4), nunca a quem só informou o telefone para o pedido. Todas as mensagens
+              de promoção trazem a instrução para responder <strong>SAIR</strong>; quem responde deixa
+              de receber e a barraca não consegue enviar de novo. As mensagens são espaçadas e só saem em
+              horário comercial.
+            </ItemLista>
+            <ItemLista>
+              <strong>Atendente automático:</strong> quando ligado, é o descrito na seção 8.
+            </ItemLista>
+          </ul>
+          <p>
+            Esse módulo não é obrigatório para usar o Sai aê. Desconectar o WhatsApp em Ajustes interrompe
+            todos os envios.
+          </p>
+        </Secao>
+
+        <Secao titulo="10. Quem fala com o Sai aê pelo WhatsApp (panfleto e interessados)">
           <p>
             O número de WhatsApp do Sai aê também atende pessoas interessadas no produto, por exemplo quem
             chegou por um panfleto ou QR code. Esse atendimento também é feito por um assistente
@@ -375,7 +415,7 @@ export function Privacidade() {
           </ul>
         </Secao>
 
-        <Secao titulo="10. Com quem compartilhamos dados">
+        <Secao titulo="11. Com quem compartilhamos dados">
           <p>Usamos os seguintes prestadores de serviço para operar o Sai aê. Nenhum deles usa seus dados para fins próprios de publicidade:</p>
           <ul className="flex flex-col gap-2">
             <ItemLista><strong>Supabase</strong> — banco de dados, autenticação e sincronização em tempo real.</ItemLista>
@@ -386,7 +426,7 @@ export function Privacidade() {
             <ItemLista><strong>Stripe</strong> — processamento da cobrança de assinatura do Sai aê (recebe o e-mail do dono e os dados de pagamento informados no checkout).</ItemLista>
             <ItemLista><strong>Google Fonts</strong> — carregamento das fontes usadas na interface.</ItemLista>
             <ItemLista><strong>BrasilAPI e ViaCEP</strong> — consulta pública de CNPJ e CEP no assistente de configuração (ver seção 7).</ItemLista>
-            <ItemLista><strong>Anthropic, Meta e Railway</strong> — atendente automático por WhatsApp e atendimento a interessados (ver seções 8 e 9). A Meta (WhatsApp) e a Railway também entregam o código de confirmação do perfil e os avisos sobre o pedido, quando esses recursos estão ligados (seção 3).</ItemLista>
+            <ItemLista><strong>Anthropic, Meta e Railway</strong> — atendente automático por WhatsApp e atendimento a interessados (ver seções 8 e 10). A Meta (WhatsApp) e a Railway também entregam o código de confirmação do perfil, os avisos sobre o pedido, o pedido de avaliação e as promoções, quando esses recursos estão ligados (seções 3 e 9).</ItemLista>
           </ul>
           <p>
             Não usamos ferramentas de analytics, rastreamento de comportamento ou publicidade de
@@ -394,7 +434,7 @@ export function Privacidade() {
           </p>
         </Secao>
 
-        <Secao titulo="11. Segurança">
+        <Secao titulo="12. Segurança">
           <p>
             Dados sensíveis (senhas de acesso, tokens de integração fiscal e de pagamento) ficam
             protegidos por controle de acesso a nível de linha (RLS) no banco de dados, sem consulta
@@ -413,20 +453,22 @@ export function Privacidade() {
           </p>
         </Secao>
 
-        <Secao titulo="12. Retenção de dados">
+        <Secao titulo="13. Retenção de dados">
           <p>
             Mantemos os dados da sua conta e da sua barraca enquanto ela existir. Histórico de pedidos
             pode ser apagado manualmente pelo dono da barraca (função "Apagar período", em Histórico).
             Ao excluir uma barraca, todos os dados associados a ela (pedidos, cardápio, histórico, senha
             administrativa, clientes de entrega, respostas do assistente de configuração e endereço da
             loja) são apagados permanentemente. As conversas do atendente automático e do atendimento a
-            interessados ficam no máximo 30 dias, e o lead de interessado até 12 meses sem contato (seções 8 e 9).
+            interessados ficam no máximo 30 dias, e o lead de interessado até 12 meses sem contato (seções 8 e 10).
             Cópias de segurança (backup) do banco do atendimento, que incluem conversas e leads, são
             mantidas por até 30 dias e depois descartadas automaticamente.
           </p>
           <p>
             Os registros de erros do aplicativo ficam por até 30 dias, e os registros de acesso da equipe de
-            administração à barraca (seção 11) ficam enquanto a barraca existir.
+            administração à barraca (seção 12) ficam enquanto a barraca existir. A nota e o comentário de uma
+            avaliação (seção 9) ficam enquanto a barraca existir; telefone e nome são apagados como
+            descrito lá.
           </p>
           <p>
             O cadastro de clientes de entrega fica guardado enquanto a barraca existir ou até o dono
@@ -435,7 +477,7 @@ export function Privacidade() {
           </p>
         </Secao>
 
-        <Secao titulo="13. Seus direitos (LGPD)">
+        <Secao titulo="14. Seus direitos (LGPD)">
           <p>
             Você pode solicitar, a qualquer momento e gratuitamente, através do e-mail{' '}
             <a href="mailto:contatosaiae@gmail.com" className="font-medium text-mesa-text-primary underline">
@@ -457,7 +499,7 @@ export function Privacidade() {
           </ul>
         </Secao>
 
-        <Secao titulo="14. Alterações nesta política">
+        <Secao titulo="15. Alterações nesta política">
           <p>
             Podemos atualizar esta política conforme o Sai aê ganha novos recursos. Mudanças relevantes
             serão comunicadas por e-mail ou aviso no aplicativo. A data no topo desta página sempre
@@ -465,7 +507,7 @@ export function Privacidade() {
           </p>
         </Secao>
 
-        <Secao titulo="15. Contato">
+        <Secao titulo="16. Contato">
           <p>
             Dúvidas sobre esta política ou sobre seus dados:{' '}
             <a href="mailto:contatosaiae@gmail.com" className="font-medium text-mesa-text-primary underline">
