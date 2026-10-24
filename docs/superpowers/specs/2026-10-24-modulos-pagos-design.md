@@ -1,6 +1,6 @@
 # Módulos pagos do Sai aê — design
 
-Data: 2026-10-24. Autor da decisão: João. Status: aguardando revisão do João.
+Data: 2026-10-24. Autor da decisão: João. Status: implementado (aguardando staging e produção).
 
 ## Intenção
 
