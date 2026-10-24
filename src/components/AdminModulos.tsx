@@ -12,6 +12,7 @@ import {
   ROTULO_MODULO,
   TAXA_ATIVACAO_FISCAL_CENTAVOS,
   mensagemDoEstado,
+  termoParaEnviar,
   teste30Dias,
 } from '../lib/adminModulos'
 import {
@@ -53,10 +54,13 @@ export function AdminModulos({ barracaId }: { barracaId: string }) {
     if (pendente) return
     setPendente(true)
     setMsg(null)
-    const estado = await acao()
-    setMsg(mensagemDoEstado(estado))
-    await recarregar()
-    setPendente(false)
+    try {
+      const estado = await acao()
+      setMsg(mensagemDoEstado(estado))
+      await recarregar()
+    } finally {
+      setPendente(false)
+    }
   }
 
   const definir = (
@@ -66,7 +70,7 @@ export function AdminModulos({ barracaId }: { barracaId: string }) {
     extra: { testeAte?: string; pagoAte?: string | null } = {},
   ) =>
     executar(() =>
-      definirModulo({ barracaId, modulo: l.modulo, estado, origem, testeAte: extra.testeAte, pagoAte: extra.pagoAte, termoVersao: termo[l.modulo] }),
+      definirModulo({ barracaId, modulo: l.modulo, estado, origem, testeAte: extra.testeAte, pagoAte: extra.pagoAte, termoVersao: termoParaEnviar(estado, termo[l.modulo]) }),
     )
 
   async function salvarToken(ambiente: 'homologacao' | 'producao') {
@@ -74,10 +78,13 @@ export function AdminModulos({ barracaId }: { barracaId: string }) {
     if (!valor || pendente) return
     setPendente(true)
     setMsg(null)
-    const e = await salvarCredencial({ tipo: 'fiscal', barracaId, ambiente, valor })
-    if (!e) setTokens((t) => ({ ...t, [ambiente]: '' }))
-    setMsg(e ?? 'Token salvo.')
-    setPendente(false)
+    try {
+      const e = await salvarCredencial({ tipo: 'fiscal', barracaId, ambiente, valor })
+      if (!e) setTokens((t) => ({ ...t, [ambiente]: '' }))
+      setMsg(e ?? 'Token salvo.')
+    } finally {
+      setPendente(false)
+    }
   }
 
   const btn = 'min-h-11'
@@ -128,8 +135,8 @@ export function AdminModulos({ barracaId }: { barracaId: string }) {
               <Button className={btn} size="sm" variant="outline" disabled={pendente} onClick={() => definir(l, 'teste', 'cortesia', { testeAte: teste30Dias(new Date()) })}>
                 Teste de 30 dias
               </Button>
-              <Button className={btn} size="sm" variant="outline" disabled={pendente} onClick={() => definir(l, 'suspenso', l.origem ?? 'cortesia', { pagoAte: l.pago_ate })}>Suspender</Button>
-              <Button className={btn} size="sm" variant="destructive" disabled={pendente} onClick={() => definir(l, 'cancelado', l.origem ?? 'cortesia', { pagoAte: l.pago_ate })}>Cancelar</Button>
+              <Button className={btn} size="sm" variant="outline" disabled={pendente || l.estado === 'inativo'} onClick={() => definir(l, 'suspenso', l.origem ?? 'cortesia', { pagoAte: l.pago_ate })}>Suspender</Button>
+              <Button className={btn} size="sm" variant="destructive" disabled={pendente || l.estado === 'inativo'} onClick={() => definir(l, 'cancelado', l.origem ?? 'cortesia', { pagoAte: l.pago_ate })}>Cancelar</Button>
             </div>
           </Card>
         )
@@ -171,7 +178,7 @@ export function AdminModulos({ barracaId }: { barracaId: string }) {
           Taxa de ativação {formatarPrecoBR(TAXA_ATIVACAO_FISCAL_CENTAVOS)}: cobrada em {data(fiscal?.ativacao_cobrada_em ?? null)}.
         </p>
         <Button className={btn} size="sm" variant="outline" disabled={pendente} onClick={() => executar(() => registrarTaxaAtivacao(barracaId))}>
-          Registrar taxa de R$ 99
+          Registrar taxa de {formatarPrecoBR(TAXA_ATIVACAO_FISCAL_CENTAVOS)}
         </Button>
         {(['homologacao', 'producao'] as const).map((amb) => (
           <div key={amb} className="flex flex-col gap-2">

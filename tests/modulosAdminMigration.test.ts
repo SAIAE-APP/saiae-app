@@ -123,6 +123,19 @@ describe('funções do admin', () => {
     assert.equal(l.estado, 'ativo')
   })
 
+  test('suspender com p_termo_versao não altera termo_aceito_em', async () => {
+    await limpar(); await como(ADMIN)
+    assert.equal(await definir('fiscal', 'ativo', 'cortesia', null, null, 'v1'), 'ok')
+    await db.exec("reset role; update public.modulos_barraca set termo_aceito_em = '2026-01-01T00:00:00Z'")
+    await como(ADMIN)
+    assert.equal(await definir('fiscal', 'suspenso', 'cortesia', null, null, 'v2'), 'ok')
+    const [l] = await linhas()
+    assert.equal(l.estado, 'suspenso')
+    assert.equal(l.termo_versao, 'v1')
+    assert.equal(new Date(l.termo_aceito_em as string).toISOString(), '2026-01-01T00:00:00.000Z')
+    await limpar()
+  })
+
   test('definir fiscal em loja que já tem termo_versao legado não exige termo novo', async () => {
     await limpar()
     await db.exec(`insert into public.modulos_barraca (barraca_id, modulo, estado, origem, termo_versao, termo_aceito_em)

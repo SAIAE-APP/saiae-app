@@ -72,6 +72,14 @@ before(async () => {
       ordem int, ativo boolean);
     create table public.opcoes (id uuid primary key, grupo_id uuid, barraca_id uuid, nome text, preco_centavos int, esgotado boolean,
       ordem int, ativo boolean);
+    alter table public.barracas add column emitente_endereco text, add column entrega_bairro_nao_listado text,
+      add column ia_dono_confirmacao_pedida_em timestamptz, add column ia_texto_livre text, add column metodos_pagamento_ativos text[],
+      add column procon_endereco text, add column taxa_entrega_centavos int, add column taxa_entrega_habilitada boolean;
+    create function public.normalizar_telefone_aviso(t text) returns text language sql as $$ select t $$;
+    create table public.taxas_entrega_bairro (barraca_id uuid, bairro text, bairro_normalizado text, valor_centavos int, ativo boolean);
+    create table public.assinaturas (usuario_id uuid, plan text, plano text, status text);
+    create function public.cobranca_ativa() returns boolean language sql as $$ select true $$;
+    create table public.ia_limites_plano (plano text, conversas_mes int);
     insert into public.barracas (id, slug, nome, whatsapp_avisos) values ('${B}', 'loja', 'Loja', '{"recebido": true}');
     insert into public.usuarios_barracas values ('${DONO}', '${B}', 'dono');
     insert into public.pedidos (id, barraca_id, senha, status) values ('${PEDIDO}', '${B}', 7, 'novo');
@@ -179,5 +187,15 @@ describe('consumidores exigem módulo vigente', () => {
     await modulos(['whatsapp_bot', 'ativo'])
     await como('authenticated')
     assert.equal((await um<{ ia_habilitada: boolean }>(`select public.ia_ligar('${B}', true) as r`)).ia_habilitada, true)
+  })
+
+  test('ia_contexto não devolve contexto sem módulo bot vigente', async () => {
+    const ctx = () => um<{ ativa: boolean }>(`select public.ia_contexto('ABC123', null) as r`)
+    await modulos()
+    await db.exec(`reset role; update public.barracas set ia_habilitada = true, ia_codigo = 'ABC123' where id = '${B}'`)
+    assert.equal((await ctx()).ativa, false)
+    await modulos(['whatsapp_bot', 'ativo'])
+    await db.exec(`update public.barracas set ia_habilitada = true where id = '${B}'`) // o espelho desligou ao trocar módulos
+    assert.equal((await ctx()).ativa, true)
   })
 })

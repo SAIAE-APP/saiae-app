@@ -33,3 +33,8 @@ export function mensagemDoEstado(estado: string): string {
 export function teste30Dias(agora: Date): string {
   return new Date(agora.getTime() + 30 * 24 * 60 * 60 * 1000).toISOString()
 }
+
+/** O termo só é enviado ao ligar (ativo/teste): suspender ou cancelar com o campo preenchido não pode reescrever a data do aceite. */
+export function termoParaEnviar(estado: string, termo: string | undefined): string | undefined {
+  return estado === 'ativo' || estado === 'teste' ? termo : undefined
+}

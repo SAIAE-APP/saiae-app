@@ -51,8 +51,8 @@ begin
   values (
     p_barraca_id, p_modulo, p_estado, p_origem, p_teste_ate, p_pago_ate,
     case when v_liga then coalesce(m.ativado_em, now()) else m.ativado_em end,
-    coalesce(p_termo_versao, m.termo_versao),
-    case when p_termo_versao is not null then now() else m.termo_aceito_em end
+    case when v_liga then coalesce(p_termo_versao, m.termo_versao) else m.termo_versao end, -- suspender/cancelar nunca reescreve o termo
+    case when v_liga and p_termo_versao is not null then now() else m.termo_aceito_em end
   )
   on conflict (barraca_id, modulo) do update
     set estado = excluded.estado, origem = excluded.origem, teste_ate = excluded.teste_ate,

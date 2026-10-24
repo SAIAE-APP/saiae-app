@@ -5,6 +5,7 @@ import {
   PRECO_PACOTE_WHATSAPP_CENTAVOS,
   TAXA_ATIVACAO_FISCAL_CENTAVOS,
   mensagemDoEstado,
+  termoParaEnviar,
   teste30Dias,
 } from '../src/lib/adminModulos.ts'
 
@@ -28,5 +29,12 @@ describe('adminModulos', () => {
     const base = new Date('2026-11-03T12:00:00.000Z')
     assert.equal(teste30Dias(base), '2026-12-03T12:00:00.000Z')
     assert.equal(base.toISOString(), '2026-11-03T12:00:00.000Z')
+  })
+  test('termoParaEnviar só manda o termo ao ativar ou testar', () => {
+    assert.equal(termoParaEnviar('ativo', 'v2'), 'v2')
+    assert.equal(termoParaEnviar('teste', 'v2'), 'v2')
+    assert.equal(termoParaEnviar('suspenso', 'v2'), undefined)
+    assert.equal(termoParaEnviar('cancelado', 'v2'), undefined)
+    assert.equal(termoParaEnviar('ativo', undefined), undefined)
   })
 })

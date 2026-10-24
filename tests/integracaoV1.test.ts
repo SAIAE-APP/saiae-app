@@ -4,6 +4,7 @@ import { createHmac } from 'node:crypto'
 import { describe, test } from 'node:test'
 import {
   haSegredoValido,
+  lojaComBotVigente,
   lojaDoBot,
   modosDoBot,
   recusaDaAcao,
@@ -155,6 +156,24 @@ describe('regras da loja para o bot', () => {
     const c = lojaDoBot({ ...LOJA, ia_whatsapp_dono: '5511999990000', ia_whatsapp_dono_confirmado_em: '2026-10-01T00:00:00Z' }, [], 'https://x', quarta)
     assert.equal(c.whatsapp_dono, '5511999990000')
     assert.equal(c.aberta_agora, true) // sem horário cadastrado não restringe
+  })
+  test('lojaComBotVigente: flag ligada só vale com o módulo bot vigente (fecha em erro)', async () => {
+    const db = (r: { data: unknown; error: unknown } | 'lanca') => ({
+      rpc: () => (r === 'lanca' ? Promise.reject(new Error('rede')) : Promise.resolve(r)),
+    })
+    const desligada = (b: typeof LOJA) => recusaDaAcao('pedido', 'retirada', b, true)?.codigo === 'bot_desligado'
+    const off = await lojaComBotVigente(LOJA, db({ data: false, error: null }), 'b1')
+    assert.equal(off.ia_habilitada, false)
+    assert.equal(lojaDoBot(off, [], 'https://x', new Date()).bot_habilitado, false)
+    assert.ok(desligada(off))
+    const on = await lojaComBotVigente(LOJA, db({ data: true, error: null }), 'b1')
+    assert.equal(on.ia_habilitada, true)
+    assert.ok(!desligada(on))
+    assert.equal((await lojaComBotVigente(LOJA, db({ data: true, error: { message: 'x' } }), 'b1')).ia_habilitada, false)
+    assert.equal((await lojaComBotVigente(LOJA, db('lanca'), 'b1')).ia_habilitada, false)
+    // flag já desligada nem consulta o banco
+    const sem = { rpc: () => { throw new Error('não deveria consultar') } }
+    assert.equal((await lojaComBotVigente({ ...LOJA, ia_habilitada: false }, sem, 'b1')).ia_habilitada, false)
   })
   test('telefoneSemPais tira o 55 só com 12/13 dígitos', () => {
     assert.equal(telefoneSemPais('5511999998888'), '11999998888')
