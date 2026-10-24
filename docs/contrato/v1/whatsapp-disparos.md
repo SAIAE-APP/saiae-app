@@ -54,3 +54,11 @@ Corpo `{ "barraca_id", "acao", … }`. Exige vínculo em `usuarios_barracas` (40
 - Pedido casa com o cliente por `cliente_id` ou pelo telefone do pedido (`cliente_telefone` / `entrega_telefone`), o mesmo critério dos eventos de saída.
 - Não existe registro de reclamação no Sai aê: a trava da avaliação é "sem cancelamento no mesmo pedido" (aplicada no CRM).
 - Baileys é conexão não oficial: risco de bloqueio do número permanece. A cobrança do módulo fica fora do código.
+
+## Revisão 2026-10-24 (acréscimos)
+
+- `enviar` aceita `request_id` (uuid) gerado pelo navegador por intenção de envio. A edge o repassa ao CRM; o CRM devolve `repetido: true` quando já existe a campanha, e a tela mostra "Campanha já criada".
+- Quem tem vínculo com a loja mas não é `dono` recebe 403 `{ erro: 'sem_permissao' }` em `enviar` e `cancelar`; sem vínculo, 403 genérico.
+- Variáveis aceitas: campanha `{nome}` e `{barraca}`; avaliação `{nome}`, `{senha}` e `{barraca}`. Outras são recusadas.
+- `whatsapp_dono` de `avaliacao_config` só sai com 8 a 15 dígitos; `ia_whatsapp_dono` só vale se confirmado, senão cai em `whatsapp_pedidos`.
+- Com mais de 500 elegíveis, cada envio leva até 500 (reativação: os mais antigos primeiro); o restante vai em outro envio, em outro dia.

@@ -256,7 +256,7 @@ function CardCampanhas({ barraca, d }: { barraca: Barraca; d: Disparos }) {
       <p className="mt-4 text-xs font-semibold text-mesa-neutral-700 dark:text-mesa-neutral-300">Sugestões de texto</p>
       <div className="mt-1.5 flex flex-col gap-2">
         {TEXTOS_SUGERIDOS[tipo].map((s) => (
-          <Button key={s} variant="outline" size="md" className="h-auto min-h-11 w-full justify-start whitespace-normal py-2 text-left" onClick={() => setTexto(s)}>
+          <Button key={s} variant="outline" size="md" className="h-auto min-h-11 w-full justify-start whitespace-normal! py-2 text-left [&>span]:min-w-0 [&>span]:justify-start" onClick={() => setTexto(s)}>
             {s}
           </Button>
         ))}
