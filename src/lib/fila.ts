@@ -9,6 +9,7 @@ export type TipoOperacao =
   | 'definir_metodo'
   | 'fechar_comanda'
   | 'salvar_cliente'
+  | 'registrar_contato'
 
 export type OperacaoPendente = {
   id: string

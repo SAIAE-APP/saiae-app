@@ -1,5 +1,6 @@
 import { useEffect, useRef, useState } from 'react'
 import { supabase } from '../lib/supabase'
+import { bancoSemRecurso } from '../lib/semMigration'
 import { registrarErroApp } from '../lib/erroApp'
 import {
   incrementarTentativa,
@@ -171,6 +172,22 @@ async function executarOperacao(op: OperacaoPendente): Promise<void> {
         throw new OperacaoAdiadaError('Cadastro do cliente aguardando para ser salvo')
       }
       return
+    }
+
+    case 'registrar_contato': {
+      // Contato de balcão que aceitou promoções (RPC registrar_contato_marketing). Como o salvar_cliente, nunca trava a fila.
+      if (op.tentativas >= MAX_TENTATIVAS_CLIENTE) {
+        console.warn('[sincronizacao] contato de promoções descartado depois de várias tentativas')
+        return
+      }
+      const { data, error } = await supabase.rpc('registrar_contato_marketing', op.payload)
+      if (error) {
+        if (bancoSemRecurso(error)) return
+        throw new OperacaoAdiadaError('Contato do cliente aguardando para ser salvo')
+      }
+      const estado = (data as { estado?: string } | null)?.estado
+      if (estado === 'ok' || estado === 'modulo_desligado' || estado === 'dados_invalidos' || estado === 'sem_acesso') return
+      throw new OperacaoAdiadaError('Contato do cliente aguardando para ser salvo')
     }
 
     case 'mudar_status': {

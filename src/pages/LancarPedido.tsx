@@ -578,6 +578,7 @@ export function LancarPedido() {
   const [entregaHerdada] = useState(() => edicaoRecebida?.entrega)
   const [clienteNomeHerdado] = useState(() => edicaoRecebida?.clienteNome)
   const [clienteTelefoneHerdado] = useState(() => edicaoRecebida?.clienteTelefone)
+  const [aceitaPromocoesHerdado] = useState(() => edicaoRecebida?.aceitaPromocoes)
 
   const [senhaDemorando, setSenhaDemorando] = useState(false)
   const [senha, setSenha] = useState<SenhaConfirmada | null>(
@@ -1025,6 +1026,7 @@ export function LancarPedido() {
         entrega: tipoEfetivo === 'entrega' ? entregaHerdada : undefined,
         clienteNome: clienteNomeHerdado,
         clienteTelefone: clienteTelefoneHerdado,
+        aceitaPromocoes: aceitaPromocoesHerdado,
         comandaMesa: comandaMesaRecebida ?? undefined,
       } satisfies EstadoParaConfirmar,
     })

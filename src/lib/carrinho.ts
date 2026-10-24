@@ -46,6 +46,8 @@ export type EstadoParaConfirmar = {
   clienteNome?: string
   /** WhatsApp opcional (só pra avisar "pedido pronto"). */
   clienteTelefone?: string
+  /** O cliente aceitou promoções por WhatsApp (marca do operador em Confirmar Pedido). */
+  aceitaPromocoes?: boolean
   /** Mesa travada de uma comanda aberta (vem de Mesas > Adicionar item); volta intacta em "Voltar e editar". */
   comandaMesa?: string
 }
@@ -64,6 +66,8 @@ export type EstadoParaEditar = {
   entrega?: DadosEntrega
   clienteNome?: string
   clienteTelefone?: string
+  /** O cliente aceitou promoções por WhatsApp (marca do operador em Confirmar Pedido). */
+  aceitaPromocoes?: boolean
   comandaMesa?: string
 }
 

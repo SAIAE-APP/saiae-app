@@ -5,6 +5,8 @@ import { useBarracaAtual } from '../layouts/contextoBarraca'
 import { classesBotaoIcone } from '../lib/estiloBotaoIcone'
 import { useTheme } from '../hooks/useTheme'
 import { enfileirar } from '../lib/fila'
+import { contatoMarketingDoPedido } from '../lib/contatoMarketing'
+import { Checkbox } from '../components/ui/Checkbox'
 import { filtrarEntradaPreco, formatarPrecoBR, reaisParaCentavos } from '../lib/preco'
 import { configTaxaEntrega, normalizarTelefone, validarDadosEntrega, type DadosEntrega } from '../lib/entrega'
 import { ICONE_MODO, ROTULO_MODO } from '../lib/atendimento'
@@ -25,7 +27,6 @@ import { BotaoHome } from '../components/ui/BotaoHome'
 import { BottomSheet } from '../components/ui/BottomSheet'
 import { Button } from '../components/ui/Button'
 import { Card } from '../components/ui/Card'
-import { Checkbox } from '../components/ui/Checkbox'
 import { FormularioEntrega } from '../components/FormularioEntrega'
 import { Icone } from '../components/ui/Icone'
 import { Input } from '../components/ui/Input'
@@ -183,6 +184,7 @@ export function ConfirmarPedido() {
   // formulário (obrigatório lá), então este campo não aparece.
   const [clienteNome, setClienteNome] = useState(() => estado?.clienteNome ?? '')
   const [clienteTelefone, setClienteTelefone] = useState(() => estado?.clienteTelefone ?? '')
+  const [aceitaPromocoes, setAceitaPromocoes] = useState(() => estado?.aceitaPromocoes ?? false)
   // Valor digitado à mão (taxa editável); null = segue a taxa do bairro.
   const [taxaEditada, setTaxaEditada] = useState<string | null>(null)
   const [mostrarErrosEntrega, setMostrarErrosEntrega] = useState(false)
@@ -262,6 +264,7 @@ export function ConfirmarPedido() {
         entrega: ehEntrega ? entrega : undefined,
         clienteNome,
         clienteTelefone,
+        aceitaPromocoes,
         comandaMesa: estado?.comandaMesa,
       } satisfies EstadoParaEditar,
     })
@@ -336,6 +339,17 @@ export function ConfirmarPedido() {
           }
         : {}),
     })
+
+    // Cliente que aceitou promoções vira contato da loja (só com o módulo ligado); depois do pedido na fila, sem travar o envio.
+    const contato = contatoMarketingDoPedido({
+      barracaId: barraca.id,
+      disparosHabilitado: barraca.whatsapp_disparos_habilitado,
+      ehEntrega,
+      telefone: clienteTelefone,
+      nome: clienteNome,
+      aceitaPromocoes,
+    })
+    if (contato) await enfileirar('registrar_contato', contato)
 
     navigate(`/${barraca.slug}/lancar`, {
       replace: true,
@@ -445,6 +459,15 @@ export function ConfirmarPedido() {
                 ? 'Número incompleto: o pedido segue sem aviso por WhatsApp.'
                 : 'Só para avisar quando o pedido ficar pronto.'
             }
+            className="mt-3"
+          />
+        )}
+
+        {!ehEntrega && telefoneAvisoValido && barraca.whatsapp_disparos_habilitado === true && (
+          <Checkbox
+            checked={aceitaPromocoes}
+            onChange={setAceitaPromocoes}
+            label="Cliente aceitou receber promoções desta loja por WhatsApp"
             className="mt-3"
           />
         )}
