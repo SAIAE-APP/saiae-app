@@ -1,7 +1,7 @@
-import { useEffect, useState } from 'react'
+import { useEffect, useRef, useState } from 'react'
 import { atualizarBarracaCache } from '../hooks/useBarraca'
 import { mensagemErroSalvar, useRascunho } from '../hooks/useSalvarBarraca'
-import { type Previa, useWhatsappDisparos } from '../hooks/useWhatsappDisparos'
+import { ErroDisparo, type Previa, useWhatsappDisparos } from '../hooks/useWhatsappDisparos'
 import { useWhatsappConexao } from '../hooks/useWhatsappConexao'
 import {
   DIAS_REATIVACAO,
@@ -14,6 +14,12 @@ import {
   TIPOS_DISPARO,
   estrelas,
   fraseDaPrevia,
+  fraseErroDisparo,
+  fraseVariaveis,
+  variaveisInvalidas,
+  VARIAVEIS_AVALIACAO,
+  VARIAVEIS_CAMPANHA,
+  type CampanhaResumo,
   fraseMotivo,
   fraseMotivoSalvar,
   previaDoTexto,
@@ -54,9 +60,14 @@ function CardAvaliacao({ barraca }: { barraca: Barraca }) {
   const [salvo, setSalvo] = useState(false)
   const [erro, setErro] = useState<string | null>(null)
   const texto = rascunho.valor.texto
+  const invalidas = variaveisInvalidas(texto, VARIAVEIS_AVALIACAO)
 
   async function salvar() {
     setErro(null)
+    if (invalidas.length > 0) {
+      setErro(fraseVariaveis(invalidas))
+      return
+    }
     if (typeof navigator !== 'undefined' && navigator.onLine === false) {
       setErro('Sem internet. Não foi salvo.')
       return
@@ -116,7 +127,7 @@ function CardAvaliacao({ barraca }: { barraca: Barraca }) {
         }}
         rows={3}
         maxLength={MAX_TEXTO_AVALIACAO}
-        disabled={!rascunho.valor.ativa}
+        error={invalidas.length > 0 ? fraseVariaveis(invalidas) : undefined}
       />
       <p className="mt-1 rounded-mesa-md bg-mesa-neutral-100 p-3 text-sm text-mesa-text-secondary dark:bg-mesa-neutral-800">
         <span className="block text-xs font-semibold uppercase tracking-wider text-mesa-text-tertiary">Prévia</span>
@@ -129,6 +140,7 @@ function CardAvaliacao({ barraca }: { barraca: Barraca }) {
         erro={erro}
         onSalvar={() => void salvar()}
         rotulo="Salvar avaliação"
+        desabilitado={invalidas.length > 0}
         className="mt-3"
       />
     </Card>
@@ -136,6 +148,7 @@ function CardAvaliacao({ barraca }: { barraca: Barraca }) {
 }
 
 function CardCampanhas({ barraca, d }: { barraca: Barraca; d: Disparos }) {
+  const ehDono = d.ehDono === true
   const { tela } = useWhatsappConexao(barraca.id)
   const { historico, previa: buscarPrevia, enviar } = d
   const conectado = tela.tipo === 'conectado'
@@ -143,10 +156,14 @@ function CardCampanhas({ barraca, d }: { barraca: Barraca; d: Disparos }) {
   const [dias, setDias] = useState<number>(30)
   const [texto, setTexto] = useState('')
   const [previa, setPrevia] = useState<Previa | 'erro' | null>(null)
+  const [erroPrevia, setErroPrevia] = useState<string | null>(null)
   const [confirmando, setConfirmando] = useState(false)
   const [enviando, setEnviando] = useState(false)
   const [erro, setErro] = useState<string | null>(null)
-  const [enviado, setEnviado] = useState(false)
+  const [enviado, setEnviado] = useState<'novo' | 'repetido' | null>(null)
+  // Uma chave por intenção de envio (tipo, dias e texto): a retentativa reaproveita o request_id e o CRM não duplica.
+  const intencao = useRef<{ chave: string; id: string } | null>(null)
+  const trava = useRef(false)
   const emAndamento = historico?.campanhas.some((c) => c.estado === 'em_andamento') ?? false
 
   useEffect(() => {
@@ -155,32 +172,57 @@ function CardCampanhas({ barraca, d }: { barraca: Barraca; d: Disparos }) {
     setPrevia(null)
     buscarPrevia(tipo, tipo === 'reativacao' ? dias : null)
       .then((p) => vivo && setPrevia(p))
-      .catch(() => vivo && setPrevia('erro'))
+      .catch((e) => {
+        if (!vivo) return
+        setPrevia('erro')
+        setErroPrevia(e instanceof ErroDisparo ? fraseErroDisparo(e.codigo) : null)
+      })
     return () => {
       vivo = false
     }
   }, [buscarPrevia, tipo, dias])
 
   const total = previa && previa !== 'erro' ? previa.enviaveis : 0
-  const podeEnviar = conectado && textoDisparoValido(texto) && total > 0 && !emAndamento
+  const invalidas = variaveisInvalidas(texto, VARIAVEIS_CAMPANHA)
+  const podeEnviar = ehDono && conectado && textoDisparoValido(texto) && invalidas.length === 0 && total > 0 && !emAndamento
+
+  function abrirConfirmacao() {
+    const chave = JSON.stringify([tipo, tipo === 'reativacao' ? dias : null, texto.trim()])
+    if (intencao.current?.chave !== chave) intencao.current = { chave, id: crypto.randomUUID() }
+    setConfirmando(true)
+  }
 
   async function confirmar() {
+    if (trava.current || !intencao.current) return // duplo toque: uma chamada só
+    trava.current = true
     setEnviando(true)
     setErro(null)
     try {
-      const r = await enviar(tipo, tipo === 'reativacao' ? dias : null, texto.trim())
+      const r = await enviar(tipo, tipo === 'reativacao' ? dias : null, texto.trim(), intencao.current.id)
+      intencao.current = null
       if (r.ok) {
-        setEnviado(true)
+        setEnviado(r.repetido ? 'repetido' : 'novo')
         setTexto('')
       } else {
         setErro(fraseMotivo(r.motivo))
       }
-    } catch {
-      setErro(fraseMotivo(undefined))
+    } catch (e) {
+      // Falha de rede: mantém o request_id; tocar em Enviar de novo é a mesma intenção.
+      setErro(e instanceof ErroDisparo ? fraseErroDisparo(e.codigo) : fraseMotivo(undefined))
     } finally {
+      trava.current = false
       setEnviando(false)
       setConfirmando(false)
     }
+  }
+
+  if (d.ehDono !== null && !ehDono) {
+    return (
+      <Card>
+        <p className="text-base font-medium text-mesa-text-primary">Campanhas</p>
+        <p className="mt-1 text-sm text-mesa-text-secondary">Só o dono da loja cria e cancela campanhas. Você pode acompanhar o histórico abaixo.</p>
+      </Card>
+    )
   }
 
   return (
@@ -193,7 +235,7 @@ function CardCampanhas({ barraca, d }: { barraca: Barraca; d: Disparos }) {
 
       <div className="mt-3 flex flex-wrap gap-2" role="group" aria-label="Tipo de campanha">
         {TIPOS_DISPARO.map((t) => (
-          <Chip key={t} checked={tipo === t} onClick={() => { setTipo(t); setEnviado(false) }} className="min-h-11">
+          <Chip key={t} checked={tipo === t} onClick={() => { setTipo(t); setEnviado(null) }} className="min-h-11">
             {ROTULO_TIPO[t]}
           </Chip>
         ))}
@@ -203,7 +245,7 @@ function CardCampanhas({ barraca, d }: { barraca: Barraca; d: Disparos }) {
           <p className="text-xs font-semibold text-mesa-neutral-700 dark:text-mesa-neutral-300">Sem pedir há mais de</p>
           <div className="mt-1.5 flex flex-wrap gap-2" role="group" aria-label="Dias sem pedir">
             {DIAS_REATIVACAO.map((d) => (
-              <Chip key={d} checked={dias === d} onClick={() => { setDias(d); setEnviado(false) }} className="min-h-11">
+              <Chip key={d} checked={dias === d} onClick={() => { setDias(d); setEnviado(null) }} className="min-h-11">
                 {d} dias
               </Chip>
             ))}
@@ -214,7 +256,7 @@ function CardCampanhas({ barraca, d }: { barraca: Barraca; d: Disparos }) {
       <p className="mt-4 text-xs font-semibold text-mesa-neutral-700 dark:text-mesa-neutral-300">Sugestões de texto</p>
       <div className="mt-1.5 flex flex-col gap-2">
         {TEXTOS_SUGERIDOS[tipo].map((s) => (
-          <Button key={s} variant="outline" size="md" className="h-auto min-h-11 justify-start py-2 text-left" onClick={() => setTexto(s)}>
+          <Button key={s} variant="outline" size="md" className="h-auto min-h-11 w-full justify-start whitespace-normal py-2 text-left" onClick={() => setTexto(s)}>
             {s}
           </Button>
         ))}
@@ -223,8 +265,9 @@ function CardCampanhas({ barraca, d }: { barraca: Barraca; d: Disparos }) {
         className="mt-3"
         label="Mensagem"
         helpText="Variáveis: {nome} {barraca}"
+        error={invalidas.length > 0 ? fraseVariaveis(invalidas) : undefined}
         value={texto}
-        onChange={(e) => { setTexto(e.target.value); setEnviado(false) }}
+        onChange={(e) => { setTexto(e.target.value); setEnviado(null) }}
         rows={4}
         maxLength={MAX_TEXTO_DISPARO}
       />
@@ -238,20 +281,21 @@ function CardCampanhas({ barraca, d }: { barraca: Barraca; d: Disparos }) {
 
       <p className="mt-3 text-sm text-mesa-text-primary" aria-live="polite">
         {previa === null && 'Calculando…'}
-        {previa === 'erro' && 'Não foi possível contar os clientes agora.'}
+        {previa === 'erro' && (erroPrevia ?? 'Não foi possível contar os clientes agora.')}
         {previa && previa !== 'erro' && fraseDaPrevia(previa)}
       </p>
-      {!conectado && (
+      {(tela.tipo === 'sem_sessao' || tela.tipo === 'desconectado' || tela.tipo === 'qr') && (
         <p className="mt-1 text-sm text-mesa-text-secondary">Conecte o WhatsApp da loja (seção acima) para enviar.</p>
       )}
+      {tela.tipo === 'erro' && <p className="mt-1 text-sm text-mesa-text-secondary">Não foi possível verificar o WhatsApp da loja agora.</p>}
       {emAndamento && <p className="mt-1 text-sm text-mesa-text-secondary">Já há uma campanha em andamento. Espere terminar para criar outra.</p>}
       {enviado && (
         <p role="status" className="mt-1 flex items-center gap-1.5 text-sm font-medium text-mesa-text-primary">
-          <Icone nome="check" size={16} /> Campanha criada. Acompanhe abaixo.
+          <Icone nome="check" size={16} /> {enviado === 'repetido' ? 'Campanha já criada. Acompanhe abaixo.' : 'Campanha criada. Acompanhe abaixo.'}
         </p>
       )}
       <ErroSalvar erro={erro} className="mt-2" />
-      <Button variant="primary" size="md" className="mt-3" icon={<Icone nome="send" size={16} />} disabled={!podeEnviar} onClick={() => setConfirmando(true)}>
+      <Button variant="primary" size="md" className="mt-3" icon={<Icone nome="send" size={16} />} disabled={!podeEnviar} onClick={abrirConfirmacao}>
         Enviar
       </Button>
 
@@ -278,7 +322,23 @@ function CardCampanhas({ barraca, d }: { barraca: Barraca; d: Disparos }) {
 
 function CardHistorico({ d }: { d: Disparos }) {
   const { historico, erro, recarregar, cancelar } = d
-  const [falhaCancelar, setFalhaCancelar] = useState(false)
+  const [alvo, setAlvo] = useState<CampanhaResumo | null>(null)
+  const [cancelando, setCancelando] = useState<string | null>(null)
+  const [falha, setFalha] = useState<{ id: string; frase: string } | null>(null)
+  const trava = useRef(false)
+
+  async function confirmarCancelamento() {
+    if (!alvo || trava.current) return // duplo toque: uma chamada só
+    trava.current = true
+    const id = alvo.id
+    setCancelando(id)
+    setFalha(null)
+    setAlvo(null)
+    const r = await cancelar(id)
+    if (!r.ok) setFalha({ id, frase: r.codigo ? fraseErroDisparo(r.codigo) : 'Não foi possível cancelar agora. Tente de novo.' })
+    trava.current = false
+    setCancelando(null)
+  }
 
   if (erro && !historico) {
     return (
@@ -306,7 +366,7 @@ function CardHistorico({ d }: { d: Disparos }) {
       ) : (
         <ul className="mt-2 divide-y divide-mesa-border-subtle">
           {campanhas.map((c) => (
-            <li key={c.id} className="flex items-center justify-between gap-3 py-2">
+            <li key={c.id} className="flex flex-wrap items-center justify-between gap-3 py-2">
               <span className="min-w-0">
                 <span className="block text-sm text-mesa-text-primary">
                   {ROTULO_TIPO[c.tipo]} · {new Date(c.criada_em).toLocaleDateString('pt-BR')}
@@ -315,25 +375,38 @@ function CardHistorico({ d }: { d: Disparos }) {
               </span>
               <span className="flex shrink-0 items-center gap-2">
                 <Badge variant={BADGE_ESTADO[c.estado]}>{rotuloEstadoCampanha(c.estado)}</Badge>
-                {c.estado === 'em_andamento' && (
+                {c.estado === 'em_andamento' && d.ehDono === true && (
                   <Button
                     variant="textDanger"
                     size="md"
-                    onClick={() => {
-                      if (window.confirm('Cancelar esta campanha? As mensagens que ainda não saíram não serão enviadas.')) {
-                        void cancelar(c.id).then((ok) => setFalhaCancelar(!ok))
-                      }
-                    }}
+                    loading={cancelando === c.id}
+                    disabled={cancelando !== null}
+                    aria-label={`Cancelar campanha ${ROTULO_TIPO[c.tipo]} de ${new Date(c.criada_em).toLocaleDateString('pt-BR')}`}
+                    onClick={() => setAlvo(c)}
                   >
-                    Cancelar
+                    {cancelando === c.id ? 'Cancelando…' : 'Cancelar'}
                   </Button>
                 )}
               </span>
+              {falha?.id === c.id && <ErroSalvar erro={falha.frase} className="basis-full" />}
             </li>
           ))}
         </ul>
       )}
-      <ErroSalvar erro={falhaCancelar ? 'Não foi possível cancelar agora. Tente de novo.' : null} className="mt-2" />
+      <BottomSheet open={alvo !== null} onClose={() => setAlvo(null)} aria-label="Confirmar cancelamento da campanha">
+        <div className="p-5">
+          <p className="font-mesa-display text-lg font-semibold text-mesa-text-primary">Cancelar esta campanha?</p>
+          <p className="mt-2 text-sm text-mesa-text-secondary">As mensagens que ainda não saíram não serão enviadas. As que já saíram não podem ser desfeitas.</p>
+          <div className="mt-4 flex flex-col gap-2">
+            <Button variant="destructive" size="lg" onClick={() => void confirmarCancelamento()}>
+              Cancelar campanha
+            </Button>
+            <Button variant="outline" size="lg" onClick={() => setAlvo(null)}>
+              Voltar
+            </Button>
+          </div>
+        </div>
+      </BottomSheet>
 
       <div className="mt-4 border-t border-mesa-border-subtle pt-4">
         <p className="text-base font-medium text-mesa-text-primary">Avaliações</p>
@@ -375,7 +448,7 @@ export function SecaoDisparos({ barraca }: { barraca: Barraca }) {
         Campanhas e avaliação
       </h2>
       <div className="flex flex-col gap-3">
-        <CardAvaliacao barraca={barraca} />
+        {d.ehDono === true && <CardAvaliacao barraca={barraca} />}
         <CardCampanhas barraca={barraca} d={d} />
         <CardHistorico d={d} />
       </div>

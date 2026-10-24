@@ -70,13 +70,32 @@ export function estrelas(n: number): string {
 
 export function fraseDaPrevia(p: { total: number; enviaveis: number }): string {
   if (p.total === 0) return 'Nenhum cliente aceitou receber ofertas nesse grupo.'
-  if (p.total > p.enviaveis) return `Vai para ${p.enviaveis} de ${p.total} clientes: cada campanha envia no máximo ${MAX_ENVIO_DISPARO}.`
+  if (p.total > p.enviaveis) return `Mostrando ${p.enviaveis} de ${p.total}; envie de novo depois para o restante.`
   return p.total === 1 ? 'Vai para 1 cliente que aceitou receber ofertas.' : `Vai para ${p.total} clientes que aceitaram receber ofertas.`
 }
 
 /** Como a mensagem chega (nome de exemplo). Variável sem valor some, nunca sobra "Olá !". */
 export const previaDoTexto = (texto: string, barraca: string): string =>
   montarMensagemPronto(texto, { nome: 'Maria', senha: null, barraca })
+
+export const VARIAVEIS_CAMPANHA = ['nome', 'barraca'] as const
+export const VARIAVEIS_AVALIACAO = ['nome', 'senha', 'barraca'] as const
+
+/** Variáveis {x} que não existem para esse tipo de texto (sem as chaves). Vazio = ok. */
+export function variaveisInvalidas(texto: string, permitidas: readonly string[]): string[] {
+  const usadas = [...texto.matchAll(/{([^{}]*)}/g)].map((m) => m[1])
+  return [...new Set(usadas.filter((v) => !permitidas.includes(v)))]
+}
+
+export const fraseVariaveis = (invalidas: string[]): string =>
+  `Variável não reconhecida: ${invalidas.map((v) => `{${v}}`).join(' ')}. Use só as listadas abaixo do campo.`
+
+/** Erro devolvido pela function (corpo do 403/4xx) em frase para o dono. */
+export function fraseErroDisparo(codigo: string | undefined): string {
+  if (codigo === 'modulo_desligado') return 'Este recurso não está liberado para a sua loja.'
+  if (codigo === 'sem_permissao') return 'Só o dono da loja pode fazer isso.'
+  return 'Não foi possível falar com o WhatsApp agora. Tente de novo em instantes.'
+}
 
 const FRASES: Record<string, string> = {
   whatsapp_desconectado: 'O WhatsApp da loja está desconectado. Conecte e tente de novo.',

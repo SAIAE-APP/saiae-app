@@ -6,6 +6,11 @@ import {
   fraseMotivo,
   fraseMotivoSalvar,
   fraseDaPrevia,
+  fraseErroDisparo,
+  fraseVariaveis,
+  variaveisInvalidas,
+  VARIAVEIS_AVALIACAO,
+  VARIAVEIS_CAMPANHA,
   mediaAvaliacoes,
   MAX_TEXTO_DISPARO,
   previaDoTexto,
@@ -75,11 +80,26 @@ describe('prévia', () => {
     assert.equal(fraseDaPrevia({ total: 1, enviaveis: 1 }), 'Vai para 1 cliente que aceitou receber ofertas.')
     assert.equal(fraseDaPrevia({ total: 12, enviaveis: 12 }), 'Vai para 12 clientes que aceitaram receber ofertas.')
     assert.match(fraseDaPrevia({ total: 0, enviaveis: 0 }), /Nenhum cliente/)
-    assert.match(fraseDaPrevia({ total: 800, enviaveis: 500 }), /500 de 800/)
+    assert.match(fraseDaPrevia({ total: 800, enviaveis: 500 }), /Mostrando 500 de 800; envie de novo depois/)
   })
   test('texto da prévia preenche {nome} e {barraca} e nunca deixa "Olá !"', () => {
     assert.equal(previaDoTexto('Olá {nome}! Promoção na {barraca}.', 'Loja do Zé'), 'Olá Maria! Promoção na Loja do Zé.')
     assert.doesNotMatch(previaDoTexto('{nome}', 'X'), /\{/)
+  })
+})
+
+describe('variáveis e erros da function', () => {
+  test('campanha aceita {nome} e {barraca}; avaliação também {senha}', () => {
+    assert.deepEqual(variaveisInvalidas('Oi {nome} da {barraca}', VARIAVEIS_CAMPANHA), [])
+    assert.deepEqual(variaveisInvalidas('Pedido {senha}', VARIAVEIS_CAMPANHA), ['senha'])
+    assert.deepEqual(variaveisInvalidas('Pedido {senha} {nome} {barraca}', VARIAVEIS_AVALIACAO), [])
+    assert.deepEqual(variaveisInvalidas('{cupom} {cupom}', VARIAVEIS_AVALIACAO), ['cupom'])
+    assert.match(fraseVariaveis(['cupom']), /{cupom}/)
+  })
+  test('erros 403 da function viram frase própria', () => {
+    assert.match(fraseErroDisparo('modulo_desligado'), /não está liberado/)
+    assert.match(fraseErroDisparo('sem_permissao'), /dono/)
+    assert.match(fraseErroDisparo(undefined), /Tente de novo/)
   })
 })
 
