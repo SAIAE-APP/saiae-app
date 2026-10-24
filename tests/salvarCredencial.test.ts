@@ -251,7 +251,7 @@ describe('guardas estáticos', () => {
     for (const rpc of ['definir_token_fiscal', 'definir_token_pagamento', 'definir_segredo_webhook_pagamento']) {
       assert.ok(!ajustes.includes(`rpc('${rpc}'`), rpc)
     }
-    assert.equal((ajustes.match(/salvarCredencial\(\{/g) ?? []).length, 3)
+    assert.equal((ajustes.match(/salvarCredencial\(\{/g) ?? []).length, 2) // fiscal saiu do app: o token fiscal é cadastrado pelo Sai aê
   })
 
   test('nenhum console.* do handler recebe o valor ou a chave', () => {

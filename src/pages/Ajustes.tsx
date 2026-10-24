@@ -48,6 +48,7 @@ import { SecaoSaiuEntrega } from '../components/SecaoSaiuEntrega'
 import { SecaoEstoque } from '../components/SecaoEstoque'
 import { SecaoCupons } from '../components/SecaoCupons'
 import { mostrarWhatsappAutomacao, temModulo } from '../lib/modulos'
+import { fiscalProntoParaEmitir } from '../lib/fiscal'
 import { SecaoWhatsappAutomacao } from '../components/SecaoWhatsappAutomacao'
 import { SecaoDisparos } from '../components/SecaoDisparos'
 import {
@@ -1726,103 +1727,8 @@ const AMBIENTES_FISCAIS: { valor: AmbienteFiscal; rotulo: string }[] = [
   { valor: 'producao', rotulo: 'Produção' },
 ]
 
-/** A FocusNFe emite um token DIFERENTE por ambiente (token_homologacao e
- * token_producao são credenciais distintas de verdade, não o mesmo valor
- * com URL diferente) — confirmado na doc deles e na UI de um concorrente
- * que já implementou (dois campos de token separados). Por isso esse
- * sheet é parametrizado por ambiente em vez de ter um campo só. */
-function BottomSheetTokenFiscal({
-  barracaId,
-  ambiente,
-  open,
-  onClose,
-  onSucesso,
-}: {
-  barracaId: string
-  ambiente: AmbienteFiscal
-  open: boolean
-  onClose: () => void
-  onSucesso: () => void
-}) {
-  const [token, setToken] = useState('')
-  const [processando, setProcessando] = useState(false)
-  const [erro, setErro] = useState<string | null>(null)
-  const rotuloAmbiente = ambiente === 'producao' ? 'Produção' : 'Homologação'
-
-  function fechar() {
-    setToken('')
-    setErro(null)
-    onClose()
-  }
-
-  async function salvar(e: FormEvent) {
-    e.preventDefault()
-    if (processando) return
-
-    if (!token.trim()) {
-      setErro('Cole o token gerado no painel da FocusNFe')
-      return
-    }
-
-    if (navigator.onLine === false) {
-      setErro(MSG_SEM_INTERNET)
-      return
-    }
-
-    setProcessando(true)
-    setErro(null)
-
-    const mensagem = await salvarCredencial({ tipo: 'fiscal', barracaId, ambiente, valor: token.trim() })
-
-    setProcessando(false)
-
-    if (mensagem) {
-      setErro(mensagem)
-      return
-    }
-
-    fechar()
-    onSucesso()
-  }
-
-  return (
-    <BottomSheet open={open} onClose={fechar} aria-label={`Token da FocusNFe — ${rotuloAmbiente}`}>
-      <h2 className="text-lg font-semibold text-mesa-text-primary">Token da FocusNFe — {rotuloAmbiente}</h2>
-      <p className="mt-1 text-sm text-mesa-text-secondary">
-        Gerado no painel da FocusNFe depois de cadastrar sua empresa lá — a FocusNFe emite um token
-        diferente pra cada ambiente. Fica guardado só pra uso do sistema, não é mostrado de novo
-        depois de salvo.
-      </p>
-
-      <form onSubmit={salvar} className="mt-4 flex flex-col gap-4">
-        <Input
-          label={`Token (${rotuloAmbiente})`}
-          type="password"
-          autoComplete="off"
-          autoFocus
-          value={token}
-          onChange={(e) => setToken(e.target.value)}
-        />
-        {erro && <p className="text-sm font-medium text-mesa-error-500">{erro}</p>}
-        <Button
-          type="submit"
-          size="xl"
-          icon={<Icone nome="check" size={20} />}
-          loading={processando}
-          className="w-full"
-        >
-          Salvar
-        </Button>
-      </form>
-    </BottomSheet>
-  )
-}
-
-/** Configuração fiscal (CLAUDE.md, roadmap 2026-09-26): FocusNFe como
- * provedor fiscal-as-a-service. Certificado digital e CSC são
- * cadastrados pelo dono direto no site da FocusNFe — o Sai aê nunca
- * guarda o certificado, só o token da empresa. Emissão de verdade é
- * rodada futura; aqui só a configuração. */
+/** Configuração fiscal: módulo pago gerenciado. O token do provedor é cadastrado pelo Sai aê, nunca pelo dono;
+ * aqui ficam só os dados da empresa e o estado "pronto para emitir". */
 function apenasDigitos(valor: string): string {
   return valor.replace(/\D/g, '')
 }
@@ -1837,15 +1743,12 @@ function formatarCnpj(valor: string): string {
 }
 
 function SecaoFiscal({ barraca }: { barraca: Barraca }) {
-  const habilitadoR = useRascunho(barraca.fiscal_habilitado)
   const regimeR = useRascunho(barraca.fiscal_regime_tributario)
   const ambienteR = useRascunho(barraca.fiscal_ambiente)
   const cnpjR = useRascunho(formatarCnpj(barraca.cnpj ?? ''), (a, b) => apenasDigitos(a) === apenasDigitos(b))
-  const habilitado = habilitadoR.valor
   const regime = regimeR.valor
   const ambiente = ambienteR.valor
   const salvarCnpjEstado = useSalvarBarraca(barraca)
-  const salvarHabilitado = useSalvarBarraca(barraca)
   const salvarRegime = useSalvarBarraca(barraca)
   const salvarAmbiente = useSalvarBarraca(barraca)
   const incluirTaxasR = useRascunho(barraca.nfce_incluir_taxas === true)
@@ -1857,11 +1760,9 @@ function SecaoFiscal({ barraca }: { barraca: Barraca }) {
     producao: boolean
   } | null>(null)
   const [erroTokens, setErroTokens] = useState<string | null>(null)
-  const [recargaTokens, setRecargaTokens] = useState(0)
-  const [sheetTokenAmbiente, setSheetTokenAmbiente] = useState<AmbienteFiscal | null>(null)
+  const modulos = useModulosDaLoja()
 
-  // O estado "configurado" vem SEMPRE do banco (RPC), nunca de suposição: depois
-  // de salvar um token o sheet pede uma nova consulta em vez de marcar true.
+  // O estado "configurado" vem SEMPRE do banco (RPC); o dono só vê se está pronto, nunca o token.
   useEffect(() => {
     let cancelado = false
 
@@ -1884,13 +1785,7 @@ function SecaoFiscal({ barraca }: { barraca: Barraca }) {
     return () => {
       cancelado = true
     }
-  }, [barraca.id, recargaTokens])
-
-  async function alternarHabilitado(valor: boolean) {
-    habilitadoR.definir(valor)
-    await salvarHabilitado.salvar({ fiscal_habilitado: valor })
-    habilitadoR.descartar()
-  }
+  }, [barraca.id])
 
   async function alternarIncluirTaxas(valor: boolean) {
     incluirTaxasR.definir(valor)
@@ -1921,19 +1816,27 @@ function SecaoFiscal({ barraca }: { barraca: Barraca }) {
     ambienteR.descartar()
   }
 
-  function textoToken(configurado: boolean | undefined): string {
-    if (tokensConfigurados === null) return erroTokens ? 'Não verificado' : 'Verificando...'
-    return configurado ? 'Configurado' : 'Não configurado'
-  }
+  const estado = fiscalProntoParaEmitir(
+    modulos,
+    tokensConfigurados !== null && (ambiente === 'producao' ? tokensConfigurados.producao : tokensConfigurados.homologacao),
+  )
+
+  if (!temModulo(modulos, 'fiscal')) return null
 
   return (
     <section>
       <RotuloSecao icone="receipt_long">Fiscal</RotuloSecao>
       <Card>
         <p className="text-sm text-mesa-text-secondary">
-          Crie sua conta em focusnfe.com.br, faça o upload do certificado digital A1 diretamente no
-          painel deles e cole os tokens abaixo. O certificado fica sob custódia do provedor — o Sai
-          aê apenas orquestra a emissão.
+          A emissão da nota fiscal é gerenciada pelo Sai aê: o certificado e o acesso do emissor ficam com a nossa equipe.
+          Preencha os dados da sua empresa abaixo.
+        </p>
+        <p className="mt-2 text-sm font-medium text-mesa-text-primary">
+          {estado === 'ok'
+            ? 'Pronto para emitir'
+            : tokensConfigurados === null && !erroTokens
+              ? 'Verificando...'
+              : 'Aguardando cadastro'}
         </p>
 
         <div className="mt-4">
@@ -1961,12 +1864,6 @@ function SecaoFiscal({ barraca }: { barraca: Barraca }) {
         </div>
 
         <EmitenteFiscal barraca={barraca} />
-
-        <div className="mt-4 flex items-center justify-between gap-3">
-          <span className="text-base text-mesa-text-primary">Fiscal habilitado</span>
-          <Toggle checked={habilitado} onChange={alternarHabilitado} aria-label="Fiscal habilitado" />
-        </div>
-        <ErroSalvar erro={salvarHabilitado.erro} className="mt-2" />
 
         <div className="mt-4">
           <p className="mb-2 text-sm font-medium text-mesa-text-primary">Regime tributário</p>
@@ -2019,50 +1916,8 @@ function SecaoFiscal({ barraca }: { barraca: Barraca }) {
           </div>
         )}
 
-        <div className="mt-4">
-          <p className="mb-2 text-sm font-medium text-mesa-text-primary">Token da FocusNFe</p>
-          <div className="flex flex-wrap gap-3">
-            <div className="flex min-w-[220px] flex-1 items-center justify-between gap-3 rounded-mesa-md border border-mesa-border-subtle p-3">
-              <div>
-                <p className="text-sm text-mesa-text-primary">Homologação</p>
-                <p className="text-xs text-mesa-text-secondary">
-                  {textoToken(tokensConfigurados?.homologacao)}
-                </p>
-              </div>
-              <Button variant="outline" size="sm" onClick={() => setSheetTokenAmbiente('homologacao')}>
-                {tokensConfigurados?.homologacao ? 'Trocar' : 'Definir'}
-              </Button>
-            </div>
-            <div className="flex min-w-[220px] flex-1 items-center justify-between gap-3 rounded-mesa-md border border-mesa-border-subtle p-3">
-              <div>
-                <p className="text-sm text-mesa-text-primary">Produção</p>
-                <p className="text-xs text-mesa-text-secondary">
-                  {textoToken(tokensConfigurados?.producao)}
-                </p>
-              </div>
-              <Button variant="outline" size="sm" onClick={() => setSheetTokenAmbiente('producao')}>
-                {tokensConfigurados?.producao ? 'Trocar' : 'Definir'}
-              </Button>
-            </div>
-          </div>
-          {erroTokens && (
-            <div className="mt-2 flex flex-wrap items-center gap-2">
-              <ErroSalvar erro={erroTokens} />
-              <Button variant="ghost" size="sm" onClick={() => setRecargaTokens((n) => n + 1)}>
-                Tentar de novo
-              </Button>
-            </div>
-          )}
-        </div>
       </Card>
 
-      <BottomSheetTokenFiscal
-        barracaId={barraca.id}
-        ambiente={sheetTokenAmbiente ?? 'homologacao'}
-        open={sheetTokenAmbiente !== null}
-        onClose={() => setSheetTokenAmbiente(null)}
-        onSucesso={() => setRecargaTokens((n) => n + 1)}
-      />
     </section>
   )
 }

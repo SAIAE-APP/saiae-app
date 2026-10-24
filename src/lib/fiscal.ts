@@ -20,6 +20,21 @@ export function ambienteDaNota(
   return ambienteAtualDaBarraca === 'producao' ? 'producao' : 'homologacao'
 }
 
+/** Nota fiscal é módulo pago gerenciado: o módulo liga, o token é cadastrado pelo Sai aê (nunca pelo dono). */
+export function fiscalProntoParaEmitir(
+  modulos: readonly string[] | null,
+  tokenProducaoOuHomologacaoConfigurado: boolean,
+): 'ok' | 'sem_modulo' | 'sem_token' {
+  if (modulos?.includes('fiscal') !== true) return 'sem_modulo'
+  return tokenProducaoOuHomologacaoConfigurado ? 'ok' : 'sem_token'
+}
+
+/** Texto da falha de emissão para o dono: sem código técnico. */
+export function mensagemErroEmissao(erro: string | null | undefined): string {
+  if (erro === 'modulo_desligado') return 'Nota fiscal indisponível no momento. O pedido está salvo.'
+  return erro || 'Não foi possível emitir. Tente novamente.'
+}
+
 export const AVISO_HOMOLOGACAO = 'EMITIDA EM AMBIENTE DE HOMOLOGACAO - SEM VALOR FISCAL'
 
 export function apenasDigitos(valor: string): string {
