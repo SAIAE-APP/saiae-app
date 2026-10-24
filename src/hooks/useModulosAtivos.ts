@@ -62,10 +62,15 @@ export function useModulosAtivos(barracaId: string | undefined): { modulos: stri
         })
     }
     buscar()
+    const aoVoltar = () => {
+      if (document.visibilityState === 'visible') buscar()
+    }
     window.addEventListener('online', buscar)
+    document.addEventListener('visibilitychange', aoVoltar)
     return () => {
       cancelado = true
       window.removeEventListener('online', buscar)
+      document.removeEventListener('visibilitychange', aoVoltar)
     }
   }, [barracaId])
 

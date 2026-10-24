@@ -9,7 +9,7 @@ test('EditorAvisos fica fora dos blocos condicionais por estado da conexão', ()
   const uso = c.lastIndexOf('<EditorAvisos')
   assert.ok(uso > 0)
   assert.ok(!c.slice(c.indexOf("tela.tipo === 'conectado' &&"), uso).includes('<EditorAvisos barraca={barraca} />\n            <div'), 'editor dentro do bloco conectado')
-  assert.match(c.slice(uso - 30, uso + 60), /<EditorAvisos barraca=\{barraca\} \/>\s*<\/Card>/)
+  assert.match(c.slice(uso - 30, uso + 60), /<EditorAvisos barraca={barraca} />s*}?s*</Card>/)
 })
 
 test('texto em branco vira null ao salvar', () => {

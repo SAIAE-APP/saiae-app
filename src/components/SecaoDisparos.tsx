@@ -442,10 +442,10 @@ function CardHistorico({ d }: { d: Disparos }) {
 
 /** Campanhas de WhatsApp e avaliação pós-entrega. Avaliação aparece com o módulo whatsapp_avisos, campanhas com whatsapp_disparos. */
 export function SecaoDisparos({ barraca }: { barraca: Barraca }) {
-  const d = useWhatsappDisparos(barraca.id)
   const modulos = useModulosDaLoja()
   const comAvisos = temModulo(modulos, 'whatsapp_avisos')
   const comDisparos = temModulo(modulos, 'whatsapp_disparos')
+  const d = useWhatsappDisparos(barraca.id, comDisparos)
   return (
     <section>
       <h2 className="mb-3 flex items-center gap-1.5 font-mesa-sans text-xs font-semibold uppercase tracking-wider text-mesa-text-secondary">
@@ -455,7 +455,7 @@ export function SecaoDisparos({ barraca }: { barraca: Barraca }) {
       <div className="flex flex-col gap-3">
         {comAvisos && d.ehDono === true && <CardAvaliacao barraca={barraca} />}
         {comDisparos && <CardCampanhas barraca={barraca} d={d} />}
-        <CardHistorico d={d} />
+        {comDisparos && <CardHistorico d={d} />}
       </div>
     </section>
   )
