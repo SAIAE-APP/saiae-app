@@ -51,7 +51,10 @@ Idempotência: o mesmo `client_uuid` devolve a MESMA senha e o mesmo total, sem 
 Recusas (`ok:false`, na ordem): `barraca_invalida`, `bot_desligado` (`barracas.ia_habilitada` falso), `fechado`, `modo_indisponivel`, `sem_pagar_na_entrega`, `carrinho_invalido`, `carrinho_vazio`, `bairro_nao_atendido`, `sem_estoque`.
 
 ### `pix`
-Ver seção 5 (adicionada com a Task 3 do plano).
+Corpo: `client_uuid`, `conversa_id` (texto opaco do CRM, 1 a 200 caracteres, gravado em `pagamentos_pendentes.conversa_id`), `itens`, `cliente_telefone` (só dígitos, 10 a 13), `cliente_nome` (opcional) e `tipo_atendimento` (só `retirada`; `entrega` ou o campo `entrega` dão 422: Pix para Entrega fica fora desta fase).
+Sucesso: `{ "ok": true, "copia_cola": "...", "expira_em": "ISO-8601", "total_centavos": 1200, "pendente_id": "<uuid>" }`. Grava `pagamentos_pendentes` com as linhas do `resolver_carrinho` e cria a cobrança no provedor da loja (referência = id do pendente). O pedido só nasce quando o webhook do provedor confirma o pagamento (o webhook não muda); o aviso "pedido recebido" da fase 1 (CRM) é a confirmação ao cliente. Sem cupom, sem entrega, sem pedido grátis.
+Idempotência: o mesmo `client_uuid` com cobrança emitida devolve o MESMO QR (`copia_cola`, `expira_em`, `total_centavos`) sem criar cobrança nova. Cobrança vencida ou rejeitada: `pix_expirado`; já paga: `ja_pago`.
+Recusas (`ok:false`): `barraca_invalida`, `bot_desligado`, `fechado`, `modo_indisponivel`, `perfil_obrigatorio` (loja com `perfil_cliente_obrigatorio`: o bot cai para o link do cardápio), `sem_pix` (sem pagamento online ou sem token do provedor), `carrinho_invalido`, `carrinho_vazio`, `sem_estoque`, `provedor_indisponivel`, `client_uuid_em_uso`, `pix_expirado`, `ja_pago`.
 
 ## 5. Interruptor
 `barracas.ia_habilitada` liga o bot da loja (nasce desligado, exige o WhatsApp do dono confirmado). Desligado: `pedido` e `pix` recusam com `bot_desligado`; o CRM só manda o link do cardápio.

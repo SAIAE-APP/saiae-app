@@ -6,6 +6,10 @@
 //   supabase functions deploy integracao-v1 --no-verify-jwt --project-ref <ref>
 import { createClient } from 'jsr:@supabase/supabase-js@2'
 import { interpretarResolver, itensAcimaDoEstoque, type LinhaCarrinho, type LinhaResolvida } from '../_shared/carrinho.ts'
+import { minutosExpiracaoPix } from '../_shared/pagamento/expiracao.ts'
+import { chaveDoProvedor, obterProvedor, urlNotificacaoPagamento } from '../_shared/pagamento/registro.ts'
+import { buscarTokenDoProvedor } from '../_shared/pagamento/token.ts'
+import { ErroProvedor, ehProvedorValido } from '../_shared/pagamento/tipos.ts'
 import { barracaAbertaAgora, type HorarioDia } from '../_shared/horario.ts'
 import { TAMANHO_MAX_CORPO } from '../_shared/iaAssinatura.ts'
 import {
@@ -15,6 +19,7 @@ import {
   lojaDoBot,
   recusaDaAcao,
   telefoneSemPais,
+  totalDoPendente,
   validarCorpoIntegracao,
   verificarAssinaturaLista,
 } from '../_shared/integracaoV1.ts'
@@ -42,7 +47,7 @@ async function carregarLoja(supabase: Supabase, barracaId: string) {
     .select('dia_semana, aberto, hora_abertura, hora_fechamento')
     .eq('barraca_id', barracaId)
   if (erroHorarios) throw new FalhaInterna('horarios')
-  return { barraca: barraca as LojaCrua & { estoque_bloqueia?: boolean | null }, horarios: (horarios ?? []) as HorarioDia[] }
+  return { barraca: barraca as LojaCrua & { estoque_bloqueia?: boolean | null; pagamento_provedor?: string | null; pix_expiracao_minutos?: number | null }, horarios: (horarios ?? []) as HorarioDia[] }
 }
 
 /** Preço e total vêm do resolver_carrinho. Erro de carrinho vira resposta de negócio, nunca 500. */
@@ -165,6 +170,135 @@ async function acaoPedido(supabase: Supabase, c: Corpo<'pedido'>) {
   return json({ ok: true, senha: criado.senha, total_centavos: r.total + taxa })
 }
 
+type Pendente = {
+  id: string
+  barraca_id: string
+  status: string
+  pedido_id: string | null
+  provedor: string | null
+  mercadopago_order_id: string | null
+  expira_em: string | null
+  itens: { quantidade: number; preco_centavos_unitario: number }[] | null
+  taxa_entrega_centavos: number | null
+}
+
+const copiaCola = (r: { copiaECola: string | null }) => {
+  if (!r.copiaECola) throw new FalhaInterna('pix_sem_copia_cola')
+  return r.copiaECola
+}
+
+/** Pix do bot: grava o pendente a partir do rascunho resolvido no banco e cria a cobrança. O PEDIDO não nasce aqui:
+ * só o webhook-mercadopago cria, depois que o provedor confirma o pagamento (o aviso "recebido" do CRM cobre a confirmação). */
+async function acaoPix(supabase: Supabase, c: Corpo<'pix'>) {
+  const { data: existente, error: erroExistente } = await supabase
+    .from('pagamentos_pendentes')
+    .select('*')
+    .eq('client_uuid', c.clientUuid)
+    .maybeSingle()
+  if (erroExistente) throw new FalhaInterna('pagamentos_pendentes')
+  const pendenteAntigo = existente as Pendente | null
+
+  if (pendenteAntigo) {
+    // O client_uuid é único no banco inteiro: de outra loja é conflito, nunca a cobrança alheia.
+    if (pendenteAntigo.barraca_id !== c.barracaId) return negocio('client_uuid_em_uso', 'Identificador de pedido já usado.')
+    if (pendenteAntigo.status === 'aprovado') return negocio('ja_pago', 'Este pagamento já foi confirmado.')
+    if (pendenteAntigo.status !== 'pendente' || (pendenteAntigo.expira_em && Date.parse(pendenteAntigo.expira_em) <= Date.now())) {
+      return negocio('pix_expirado', 'O Pix venceu. Peça pelo cardápio ou gere um novo pedido.')
+    }
+    if (pendenteAntigo.mercadopago_order_id) {
+      // Retry: devolve o QR JÁ emitido, no mesmo provedor em que nasceu.
+      const emitido = obterProvedor(chaveDoProvedor(pendenteAntigo.provedor))
+      const tokenEmitido = emitido ? await buscarTokenDoProvedor(supabase, c.barracaId, emitido.chave, Deno.env) : null
+      if (!emitido || !tokenEmitido) return negocio('sem_pix', 'Pix indisponível nesta loja.')
+      try {
+        const qr = await emitido.recuperarQr({ token: tokenEmitido, idExterno: pendenteAntigo.mercadopago_order_id })
+        return json({
+          ok: true,
+          copia_cola: copiaCola(qr),
+          expira_em: pendenteAntigo.expira_em,
+          total_centavos: totalDoPendente(pendenteAntigo.itens, pendenteAntigo.taxa_entrega_centavos),
+          pendente_id: pendenteAntigo.id,
+        })
+      } catch (erro) {
+        if (erro instanceof ErroProvedor) return negocio('provedor_indisponivel', 'Não foi possível recuperar o Pix agora.')
+        throw erro
+      }
+    }
+  }
+
+  const loja = await carregarLoja(supabase, c.barracaId)
+  if (!loja) return barracaInvalida()
+  const recusa = recusaDaAcao('pix', c.tipoAtendimento, loja.barraca, barracaAbertaAgora(loja.horarios, loja.barraca.fuso))
+  if (recusa) return negocio(recusa.codigo, recusa.mensagem)
+
+  const provedorChave = chaveDoProvedor(loja.barraca.pagamento_provedor)
+  const provedor = ehProvedorValido(provedorChave) ? obterProvedor(provedorChave) : null
+  const token = provedor ? await buscarTokenDoProvedor(supabase, c.barracaId, provedor.chave, Deno.env) : null
+  if (!provedor || !token) return negocio('sem_pix', 'A loja não configurou o Pix.')
+
+  const r = await resolverCarrinho(supabase, c.barracaId, c.itens)
+  if (!r.ok) return r.resposta
+  if (r.total <= 0) return negocio('carrinho_vazio', 'O pedido não tem valor a cobrar.')
+  if (loja.barraca.estoque_bloqueia === true) {
+    const acima = await acimaDoEstoque(supabase, c.barracaId, r.linhas)
+    if (acima.length > 0) return json({ ok: false, codigo: 'sem_estoque', mensagem: 'Sem estoque suficiente.', itens: acima })
+  }
+
+  // Cobrança anterior sem QR (falha do provedor): reaproveita a linha em vez de estourar a unique do client_uuid.
+  const telefone = telefoneSemPais(c.clienteTelefone)
+  const dados = {
+    mesa: null,
+    viagem: true,
+    observacao: null,
+    itens: r.linhas,
+    tipo_atendimento: 'retirada',
+    cliente_nome: c.clienteNome,
+    cliente_telefone: telefone,
+    conversa_id: c.conversaId,
+    provedor: provedor.chave,
+  }
+  const gravacao = pendenteAntigo
+    ? supabase.from('pagamentos_pendentes').update(dados).eq('id', pendenteAntigo.id).eq('status', 'pendente')
+    : supabase.from('pagamentos_pendentes').insert({ ...dados, barraca_id: c.barracaId, client_uuid: c.clientUuid })
+  const { data: gravado, error: erroGravar } = await gravacao.select('id').single()
+  if (erroGravar || !gravado) throw new FalhaInterna('gravar_pendente')
+  const pendente = gravado as { id: string }
+
+  const expiraEm = new Date(Date.now() + minutosExpiracaoPix(loja.barraca.pix_expiracao_minutos) * 60 * 1000)
+  const { error: erroExpira } = await supabase.from('pagamentos_pendentes').update({ expira_em: expiraEm.toISOString() }).eq('id', pendente.id)
+  if (erroExpira) throw new FalhaInterna('expira_em')
+
+  let cobranca
+  try {
+    cobranca = await provedor.criarCobranca({
+      token,
+      valorCentavos: r.total,
+      referencia: pendente.id,
+      descricao: 'Pedido por WhatsApp',
+      expiraEm,
+      urlNotificacao: urlNotificacaoPagamento(Deno.env.get('SUPABASE_URL') ?? '', pendente.id, provedor.chave),
+    })
+  } catch (erro) {
+    // O detalhe do provedor pode conter dados do cliente: nada dele sai nem vai para o log.
+    if (erro instanceof ErroProvedor) return negocio('provedor_indisponivel', 'Não foi possível gerar o Pix agora.')
+    throw erro
+  }
+  // Coluna histórica: guarda o id externo de QUALQUER provedor.
+  const { error: erroOrder } = await supabase
+    .from('pagamentos_pendentes')
+    .update({ mercadopago_order_id: cobranca.idExterno })
+    .eq('id', pendente.id)
+  if (erroOrder) throw new FalhaInterna('gravar_cobranca')
+
+  return json({
+    ok: true,
+    copia_cola: copiaCola(cobranca),
+    expira_em: expiraEm.toISOString(),
+    total_centavos: r.total,
+    pendente_id: pendente.id,
+  })
+}
+
 Deno.serve(async (req: Request) => {
   if (req.method !== 'POST') return new Response(null, { status: 405 })
 
@@ -202,8 +336,8 @@ Deno.serve(async (req: Request) => {
         return await acaoRascunho(supabase, v.valor)
       case 'pedido':
         return await acaoPedido(supabase, v.valor)
-      default:
-        return negocio('nao_disponivel', 'Ação ainda não disponível.')
+      case 'pix':
+        return await acaoPix(supabase, v.valor)
     }
   } catch (erro) {
     const etapa = erro instanceof FalhaInterna ? erro.message : 'desconhecida'

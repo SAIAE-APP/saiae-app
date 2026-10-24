@@ -189,3 +189,11 @@ export function recusaDaAcao(
 export function telefoneSemPais(digitos: string): string {
   return (digitos.length === 12 || digitos.length === 13) && digitos.startsWith('55') ? digitos.slice(2) : digitos
 }
+
+/** Total que o QR já emitido cobra: itens congelados no pendente + taxa. Centavos inteiros. */
+export function totalDoPendente(
+  itens: { quantidade: number; preco_centavos_unitario: number }[] | null,
+  taxaEntregaCentavos: number | null,
+): number {
+  return (itens ?? []).reduce((s, i) => s + i.quantidade * i.preco_centavos_unitario, 0) + Number(taxaEntregaCentavos ?? 0)
+}
