@@ -1,5 +1,5 @@
 // Disparos de WhatsApp da loja (campanhas "reativar quem sumiu" e "promoção do dia" + avaliação). Chamada pelo app com o
-// login: confere o vínculo, o módulo pago (barracas.whatsapp_disparos_habilitado) e o papel, calcula o público no banco
+// login: confere o vínculo, o módulo pago whatsapp_disparos vigente e o papel, calcula o público no banco
 // e repassa ao CRM (contrato v1: docs/contrato/v1/whatsapp-disparos.md). Enviar e cancelar são só do dono.
 // Nunca devolve telefones nem erro cru do CRM ao navegador.
 // Segredos: WHATSAPP_CONEXAO_SEGREDO (= COMANDA_WHATSAPP_SEGREDO do CRM); CRM_WHATSAPP_DISPAROS_URL, ou
@@ -82,8 +82,8 @@ export const criarHandler = (deps: DependenciasHandler) => async (req: Request):
     .select('nome')
     .eq('id', barracaId)
     .maybeSingle()
-  // Módulo vigente (fail-closed). A coluna whatsapp_disparos_habilitado é só espelho legado.
-  if (!barraca || !(await moduloAtivo(supabase, barracaId, 'whatsapp_disparos'))) return json({ erro: 'modulo_desligado' }, 403)
+  // Módulo vigente (fail-closed). Cancelar fica livre: a loja sempre pode parar uma campanha em andamento (só dono, já checado acima).
+  if (!barraca || (acao !== 'cancelar' && !(await moduloAtivo(supabase, barracaId, 'whatsapp_disparos')))) return json({ erro: 'modulo_desligado' }, 403)
 
   // Valida a entrada antes de qualquer consulta pesada ou chamada ao CRM.
   let publico: ReturnType<typeof validarPublico> = null

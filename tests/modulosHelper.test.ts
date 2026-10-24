@@ -49,6 +49,12 @@ const req = (corpo: object) => new Request('http://local/x', { method: 'POST', h
 const env = { get: () => undefined }
 
 describe('whatsapp-disparos', () => {
+  test('cancelar passa sem módulo', async () => {
+    const b = banco('dono', [])
+    const res = await criarDisparos({ criarCliente: () => b.cliente, env })(req({ barraca_id: B, acao: 'cancelar', campanha_id: 'c1' }))
+    assert.equal(res.status, 502) // passou do gate; sem URL do CRM
+  })
+
   test('whatsapp-disparos: sem módulo responde 403 modulo_desligado', async () => {
     const b = banco('dono', ['whatsapp_avisos'])
     const res = await criarDisparos({ criarCliente: () => b.cliente, env })(req({ barraca_id: B, acao: 'historico' }))
@@ -73,13 +79,24 @@ describe('whatsapp-disparos', () => {
 })
 
 describe('whatsapp-conexao', () => {
+  const chamar = async (vigentes: string[], acao: string) => {
+    const b = banco('dono', vigentes)
+    return criarConexao({ criarCliente: () => b.cliente, env })(req({ barraca_id: B, acao }))
+  }
   test('whatsapp-conexao: aceita com só whatsapp_bot, recusa sem nenhum dos três', async () => {
-    const com = banco('dono', ['whatsapp_bot'])
-    const r1 = await criarConexao({ criarCliente: () => com.cliente, env })(req({ barraca_id: B, acao: 'status' }))
-    assert.equal(r1.status, 502) // passou do gate; sem URL do CRM
-    const sem = banco('dono', ['fiscal'])
-    const r2 = await criarConexao({ criarCliente: () => sem.cliente, env })(req({ barraca_id: B, acao: 'status' }))
+    assert.equal((await chamar(['whatsapp_bot'], 'iniciar')).status, 502) // passou do gate; sem URL do CRM
+    const r2 = await chamar(['fiscal'], 'iniciar')
     assert.equal(r2.status, 403)
     assert.deepEqual(await r2.json(), { erro: 'modulo_desligado' })
+  })
+  test('iniciar sem módulo continua 403', async () => {
+    assert.equal((await chamar([], 'iniciar')).status, 403)
+  })
+  test('desconectar passa sem nenhum módulo', async () => {
+    assert.equal((await chamar([], 'desconectar')).status, 502)
+  })
+  test('status e historico passam sem módulo', async () => {
+    assert.equal((await chamar([], 'status')).status, 502)
+    assert.equal((await chamar([], 'historico')).status, 502)
   })
 })

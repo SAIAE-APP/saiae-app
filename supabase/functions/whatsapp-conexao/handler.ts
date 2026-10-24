@@ -56,11 +56,15 @@ export const criarHandler = (deps: DependenciasHandler) => async (req: Request):
     .eq('barraca_id', barracaId)
     .maybeSingle()
   if (!vinculo || !podeExecutar(acao, vinculo.papel ?? null)) return json({ erro: 'Sem acesso a esta loja' }, 403)
-  // Qualquer um dos três módulos de WhatsApp vigente libera o QR (fail-closed).
-  const vigentes = await Promise.all(
-    (['whatsapp_avisos', 'whatsapp_disparos', 'whatsapp_bot'] as const).map((m) => moduloAtivo(supabase, barracaId, m)),
-  )
-  if (!vigentes.some(Boolean)) return json({ erro: 'modulo_desligado' }, 403)
+  // Só INICIAR exige módulo: com qualquer um dos três de WhatsApp vigente (fail-closed). Status, histórico e desconectar
+  // seguem livres para a loja ver e encerrar a própria sessão mesmo com o módulo vencido.
+  if (acao === 'iniciar') {
+    let vigente = false
+    for (const m of ['whatsapp_avisos', 'whatsapp_disparos', 'whatsapp_bot'] as const) {
+      if ((vigente = await moduloAtivo(supabase, barracaId, m))) break
+    }
+    if (!vigente) return json({ erro: 'modulo_desligado' }, 403)
+  }
 
   const url = Deno.env.get('CRM_WHATSAPP_CONEXAO_URL')
   // Lista de rotação: assina com o primeiro, como o resto das rotas de plataforma.
