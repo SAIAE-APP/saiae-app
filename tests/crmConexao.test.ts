@@ -112,6 +112,11 @@ describe('chamarConexaoCrm', () => {
     const r = await chamarConexaoCrm({ ...args, acao: 'historico' }, fakeJson({ ...ok, avisos: Array.from({ length: 30 }, (_, i) => aviso(i)) }))
     assert.equal(r.ok && r.dados.avisos.length, 20)
   })
+
+  test('aviso pulado_nao_aplica (aviso desligado, pedido que nasceu entregue) é aceito', async () => {
+    const r = await chamarConexaoCrm({ ...args, acao: 'historico' }, fakeJson({ ...ok, avisos: [{ ...aviso(0), estado: 'pulado_nao_aplica', motivo: 'desativado_pela_loja' }] }))
+    assert.equal(r.ok && r.dados.avisos[0].estado, 'pulado_nao_aplica')
+  })
 })
 
 describe('podeExecutar', () => {

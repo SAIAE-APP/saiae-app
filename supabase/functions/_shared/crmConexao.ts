@@ -6,7 +6,7 @@ export type AcaoConexao = 'iniciar' | 'status' | 'desconectar' | 'historico'
 export type AvisoHistorico = {
   pedido_id: string
   tipo: 'recebido' | 'pronto' | 'saiu_entrega' | 'entregue' | 'cancelado'
-  estado: 'pendente' | 'enviado' | 'falhou' | 'pulado_sem_telefone' | 'pulado_optout' | 'pulado_desconectado'
+  estado: 'pendente' | 'enviado' | 'falhou' | 'pulado_sem_telefone' | 'pulado_optout' | 'pulado_desconectado' | 'pulado_nao_aplica'
   motivo: string | null
   em: string
 }
@@ -22,7 +22,7 @@ const TIMEOUT_MS = 10_000
 const MAX_AVISOS = 20
 const ESTADOS = ['sem_sessao', 'aguardando_qr', 'conectado', 'desconectado']
 const TIPOS = ['recebido', 'pronto', 'saiu_entrega', 'entregue', 'cancelado']
-const ESTADOS_AVISO = ['pendente', 'enviado', 'falhou', 'pulado_sem_telefone', 'pulado_optout', 'pulado_desconectado']
+const ESTADOS_AVISO = ['pendente', 'enviado', 'falhou', 'pulado_sem_telefone', 'pulado_optout', 'pulado_desconectado', 'pulado_nao_aplica']
 const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i
 
 /** Iniciar e desconectar mexem na conexão da loja: só o dono. Ver o estado e o histórico, qualquer vínculo. */

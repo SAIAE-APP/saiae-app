@@ -2,7 +2,7 @@
 export type AvisoHistorico = {
   pedido_id: string
   tipo: 'recebido' | 'pronto' | 'saiu_entrega' | 'entregue' | 'cancelado'
-  estado: 'pendente' | 'enviado' | 'falhou' | 'pulado_sem_telefone' | 'pulado_optout' | 'pulado_desconectado'
+  estado: 'pendente' | 'enviado' | 'falhou' | 'pulado_sem_telefone' | 'pulado_optout' | 'pulado_desconectado' | 'pulado_nao_aplica'
   motivo: string | null
   em: string
 }

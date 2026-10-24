@@ -16,7 +16,7 @@ Resposta 200:
   "qr": "texto bruto do QR, só em aguardando_qr, senão null",
   "numero": "só dígitos, ou null",
   "avisos": [ { "pedido_id": "uuid", "tipo": "recebido|pronto|saiu_entrega|entregue|cancelado",
-                "estado": "pendente|enviado|falhou|pulado_sem_telefone|pulado_optout|pulado_desconectado",
+                "estado": "pendente|enviado|falhou|pulado_sem_telefone|pulado_optout|pulado_desconectado|pulado_nao_aplica",
                 "motivo": "string|null", "em": "ISO-8601" } ] }
 ```
 `avisos` só em `historico` (no máximo 20, mais recentes primeiro); nas outras ações vem `[]`. `iniciar` cria a sessão da barraca se não existir e a inicia. A rota só opera na sessão da barraca do corpo.

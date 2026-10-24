@@ -36,6 +36,7 @@ const ESTADOS_AVISO: Record<AvisoHistorico['estado'], string> = {
   pulado_sem_telefone: 'Sem telefone',
   pulado_optout: 'Cliente pediu para sair',
   pulado_desconectado: 'WhatsApp desconectado',
+  pulado_nao_aplica: 'Não precisou enviar',
 }
 
 const iguaisAvisos = (a: AvisosConfig, b: AvisosConfig) => JSON.stringify(a) === JSON.stringify(b)
@@ -235,7 +236,7 @@ export function SecaoWhatsappAutomacao({ barraca }: { barraca: Barraca }) {
                   {avisos.map((a) => (
                     <li key={`${a.pedido_id}-${a.tipo}-${a.em}`} className="flex justify-between gap-3 text-sm">
                       <span className="text-mesa-text-primary">{ROTULOS[a.tipo]}</span>
-                      <span className="text-mesa-text-secondary">{ESTADOS_AVISO[a.estado]}</span>
+                      <span className="text-mesa-text-secondary">{ESTADOS_AVISO[a.estado] ?? 'Não enviado'}</span>
                     </li>
                   ))}
                 </ul>
