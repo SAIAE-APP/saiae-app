@@ -973,7 +973,7 @@ nenhum item daqui sozinho, só quando for pedido explicitamente.
   `20260922120000_add_assinaturas_kirvano.sql`; nome histórico, a cobrança hoje é Stripe) — isso é billing SaaS
   Sai aê→cliente, problema completamente diferente do pagamento de
   pedido cliente-final→barraca citado acima, não confundir os dois.
-  Trial de 30 dias (era 7; 2026-10-01) do plano ESSENCIAL (era Pro; decisão do João, 2026-10-11, migration
+  Trial de 3 dias corridos (era 30; decisão do João, 2026-10-24, migration `20261103130000`: conta fim de semana e feriado, só cadastros novos; o aviso `faltam_7` só vale para trial com mais de 7 dias de duração; antes foram 7 até 2026-10-01 e 30 até aqui) do plano ESSENCIAL (era Pro; decisão do João, 2026-10-11, migration
   `20261022130000`: só quem se cadastra depois dela) nasce no cadastro (trigger em `auth.users`, não na
   criação da barraca), 1 trial por e-mail pra sempre (mesmo se a
   conta for excluída e recriada). Fonte da verdade do acesso é
