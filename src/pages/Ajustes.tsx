@@ -49,6 +49,7 @@ import { SecaoEstoque } from '../components/SecaoEstoque'
 import { SecaoCupons } from '../components/SecaoCupons'
 import { mostrarWhatsappAutomacao } from '../lib/visibilidadeIaCrm'
 import { SecaoWhatsappAutomacao } from '../components/SecaoWhatsappAutomacao'
+import { SecaoDisparos } from '../components/SecaoDisparos'
 import {
   PROVEDORES_PIX_DISPONIVEIS,
   provedorPixDaBarraca,
@@ -2985,6 +2986,11 @@ export function Ajustes({ categoria = 'conta' }: { categoria?: CategoriaAjustes 
           {mostrarWhatsappAutomacao(barraca, import.meta.env.VITE_MOSTRAR_WHATSAPP_AUTOMACAO) && (
             <SecaoDaCategoria categoria="cardapio" grupo="avisos" atual={categoria}>
               <SecaoWhatsappAutomacao barraca={barraca} />
+              {barraca.whatsapp_disparos_habilitado === true && (
+                <div className="mt-6">
+                  <SecaoDisparos barraca={barraca} />
+                </div>
+              )}
             </SecaoDaCategoria>
           )}
           <SecaoDaCategoria categoria="cardapio" grupo="cozinha" atual={categoria}>

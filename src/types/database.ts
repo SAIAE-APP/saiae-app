@@ -101,6 +101,10 @@ export type Barraca = {
   whatsapp_avisos?: Record<string, { ativo: boolean; texto: string | null }> | null
   whatsapp_status?: 'conectado' | 'desconectado' | 'caiu' | null
   whatsapp_status_em?: string | null
+  /** Disparos (fase 3): módulo pago (só a plataforma liga) e avaliação pós-entrega; texto null = padrão. */
+  whatsapp_disparos_habilitado?: boolean
+  avaliacao_ativa?: boolean
+  avaliacao_texto?: string | null
   /** Bairro fora da lista: cobra a taxa padrão ou bloqueia (cache antigo sem o campo = taxa padrão). */
   entrega_bairro_nao_listado?: PoliticaBairroNaoListado
 }
