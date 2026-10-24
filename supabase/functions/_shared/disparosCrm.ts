@@ -56,6 +56,15 @@ export function urlDisparos(env: { disparos?: string; conexao?: string }): strin
   return /\/whatsapp-conexao\/?$/.test(base) ? base.replace(/\/whatsapp-conexao\/?$/, '/whatsapp-disparos') : null
 }
 
+/** Variáveis {x} do texto que não estão na lista permitida (sem as chaves). Vazio = texto ok. */
+export function variaveisInvalidas(texto: string, permitidas: readonly string[]): string[] {
+  const usadas = [...texto.matchAll(/{([^{}]*)}/g)].map((m) => m[1])
+  return [...new Set(usadas.filter((v) => !permitidas.includes(v)))]
+}
+export const VARIAVEIS_CAMPANHA = ['nome', 'barraca'] as const
+
+export const requestIdValido = (v: unknown): v is string => typeof v === 'string' && UUID.test(v)
+
 export type Publico = { tipo: TipoDisparo; dias: number | null }
 
 /** Tipo e (para reativação) dias. Promoção ignora `dias`. */
@@ -75,6 +84,7 @@ export function validarEnvio(b: unknown): (Publico & { texto: string }) | null {
   if (typeof texto !== 'string') return null
   const t = texto.trim()
   if (t.length < 1 || t.length > MAX_TEXTO) return null
+  if (variaveisInvalidas(t, VARIAVEIS_CAMPANHA).length > 0) return null
   return { ...p, texto: t }
 }
 

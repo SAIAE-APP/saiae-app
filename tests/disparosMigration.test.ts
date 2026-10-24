@@ -7,6 +7,8 @@ import { PGlite } from '@electric-sql/pglite'
 const ler = (n: string) => readFileSync(new URL(`../supabase/migrations/${n}`, import.meta.url), 'utf8')
 const M1 = '20261101100000_disparos_whatsapp.sql'
 const M2 = '20261101110000_disparos_publico.sql'
+const M3 = '20261101120000_disparos_correcoes.sql'
+const FUNC = 'a5000000-0000-4000-8000-000000000005'
 const B1 = 'b1000000-0000-4000-8000-000000000001'
 const B2 = 'b2000000-0000-4000-8000-000000000002'
 const DONO = 'a1000000-0000-4000-8000-000000000001'
@@ -53,7 +55,7 @@ describe('banco (PGlite)', () => {
       create role authenticated; create role anon; create role service_role;
       create schema auth; grant usage on schema auth to authenticated, anon, service_role;
       create function auth.uid() returns uuid language sql stable as $$ select nullif(current_setting('test.uid', true), '')::uuid $$;
-      create table public.barracas (id uuid primary key, nome text, ia_whatsapp_dono text, whatsapp_pedidos text);
+      create table public.barracas (id uuid primary key, nome text, ia_whatsapp_dono text, ia_whatsapp_dono_confirmado_em timestamptz, whatsapp_pedidos text);
       create table public.usuarios_barracas (usuario_id uuid, barraca_id uuid, papel text);
       create function public.usuario_tem_acesso_barraca(p uuid) returns boolean language sql stable security definer as $$
         select exists (select 1 from public.usuarios_barracas where usuario_id = auth.uid() and barraca_id = p) $$;
@@ -64,12 +66,13 @@ describe('banco (PGlite)', () => {
       grant usage on schema public to authenticated, anon, service_role;
       grant select, insert, update on public.barracas to authenticated, service_role;
       insert into public.barracas values ('${B1}', 'Loja 1', '5561999990000', null), ('${B2}', 'Loja 2', null, null);
-      insert into public.usuarios_barracas values ('${DONO}', '${B1}', 'dono');
+      insert into public.usuarios_barracas values ('${DONO}', '${B1}', 'dono'), ('${FUNC}', '${B1}', 'funcionario');
     `)
     await db.exec(ler(M1))
     await db.exec(ler(M1)) // idempotente
     await db.exec(ler(M2))
-    await db.exec(ler(M2))
+    await db.exec(ler(M3))
+    await db.exec(ler(M3)) // idempotente
   })
   after(async () => {
     await db.close()
@@ -106,7 +109,7 @@ describe('banco (PGlite)', () => {
     assert.equal(await salvar(B1, true, 'Olá {nome}!'), 'ok')
     await como(null, 'service_role')
     const r = await db.query<{ c: unknown }>('select public.integracao_avaliacao_config($1) as c', [B1])
-    assert.deepEqual(r.rows[0].c, { ativo: true, texto: 'Olá {nome}!', whatsapp_dono: '5561999990000', barraca_nome: 'Loja 1' })
+    assert.deepEqual(r.rows[0].c, { ativo: true, texto: 'Olá {nome}!', whatsapp_dono: null, barraca_nome: 'Loja 1' })
     await como(DONO)
     assert.equal(await salvar(B1, false, null), 'ok')
     await como(null, 'service_role')
@@ -134,12 +137,34 @@ describe('banco (PGlite)', () => {
     await db.exec(`set role service_role`)
     const q = async (tipo: string, dias: number | null) =>
       (await db.query<{ nome: string }>('select * from public.disparos_publico($1, $2, $3)', [B1, tipo, dias])).rows.map((x) => x.nome)
-    assert.deepEqual(await q('promocao', null), ['Ana', 'Duda', 'Beto', 'Eva'])
-    assert.deepEqual(await q('reativacao', 30), ['Duda', 'Beto', 'Eva'])
+    assert.deepEqual(await q('promocao', null), ['Duda', 'Ana', 'Beto', 'Eva'])
+    assert.deepEqual(await q('reativacao', 30), ['Eva', 'Beto', 'Duda'])
     assert.deepEqual(await q('reativacao', 60), ['Eva'])
     assert.equal((await db.query<{ n: number }>('select public.disparos_publico_contagem($1, $2, $3) as n', [B1, 'promocao', null])).rows[0].n, 4)
     await assert.rejects(q('outro', null), /tipo_invalido/)
     await assert.rejects(q('reativacao', null), /dias_invalido/)
+  })
+
+  test('whatsapp_dono: IA só se confirmada e válida; senão WhatsApp de pedidos; inválido vira null', async () => {
+    const dono = async () => {
+      await db.exec('reset role')
+      const r = await db.query<{ c: { whatsapp_dono: string | null } }>('select public.integracao_avaliacao_config($1) as c', [B1])
+      return r.rows[0].c.whatsapp_dono
+    }
+    await db.exec(`update public.barracas set ia_whatsapp_dono = '5561999990000', ia_whatsapp_dono_confirmado_em = now() where id = '${B1}'`)
+    assert.equal(await dono(), '5561999990000')
+    await db.exec(`update public.barracas set ia_whatsapp_dono = '123', whatsapp_pedidos = '(61) 98888-7777' where id = '${B1}'`)
+    assert.equal(await dono(), '61988887777')
+    await db.exec(`update public.barracas set whatsapp_pedidos = '12' where id = '${B1}'`)
+    assert.equal(await dono(), null)
+  })
+
+  test('avaliação: funcionário não salva; variáveis desconhecidas são recusadas', async () => {
+    await como(FUNC)
+    assert.equal(await salvar(B1, true, 'oi'), 'sem_acesso')
+    await como(DONO)
+    assert.equal(await salvar(B1, true, 'Oi {nome}, {cupom}'), 'dados_invalidos')
+    assert.equal(await salvar(B1, true, 'Oi {nome} {senha} {barraca}'), 'ok')
   })
 
   test('authenticated e anon não executam as RPCs de plataforma', async () => {

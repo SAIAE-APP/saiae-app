@@ -13,6 +13,7 @@ import {
   MAX_DESTINATARIOS,
   montarDestinatarios,
   podeDisparar,
+  requestIdValido,
   urlDisparos,
   validarEnvio,
   validarPublico,
@@ -25,6 +26,11 @@ const CORS = {
 }
 const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i
 const ACOES: readonly string[] = ['previa', 'enviar', 'historico', 'cancelar']
+
+// Histórico em cache curto por loja: o polling das telas não consome o limite de 30 chamadas/min do CRM, e o cancelar
+// nunca fica refém do 429. Vale por instância da function (best effort); enviar e cancelar limpam.
+const CACHE_HISTORICO_MS = 10_000
+const cacheHistorico = new Map<string, { em: number; dados: unknown }>()
 
 function json(corpo: unknown, status = 200) {
   return new Response(JSON.stringify(corpo), { status, headers: { ...CORS, 'Content-Type': 'application/json' } })
@@ -59,7 +65,8 @@ Deno.serve(async (req: Request) => {
     .eq('usuario_id', usuario.user.id)
     .eq('barraca_id', barracaId)
     .maybeSingle()
-  if (!vinculo || !podeDisparar(acao, vinculo.papel ?? null)) return json({ erro: 'Sem acesso a esta loja' }, 403)
+  if (!vinculo) return json({ erro: 'Sem acesso a esta loja' }, 403)
+  if (!podeDisparar(acao, vinculo.papel ?? null)) return json({ erro: 'sem_permissao' }, 403)
 
   const { data: barraca } = await supabase
     .from('barracas')
@@ -75,6 +82,9 @@ Deno.serve(async (req: Request) => {
   if (acao === 'previa') publico = validarPublico(corpo)
   if (acao === 'enviar') envio = validarEnvio(corpo)
   if ((acao === 'previa' && !publico) || (acao === 'enviar' && !envio)) return json({ erro: 'Dados inválidos' }, 400)
+  // Identificador da intenção de envio, gerado pelo navegador: reenviar a mesma intenção não duplica a campanha.
+  const requestId = acao === 'enviar' ? corpo.request_id : crypto.randomUUID()
+  if (!requestIdValido(requestId)) return json({ erro: 'Dados inválidos' }, 400)
   if (acao === 'cancelar') {
     campanhaId = typeof corpo.campanha_id === 'string' ? corpo.campanha_id : ''
     if (campanhaId.length < 1 || campanhaId.length > 40) return json({ erro: 'Dados inválidos' }, 400)
@@ -91,6 +101,11 @@ Deno.serve(async (req: Request) => {
       return json({ erro: 'Público indisponível' }, 500)
     }
     return json({ ok: true, total: data, enviaveis: Math.min(data, MAX_DESTINATARIOS) })
+  }
+
+  if (acao === 'historico') {
+    const guardado = cacheHistorico.get(barracaId)
+    if (guardado && Date.now() - guardado.em < CACHE_HISTORICO_MS) return json(guardado.dados)
   }
 
   let corpoCrm: CorpoCrm
@@ -117,7 +132,7 @@ Deno.serve(async (req: Request) => {
   const segredo = primeiroSegredo(Deno.env.get('WHATSAPP_CONEXAO_SEGREDO'))
   const r =
     url && segredo.length >= 16
-      ? await chamarDisparosCrm({ url, segredo, barracaId, requestId: crypto.randomUUID(), corpo: corpoCrm })
+      ? await chamarDisparosCrm({ url, segredo, barracaId, requestId, corpo: corpoCrm })
       : null
   if (!r || !r.ok) {
     console.error('whatsapp-disparos: CRM indisponível')
@@ -125,9 +140,12 @@ Deno.serve(async (req: Request) => {
   }
   const dados = r.dados as Record<string, unknown>
   if (acao === 'enviar') {
+    cacheHistorico.delete(barracaId)
     return dados.ok === true
-      ? json({ ok: true, campanha_id: dados.campanha_id, total: dados.total })
+      ? json({ ok: true, campanha_id: dados.campanha_id, total: dados.total, repetido: dados.repetido === true })
       : json({ ok: false, motivo: dados.motivo })
   }
+  if (acao === 'cancelar') cacheHistorico.delete(barracaId)
+  if (acao === 'historico') cacheHistorico.set(barracaId, { em: Date.now(), dados })
   return json(dados)
 })

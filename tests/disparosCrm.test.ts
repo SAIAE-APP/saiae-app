@@ -7,6 +7,8 @@ import {
   chamarDisparosCrm,
   montarDestinatarios,
   podeDisparar,
+  requestIdValido,
+  variaveisInvalidas,
   urlDisparos,
   validarEnvio,
   validarPublico,
@@ -55,6 +57,16 @@ describe('validação da entrada', () => {
     assert.equal(validarEnvio({ tipo: 'promocao', texto: 'x'.repeat(600) })?.texto.length, 600)
     assert.equal(validarEnvio({ tipo: 'promocao', texto: '  oi  ' })?.texto, 'oi')
     assert.equal(validarEnvio({ tipo: 'reativacao', texto: 'oi' }), null)
+  })
+  test('variáveis: campanha só aceita {nome} e {barraca}', () => {
+    assert.deepEqual(variaveisInvalidas('Oi {nome}, {barraca}!', ['nome', 'barraca']), [])
+    assert.deepEqual(variaveisInvalidas('Oi {senha} {x} {x}', ['nome', 'barraca']), ['senha', 'x'])
+    assert.equal(validarEnvio({ tipo: 'promocao', texto: 'Oi {senha}' }), null)
+    assert.equal(validarEnvio({ tipo: 'promocao', texto: 'Oi {nome} na {barraca}' })?.texto, 'Oi {nome} na {barraca}')
+  })
+  test('request_id precisa ser uuid', () => {
+    assert.equal(requestIdValido('22222222-2222-4222-8222-222222222222'), true)
+    for (const v of ['x', '', 5, null, undefined]) assert.equal(requestIdValido(v), false)
   })
   test('destinatários: só dígitos, 8 a 15, nome até 60 ou null, máximo 500', () => {
     const r = montarDestinatarios([
@@ -155,7 +167,9 @@ describe('integracao-v1: avaliacao_config', () => {
     const c = { ativo: true, texto: null, whatsapp_dono: '5561999990000', barraca_nome: 'Loja', extra: 1 }
     assert.deepEqual(avaliacaoDaConfig(c), { ativo: true, texto: null, whatsapp_dono: '5561999990000', barraca_nome: 'Loja' })
     assert.equal(avaliacaoDaConfig({ ...c, ativo: 'sim' }), null)
-    assert.equal(avaliacaoDaConfig({ ...c, whatsapp_dono: 'abc' }), null)
+    // número do dono inválido nunca derruba a ação: vira null
+    assert.equal(avaliacaoDaConfig({ ...c, whatsapp_dono: 'abc' })?.whatsapp_dono, null)
+    assert.equal(avaliacaoDaConfig({ ...c, whatsapp_dono: 123 })?.whatsapp_dono, null)
     assert.equal(avaliacaoDaConfig(null), null)
   })
 })
@@ -177,6 +191,12 @@ describe('function whatsapp-disparos: guardas estáticas', () => {
   test('módulo desligado devolve 403 e nenhum log imprime telefone, nome ou texto', () => {
     assert.match(codigo, /json\(\{ erro: 'modulo_desligado' \}, 403\)/)
     for (const c of codigo.match(/console\.\w+\([^)]*\)/g) ?? []) assert.doesNotMatch(c, /telefone|nome|texto|corpo|\.message|destinat/i, c)
+  })
+  test('enviar exige request_id válido; papel sem permissão tem frase própria; histórico em cache curto', () => {
+    assert.ok(codigo.includes('!requestIdValido(requestId)'))
+    assert.match(codigo, /erro: .sem_permissao. }, 403/)
+    assert.ok(codigo.includes('cacheHistorico.get(barracaId)'))
+    assert.ok(codigo.includes('repetido: dados.repetido === true'))
   })
   test('não devolve o erro do CRM nem a lista de telefones', () => {
     assert.match(codigo, /json\(\{ erro: 'Conexão indisponível' \}, 502\)/)

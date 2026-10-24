@@ -223,6 +223,7 @@ export function avaliacaoDaConfig(bruto: unknown): AvaliacaoConfig | null {
   const o = bruto as Record<string, unknown>
   if (typeof o.ativo !== 'boolean' || typeof o.barraca_nome !== 'string') return null
   if (o.texto !== null && typeof o.texto !== 'string') return null
-  if (o.whatsapp_dono !== null && (typeof o.whatsapp_dono !== 'string' || !/^[0-9]{8,15}$/.test(o.whatsapp_dono))) return null
-  return { ativo: o.ativo, texto: o.texto, whatsapp_dono: o.whatsapp_dono, barraca_nome: o.barraca_nome }
+  // Número do dono fora do formato vira null (a avaliação segue sem aviso ao dono); nunca derruba a ação.
+  const dono = typeof o.whatsapp_dono === 'string' && /^[0-9]{8,15}$/.test(o.whatsapp_dono) ? o.whatsapp_dono : null
+  return { ativo: o.ativo, texto: o.texto, whatsapp_dono: dono, barraca_nome: o.barraca_nome }
 }
