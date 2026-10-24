@@ -30,7 +30,7 @@ import { useToast } from '../components/ui/useToast'
 import { BotaoDefinirPagamento } from '../components/BotaoDefinirPagamento'
 import { BotaoCorrigirPagamento } from '../components/BotaoCorrigirPagamento'
 import { podeCorrigirMetodo } from '../lib/corrigirMetodo'
-import { ambienteDaNota, cpfValido, formatarCpf, mensagemErroEmissao } from '../lib/fiscal'
+import { ambienteDaNota, cpfValido, formatarCpf, mensagemErroEmissao, podeMostrarBotaoNota } from '../lib/fiscal'
 import { temModulo } from '../lib/modulos'
 import { nomeComOpcoes } from '../lib/opcoes'
 import { textoCupomDoPedido } from '../lib/descontosCupom'
@@ -173,7 +173,7 @@ function ordenarPorEntregueEmDesc(lista: PedidoComItens[]): PedidoComItens[] {
   })
 }
 
-function BotaoEmitirNota({ pedido }: { pedido: PedidoComItens }) {
+function BotaoEmitirNota({ pedido, moduloFiscal }: { pedido: PedidoComItens; moduloFiscal: boolean }) {
   const [status, setStatus] = useState(pedido.nfce_status)
   const [mensagem, setMensagem] = useState(pedido.nfce_mensagem)
   const [chave, setChave] = useState(pedido.nfce_chave)
@@ -241,14 +241,14 @@ function BotaoEmitirNota({ pedido }: { pedido: PedidoComItens }) {
 
     const statusRecebido = data?.status ?? 'erro'
     setStatus(statusRecebido)
-    setMensagem(data?.mensagem ?? (data?.erro ? mensagemErroEmissao(data.erro) : null))
+    setMensagem(data?.mensagem ? mensagemErroEmissao(data.mensagem) : data?.erro ? mensagemErroEmissao(data.erro) : null)
     setChave(data?.chave ?? null)
     if (statusRecebido === 'autorizado') setAmbienteEmitidoAgora(barraca.fiscal_ambiente)
 
     if (statusRecebido === 'autorizado') {
       mostrarToast('Nota fiscal emitida.', { variante: 'sucesso' })
     } else {
-      mostrarToast(data?.mensagem ?? mensagemErroEmissao(data?.erro), { variante: 'erro' })
+      mostrarToast(mensagemErroEmissao(data?.mensagem ?? data?.erro), { variante: 'erro' })
     }
   }
 
@@ -273,6 +273,8 @@ function BotaoEmitirNota({ pedido }: { pedido: PedidoComItens }) {
       </div>
     )
   }
+
+  if (!moduloFiscal) return null
 
   return (
     <div className="mt-3">
@@ -424,7 +426,9 @@ function CardHistorico({
         />
       )}
 
-      {!cancelado && temModulo(modulos, 'fiscal') && <BotaoEmitirNota pedido={pedido} />}
+      {podeMostrarBotaoNota({ temModulo: temModulo(modulos, 'fiscal'), autorizada: pedido.nfce_status === 'autorizado', cancelado }) && (
+        <BotaoEmitirNota pedido={pedido} moduloFiscal={temModulo(modulos, 'fiscal')} />
+      )}
 
       {pedido.status === 'entregue' && (
         <Button

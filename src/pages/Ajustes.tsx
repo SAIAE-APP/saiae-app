@@ -1834,9 +1834,11 @@ function SecaoFiscal({ barraca }: { barraca: Barraca }) {
         <p className="mt-2 text-sm font-medium text-mesa-text-primary">
           {estado === 'ok'
             ? 'Pronto para emitir'
-            : tokensConfigurados === null && !erroTokens
-              ? 'Verificando...'
-              : 'Aguardando cadastro'}
+            : erroTokens
+              ? 'Não foi possível verificar agora.'
+              : tokensConfigurados === null
+                ? 'Verificando...'
+                : 'Aguardando cadastro'}
         </p>
 
         <div className="mt-4">

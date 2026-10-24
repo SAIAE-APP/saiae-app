@@ -29,10 +29,19 @@ export function fiscalProntoParaEmitir(
   return tokenProducaoOuHomologacaoConfigurado ? 'ok' : 'sem_token'
 }
 
-/** Texto da falha de emissão para o dono: sem código técnico. */
+/** Texto da falha de emissão para o dono: sem código técnico nem nome do provedor. */
 export function mensagemErroEmissao(erro: string | null | undefined): string {
   if (erro === 'modulo_desligado') return 'Nota fiscal indisponível no momento. O pedido está salvo.'
-  return erro || 'Não foi possível emitir. Tente novamente.'
+  if (!erro) return 'Não foi possível emitir. Tente novamente.'
+  if (/focuss*nfe/i.test(erro)) return 'Não foi possível emitir a nota agora. Tente de novo em instantes.'
+  if (/token/i.test(erro) && /não configurad/i.test(erro))
+    return 'Emissão ainda não configurada para a sua loja. Fale com o suporte.'
+  return erro
+}
+
+/** Card do Histórico: nota já autorizada continua visível (reimprimir não é emitir); emitir exige o módulo. */
+export function podeMostrarBotaoNota(p: { temModulo: boolean; autorizada: boolean; cancelado: boolean }): boolean {
+  return !p.cancelado && (p.temModulo || p.autorizada)
 }
 
 export const AVISO_HOMOLOGACAO = 'EMITIDA EM AMBIENTE DE HOMOLOGACAO - SEM VALOR FISCAL'
