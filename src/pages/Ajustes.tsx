@@ -37,7 +37,6 @@ import { BotaoSalvarCampo, ErroSalvar } from '../components/BotaoSalvarCampo'
 import { SecaoModosAtendimento } from '../components/SecaoModosAtendimento'
 import { SecaoTaxaEntrega } from '../components/SecaoTaxaEntrega'
 import { SecaoBairrosEntrega } from '../components/SecaoBairrosEntrega'
-import { SecaoIntegracaoCrm } from '../components/SecaoIntegracaoCrm'
 import { SecaoOpcoes } from '../components/SecaoOpcoes'
 import { SecaoClientesEntrega } from '../components/SecaoClientesEntrega'
 import { ImportarCardapioSheet } from '../components/ImportarCardapioSheet'
@@ -48,8 +47,7 @@ import { SecaoComandaAberta } from '../components/SecaoComandaAberta'
 import { SecaoSaiuEntrega } from '../components/SecaoSaiuEntrega'
 import { SecaoEstoque } from '../components/SecaoEstoque'
 import { SecaoCupons } from '../components/SecaoCupons'
-import { SecaoAtendenteIa } from '../components/SecaoAtendenteIa'
-import { mostrarAtendenteIa, mostrarWhatsappAutomacao } from '../lib/visibilidadeIaCrm'
+import { mostrarWhatsappAutomacao } from '../lib/visibilidadeIaCrm'
 import { SecaoWhatsappAutomacao } from '../components/SecaoWhatsappAutomacao'
 import {
   PROVEDORES_PIX_DISPONIVEIS,
@@ -2981,17 +2979,8 @@ export function Ajustes({ categoria = 'conta' }: { categoria?: CategoriaAjustes 
           <SecaoDaCategoria categoria="cardapio" grupo="cardapio" atual={categoria}>
             <SecaoCupons barraca={barraca} />
           </SecaoDaCategoria>
-          {/* Escondida para cliente novo (decisão 2026-10-09); quem já tem a IA ligada vê, e VITE_MOSTRAR_ATENDENTE_IA=1 reabre. */}
-          {mostrarAtendenteIa(barraca, import.meta.env.VITE_MOSTRAR_ATENDENTE_IA) && (
-            <SecaoDaCategoria categoria="cardapio" grupo="avisos" atual={categoria}>
-              <SecaoAtendenteIa barraca={barraca} />
-            </SecaoDaCategoria>
-          )}
           <SecaoDaCategoria categoria="cardapio" grupo="avisos" atual={categoria}>
             <SecaoAvisoPronto barraca={barraca} />
-          </SecaoDaCategoria>
-          <SecaoDaCategoria categoria="cardapio" grupo="avisos" atual={categoria}>
-            <SecaoIntegracaoCrm barraca={barraca} />
           </SecaoDaCategoria>
           {mostrarWhatsappAutomacao(barraca, import.meta.env.VITE_MOSTRAR_WHATSAPP_AUTOMACAO) && (
             <SecaoDaCategoria categoria="cardapio" grupo="avisos" atual={categoria}>
