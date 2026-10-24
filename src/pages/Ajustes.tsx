@@ -11,7 +11,7 @@ import { mensagemDoErroFuncao } from '../lib/erroFuncao'
 import { salvarCredencial } from '../lib/salvarCredencial'
 import { classesBotaoIcone } from '../lib/estiloBotaoIcone'
 import { ehAppIOS } from '../lib/plataforma'
-import { useBarracaAtual } from '../layouts/contextoBarraca'
+import { useBarracaAtual, useModulosDaLoja } from '../layouts/contextoBarraca'
 import { useAuth } from '../hooks/useAuth'
 import { useTheme } from '../hooks/useTheme'
 import { useAssinaturaBarraca } from '../hooks/useAssinaturaBarraca'
@@ -47,7 +47,7 @@ import { SecaoComandaAberta } from '../components/SecaoComandaAberta'
 import { SecaoSaiuEntrega } from '../components/SecaoSaiuEntrega'
 import { SecaoEstoque } from '../components/SecaoEstoque'
 import { SecaoCupons } from '../components/SecaoCupons'
-import { mostrarWhatsappAutomacao } from '../lib/visibilidadeIaCrm'
+import { mostrarWhatsappAutomacao, temModulo } from '../lib/modulos'
 import { SecaoWhatsappAutomacao } from '../components/SecaoWhatsappAutomacao'
 import { SecaoDisparos } from '../components/SecaoDisparos'
 import {
@@ -2870,6 +2870,7 @@ function SecaoDaCategoria({
 
 export function Ajustes({ categoria = 'conta' }: { categoria?: CategoriaAjustes }) {
   const barraca = useBarracaAtual()
+  const modulos = useModulosDaLoja()
   const [params, setParams] = useSearchParams()
   const grupoAtual = grupoAtivo(categoria, params.get('secao'))
 
@@ -2983,10 +2984,10 @@ export function Ajustes({ categoria = 'conta' }: { categoria?: CategoriaAjustes 
           <SecaoDaCategoria categoria="cardapio" grupo="avisos" atual={categoria}>
             <SecaoAvisoPronto barraca={barraca} />
           </SecaoDaCategoria>
-          {mostrarWhatsappAutomacao(barraca, import.meta.env.VITE_MOSTRAR_WHATSAPP_AUTOMACAO) && (
+          {mostrarWhatsappAutomacao(modulos) && (
             <SecaoDaCategoria categoria="cardapio" grupo="avisos" atual={categoria}>
               <SecaoWhatsappAutomacao barraca={barraca} />
-              {barraca.whatsapp_disparos_habilitado === true && (
+              {(temModulo(modulos, 'whatsapp_avisos') || temModulo(modulos, 'whatsapp_disparos')) && (
                 <div className="mt-6">
                   <SecaoDisparos barraca={barraca} />
                 </div>

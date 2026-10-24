@@ -1,7 +1,8 @@
 import { useEffect, useRef, useState } from 'react'
 import { useLocation, useNavigate } from 'react-router'
 import clsx from 'clsx'
-import { useBarracaAtual } from '../layouts/contextoBarraca'
+import { useBarracaAtual, useModulosDaLoja } from '../layouts/contextoBarraca'
+import { mostrarCaixaPromocoes } from '../lib/modulos'
 import { classesBotaoIcone } from '../lib/estiloBotaoIcone'
 import { useTheme } from '../hooks/useTheme'
 import { enfileirar } from '../lib/fila'
@@ -122,6 +123,7 @@ function LinhaMeta({
 
 export function ConfirmarPedido() {
   const barraca = useBarracaAtual()
+  const modulos = useModulosDaLoja()
   const navigate = useNavigate()
   const location = useLocation()
   const { tema, alternarTema } = useTheme()
@@ -343,7 +345,7 @@ export function ConfirmarPedido() {
     // Cliente que aceitou promoções vira contato da loja (só com o módulo ligado); depois do pedido na fila, sem travar o envio.
     const contato = contatoMarketingDoPedido({
       barracaId: barraca.id,
-      disparosHabilitado: barraca.whatsapp_disparos_habilitado,
+      disparosHabilitado: mostrarCaixaPromocoes(modulos),
       ehEntrega,
       telefone: clienteTelefone,
       nome: clienteNome,
@@ -463,7 +465,7 @@ export function ConfirmarPedido() {
           />
         )}
 
-        {!ehEntrega && telefoneAvisoValido && barraca.whatsapp_disparos_habilitado === true && (
+        {!ehEntrega && telefoneAvisoValido && mostrarCaixaPromocoes(modulos) && (
           <Checkbox
             checked={aceitaPromocoes}
             onChange={setAceitaPromocoes}

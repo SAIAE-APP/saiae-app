@@ -21,3 +21,10 @@ export function useSincronizacaoAtual(): EstadoSincronizacao {
   }
   return estado
 }
+
+/** Módulos pagos ativos da loja; `null` = ainda sem resposta (tudo fechado). */
+export const ModulosContext = createContext<string[] | null>(null)
+
+export function useModulosDaLoja(): string[] | null {
+  return useContext(ModulosContext)
+}

@@ -97,7 +97,7 @@ describe('variáveis e erros da function', () => {
     assert.match(fraseVariaveis(['cupom']), /{cupom}/)
   })
   test('erros 403 da function viram frase própria', () => {
-    assert.match(fraseErroDisparo('modulo_desligado'), /não está liberado/)
+    assert.match(fraseErroDisparo('modulo_desligado'), /não está ativo/)
     assert.match(fraseErroDisparo('sem_permissao'), /dono/)
     assert.match(fraseErroDisparo(undefined), /Tente de novo/)
   })
@@ -114,7 +114,7 @@ describe('mensagens de erro por motivo', () => {
     assert.match(fraseMotivo(undefined), /Não foi possível/)
   })
   test('estados da RPC da avaliação', () => {
-    assert.match(fraseMotivoSalvar('modulo_desligado'), /não está liberado/i)
+    assert.match(fraseMotivoSalvar('modulo_desligado'), /não está ativo/i)
     assert.match(fraseMotivoSalvar('dados_invalidos'), /500/)
     assert.match(fraseMotivoSalvar('sem_acesso'), /permissão/)
     assert.match(fraseMotivoSalvar('qualquer'), /Não foi possível/)

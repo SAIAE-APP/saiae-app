@@ -91,6 +91,7 @@ describe('link do WhatsApp da loja', () => {
 
 describe('mensagemErroIa', () => {
   test('traduz os erros do banco', () => {
+    assert.match(mensagemErroIa({ message: 'modulo_desligado' }), /não está ativo/)
     assert.match(mensagemErroIa({ message: 'ia_sem_whatsapp_dono' }), /WhatsApp do dono/)
     assert.match(mensagemErroIa({ message: 'sem acesso a esta barraca' }), /acesso/)
     assert.match(mensagemErroIa({ message: 'Failed to fetch' }), /Sem internet/)
