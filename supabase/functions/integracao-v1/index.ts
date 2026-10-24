@@ -17,6 +17,7 @@ import {
   type CorpoIntegracao,
   type LojaCrua,
   haSegredoValido,
+  lojaComBotVigente,
   lojaDoBot,
   recusaDaAcao,
   telefoneSemPais,
@@ -59,7 +60,7 @@ async function carregarLoja(supabase: Supabase, barracaId: string) {
     .select('dia_semana, aberto, hora_abertura, hora_fechamento')
     .eq('barraca_id', barracaId)
   if (erroHorarios) throw new FalhaInterna('horarios')
-  return { barraca: barraca as LojaCrua & { estoque_bloqueia?: boolean | null; pagamento_provedor?: string | null; pix_expiracao_minutos?: number | null }, horarios: (horarios ?? []) as HorarioDia[] }
+  return { barraca: (await lojaComBotVigente(barraca, supabase, barracaId)) as LojaCrua & { estoque_bloqueia?: boolean | null; pagamento_provedor?: string | null; pix_expiracao_minutos?: number | null }, horarios: (horarios ?? []) as HorarioDia[] }
 }
 
 /** Preço e total vêm do resolver_carrinho. Erro de carrinho vira resposta de negócio, nunca 500. */

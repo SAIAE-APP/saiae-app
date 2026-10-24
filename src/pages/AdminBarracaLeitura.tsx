@@ -8,6 +8,7 @@ import { Chip } from '../components/ui/Chip'
 import { useSouSuperadmin } from '../hooks/useAdminBarracas'
 import { supabase } from '../lib/supabase'
 import { formatarPrecoBR } from '../lib/preco'
+import { AdminModulos } from '../components/AdminModulos'
 import { NaoEncontrado } from './NaoEncontrado'
 import {
   NOME_STATUS_PEDIDO_ADMIN,
@@ -249,6 +250,7 @@ export function AdminBarracaLeitura() {
           {aba === 'faturamento' && <AbaFaturamento acessoId={acesso.acesso_id} />}
           {aba === 'caixa' && <AbaCaixa acessoId={acesso.acesso_id} />}
           {aba === 'ajustes' && <AbaAjustes acessoId={acesso.acesso_id} />}
+          {aba === 'ajustes' && barracaId && <AdminModulos barracaId={barracaId} />}
         </>
       )}
     </div>

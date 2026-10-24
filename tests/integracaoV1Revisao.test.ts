@@ -54,7 +54,7 @@ describe('whatsapp-conexao assina com o PRIMEIRO segredo da lista', () => {
     assert.equal(primeiroSegredo(undefined), '')
   })
   test('a function usa primeiroSegredo e não passa a lista crua ao CRM', () => {
-    const f = lerFonte('../supabase/functions/whatsapp-conexao/index.ts')
+    const f = lerFonte('../supabase/functions/whatsapp-conexao/handler.ts')
     assert.match(f, /primeiroSegredo\(Deno\.env\.get\('WHATSAPP_CONEXAO_SEGREDO'\)\)/)
     assert.match(f, /chamarConexaoCrm\(\{ url, segredo,/)
   })

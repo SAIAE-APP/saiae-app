@@ -112,7 +112,7 @@ export function EmitenteFiscal({ barraca }: { barraca: Barraca }) {
         />
         <Input
           label="Alíquota aproximada de tributos (%)"
-          helpText="Lei 12.741: a FocusNFe não calcula o valor sozinha. Use o percentual da tabela IBPT (ibpt.com.br) pro seu produto; o cupom marca a fonte como informada pelo emitente."
+          helpText="Lei 12.741: o emissor não calcula o valor sozinho. Use o percentual da tabela IBPT (ibpt.com.br) pro seu produto; o cupom marca a fonte como informada pelo emitente."
           inputMode="decimal"
           value={aliquotaR.valor}
           onChange={(e) => {

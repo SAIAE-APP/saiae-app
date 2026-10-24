@@ -6,14 +6,13 @@ Loja de teste: `jmal`, em **staging**. Plano: `docs/superpowers/plans/2026-10-24
 
 1. Staging com as migrations `20261101100000` e `20261101110000` e as functions `whatsapp-disparos` e `integracao-v1` publicadas (feito pela trilha do app).
 2. CRM de staging com a branch das campanhas publicada e o WhatsApp da `jmal` conectado (Ajustes > Avisos). Opcional: secret `CRM_WHATSAPP_DISPAROS_URL` no Sai aê; sem ele a URL é derivada de `CRM_WHATSAPP_CONEXAO_URL`.
-3. Liberar o módulo na `jmal` (só a plataforma faz isso, por SQL no staging):
-   `update public.barracas set whatsapp_disparos_habilitado = true where slug = 'jmal';`
+3. Liberar os módulos na `jmal`: ative `whatsapp_avisos` e depois `whatsapp_disparos` pelo painel de admin (Admin > loja > Módulos pagos, informando a versão do termo; ver `docs/roteiro-modulos.md`), ou pelas funções `admin_modulo_definir` no SQL do staging como superadmin. O update direto em `barracas.whatsapp_disparos_habilitado` não funciona mais: o trigger recusa com `disparos_use_a_tela`. Disparos exige avisos ativo.
 4. Ter 2 ou 3 clientes de teste em Ajustes > Cardápio & Operação > Clientes de entrega, com o seu número e o de outro celular, marcados como "aceita contato comercial" (importar com o 2º checkbox, ou cadastrar por um pedido de entrega do cardápio com o consentimento marcado). Para "reativar", o cliente precisa estar sem pedido há mais dias do que o seletor (ajuste `criado_em` por SQL no staging se for preciso).
-5. O app aberto com `VITE_MOSTRAR_WHATSAPP_AUTOMACAO=1` (staging) ou com a loja liberada.
+5. O app aberto com a loja já com os módulos ativos (passo 3); não há mais variável de ambiente para mostrar a seção.
 
 ## Passos
 
-1. **Seção visível.** Ajustes > Avisos mostra "Campanhas e avaliação" logo abaixo do WhatsApp. Desligue o módulo por SQL e confira que a seção some.
+1. **Seção visível.** Ajustes > Avisos mostra "Campanhas e avaliação" logo abaixo do WhatsApp. Suspenda o módulo `whatsapp_disparos` pelo painel de admin e confira que a seção some (suspender `whatsapp_avisos` também a derruba).
 2. **Avaliação.** Ligue "Avaliação após a entrega", deixe o texto em branco e salve. A prévia mostra o texto padrão. Salve um texto de 501 caracteres: o campo não deixa passar de 500.
 3. **Avaliação ponta a ponta.** Faça um pedido com telefone seu, leve até Entregue. Esperado: cerca de 30 minutos depois chega o pedido de nota (dentro do horário 9h às 20h). Responda "5": agradecimento, nota no histórico do app e aviso ao WhatsApp do dono. Responda "2" em outro pedido: aviso ao dono com "ATENÇÃO:".
 4. **Avaliação não ambígua.** Com um pedido aguardando nota, mande "Quero 2 pizzas": não vira nota. Mande "10" e "0": não viram nota. Responda "5" duas vezes: só a primeira vale.

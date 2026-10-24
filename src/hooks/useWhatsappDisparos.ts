@@ -36,7 +36,8 @@ async function chamar<T>(corpo: Record<string, unknown>): Promise<T> {
 }
 
 /** Histórico de campanhas e avaliações da loja, mais as ações. Polling parado com a aba escondida; 5 s com campanha em andamento. */
-export function useWhatsappDisparos(barracaId: string) {
+/** `ativo=false` (sem o módulo de disparos) não chama a function nem faz polling: ela responderia 403. */
+export function useWhatsappDisparos(barracaId: string, ativo = true) {
   const [historico, setHistorico] = useState<HistoricoDisparos | null>(null)
   const [erro, setErro] = useState(false)
   const [ehDono, setEhDono] = useState<boolean | null>(null)
@@ -72,13 +73,14 @@ export function useWhatsappDisparos(barracaId: string) {
 
   const emAndamento = historico?.campanhas.some((c) => c.estado === 'em_andamento') ?? false
   useEffect(() => {
+    if (!ativo) return
     // eslint-disable-next-line react-hooks/set-state-in-effect
     void recarregar()
     const id = window.setInterval(() => {
       if (document.visibilityState === 'visible') void recarregar()
     }, emAndamento ? POLL_ANDAMENTO_MS : POLL_PADRAO_MS)
     return () => window.clearInterval(id)
-  }, [recarregar, emAndamento])
+  }, [recarregar, emAndamento, ativo])
 
   const previa = useCallback(
     async (tipo: TipoDisparo, dias: number | null): Promise<Previa> => {

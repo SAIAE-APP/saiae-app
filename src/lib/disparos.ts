@@ -92,7 +92,7 @@ export const fraseVariaveis = (invalidas: string[]): string =>
 
 /** Erro devolvido pela function (corpo do 403/4xx) em frase para o dono. */
 export function fraseErroDisparo(codigo: string | undefined): string {
-  if (codigo === 'modulo_desligado') return 'Este recurso não está liberado para a sua loja.'
+  if (codigo === 'modulo_desligado') return 'Este recurso não está ativo para a sua loja.'
   if (codigo === 'sem_permissao') return 'Só o dono da loja pode fazer isso.'
   return 'Não foi possível falar com o WhatsApp agora. Tente de novo em instantes.'
 }
@@ -108,7 +108,7 @@ export const fraseMotivo = (motivo: string | undefined): string =>
   (motivo && FRASES[motivo]) || 'Não foi possível enviar agora. Tente de novo em instantes.'
 
 export function fraseMotivoSalvar(estado: string | undefined): string {
-  if (estado === 'modulo_desligado') return 'Este recurso ainda não está liberado para a sua loja.'
+  if (estado === 'modulo_desligado') return 'Este recurso não está ativo para a sua loja.'
   if (estado === 'dados_invalidos') return 'Confira o texto: ele precisa ter de 1 a 500 caracteres.'
   if (estado === 'sem_acesso') return 'Sem permissão para alterar esta loja.'
   return 'Não foi possível salvar agora. Tente de novo.'

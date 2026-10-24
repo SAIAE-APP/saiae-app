@@ -18,10 +18,11 @@ function criarBanco() {
     // u1 é dono da B1. "suporte" NÃO tem linha aqui (é o desenho do acesso de suporte).
     usuarios_barracas: [{ usuario_id: 'u1', barraca_id: B1 }, { usuario_id: 'u2', barraca_id: B2 }],
     acessos_suporte: [{ usuario_id: 'suporte', barraca_id: B1, ativo: true }],
+    superadmins: [{ usuario_id: 'admin' }],
     barracas_fiscal_token: [],
     barracas_pagamento_token: [],
   }
-  const estado = { limiteNegado: false, limiteErro: false, falharGravacao: false, rpcs: [] as any[] }
+  const estado = { limiteNegado: false, limiteErro: false, falharGravacao: false, superadminsErro: false, rpcs: [] as any[] }
   const from = (tabela: string) => {
     const filtros: Array<[string, unknown]> = []
     let op: 'select' | 'update' = 'select'
@@ -30,7 +31,7 @@ function criarBanco() {
       select: () => q,
       eq: (c: string, v: unknown) => (filtros.push([c, v]), q),
       update: (v: Linha) => ((op = 'update'), (valores = v), q),
-      maybeSingle: () => Promise.resolve({ data: tabelas[tabela].find((r) => filtros.every(([c, v]) => r[c] === v)) ?? null, error: null }),
+      maybeSingle: () => tabela === 'superadmins' && estado.superadminsErro ? Promise.resolve({ data: null, error: { message: 'queda' } }) : Promise.resolve({ data: tabelas[tabela].find((r) => filtros.every(([c, v]) => r[c] === v)) ?? null, error: null }),
       upsert: (linha: Linha, opcoes: { onConflict: string }) => {
         if (estado.falharGravacao) return Promise.resolve({ data: null, error: { message: 'queda' } })
         const chaves = opcoes.onConflict.split(',')
@@ -59,7 +60,7 @@ function criarBanco() {
 
 function montar(env: Record<string, string> = { TOKENS_CHAVE_V1: CHAVE }) {
   const banco = criarBanco()
-  const usuarios: Record<string, { id: string }> = { 'jwt-u1': { id: 'u1' }, 'jwt-u2': { id: 'u2' }, 'jwt-suporte': { id: 'suporte' } }
+  const usuarios: Record<string, { id: string }> = { 'jwt-u1': { id: 'u1' }, 'jwt-u2': { id: 'u2' }, 'jwt-suporte': { id: 'suporte' }, 'jwt-admin': { id: 'admin' } }
   const cfg = configDoEnv({ get: (n) => env[n] })
   const chamar = async (corpo: unknown, jwt: string | null = 'jwt-u1') => {
     const res = await tratarSalvarCredencial(
@@ -124,6 +125,42 @@ describe('salvar-credencial', () => {
     assert.equal(linha.segredo_webhook, null)
     assert.equal(await decifrar(linha.segredo_webhook_cifrado, { barracaId: B1, campo: 'segredo_webhook' }, cfg), 'seg-novo')
     assert.equal(linha.access_token_cifrado, 'v1.x.y', 'o token não é tocado')
+  })
+
+  test('superadmin sem vínculo grava token fiscal de homologação e de produção cifrados', async () => {
+    const { banco, chamar, cfg } = montar()
+    for (const [ambiente, campo] of [['homologacao', 'token_homologacao'], ['producao', 'token_producao']] as const) {
+      const r = await chamar({ barraca_id: B2, tipo: 'fiscal', ambiente, valor: TOKEN }, 'jwt-admin')
+      assert.equal(r.status, 200)
+      assert.ok(!r.texto.includes(TOKEN))
+      const linha = banco.tabelas.barracas_fiscal_token.find((l) => l.barraca_id === B2)!
+      assert.equal(linha[campo], null)
+      assert.equal(await decifrar(linha[`${campo}_cifrado`], { barracaId: B2, campo }, cfg), TOKEN)
+    }
+  })
+
+  test('superadmin sem vínculo recebe 403 para tipo pagamento', async () => {
+    const { banco, chamar } = montar()
+    assert.equal((await chamar({ barraca_id: B2, tipo: 'pagamento', provedor: 'mercadopago', valor: TOKEN }, 'jwt-admin')).status, 403)
+    assert.equal((await chamar({ barraca_id: B2, tipo: 'segredo_webhook', provedor: 'mercadopago', valor: TOKEN }, 'jwt-admin')).status, 403)
+    assert.equal(banco.tabelas.barracas_pagamento_token.length, 0)
+  })
+
+  test('usuário comum sem vínculo continua 403 no fiscal; falha ao consultar superadmins também (fail closed)', async () => {
+    mock.method(console, 'error', () => {})
+    const { banco, chamar } = montar()
+    const corpo = { barraca_id: B1, tipo: 'fiscal', ambiente: 'producao', valor: TOKEN }
+    assert.equal((await chamar(corpo, 'jwt-u2')).status, 403)
+    banco.estado.superadminsErro = true
+    assert.equal((await chamar({ ...corpo, barraca_id: B2 }, 'jwt-admin')).status, 403)
+    mock.restoreAll()
+    assert.equal(banco.tabelas.barracas_fiscal_token.length, 0)
+  })
+
+  test('acesso de suporte continua sem gravar (inclusive fiscal)', async () => {
+    const { banco, chamar } = montar()
+    assert.equal((await chamar({ barraca_id: B1, tipo: 'fiscal', ambiente: 'homologacao', valor: TOKEN }, 'jwt-suporte')).status, 403)
+    assert.equal(banco.tabelas.barracas_fiscal_token.length, 0)
   })
 
   test('SEM chave: 503, nada gravado e nada em texto', async () => {
@@ -214,7 +251,7 @@ describe('guardas estáticos', () => {
     for (const rpc of ['definir_token_fiscal', 'definir_token_pagamento', 'definir_segredo_webhook_pagamento']) {
       assert.ok(!ajustes.includes(`rpc('${rpc}'`), rpc)
     }
-    assert.equal((ajustes.match(/salvarCredencial\(\{/g) ?? []).length, 3)
+    assert.equal((ajustes.match(/salvarCredencial\(\{/g) ?? []).length, 2) // fiscal saiu do app: o token fiscal é cadastrado pelo Sai aê
   })
 
   test('nenhum console.* do handler recebe o valor ou a chave', () => {

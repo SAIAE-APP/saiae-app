@@ -4,6 +4,7 @@
 import { montarLinhas, type LinhaCarrinho } from './carrinho.ts'
 import { type HorarioDia, barracaAbertaAgora } from './horario.ts'
 import { verificarAssinaturaIa } from './iaAssinatura.ts'
+import { moduloAtivo } from './modulos.ts'
 
 export const MAX_LINHAS_BOT = 40
 const MIN_SEGREDO = 16
@@ -176,6 +177,16 @@ export function lojaDoBot(l: LojaCrua, horarios: HorarioDia[], urlApp: string, a
     whatsapp_dono: l.ia_whatsapp_dono_confirmado_em ? (l.ia_whatsapp_dono ?? null) : null,
     bot_habilitado: l.ia_habilitada === true,
   }
+}
+
+/** O bot só vale com o módulo vigente: a flag ia_habilitada pode estar velha (a data vence sem escrever nada). Fecha em erro. */
+export async function lojaComBotVigente<T extends { ia_habilitada?: boolean | null }>(
+  barraca: T,
+  db: Parameters<typeof moduloAtivo>[0],
+  barracaId: string,
+): Promise<T> {
+  if (barraca.ia_habilitada !== true) return barraca
+  return (await moduloAtivo(db, barracaId, 'whatsapp_bot')) ? barraca : { ...barraca, ia_habilitada: false }
 }
 
 export type Recusa = { codigo: string; mensagem: string }

@@ -9,7 +9,7 @@ Loja de teste: `qa-teste-varredura`, em **staging**. Pré-requisito: a ordem de 
 2. Migrations `20261030100000_whatsapp_avisos`, `20261030110000_whatsapp_status`, `20261030120000_whatsapp_proteger` e `20261030130000_eventos_loja_com_whatsapp`, nessa ordem.
 3. Secrets do Sai aê: `WHATSAPP_CONEXAO_SEGREDO` (igual ao `COMANDA_WHATSAPP_SEGREDO`, mínimo 16 caracteres) e `CRM_WHATSAPP_CONEXAO_URL` (https público). Opcional: `CRM_EVENTOS_URL` (padrão: a URL de conexão com o final trocado por `/eventos`).
 4. Deploy das functions `whatsapp-conexao`, `crm-evento-sessao` (esta com `--no-verify-jwt`) e `enviar-eventos-saida` (`--no-verify-jwt`).
-5. App. A seção continua escondida até o João liberar lojas (`SLUGS_COM_IA_E_CRM` ou `VITE_MOSTRAR_WHATSAPP_AUTOMACAO=1`).
+5. Migrations `20261103100000`, `20261103110000` e `20261103120000` (módulos pagos) e App. A seção só aparece para lojas com algum módulo de WhatsApp ativo: ative o módulo `whatsapp_avisos` pelo painel de admin (Admin > loja > Módulos pagos; ver `docs/roteiro-modulos.md`). A loja `qa-teste-varredura` já o recebe pelo backfill.
 
 ## Passos
 

@@ -9,6 +9,7 @@ import { useSincronizacao } from '../hooks/useSincronizacao'
 import { useImpressaoAutomatica } from '../hooks/useImpressaoAutomatica'
 import { useRealtimePedidos } from '../hooks/useRealtimePedidos'
 import { useAssinaturaBarraca } from '../hooks/useAssinaturaBarraca'
+import { useModulosAtivos } from '../hooks/useModulosAtivos'
 import { NaoEncontrado } from '../pages/NaoEncontrado'
 import { Planos } from '../pages/Planos'
 import { BarraNavegacao } from '../components/BarraNavegacao'
@@ -22,7 +23,7 @@ import { EVENTO_CLIENTE_NAO_SALVO } from '../lib/fila'
 import { definirBarracaDoErro, registrarVersaoApp } from '../lib/erroApp'
 import { ehAppIOS } from '../lib/plataforma'
 import { AcessoIndisponivelIOS } from '../components/AcessoIndisponivelIOS'
-import { BarracaContext, SincronizacaoContext } from './contextoBarraca'
+import { BarracaContext, ModulosContext, SincronizacaoContext } from './contextoBarraca'
 import { PedidosContext } from './contextoPedidos'
 
 export function LayoutBarraca() {
@@ -72,6 +73,7 @@ export function LayoutBarraca() {
   const { pedidos, status, pedidosCarregados, aplicarPatchPedido, aplicarPatchItem } =
     useRealtimePedidos(barraca?.id ?? '')
   const { assinatura } = useAssinaturaBarraca(slug ?? '')
+  const { modulos } = useModulosAtivos(barraca?.id)
   const location = useLocation()
   const emTelaDeChamada = location.pathname.endsWith('/chamada')
   const emCozinha = location.pathname.endsWith('/cozinha')
@@ -159,6 +161,7 @@ export function LayoutBarraca() {
 
   return (
     <BarracaContext.Provider value={barraca}>
+      <ModulosContext.Provider value={modulos}>
       <SincronizacaoContext.Provider value={sincronizacao}>
         <PedidosContext.Provider value={estadoPedidos}>
           {mostraBannerTrial && assinatura && !ehAppIOS() && <BannerTrial assinatura={assinatura} />}
@@ -182,6 +185,7 @@ export function LayoutBarraca() {
           )}
         </PedidosContext.Provider>
       </SincronizacaoContext.Provider>
+      </ModulosContext.Provider>
     </BarracaContext.Provider>
   )
 }

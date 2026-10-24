@@ -60,6 +60,7 @@ export function mensagemErroIa(erro: { message?: string } | null | undefined): s
   const m = erro?.message ?? ''
   if (/ia_sem_whatsapp_dono/.test(m)) return 'Antes de ligar, informe e salve o WhatsApp do dono: é para onde a IA avisa quando precisa de você.'
   if (/ia_dono_nao_confirmado/.test(m)) return 'Antes de ligar, confirme o WhatsApp do dono: toque em "Enviar confirmação" e responda CONFIRMAR na mensagem.'
+  if (/modulo_desligado/.test(m)) return 'Este recurso não está ativo para a sua loja.'
   if (/sem acesso/.test(m)) return 'Você não tem acesso a esta loja.'
   if (/failed to fetch|networkerror|network request failed|load failed/i.test(m)) return 'Sem internet. Não foi salvo.'
   return m ? `Não foi possível salvar: ${m}` : 'Não foi possível salvar. Tente novamente.'

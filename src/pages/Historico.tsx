@@ -2,7 +2,7 @@ import { useEffect, useMemo, useState } from 'react'
 import { supabase } from '../lib/supabase'
 import { classesBotaoIcone } from '../lib/estiloBotaoIcone'
 import { ehAppIOS } from '../lib/plataforma'
-import { useBarracaAtual } from '../layouts/contextoBarraca'
+import { useBarracaAtual, useModulosDaLoja } from '../layouts/contextoBarraca'
 import { useTheme } from '../hooks/useTheme'
 import { MOTIVOS_CANCELAMENTO } from '../lib/cancelamento'
 import { formatarPrecoBR } from '../lib/preco'
@@ -30,7 +30,8 @@ import { useToast } from '../components/ui/useToast'
 import { BotaoDefinirPagamento } from '../components/BotaoDefinirPagamento'
 import { BotaoCorrigirPagamento } from '../components/BotaoCorrigirPagamento'
 import { podeCorrigirMetodo } from '../lib/corrigirMetodo'
-import { ambienteDaNota, cpfValido, formatarCpf } from '../lib/fiscal'
+import { ambienteDaNota, cpfValido, formatarCpf, mensagemErroEmissao, podeMostrarBotaoNota } from '../lib/fiscal'
+import { temModulo } from '../lib/modulos'
 import { nomeComOpcoes } from '../lib/opcoes'
 import { textoCupomDoPedido } from '../lib/descontosCupom'
 import { buscarComandasPorIds, textoComandaDoPedido, type ComandaDoPedido } from '../lib/comandasPeriodo'
@@ -172,7 +173,7 @@ function ordenarPorEntregueEmDesc(lista: PedidoComItens[]): PedidoComItens[] {
   })
 }
 
-function BotaoEmitirNota({ pedido }: { pedido: PedidoComItens }) {
+function BotaoEmitirNota({ pedido, moduloFiscal }: { pedido: PedidoComItens; moduloFiscal: boolean }) {
   const [status, setStatus] = useState(pedido.nfce_status)
   const [mensagem, setMensagem] = useState(pedido.nfce_mensagem)
   const [chave, setChave] = useState(pedido.nfce_chave)
@@ -231,7 +232,7 @@ function BotaoEmitirNota({ pedido }: { pedido: PedidoComItens }) {
 
     if (error) {
       const corpo = await error.context?.json?.().catch(() => null)
-      const erroMsg = corpo?.erro ?? 'Não foi possível emitir. Tente novamente.'
+      const erroMsg = mensagemErroEmissao(corpo?.erro)
       setStatus('erro')
       setMensagem(erroMsg)
       mostrarToast(erroMsg, { variante: 'erro' })
@@ -240,14 +241,14 @@ function BotaoEmitirNota({ pedido }: { pedido: PedidoComItens }) {
 
     const statusRecebido = data?.status ?? 'erro'
     setStatus(statusRecebido)
-    setMensagem(data?.mensagem ?? data?.erro ?? null)
+    setMensagem(data?.mensagem ? mensagemErroEmissao(data.mensagem) : data?.erro ? mensagemErroEmissao(data.erro) : null)
     setChave(data?.chave ?? null)
     if (statusRecebido === 'autorizado') setAmbienteEmitidoAgora(barraca.fiscal_ambiente)
 
     if (statusRecebido === 'autorizado') {
       mostrarToast('Nota fiscal emitida.', { variante: 'sucesso' })
     } else {
-      mostrarToast(data?.mensagem ?? data?.erro ?? 'Não foi possível emitir a nota.', { variante: 'erro' })
+      mostrarToast(mensagemErroEmissao(data?.mensagem ?? data?.erro), { variante: 'erro' })
     }
   }
 
@@ -272,6 +273,8 @@ function BotaoEmitirNota({ pedido }: { pedido: PedidoComItens }) {
       </div>
     )
   }
+
+  if (!moduloFiscal) return null
 
   return (
     <div className="mt-3">
@@ -309,6 +312,7 @@ function CardHistorico({
   onMetodoDefinido: (pedidoId: string, metodo: string) => void
 }) {
   const barraca = useBarracaAtual()
+  const modulos = useModulosDaLoja()
   const tempoTotal = pedido.entregue_em ? minutosEntre(pedido.criado_em, pedido.entregue_em) : null
   const cancelado = pedido.status === 'cancelado'
   const itensAtivos = pedido.itens_do_pedido.filter((item) => !item.removido)
@@ -422,7 +426,9 @@ function CardHistorico({
         />
       )}
 
-      {!cancelado && <BotaoEmitirNota pedido={pedido} />}
+      {podeMostrarBotaoNota({ temModulo: temModulo(modulos, 'fiscal'), autorizada: pedido.nfce_status === 'autorizado', cancelado }) && (
+        <BotaoEmitirNota pedido={pedido} moduloFiscal={temModulo(modulos, 'fiscal')} />
+      )}
 
       {pedido.status === 'entregue' && (
         <Button

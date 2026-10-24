@@ -2,6 +2,8 @@ import { useState } from 'react'
 import { mensagemErroSalvar, useRascunho } from '../hooks/useSalvarBarraca'
 import { atualizarBarracaCache } from '../hooks/useBarraca'
 import { useWhatsappConexao } from '../hooks/useWhatsappConexao'
+import { useModulosDaLoja } from '../layouts/contextoBarraca'
+import { temModulo } from '../lib/modulos'
 import { supabase } from '../lib/supabase'
 import {
   AVISO_TIPOS,
@@ -143,6 +145,7 @@ function EditorAvisos({ barraca }: { barraca: Barraca }) {
  */
 export function SecaoWhatsappAutomacao({ barraca }: { barraca: Barraca }) {
   const { tela, avisos, iniciar, desconectar, recarregar } = useWhatsappConexao(barraca.id)
+  const modulos = useModulosDaLoja()
   const [ocupado, setOcupado] = useState(false)
 
   async function agir(acao: () => Promise<void>) {
@@ -244,7 +247,7 @@ export function SecaoWhatsappAutomacao({ barraca }: { barraca: Barraca }) {
             </div>
           </>
         )}
-        <EditorAvisos barraca={barraca} />
+        {temModulo(modulos, 'whatsapp_avisos') && <EditorAvisos barraca={barraca} />}
       </Card>
     </section>
   )

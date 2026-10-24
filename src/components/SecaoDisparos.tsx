@@ -3,6 +3,8 @@ import { atualizarBarracaCache } from '../hooks/useBarraca'
 import { mensagemErroSalvar, useRascunho } from '../hooks/useSalvarBarraca'
 import { ErroDisparo, type Previa, useWhatsappDisparos } from '../hooks/useWhatsappDisparos'
 import { useWhatsappConexao } from '../hooks/useWhatsappConexao'
+import { useModulosDaLoja } from '../layouts/contextoBarraca'
+import { temModulo } from '../lib/modulos'
 import {
   DIAS_REATIVACAO,
   MAX_TEXTO_AVALIACAO,
@@ -438,9 +440,12 @@ function CardHistorico({ d }: { d: Disparos }) {
   )
 }
 
-/** Campanhas de WhatsApp e avaliação pós-entrega. Só aparece com o módulo liberado (`whatsapp_disparos_habilitado`). */
+/** Campanhas de WhatsApp e avaliação pós-entrega. Avaliação aparece com o módulo whatsapp_avisos, campanhas com whatsapp_disparos. */
 export function SecaoDisparos({ barraca }: { barraca: Barraca }) {
-  const d = useWhatsappDisparos(barraca.id)
+  const modulos = useModulosDaLoja()
+  const comAvisos = temModulo(modulos, 'whatsapp_avisos')
+  const comDisparos = temModulo(modulos, 'whatsapp_disparos')
+  const d = useWhatsappDisparos(barraca.id, comDisparos)
   return (
     <section>
       <h2 className="mb-3 flex items-center gap-1.5 font-mesa-sans text-xs font-semibold uppercase tracking-wider text-mesa-text-secondary">
@@ -448,9 +453,9 @@ export function SecaoDisparos({ barraca }: { barraca: Barraca }) {
         Campanhas e avaliação
       </h2>
       <div className="flex flex-col gap-3">
-        {d.ehDono === true && <CardAvaliacao barraca={barraca} />}
-        <CardCampanhas barraca={barraca} d={d} />
-        <CardHistorico d={d} />
+        {comAvisos && d.ehDono === true && <CardAvaliacao barraca={barraca} />}
+        {comDisparos && <CardCampanhas barraca={barraca} d={d} />}
+        {comDisparos && <CardHistorico d={d} />}
       </div>
     </section>
   )
