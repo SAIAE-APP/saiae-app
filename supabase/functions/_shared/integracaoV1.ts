@@ -23,6 +23,7 @@ type Cliente = {
 
 export type CorpoIntegracao =
   | (Base & { acao: 'cardapio' })
+  | (Base & { acao: 'avaliacao_config' })
   | (Base & Total & { acao: 'rascunho'; itens: LinhaCarrinho[] })
   | (Base & Total & Cliente & { acao: 'pedido'; tipoAtendimento: 'retirada' | 'entrega'; entrega: Entrega | null })
   | (Base & Total & Cliente & { acao: 'pix'; tipoAtendimento: 'retirada'; conversaId: string })
@@ -30,6 +31,7 @@ export type CorpoIntegracao =
 // Chaves aceitas por ação: qualquer outra chave é corpo fora do contrato (422, sem ecoar valores).
 const CHAVES: Record<string, string[]> = {
   cardapio: ['barraca_id', 'acao'],
+  avaliacao_config: ['barraca_id', 'acao'],
   rascunho: ['barraca_id', 'acao', 'itens', 'total_esperado_centavos'],
   pedido: ['barraca_id', 'acao', 'itens', 'client_uuid', 'cliente_nome', 'cliente_telefone', 'tipo_atendimento', 'entrega', 'total_esperado_centavos'],
   pix: ['barraca_id', 'acao', 'itens', 'client_uuid', 'cliente_nome', 'cliente_telefone', 'tipo_atendimento', 'conversa_id', 'total_esperado_centavos'],
@@ -59,7 +61,7 @@ export function validarCorpoIntegracao(corpo: unknown): { ok: true; valor: Corpo
   if (typeof o.barraca_id !== 'string' || !UUID.test(o.barraca_id)) return recusa
   const barracaId = o.barraca_id.toLowerCase()
 
-  if (acao === 'cardapio') return { ok: true, valor: { acao, barracaId } }
+  if (acao === 'cardapio' || acao === 'avaliacao_config') return { ok: true, valor: { acao, barracaId } }
 
   const montada = montarLinhas(o.itens, { maxLinhas: MAX_LINHAS_BOT, maxQuantidade: null })
   if (!montada.ok) return recusa
@@ -211,4 +213,16 @@ export function totalDoPendente(
   taxaEntregaCentavos: number | null,
 ): number {
   return (itens ?? []).reduce((s, i) => s + i.quantidade * i.preco_centavos_unitario, 0) + Number(taxaEntregaCentavos ?? 0)
+}
+
+export type AvaliacaoConfig = { ativo: boolean; texto: string | null; whatsapp_dono: string | null; barraca_nome: string }
+
+/** Resposta da ação avaliacao_config: só os quatro campos do contrato; null se o banco devolveu outra forma. */
+export function avaliacaoDaConfig(bruto: unknown): AvaliacaoConfig | null {
+  if (typeof bruto !== 'object' || bruto === null || Array.isArray(bruto)) return null
+  const o = bruto as Record<string, unknown>
+  if (typeof o.ativo !== 'boolean' || typeof o.barraca_nome !== 'string') return null
+  if (o.texto !== null && typeof o.texto !== 'string') return null
+  if (o.whatsapp_dono !== null && (typeof o.whatsapp_dono !== 'string' || !/^[0-9]{8,15}$/.test(o.whatsapp_dono))) return null
+  return { ativo: o.ativo, texto: o.texto, whatsapp_dono: o.whatsapp_dono, barraca_nome: o.barraca_nome }
 }

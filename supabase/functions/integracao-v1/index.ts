@@ -1,5 +1,5 @@
 // integracao-v1: rota SERVIDOR→SERVIDOR do bot de WhatsApp do CRM (contrato docs/contrato/v1/integracao-v1-bot.md).
-// Quatro ações: cardapio, rascunho, pedido e pix. A autenticação é a assinatura HMAC de plataforma
+// Cinco ações: cardapio, avaliacao_config, rascunho, pedido e pix. A autenticação é a assinatura HMAC de plataforma
 // (WHATSAPP_CONEXAO_SEGREDO, lista separada por vírgula para rotação), conferida ANTES de qualquer consulta ao banco.
 // O preço, o nome do item e o total saem SEMPRE do resolver_carrinho; o bot nunca informa valor.
 // Nunca registra corpo, telefone, nome, itens nem ids. Deploy sem JWT (a autenticação é a assinatura):
@@ -13,6 +13,7 @@ import { ErroProvedor, ehProvedorValido } from '../_shared/pagamento/tipos.ts'
 import { barracaAbertaAgora, type HorarioDia } from '../_shared/horario.ts'
 import { TAMANHO_MAX_CORPO } from '../_shared/iaAssinatura.ts'
 import {
+  avaliacaoDaConfig,
   type CorpoIntegracao,
   type LojaCrua,
   haSegredoValido,
@@ -99,6 +100,15 @@ async function acaoCardapio(supabase: Supabase, c: Corpo<'cardapio'>) {
   const { loja, horarios, itens } = data as { loja: LojaCrua; horarios: HorarioDia[]; itens: unknown[] }
   const urlApp = Deno.env.get('URL_APP_PUBLICA') ?? URL_APP_PADRAO
   return json({ ok: true, loja: lojaDoBot(loja, horarios, urlApp), itens })
+}
+
+async function acaoAvaliacaoConfig(supabase: Supabase, c: Corpo<'avaliacao_config'>) {
+  const { data, error } = await supabase.rpc('integracao_avaliacao_config', { p_barraca_id: c.barracaId })
+  if (error) throw new FalhaInterna('integracao_avaliacao_config')
+  if (!data) return barracaInvalida()
+  const avaliacao = avaliacaoDaConfig(data)
+  if (!avaliacao) throw new FalhaInterna('integracao_avaliacao_config')
+  return json({ ok: true, avaliacao })
 }
 
 async function acaoRascunho(supabase: Supabase, c: Corpo<'rascunho'>) {
@@ -381,6 +391,8 @@ Deno.serve(async (req: Request) => {
     switch (v.valor.acao) {
       case 'cardapio':
         return await acaoCardapio(supabase, v.valor)
+      case 'avaliacao_config':
+        return await acaoAvaliacaoConfig(supabase, v.valor)
       case 'rascunho':
         return await acaoRascunho(supabase, v.valor)
       case 'pedido':
