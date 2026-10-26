@@ -15,12 +15,21 @@
 // emitidas.
 import { createClient } from 'jsr:@supabase/supabase-js@2'
 import { chaveDoProvedor, obterProvedor, urlNotificacaoPagamento } from '../_shared/pagamento/registro.ts'
-import { buscarTokenDoProvedor } from '../_shared/pagamento/token.ts'
+import { buscarTokenDoProvedor, obterTokenVendedor } from '../_shared/pagamento/token.ts'
 import { minutosExpiracaoPix } from '../_shared/pagamento/expiracao.ts'
-import { ErroProvedor, ehProvedorValido, type QrPix } from '../_shared/pagamento/tipos.ts'
+import { ErroProvedor, ehProvedorValido, type QrPix, type ResultadoCartao } from '../_shared/pagamento/tipos.ts'
+import { totalEsperadoDoPendente } from '../_shared/pagamento/conciliacao.ts'
+import {
+  chavePublicaDaBarraca,
+  corteTokenAtingido,
+  decidirCredencial,
+  emitidoViaOauth,
+  lerMeioPagamento,
+  statusCartaoParaCliente,
+  totalDaCobranca,
+} from '../_shared/pagamento/cobrancaOnline.ts'
 import { hashIp, ipDoCliente, limitePorLoja, pareceBot, registrarTentativa } from '../_shared/antiabuso.ts'
 import { resolverPerfilDoPedido } from '../_shared/perfilNoPedido.ts'
-import { totalCobrado } from '../_shared/cupom.ts'
 import { avaliarCupomDoPedido, liberarReservasAbandonadas, reservarCupomDoPedido } from '../_shared/cupomPedido.ts'
 import { argsPedidoGratis, ehPedidoGratis, telefoneDoPedidoGratis } from '../_shared/pedidoGratis.ts'
 import { MENSAGEM_FECHADO, foraDoHorarioBloqueado } from '../_shared/horario.ts'
@@ -96,6 +105,15 @@ Deno.serve(async (req: Request) => {
     website?: string
     /** Tempo entre abrir o checkout e enviar (medido no navegador). Opcional (cliente antigo não manda). */
     ms_no_checkout?: number
+    /** Ausente = 'pix' (cliente antigo). 'cartao' só com a barraca conectada por OAuth. */
+    meio?: 'pix' | 'cartao'
+    /** Token do cartão gerado no navegador com a chave pública do vendedor (nenhum dado de cartão passa aqui). */
+    card_token?: string
+    payment_method_id?: string
+    issuer_id?: string
+    email_pagador?: string
+    /** 'chave_publica': só devolve a chave pública do vendedor (para gerar o token do cartão). */
+    acao?: string
   }
   try {
     body = await req.json()
@@ -103,21 +121,30 @@ Deno.serve(async (req: Request) => {
     return jsonResponse({ erro: 'JSON inválido' }, 400)
   }
 
+  const supabase = createClient(
+    Deno.env.get('SUPABASE_URL') ?? '',
+    Deno.env.get('SUPABASE_SERVICE_ROLE_KEY') ?? '',
+  )
+
+  // Cardápio público: a chave pública do vendedor (pública por desenho) e nada mais. Erro genérico, sem enumerar.
+  if (body.acao === 'chave_publica') {
+    const publicKey = await chavePublicaDaBarraca(supabase, body.barraca_id)
+    return publicKey ? jsonResponse({ public_key: publicKey }) : jsonResponse({ erro: 'Pagamento com cartão indisponível.' }, 404)
+  }
+
   const { barraca_id, client_uuid, itens } = body
   if (!barraca_id || !client_uuid || !Array.isArray(itens) || itens.length === 0) {
     return jsonResponse({ erro: 'barraca_id, client_uuid e itens são obrigatórios' }, 400)
   }
+
+  const meioPedido = lerMeioPagamento(body)
+  if (!meioPedido.ok) return jsonResponse(meioPedido.corpo, meioPedido.status)
 
   // Defesas baratas que não afetam cliente real: honeypot preenchido ou envio
   // rápido demais. Resposta genérica, sem dizer qual regra pegou.
   if (pareceBot(body, Deno.env.get('EXIGIR_MS_NO_CHECKOUT') === '1')) {
     return jsonResponse({ erro: 'Não foi possível gerar o Pix. Tente de novo.' }, 400)
   }
-
-  const supabase = createClient(
-    Deno.env.get('SUPABASE_URL') ?? '',
-    Deno.env.get('SUPABASE_SERVICE_ROLE_KEY') ?? '',
-  )
 
   // Idempotência: duplo toque / retry de rede não gera duas cobranças.
   const { data: pendenteExistente } = await supabase
@@ -137,26 +164,43 @@ Deno.serve(async (req: Request) => {
     // Retry do mesmo client_uuid devolve o QR já emitido. Se o cliente agora
     // espera OUTRO total (mudou endereço/taxa), não reaproveita: o QR antigo
     // cobraria o valor antigo. O front gera client_uuid novo e tenta de novo.
+    const totalExistente = totalEsperadoDoPendente(
+      (pendenteExistente.itens ?? []) as { quantidade: number; preco_centavos_unitario: number }[],
+      Number(pendenteExistente.taxa_entrega_centavos ?? 0),
+      // Cupom: o total do QR já emitido é o DESCONTADO.
+      Number(pendenteExistente.desconto_cupom_centavos ?? 0),
+      Number(pendenteExistente.taxa_plataforma_centavos ?? 0),
+    )
     const esperadoRetry = body.total_esperado_centavos
-    if (esperadoRetry !== undefined && esperadoRetry !== null) {
-      const totalExistente =
-        ((pendenteExistente.itens ?? []) as { quantidade: number; preco_centavos_unitario: number }[]).reduce(
-          (soma, item) => soma + item.preco_centavos_unitario * item.quantidade,
-          0,
-        ) +
-        Number(pendenteExistente.taxa_entrega_centavos ?? 0) -
-        // Cupom: o total do QR já emitido é o DESCONTADO.
-        Number(pendenteExistente.desconto_cupom_centavos ?? 0)
-      if (esperadoRetry !== totalExistente) {
-        return jsonResponse({ erro: 'Os dados do pedido mudaram. Gere um novo Pix.' }, 409)
-      }
+    if (esperadoRetry !== undefined && esperadoRetry !== null && esperadoRetry !== totalExistente) {
+      return jsonResponse({ erro: 'Os dados do pedido mudaram. Gere um novo Pix.' }, 409)
     }
 
-    // O QR é recuperado no MESMO provedor em que a cobrança foi emitida.
+    // O QR é recuperado no MESMO provedor e com a MESMA credencial da emissão (taxa > 0 só existe no OAuth).
     const provedorEmitido = obterProvedor(chaveDoProvedor(pendenteExistente.provedor))
-    const tokenEmitido = provedorEmitido
-      ? await buscarTokenDoProvedor(supabase, pendenteExistente.barraca_id, provedorEmitido.chave, Deno.env)
-      : null
+    let tokenEmitido: string | null = null
+    if (provedorEmitido && emitidoViaOauth(pendenteExistente)) {
+      const vendedor = await obterTokenVendedor(supabase, pendenteExistente.barraca_id, Deno.env)
+      tokenEmitido = vendedor.ok ? vendedor.token : null
+    } else if (provedorEmitido) {
+      tokenEmitido = await buscarTokenDoProvedor(supabase, pendenteExistente.barraca_id, provedorEmitido.chave, Deno.env)
+    }
+
+    if (provedorEmitido && tokenEmitido && meioPedido.meio === 'cartao') {
+      // Retry do cartão: a idempotência do provedor já evitou a cobrança dupla; só devolve o status atual.
+      try {
+        const atual = await provedorEmitido.consultarPagamento({ token: tokenEmitido, idExterno: pendenteExistente.mercadopago_order_id })
+        return jsonResponse({
+          pendente_id: pendenteExistente.id,
+          status: statusCartaoParaCliente(atual.status),
+          total_centavos: totalExistente,
+          taxa_plataforma_centavos: Number(pendenteExistente.taxa_plataforma_centavos ?? 0),
+        })
+      } catch (erro) {
+        if (!(erro instanceof ErroProvedor)) throw erro
+        return jsonResponse({ erro: 'Não foi possível consultar o pagamento agora. Tente de novo.' }, 502)
+      }
+    }
 
     if (provedorEmitido && tokenEmitido) {
       const qr = await provedorEmitido.recuperarQr({
@@ -168,6 +212,7 @@ Deno.serve(async (req: Request) => {
         qr_code: qr.copiaECola,
         qr_code_base64: qr.qrCodeBase64,
         ticket_url: qr.ticketUrl ?? null,
+        taxa_plataforma_centavos: Number(pendenteExistente.taxa_plataforma_centavos ?? 0),
       })
     }
   }
@@ -223,7 +268,17 @@ Deno.serve(async (req: Request) => {
     return jsonResponse({ erro: 'Provedor de pagamento não disponível para esta barraca' }, 422)
   }
 
-  const tokenProvedor = await buscarTokenDoProvedor(supabase, barraca_id, provedor.chave, Deno.env)
+  // Credencial: OAuth do vendedor (marketplace, com a taxa Sai aê) ou, só antes do corte, o token colado (sem taxa).
+  const credencial = decidirCredencial({
+    vendedor:
+      provedor.chave === 'mercadopago' ? await obterTokenVendedor(supabase, barraca_id, Deno.env) : { ok: false, motivo: 'nao_conectada' },
+    corteAtingido: corteTokenAtingido(Deno.env.get('CORTE_TOKEN_MP_ISO'), new Date()),
+    meio: meioPedido.meio,
+  })
+  if (!credencial.ok) return jsonResponse(credencial.corpo, credencial.status)
+
+  const tokenProvedor =
+    credencial.modo === 'oauth' ? credencial.token : await buscarTokenDoProvedor(supabase, barraca_id, provedor.chave, Deno.env)
   if (!tokenProvedor) {
     return jsonResponse({ erro: `Token do ${provedor.nome} não configurado` }, 422)
   }
@@ -370,8 +425,8 @@ Deno.serve(async (req: Request) => {
   const descontoCentavos = avCupom.desconto
   const cupomCodigo = avCupom.codigo
 
-  // Tudo em centavos INTEIROS; só vira reais na última linha (MP).
-  const totalCobradoCentavos = totalCobrado(totalCentavos, descontoCentavos, taxaEntregaCentavos)
+  // Tudo em centavos INTEIROS; só vira reais na última linha (MP). A taxa Sai aê entra só no OAuth.
+  const { taxaPlataformaCentavos, totalCentavos: totalCobradoCentavos } = totalDaCobranca({ subtotalItensCentavos: totalCentavos, descontoCentavos, taxaEntregaCentavos, modo: credencial.modo })
 
   // Cliente viu um total na tela; se o servidor chegou a outro (dono mexeu na
   // taxa/preço no meio), NÃO cobra sem o cliente ver o novo valor.
@@ -382,6 +437,7 @@ Deno.serve(async (req: Request) => {
         erro: 'O valor do pedido mudou. Confira o novo total antes de pagar.',
         total_centavos: totalCobradoCentavos,
         taxa_entrega_centavos: taxaEntregaCentavos,
+        taxa_plataforma_centavos: taxaPlataformaCentavos,
       },
       409,
     )
@@ -419,6 +475,7 @@ Deno.serve(async (req: Request) => {
         entrega: entregaSnapshot,
         taxa_entrega_centavos: taxaEntregaCentavos,
         cliente_nome: clienteNome,
+        taxa_plataforma_centavos: taxaPlataformaCentavos,
         ...(perfil.clienteId ? { cliente_id: perfil.clienteId } : {}),
         // Só quando informado: sem telefone o update é o de sempre.
         ...(clienteTelefone ? { cliente_telefone: clienteTelefone } : {}),
@@ -442,6 +499,7 @@ Deno.serve(async (req: Request) => {
         observacao: body.observacao || null,
         itens: itensResolvidos,
         client_uuid,
+        taxa_plataforma_centavos: taxaPlataformaCentavos,
         // Só entram quando há entrega: pedido comum insere EXATAMENTE o que
         // inseria antes (as colunas novas ficam NULL/0 pelo default).
         ...(ehEntrega
@@ -485,11 +543,13 @@ Deno.serve(async (req: Request) => {
     const reserva = res.reserva
     if (reserva.desconto_centavos !== descontoCentavos) {
       // Desconto mudou no meio (dono editou o cupom): o cliente confirma o novo total antes de pagar.
+      const novo = totalDaCobranca({ subtotalItensCentavos: totalCentavos, descontoCentavos: reserva.desconto_centavos, taxaEntregaCentavos, modo: credencial.modo })
       return jsonResponse(
         {
           erro: 'O valor do pedido mudou. Confira o novo total antes de pagar.',
-          total_centavos: totalCobrado(totalCentavos, reserva.desconto_centavos, taxaEntregaCentavos),
+          total_centavos: novo.totalCentavos,
           taxa_entrega_centavos: taxaEntregaCentavos,
+          taxa_plataforma_centavos: novo.taxaPlataformaCentavos,
         },
         409,
       )
@@ -553,15 +613,59 @@ Deno.serve(async (req: Request) => {
     })
   }
 
+  const descricao = ehEntrega ? 'Pedido com entrega no cardápio digital' : 'Pedido no cardápio digital'
+  const urlNotificacao = urlNotificacaoPagamento(Deno.env.get('SUPABASE_URL') ?? '', pendente.id, provedor.chave)
+
+  // Cartão à vista. O pedido só nasce no webhook (mesmo caminho do Pix); aqui só o status para o cliente.
+  if (meioPedido.meio === 'cartao') {
+    if (!provedor.criarCobrancaCartao) {
+      if (cupomCodigo) await supabase.rpc('cupom_liberar', { p_pendente_id: pendente.id })
+      return jsonResponse({ erro: 'Pagamento com cartão indisponível nesta barraca.' }, 422)
+    }
+    let resultadoCartao: ResultadoCartao
+    try {
+      resultadoCartao = await provedor.criarCobrancaCartao({
+        token: tokenProvedor,
+        valorCentavos: totalCobradoCentavos,
+        referencia: pendente.id,
+        descricao,
+        urlNotificacao,
+        taxaPlataformaCentavos,
+        ...meioPedido.cartao,
+      })
+    } catch (erro) {
+      // A cobrança não saiu: devolve a vaga do cupom. Mensagem limpa, sem nada do provedor.
+      if (cupomCodigo) await supabase.rpc('cupom_liberar', { p_pendente_id: pendente.id })
+      if (erro instanceof ErroProvedor) {
+        return jsonResponse({ erro: 'Não foi possível processar o cartão. Confira os dados ou pague com Pix.', codigo: 'cartao_falhou' }, 502)
+      }
+      throw erro
+    }
+    await supabase.from('pagamentos_pendentes').update({ mercadopago_order_id: resultadoCartao.idExterno }).eq('id', pendente.id)
+    const statusCartao = statusCartaoParaCliente(resultadoCartao.status)
+    if (statusCartao === 'rejeitado') {
+      // Mesma regra do webhook: recusa não consome o cupom.
+      await supabase.from('pagamentos_pendentes').update({ status: 'rejeitado' }).eq('id', pendente.id).eq('status', 'pendente')
+      await supabase.rpc('cupom_liberar', { p_pendente_id: pendente.id })
+    }
+    return jsonResponse({
+      pendente_id: pendente.id,
+      status: statusCartao,
+      total_centavos: totalCobradoCentavos,
+      taxa_plataforma_centavos: taxaPlataformaCentavos,
+    })
+  }
+
   let cobranca: QrPix
   try {
     cobranca = await provedor.criarCobranca({
       token: tokenProvedor,
       valorCentavos: totalCobradoCentavos,
       referencia: pendente.id,
-      descricao: ehEntrega ? 'Pedido com entrega no cardápio digital' : 'Pedido no cardápio digital',
+      descricao,
       expiraEm,
-      urlNotificacao: urlNotificacaoPagamento(Deno.env.get('SUPABASE_URL') ?? '', pendente.id, provedor.chave),
+      urlNotificacao,
+      taxaPlataformaCentavos,
     })
   } catch (erro) {
     // A cobrança não saiu: devolve a vaga do cupom (a cobrança nunca existiu para o cliente).
@@ -590,5 +694,6 @@ Deno.serve(async (req: Request) => {
     total_centavos: totalCobradoCentavos,
     taxa_entrega_centavos: taxaEntregaCentavos,
     desconto_cupom_centavos: descontoCentavos,
+    taxa_plataforma_centavos: taxaPlataformaCentavos,
   })
 })
