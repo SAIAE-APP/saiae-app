@@ -448,6 +448,15 @@ const naoRenova = async (): Promise<TokensMp> => {
     await assert.rejects(estorno, (e: Error & { rede?: boolean }) => e.name === 'ErroProvedor' && e.rede === false)
     simular(() => { throw new Error('boom') })
     await assert.rejects(estorno, (e: Error & { rede?: boolean }) => e.name === 'ErroProvedor' && e.rede === true)
+    // timeout e limite de taxa do provedor são transitórios (tentar de novo), não recusa
+    for (const status of [408, 429]) {
+      simular(() => json(status, { message: 'Not enough balance' }))
+      await assert.rejects(estorno, (e: Error) => e.name === 'ErroProvedor', String(status))
+    }
+    // chave de idempotência determinística quando informada: retry depois de timeout não estorna duas vezes
+    simular(() => json(201, { id: 9, status: 'approved' }))
+    await mercadoPago.estornar!({ token: 'T', idExterno: '77', chaveIdempotencia: 'estorno-p1' })
+    assert.equal((chamadas[0].init.headers as Record<string, string>)['X-Idempotency-Key'], 'estorno-p1')
   } finally {
     globalThis.fetch = fetchOriginal
   }

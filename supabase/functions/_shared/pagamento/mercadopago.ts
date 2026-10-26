@@ -283,20 +283,22 @@ export const mercadoPago: ProvedorPix = {
     }
   },
 
-  async estornar({ token, idExterno }) {
+  async estornar({ token, idExterno, chaveIdempotencia }) {
     let resposta: Response
     try {
       resposta = await fetch(`${MERCADOPAGO_API_URL}/${idExterno}/refunds`, {
         method: 'POST',
-        // Estorno total (corpo vazio). Chave nova por chamada: retry do operador é nova tentativa.
-        headers: { Authorization: `Bearer ${token}`, 'X-Idempotency-Key': crypto.randomUUID() },
+        // Estorno total (corpo vazio). Com `chaveIdempotencia` (derivada do pendente) o retry depois de um timeout
+        // devolve o mesmo estorno em vez de estornar de novo; sem ela, cada chamada é uma tentativa nova.
+        headers: { Authorization: `Bearer ${token}`, 'X-Idempotency-Key': chaveIdempotencia ?? crypto.randomUUID() },
       })
     } catch (erroRede) {
       throw new ErroProvedor('Falha ao contatar o Mercado Pago', { rede: true, detalhe: String(erroRede) })
     }
     if (resposta.ok) return { ok: true }
     const corpo = await resposta.json().catch(() => null)
-    if (resposta.status >= 500) throw new ErroProvedor('Mercado Pago indisponível ao estornar', { detalhe: corpo })
+    // 5xx, 408 (timeout) e 429 (limite de taxa) são transitórios: quem chama pode tentar de novo.
+    if (resposta.status >= 500 || resposta.status === 408 || resposta.status === 429) throw new ErroProvedor('Mercado Pago indisponível ao estornar', { detalhe: corpo })
     const texto = `${corpo?.message ?? ''} ${corpo?.error ?? ''}`
     return { ok: false, motivo: /balance|saldo|insufficient/i.test(texto) ? 'saldo_insuficiente' : 'outro' }
   },

@@ -127,10 +127,11 @@ export interface ProvedorPix {
   criarCobrancaCartao?(params: ParamsCobrancaCartao): Promise<ResultadoCartao>
 
   /**
-   * Estorno TOTAL. `recusado` (4xx do provedor) vira ok:false; falha transitória (5xx/rede) lança ErroProvedor
-   * (quem chama pode tentar de novo).
+   * Estorno TOTAL. `recusado` (4xx do provedor) vira ok:false; falha transitória (5xx, 408, 429 ou rede) lança
+   * ErroProvedor (quem chama pode tentar de novo). `chaveIdempotencia` fixa (ex.: derivada do pendente) torna o
+   * retry seguro; ausente = chave aleatória por chamada.
    */
-  estornar?(params: { token: string; idExterno: string }): Promise<{ ok: true } | { ok: false; motivo: 'saldo_insuficiente' | 'outro' }>
+  estornar?(params: { token: string; idExterno: string; chaveIdempotencia?: string }): Promise<{ ok: true } | { ok: false; motivo: 'saldo_insuficiente' | 'outro' }>
 }
 
 /** "12.34" | 12.34 | "12" → 1234 (centavos inteiros, sem erro de ponto flutuante). */
