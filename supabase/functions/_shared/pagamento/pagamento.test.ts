@@ -13,7 +13,10 @@ import {
   validarAssinaturaMercadoPago,
 } from './mercadopago.ts'
 import { chaveDoProvedor, obterProvedor, urlNotificacaoPagamento } from './registro.ts'
-import { buscarTokenDoProvedor } from './token.ts'
+import { buscarTokenDoProvedor, obterTokenVendedor } from './token.ts'
+import { ErroOauthMp, montarUrlAutorizacao, precisaRenovar, type TokensMp } from './oauthMercadoPago.ts'
+import { cifrar, configDoEnv } from '../segredoCifrado.ts'
+import { readFileSync } from 'node:fs'
 import { decidirAprovado, totalEsperadoDoPendente } from './conciliacao.ts'
 import { aplicarTaxaPlataforma, TAXA_PLATAFORMA_CENTAVOS } from './taxaPlataforma.ts'
 import { centavosParaDecimal, ehProvedorValido, valorDecimalParaCentavos } from './tipos.ts'
@@ -222,5 +225,144 @@ assert.deepEqual(
   decidirAprovado({ statusPendente: 'pendente', valorPagoCentavos: 4700, totalEsperadoCentavos: 4700, comissaoPagaCentavos: null, taxaPlataformaEsperadaCentavos: 0 }),
   { acao: 'criar_pedido', tardio: false },
 )
+
+// --- OAuth do vendedor: janela de renovação e URL de autorização
+const AGORA = new Date('2026-11-04T12:00:00Z')
+assert.equal(precisaRenovar(new Date(AGORA.getTime() + 30 * 60_000).toISOString(), AGORA), true)
+assert.equal(precisaRenovar(new Date(AGORA.getTime() + 120 * 60_000).toISOString(), AGORA), false)
+assert.equal(precisaRenovar(new Date(AGORA.getTime() - 1000).toISOString(), AGORA), true)
+assert.equal(precisaRenovar('lixo', AGORA), true)
+
+const urlAut = new URL(montarUrlAutorizacao({ clientId: '123', redirectUri: 'https://x.co/cb/?a=b', state: 'st&te' }))
+assert.equal(urlAut.origin + urlAut.pathname, 'https://auth.mercadopago.com/authorization')
+assert.equal(urlAut.searchParams.get('client_id'), '123')
+assert.equal(urlAut.searchParams.get('response_type'), 'code')
+assert.equal(urlAut.searchParams.get('platform_id'), 'mp')
+assert.equal(urlAut.searchParams.get('redirect_uri'), 'https://x.co/cb/?a=b')
+assert.equal(urlAut.searchParams.get('state'), 'st&te')
+assert.ok(urlAut.search.includes('redirect_uri=https%3A%2F%2Fx.co%2Fcb%2F%3Fa%3Db'))
+
+// --- obterTokenVendedor com cliente Supabase falso
+const BARRACA = 'b-1'
+const envFake = {
+  get: (n: string) =>
+    ({ TOKENS_CHAVE_V1: Buffer.alloc(32, 7).toString('base64'), MP_CLIENT_ID: 'cid', MP_CLIENT_SECRET: 'csec' } as Record<string, string>)[n],
+}
+const cfgFake = configDoEnv(envFake)
+const cif = async (campo: string, v: string) => (await cifrar(v, { barracaId: BARRACA, campo }, cfgFake)).valor
+type Linha = Record<string, unknown>
+function bancoFalso(linha: Linha | null, opcoes: { perderCorrida?: Linha } = {}) {
+  const estado = { linha: linha ? { ...linha } : null, updates: [] as Linha[] }
+  let perder = opcoes.perderCorrida
+  const cliente = {
+    from: () => ({
+      select: () => ({ eq: async () => ({ data: estado.linha ? [{ ...estado.linha }] : [], error: null }) }),
+      update: (valores: Linha) => ({
+        eq: () => ({
+          eq: (_c: string, lido: unknown) => ({
+            select: async () => {
+              if (perder) {
+                estado.linha = { ...perder }
+                perder = undefined
+              }
+              if (!estado.linha || estado.linha.atualizado_em !== lido) return { data: [], error: null }
+              estado.updates.push(valores)
+              estado.linha = { ...estado.linha, ...valores }
+              return { data: [{ barraca_id: BARRACA }], error: null }
+            },
+          }),
+        }),
+      }),
+    }),
+  }
+  return { cliente, estado }
+}
+const linhaBase = async (expira: Date): Promise<Linha> => ({
+  barraca_id: BARRACA,
+  status: 'conectada',
+  access_token_cifrado: await cif('mp_access_token', 'AT-velho'),
+  refresh_token_cifrado: await cif('mp_refresh_token', 'RT-velho'),
+  public_key: 'PK-velha',
+  expira_em: expira.toISOString(),
+  atualizado_em: '2026-11-01T00:00:00.000Z',
+})
+const novosTokens: TokensMp = { accessToken: 'AT-novo', refreshToken: 'RT-novo', expiraEmSegundos: 15552000, userId: '9', publicKey: 'PK-nova' }
+const naoRenova = async (): Promise<TokensMp> => {
+  throw new Error('não devia renovar')
+}
+
+{ // sem linha
+  const { cliente } = bancoFalso(null)
+  assert.deepEqual(await obterTokenVendedor(cliente, BARRACA, envFake, { agora: () => AGORA, renovar: naoRenova }), { ok: false, motivo: 'nao_conectada' })
+}
+{ // desconectada
+  const { cliente } = bancoFalso({ ...(await linhaBase(new Date(AGORA.getTime() + 9e6))), status: 'desconectada' })
+  assert.deepEqual(await obterTokenVendedor(cliente, BARRACA, envFake, { agora: () => AGORA, renovar: naoRenova }), { ok: false, motivo: 'nao_conectada' })
+}
+{ // token válido: não renova
+  const { cliente, estado } = bancoFalso(await linhaBase(new Date(AGORA.getTime() + 5 * 3600_000)))
+  assert.deepEqual(await obterTokenVendedor(cliente, BARRACA, envFake, { agora: () => AGORA, renovar: naoRenova }), { ok: true, token: 'AT-velho', publicKey: 'PK-velha' })
+  assert.equal(estado.updates.length, 0)
+}
+{ // vencido: renova e grava novos tokens CIFRADOS (e a public_key)
+  const { cliente, estado } = bancoFalso(await linhaBase(new Date(AGORA.getTime() + 10 * 60_000)))
+  let chamadas = 0
+  const r = await obterTokenVendedor(cliente, BARRACA, envFake, {
+    agora: () => AGORA,
+    renovar: async (p) => {
+      chamadas++
+      assert.equal(p.refreshToken, 'RT-velho')
+      assert.equal(p.clientId, 'cid')
+      assert.equal(p.clientSecret, 'csec')
+      return novosTokens
+    },
+  })
+  assert.deepEqual(r, { ok: true, token: 'AT-novo', publicKey: 'PK-nova' })
+  assert.equal(chamadas, 1)
+  const final = estado.updates[estado.updates.length - 1]
+  assert.equal(final.status, 'conectada')
+  assert.equal(final.public_key, 'PK-nova')
+  assert.match(String(final.access_token_cifrado), /^v1\./)
+  assert.ok(!JSON.stringify(final).includes('AT-novo') && !JSON.stringify(final).includes('RT-novo'))
+  assert.equal(new Date(String(final.expira_em)).getTime(), AGORA.getTime() + 15552000 * 1000)
+}
+{ // renovação recusada pelo MP (400): marca desconectada
+  const { cliente, estado } = bancoFalso(await linhaBase(new Date(AGORA.getTime() + 10 * 60_000)))
+  const r = await obterTokenVendedor(cliente, BARRACA, envFake, {
+    agora: () => AGORA,
+    renovar: async () => {
+      throw new ErroOauthMp(400)
+    },
+  })
+  assert.deepEqual(r, { ok: false, motivo: 'renovacao_falhou' })
+  assert.equal(estado.linha?.status, 'desconectada')
+}
+{ // falha de rede/5xx: erro, mas NÃO desconecta
+  const { cliente, estado } = bancoFalso(await linhaBase(new Date(AGORA.getTime() + 10 * 60_000)))
+  const r = await obterTokenVendedor(cliente, BARRACA, envFake, {
+    agora: () => AGORA,
+    renovar: async () => {
+      throw new ErroOauthMp(503)
+    },
+  })
+  assert.deepEqual(r, { ok: false, motivo: 'renovacao_falhou' })
+  assert.equal(estado.linha?.status, 'conectada')
+}
+{ // perdeu a corrida: outra requisição já renovou; relê e usa o token novo sem chamar o MP
+  const vencida = await linhaBase(new Date(AGORA.getTime() + 10 * 60_000))
+  const outra = { ...(await linhaBase(new Date(AGORA.getTime() + 9 * 3600_000))), access_token_cifrado: await cif('mp_access_token', 'AT-da-outra'), atualizado_em: '2026-11-04T11:59:59.000Z' }
+  const { cliente } = bancoFalso(vencida, { perderCorrida: outra })
+  assert.deepEqual(await obterTokenVendedor(cliente, BARRACA, envFake, { agora: () => AGORA, renovar: naoRenova }), { ok: true, token: 'AT-da-outra', publicKey: 'PK-velha' })
+}
+
+// --- as functions OAuth nunca registram token/código/segredo
+for (const f of ['oauthMercadoPago.ts', '../../mp-oauth-iniciar/index.ts', '../../mp-oauth-callback/index.ts']) {
+  const fonte = readFileSync(new URL(f, import.meta.url), 'utf8')
+  for (const linha of fonte.split('\n')) {
+    if (/console\.(log|info|warn|error|debug)/.test(linha)) {
+      assert.doesNotMatch(linha, /token|code|secret|refresh|\bbody\b|resposta/i, f + ': log suspeito: ' + linha)
+    }
+  }
+}
 
 console.log('pagamento.test.ts: tudo certo')
