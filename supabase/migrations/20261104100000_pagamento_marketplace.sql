@@ -30,6 +30,17 @@ alter table public.pedidos
 alter table public.pagamentos_pendentes
   add column if not exists estornado_em timestamptz;
 
+-- 2b) Meio da cobrança (Pix ou cartão): o webhook cria o pedido com o método
+-- certo (cartão = 'credito') e fecha a recusa do cartão como 'rejeitado'.
+-- Pendente antigo = 'pix' pelo default.
+alter table public.pagamentos_pendentes
+  add column if not exists meio_pagamento text not null default 'pix';
+alter table public.pagamentos_pendentes
+  drop constraint if exists pagamentos_pendentes_meio_pagamento_valido;
+alter table public.pagamentos_pendentes
+  add constraint pagamentos_pendentes_meio_pagamento_valido
+  check (meio_pagamento in ('pix', 'cartao'));
+
 -- 3) Conexão OAuth da barraca com o Mercado Pago.
 create table if not exists public.barracas_mp_oauth (
   barraca_id uuid primary key references public.barracas (id) on delete cascade,

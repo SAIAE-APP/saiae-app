@@ -48,7 +48,12 @@ describe('migration pagamento marketplace', () => {
     assert.match(fn, /grant execute on function public\.mp_oauth_status\(uuid\) to authenticated/)
   })
 
-  test('aditiva: não mexe em criar_pedido nem em usuario_tem_acesso_barraca', () => {
-    assert.doesNotMatch(sql, /(create|drop)( or replace)? function public\.(criar_pedido|usuario_tem_acesso_barraca)/)
+  test('pagamentos_pendentes.meio_pagamento: not null default pix, só pix/cartao', () => {
+    assert.match(sql, /add column if not exists meio_pagamento text not null default 'pix'/)
+    assert.match(sql, /drop constraint if exists pagamentos_pendentes_meio_pagamento_valido/)
+    assert.match(sql, /add constraint pagamentos_pendentes_meio_pagamento_valido\s+check \(meio_pagamento in \('pix', 'cartao'\)\)/)
+  })
+
+  test('aditiva: não mexe em criar_pedido nem em usuario_tem_acesso_barraca', () => {    assert.doesNotMatch(sql, /(create|drop)( or replace)? function public\.(criar_pedido|usuario_tem_acesso_barraca)/)
   })
 })
