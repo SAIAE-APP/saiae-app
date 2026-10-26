@@ -1,5 +1,6 @@
 -- Pagamento marketplace (Mercado Pago, taxa de R$ 0,99 da plataforma). ADITIVA:
--- só colunas com default e tabelas novas; não toca criar_pedido,
+-- só colunas com default, tabelas novas e um tipo a mais aceito em
+-- pagamentos_conciliacao; não toca criar_pedido,
 -- usuario_tem_acesso_barraca nem nenhuma RLS existente.
 --
 -- Tokens OAuth: barracas_mp_oauth e mp_oauth_estados têm RLS ligada SEM policy
@@ -40,6 +41,16 @@ alter table public.pagamentos_pendentes
 alter table public.pagamentos_pendentes
   add constraint pagamentos_pendentes_meio_pagamento_valido
   check (meio_pagamento in ('pix', 'cartao'));
+
+-- 2c) Conciliação: pagamento aprovado com valor e referência certos em que o
+-- provedor NÃO informou a comissão da plataforma. O pedido é criado e o registro
+-- fica para conferir a taxa (comissão informada e diferente continua sendo
+-- 'valor_divergente', sem pedido). Mantém os tipos de antes.
+alter table public.pagamentos_conciliacao
+  drop constraint if exists pagamentos_conciliacao_tipo_valido;
+alter table public.pagamentos_conciliacao
+  add constraint pagamentos_conciliacao_tipo_valido
+  check (tipo in ('valor_divergente', 'pago_apos_expirar', 'pedido_nao_criado', 'comissao_nao_informada'));
 
 -- 3) Conexão OAuth da barraca com o Mercado Pago.
 create table if not exists public.barracas_mp_oauth (

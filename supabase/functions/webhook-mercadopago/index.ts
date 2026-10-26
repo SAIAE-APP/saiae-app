@@ -156,7 +156,8 @@ Deno.serve(async (req: Request) => {
   if (leitura.status === 'aprovado') {
     // Total esperado = itens − cupom + taxa de entrega + taxa Sai aê, tudo DO SNAPSHOT do pendente (gravado no
     // momento da cobrança). Nada é recalculado aqui: se o dono mudou a tabela de bairros depois, vale o que o
-    // cliente viu e pagou. Com taxa Sai aê, a comissão registrada no provedor tem que ser a mesma. Pendente
+    // cliente viu e pagou. Com taxa Sai aê, a comissão informada pelo provedor tem que ser a mesma (não informada:
+    // cria o pedido e registra conciliação). Pendente
     // antigo (sem entrega, sem taxa) => conta idêntica à de antes. Vale igual para Pix e cartão.
     const { decisao, totalCentavos, taxaEntregaCentavos, taxaPlataformaCentavos } = decidirAprovadoDoPendente(pendente, leitura)
     if (decisao.acao === 'ignorar') return jsonResponse({ ok: true })
@@ -300,6 +301,14 @@ Deno.serve(async (req: Request) => {
           situacao: 'pedido_criado',
           pedido_id: pedidoId,
           detalhe: 'Pix pago depois do prazo; o pedido foi criado normalmente.',
+        })
+      }
+      // Valor e referência certos, mas o provedor não devolveu a comissão: o pedido nasceu e a taxa fica para conferir.
+      if (decisao.comissaoNaoInformada) {
+        await registrarConciliacao('comissao_nao_informada', {
+          situacao: 'pedido_criado',
+          pedido_id: pedidoId,
+          detalhe: `taxa Sai aê ${taxaPlataformaCentavos}; comissão não informada pelo provedor; o pedido foi criado normalmente.`,
         })
       }
     } catch (erroConciliacao) {

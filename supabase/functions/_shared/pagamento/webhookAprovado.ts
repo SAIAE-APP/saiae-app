@@ -51,7 +51,8 @@ type PendenteAprovado = {
 
 /**
  * Decisão sobre um pagamento aprovado, com os valores DO SNAPSHOT do pendente (nunca recalculados): total =
- * itens − cupom + entrega + taxa Sai aê, e, com taxa, a comissão registrada no provedor tem que ser a mesma.
+ * itens − cupom + entrega + taxa Sai aê, e, com taxa, a comissão informada pelo provedor tem que ser a mesma
+ * (não informada = cria o pedido com `comissaoNaoInformada`, ver decidirAprovado).
  */
 export function decidirAprovadoDoPendente(
   pendente: PendenteAprovado,

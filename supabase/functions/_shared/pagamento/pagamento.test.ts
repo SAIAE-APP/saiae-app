@@ -222,8 +222,19 @@ assert.deepEqual(
   decidirAprovado({ statusPendente: 'pendente', valorPagoCentavos: 1699, totalEsperadoCentavos: 1699, comissaoPagaCentavos: 50, taxaPlataformaEsperadaCentavos: 99 }),
   { acao: 'conciliar_valor' },
 )
+// comissão NÃO informada pelo provedor (valor e referência conferem): cria o pedido e marca para conciliação
 assert.deepEqual(
   decidirAprovado({ statusPendente: 'pendente', valorPagoCentavos: 1699, totalEsperadoCentavos: 1699, comissaoPagaCentavos: null, taxaPlataformaEsperadaCentavos: 99 }),
+  { acao: 'criar_pedido', tardio: false, comissaoNaoInformada: true },
+)
+// valor errado continua bloqueando mesmo sem a comissão
+assert.deepEqual(
+  decidirAprovado({ statusPendente: 'pendente', valorPagoCentavos: 1600, totalEsperadoCentavos: 1699, comissaoPagaCentavos: null, taxaPlataformaEsperadaCentavos: 99 }),
+  { acao: 'conciliar_valor' },
+)
+// comissão zero informada (diferente da taxa) bloqueia
+assert.deepEqual(
+  decidirAprovado({ statusPendente: 'pendente', valorPagoCentavos: 1699, totalEsperadoCentavos: 1699, comissaoPagaCentavos: 0, taxaPlataformaEsperadaCentavos: 99 }),
   { acao: 'conciliar_valor' },
 )
 assert.deepEqual(
@@ -570,9 +581,9 @@ for (const f of ['oauthMercadoPago.ts', '../../mp-oauth-iniciar/index.ts', '../.
   assert.equal(semTaxa.totalCentavos, 1699)
   assert.equal(semTaxa.taxaPlataformaCentavos, 99)
   assert.equal(semTaxa.taxaEntregaCentavos, 300)
-  // comissão diferente de 99 (ou não informada): não confere
+  // comissão diferente de 99: não confere; não informada: cria o pedido e marca para conciliação
   assert.deepEqual(decidirAprovadoDoPendente(novo, { valorCentavos: 1699, comissaoCentavos: 50 }).decisao, { acao: 'conciliar_valor' })
-  assert.deepEqual(decidirAprovadoDoPendente(novo, { valorCentavos: 1699, comissaoCentavos: null }).decisao, { acao: 'conciliar_valor' })
+  assert.deepEqual(decidirAprovadoDoPendente(novo, { valorCentavos: 1699, comissaoCentavos: null }).decisao, { acao: 'criar_pedido', tardio: false, comissaoNaoInformada: true })
   // tudo certo
   assert.deepEqual(decidirAprovadoDoPendente(novo, { valorCentavos: 1699, comissaoCentavos: 99 }).decisao, { acao: 'criar_pedido', tardio: false })
   assert.deepEqual(decidirAprovadoDoPendente({ ...novo, status: 'expirado' }, { valorCentavos: 1699, comissaoCentavos: 99 }).decisao, { acao: 'criar_pedido', tardio: true })
@@ -615,6 +626,8 @@ for (const f of ['oauthMercadoPago.ts', '../../mp-oauth-iniciar/index.ts', '../.
   assert.ok(fonte.includes('tokenDoWebhook('))
   assert.ok(fonte.includes('decidirAprovadoDoPendente('))
   assert.ok(/update\(\{ taxa_plataforma_centavos: taxaPlataformaCentavos \}\)/.test(fonte))
+  // comissão não informada: o pedido nasce e fica o registro de conciliação
+  assert.ok(/if \(decisao\.comissaoNaoInformada\) \{\s*await registrarConciliacao\('comissao_nao_informada'/.test(fonte))
   assert.ok(!fonte.includes('buscarTokenDoProvedor(supabase, pendente.barraca_id, provedor.chave, Deno.env)\n  if'))
   for (const linha of fonte.split('\n').filter((l) => /console\.(log|warn|error|info)/.test(l))) {
     assert.ok(!/token|card|cartao|email|payer/i.test(linha.replace(/'[^']*'/g, '')), `log suspeito: ${linha.trim()}`)

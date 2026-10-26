@@ -54,6 +54,14 @@ describe('migration pagamento marketplace', () => {
     assert.match(sql, /add constraint pagamentos_pendentes_meio_pagamento_valido\s+check \(meio_pagamento in \('pix', 'cartao'\)\)/)
   })
 
+  test("pagamentos_conciliacao aceita o tipo 'comissao_nao_informada' sem perder os de antes", () => {
+    assert.match(sql, /drop constraint if exists pagamentos_conciliacao_tipo_valido/)
+    assert.match(
+      sql,
+      /add constraint pagamentos_conciliacao_tipo_valido\s+check \(tipo in \('valor_divergente', 'pago_apos_expirar', 'pedido_nao_criado', 'comissao_nao_informada'\)\)/,
+    )
+  })
+
   test('aditiva: não mexe em criar_pedido nem em usuario_tem_acesso_barraca', () => {    assert.doesNotMatch(sql, /(create|drop)( or replace)? function public\.(criar_pedido|usuario_tem_acesso_barraca)/)
   })
 })
