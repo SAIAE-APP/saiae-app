@@ -31,7 +31,7 @@ import {
   totalDaCobranca,
 } from './cobrancaOnline.ts'
 import { centavosParaDecimal, ehProvedorValido, valorDecimalParaCentavos } from './tipos.ts'
-import { decidirAprovadoDoPendente, tokenDoWebhook } from './webhookAprovado.ts'
+import { decidirAprovadoDoPendente, metodoDoPedido, statusFinalDoPendente, tokenDoWebhook } from './webhookAprovado.ts'
 
 const semCorpo = async () => null
 
@@ -609,6 +609,26 @@ for (const f of ['oauthMercadoPago.ts', '../../mp-oauth-iniciar/index.ts', '../.
   for (const linha of fonte.split('\n').filter((l) => /console\.(log|warn|error|info)/.test(l))) {
     assert.ok(!/token|card|cartao|email|payer/i.test(linha.replace(/'[^']*'/g, '')), `log suspeito: ${linha.trim()}`)
   }
+}
+
+{ // webhook: meio do pendente decide o método do pedido e o status final da recusa
+  assert.equal(metodoDoPedido({ meio_pagamento: 'cartao' }), 'credito')
+  assert.equal(metodoDoPedido({ meio_pagamento: 'pix' }), 'pix')
+  assert.equal(metodoDoPedido({}), 'pix') // pendente de antes da coluna
+  // cartão cancelado/recusado termina rejeitado (como o criar-pagamento-pix grava); Pix mantém o status do provedor
+  assert.equal(statusFinalDoPendente({ meio_pagamento: 'cartao' }, 'expirado'), 'rejeitado')
+  assert.equal(statusFinalDoPendente({ meio_pagamento: 'cartao' }, 'rejeitado'), 'rejeitado')
+  assert.equal(statusFinalDoPendente({ meio_pagamento: 'pix' }, 'expirado'), 'expirado')
+  assert.equal(statusFinalDoPendente({}, 'rejeitado'), 'rejeitado')
+  assert.equal(statusFinalDoPendente({}, 'expirado'), 'expirado')
+}
+{ // fiação do meio: criar-pagamento-pix grava; webhook usa no criar_pedido e na recusa
+  const pix = readFileSync(new URL('../../criar-pagamento-pix/index.ts', import.meta.url), 'utf8')
+  assert.equal((pix.match(/meio_pagamento: meioPedido\.meio,/g) ?? []).length, 2, 'insert e reaproveitamento')
+  const webhook = readFileSync(new URL('../../webhook-mercadopago/index.ts', import.meta.url), 'utf8')
+  assert.ok(webhook.includes('p_metodo_pagamento: metodoDoPedido(pendente),'))
+  assert.ok(!webhook.includes("p_metodo_pagamento: 'pix'"))
+  assert.ok(/update\(\{ status: statusFinalDoPendente\(pendente, leitura\.status\) \}\)\.eq\('id', pendente\.id\)\.eq\('status', 'pendente'\)/.test(webhook))
 }
 
 console.log('pagamento.test.ts: tudo certo')

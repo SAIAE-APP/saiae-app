@@ -23,7 +23,7 @@ import { createClient } from 'jsr:@supabase/supabase-js@2'
 import { desfechoDaCriacao } from '../_shared/pagamento/corrida.ts'
 import { chaveDoProvedor, obterProvedor } from '../_shared/pagamento/registro.ts'
 import { buscarSegredoWebhook, buscarTokenDoProvedor, obterTokenVendedor } from '../_shared/pagamento/token.ts'
-import { decidirAprovadoDoPendente, tokenDoWebhook } from '../_shared/pagamento/webhookAprovado.ts'
+import { decidirAprovadoDoPendente, metodoDoPedido, statusFinalDoPendente, tokenDoWebhook } from '../_shared/pagamento/webhookAprovado.ts'
 import { ErroProvedor, decidirAssinatura, type ConsultaPagamento } from '../_shared/pagamento/tipos.ts'
 import { STATUS_PENDENTE_ABERTOS, type TipoConciliacao } from '../_shared/pagamento/conciliacao.ts'
 
@@ -214,7 +214,7 @@ Deno.serve(async (req: Request) => {
       p_viagem: pendente.viagem,
       p_observacao: pendente.observacao,
       p_client_uuid: pendente.client_uuid,
-      p_metodo_pagamento: 'pix',
+      p_metodo_pagamento: metodoDoPedido(pendente),
       p_itens: pendente.itens,
     }
     if (entrega) {
@@ -344,15 +344,16 @@ Deno.serve(async (req: Request) => {
   }
 
   // Só mexe em pendente ainda 'pendente': um 'expirado' que o provedor volta a
-  // reportar como cancelado/rejeitado continua como está.
+  // reportar como cancelado/rejeitado continua como está. Cartão cancelado ou
+  // recusado termina 'rejeitado' (mesmo status que o criar-pagamento-pix grava).
   if (leitura.status === 'expirado') {
-    await supabase.from('pagamentos_pendentes').update({ status: 'expirado' }).eq('id', pendente.id).eq('status', 'pendente')
+    await supabase.from('pagamentos_pendentes').update({ status: statusFinalDoPendente(pendente, leitura.status) }).eq('id', pendente.id).eq('status', 'pendente')
     await supabase.rpc('cupom_liberar', { p_pendente_id: pendente.id }) // devolve a vaga do cupom (se houver)
     return jsonResponse({ ok: true })
   }
 
   if (leitura.status === 'rejeitado') {
-    await supabase.from('pagamentos_pendentes').update({ status: 'rejeitado' }).eq('id', pendente.id).eq('status', 'pendente')
+    await supabase.from('pagamentos_pendentes').update({ status: statusFinalDoPendente(pendente, leitura.status) }).eq('id', pendente.id).eq('status', 'pendente')
     await supabase.rpc('cupom_liberar', { p_pendente_id: pendente.id }) // devolve a vaga do cupom (se houver)
     return jsonResponse({ ok: true })
   }

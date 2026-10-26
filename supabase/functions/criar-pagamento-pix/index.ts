@@ -476,6 +476,7 @@ Deno.serve(async (req: Request) => {
         taxa_entrega_centavos: taxaEntregaCentavos,
         cliente_nome: clienteNome,
         taxa_plataforma_centavos: taxaPlataformaCentavos,
+        meio_pagamento: meioPedido.meio,
         ...(perfil.clienteId ? { cliente_id: perfil.clienteId } : {}),
         // Só quando informado: sem telefone o update é o de sempre.
         ...(clienteTelefone ? { cliente_telefone: clienteTelefone } : {}),
@@ -500,6 +501,7 @@ Deno.serve(async (req: Request) => {
         itens: itensResolvidos,
         client_uuid,
         taxa_plataforma_centavos: taxaPlataformaCentavos,
+        meio_pagamento: meioPedido.meio,
         // Só entram quando há entrega: pedido comum insere EXATAMENTE o que
         // inseria antes (as colunas novas ficam NULL/0 pelo default).
         ...(ehEntrega

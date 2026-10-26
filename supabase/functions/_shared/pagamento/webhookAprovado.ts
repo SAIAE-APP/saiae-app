@@ -29,6 +29,18 @@ export async function tokenDoWebhook(
   }
 }
 
+type PendenteComMeio = { meio_pagamento?: unknown }
+
+/** Método do pedido criado pelo webhook: cartão = 'credito'; Pix ou pendente antigo = 'pix'. */
+export function metodoDoPedido(pendente: PendenteComMeio): 'credito' | 'pix' {
+  return pendente.meio_pagamento === 'cartao' ? 'credito' : 'pix'
+}
+
+/** Status final do pendente quando o provedor recusa/cancela: cartão sempre 'rejeitado' (como o criar-pagamento-pix grava). */
+export function statusFinalDoPendente(pendente: PendenteComMeio, status: 'expirado' | 'rejeitado'): 'expirado' | 'rejeitado' {
+  return pendente.meio_pagamento === 'cartao' ? 'rejeitado' : status
+}
+
 type PendenteAprovado = {
   status: string
   itens: unknown
