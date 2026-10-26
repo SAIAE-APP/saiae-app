@@ -30,7 +30,8 @@ import {
   statusCartaoParaCliente,
   totalDaCobranca,
 } from './cobrancaOnline.ts'
-import { centavosParaDecimal, ehProvedorValido, valorDecimalParaCentavos } from './tipos.ts'
+import { centavosParaDecimal, ehProvedorValido, ErroProvedor, valorDecimalParaCentavos } from './tipos.ts'
+import { estornarPedido } from './estorno.ts'
 import { decidirAprovadoDoPendente, metodoDoPedido, statusFinalDoPendente, tokenDoWebhook } from './webhookAprovado.ts'
 
 const semCorpo = async () => null
@@ -638,6 +639,129 @@ for (const f of ['oauthMercadoPago.ts', '../../mp-oauth-iniciar/index.ts', '../.
   assert.ok(webhook.includes('p_metodo_pagamento: metodoDoPedido(pendente),'))
   assert.ok(!webhook.includes("p_metodo_pagamento: 'pix'"))
   assert.ok(/update\(\{ status: statusFinalDoPendente\(pendente, leitura\.status\) \}\)\.eq\('id', pendente\.id\)\.eq\('status', 'pendente'\)/.test(webhook))
+}
+
+{ // estorno do pedido pago online (estornar-pagamento): acesso, elegibilidade, credencial, idempotência
+  type Chamada = { token: string; idExterno: string; chaveIdempotencia?: string }
+  const montar = (opcoes: {
+    barraca?: string | null
+    dono?: boolean
+    pendentes?: Record<string, unknown>[]
+    resultado?: () => Promise<{ ok: true } | { ok: false; motivo: 'saldo_insuficiente' | 'outro' }>
+    vendedor?: unknown
+    colado?: string | null
+    marcar?: boolean
+  }) => {
+    const registro = { estornos: [] as Chamada[], marcados: [] as string[], donoConsultado: [] as string[] }
+    const provedorFalso = {
+      ...mercadoPago,
+      estornar: async (p: Chamada) => {
+        registro.estornos.push(p)
+        return (opcoes.resultado ?? (async () => ({ ok: true as const })))()
+      },
+    }
+    const deps = {
+      barracaDoPedido: async () => (opcoes.barraca === undefined ? 'b1' : opcoes.barraca),
+      ehDono: async (b: string) => { registro.donoConsultado.push(b); return opcoes.dono ?? true },
+      pendentesDoPedido: async () => opcoes.pendentes ?? [],
+      vendedor: async () => (opcoes.vendedor ?? { ok: true, token: 'OAUTH', publicKey: null }) as never,
+      colado: async () => (opcoes.colado === undefined ? 'COLADO' : opcoes.colado),
+      provedor: (chave: unknown) => (chave === 'mercadopago' ? provedorFalso : null),
+      marcarEstornado: async (id: string) => { registro.marcados.push(id); return opcoes.marcar ?? true },
+    }
+    return { deps, registro }
+  }
+  const pago = { id: 'p1', status: 'aprovado', mercadopago_order_id: '777', provedor: 'mercadopago', taxa_plataforma_centavos: 99, estornado_em: null }
+
+  // sucesso: OAuth (pendente com taxa), chave fixa do pendente, grava estornado_em
+  {
+    const { deps, registro } = montar({ pendentes: [pago] })
+    assert.deepEqual(await estornarPedido('ped1', deps), { status: 200, corpo: { ok: true } })
+    assert.deepEqual(registro.estornos, [{ token: 'OAUTH', idExterno: '777', chaveIdempotencia: 'estorno-p1' }])
+    assert.deepEqual(registro.marcados, ['p1'])
+  }
+  // pendente antigo (sem taxa): token colado
+  {
+    const { deps, registro } = montar({ pendentes: [{ ...pago, taxa_plataforma_centavos: 0 }] })
+    assert.equal((await estornarPedido('ped1', deps)).status, 200)
+    assert.equal(registro.estornos[0].token, 'COLADO')
+  }
+  // pedido sem pagamento online: nao_pago_online, sem chamar o provedor
+  for (const pendentes of [[], [{ ...pago, mercadopago_order_id: null }], [{ ...pago, status: 'pendente' }], [{ ...pago, status: 'expirado' }]]) {
+    const { deps, registro } = montar({ pendentes })
+    const r = await estornarPedido('ped1', deps)
+    assert.equal(r.status, 422)
+    assert.equal((r.corpo as { codigo?: string }).codigo, 'nao_pago_online')
+    assert.equal(registro.estornos.length, 0)
+  }
+  // escolhe o pendente aprovado e pago entre vários
+  {
+    const { deps, registro } = montar({ pendentes: [{ ...pago, id: 'p0', status: 'expirado' }, pago] })
+    assert.equal((await estornarPedido('ped1', deps)).status, 200)
+    assert.deepEqual(registro.marcados, ['p1'])
+  }
+  // chamada repetida: ja_estornado (sucesso) SEM chamar o provedor de novo
+  {
+    const { deps, registro } = montar({ pendentes: [{ ...pago, estornado_em: '2026-10-26T12:00:00Z' }] })
+    assert.deepEqual(await estornarPedido('ped1', deps), { status: 200, corpo: { ok: true, codigo: 'ja_estornado' } })
+    assert.equal(registro.estornos.length, 0)
+    assert.equal(registro.marcados.length, 0)
+  }
+  // saldo insuficiente: responde com o código e NÃO grava estornado_em
+  {
+    const { deps, registro } = montar({ pendentes: [pago], resultado: async () => ({ ok: false, motivo: 'saldo_insuficiente' }) })
+    const r = await estornarPedido('ped1', deps)
+    assert.equal(r.status, 409)
+    assert.equal((r.corpo as { codigo?: string }).codigo, 'saldo_insuficiente')
+    assert.match((r.corpo as { erro: string }).erro, /suporte/i)
+    assert.equal(registro.marcados.length, 0)
+  }
+  // outra recusa do provedor: também não grava
+  {
+    const { deps, registro } = montar({ pendentes: [pago], resultado: async () => ({ ok: false, motivo: 'outro' }) })
+    const r = await estornarPedido('ped1', deps)
+    assert.equal(r.status, 409)
+    assert.equal((r.corpo as { codigo?: string }).codigo, 'recusado')
+    assert.equal(registro.marcados.length, 0)
+  }
+  // falha transitória do provedor: 502 sem gravar; outro erro sobe
+  {
+    const { deps, registro } = montar({ pendentes: [pago], resultado: async () => { throw new ErroProvedor('timeout', { rede: true }) } })
+    const r = await estornarPedido('ped1', deps)
+    assert.equal(r.status, 502)
+    assert.equal(registro.marcados.length, 0)
+    const bug = montar({ pendentes: [pago], resultado: async () => { throw new TypeError('bug') } })
+    await assert.rejects(() => estornarPedido('ped1', bug.deps), TypeError)
+  }
+  // dono de outra barraca e pedido inexistente: o MESMO erro genérico, sem olhar o pagamento
+  {
+    const outra = montar({ dono: false, pendentes: [pago] })
+    const inexistente = montar({ barraca: null, pendentes: [pago] })
+    const r1 = await estornarPedido('ped1', outra.deps)
+    const r2 = await estornarPedido('ped1', inexistente.deps)
+    assert.equal(r1.status, 403)
+    assert.deepEqual(r1, r2)
+    assert.equal((r1.corpo as { codigo?: string }).codigo, undefined)
+    assert.equal(outra.registro.estornos.length + inexistente.registro.estornos.length, 0)
+    assert.deepEqual(inexistente.registro.donoConsultado, [])
+  }
+  // OAuth falhou: não estorna com o token colado
+  {
+    const { deps, registro } = montar({ pendentes: [pago], vendedor: { ok: false, motivo: 'nao_conectada' } })
+    assert.equal((await estornarPedido('ped1', deps)).status, 503)
+    assert.equal(registro.estornos.length, 0)
+  }
+  // estornou mas não gravou: erro (o retry usa a mesma chave e não estorna duas vezes)
+  {
+    const { deps } = montar({ pendentes: [pago], marcar: false })
+    assert.equal((await estornarPedido('ped1', deps)).status, 500)
+  }
+  // provedor sem estorno
+  {
+    const { deps, registro } = montar({ pendentes: [{ ...pago, provedor: 'pagbank' }] })
+    assert.equal((await estornarPedido('ped1', deps)).status, 422)
+    assert.equal(registro.estornos.length, 0)
+  }
 }
 
 console.log('pagamento.test.ts: tudo certo')
