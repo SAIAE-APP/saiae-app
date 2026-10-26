@@ -9,8 +9,8 @@ import { join } from 'node:path'
 import { RAIZ, REF_STAGING, abortar, garantirLinkEhStaging } from './staging-guarda.mjs'
 
 const EMAIL_SEED = 'dono@staging.saiae.invalid'
-const FUNCOES_PUBLICAS = ['criar-pagamento-pix', 'criar-pedido-cardapio', 'webhook-mercadopago', 'webhook-stripe']
-const FUNCOES_COM_JWT = ['emitir-nfce', 'excluir-conta', 'reportar-bug', 'criar-checkout-stripe', 'cancelar-assinatura-stripe']
+const FUNCOES_PUBLICAS = ['criar-pagamento-pix', 'criar-pedido-cardapio', 'webhook-mercadopago', 'webhook-stripe', 'mp-oauth-callback']
+const FUNCOES_COM_JWT = ['emitir-nfce', 'excluir-conta', 'reportar-bug', 'criar-checkout-stripe', 'cancelar-assinatura-stripe', 'mp-oauth-iniciar', 'estornar-pagamento', 'salvar-credencial']
 
 garantirLinkEhStaging()
 process.chdir(RAIZ)

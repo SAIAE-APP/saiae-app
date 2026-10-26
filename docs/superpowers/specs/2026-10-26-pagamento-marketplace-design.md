@@ -140,6 +140,36 @@ Fonte: documentação "Integrar o checkout em Split de Pagamentos" do Mercado Pa
 - Testes: puros para cálculo de total e comissão; teste do webhook para valor e comissão divergentes; teste de idempotência para notificação repetida e estorno.
 - Verificar nos sites oficiais as taxas e o prazo de liberação do cartão antes de mostrá-los ao dono da barraca.
 
+## Resultado do spike (2026-10-26)
+
+Feito com a aplicação "Sai ae Marketplace" criada na conta de teste do marketplace, uma vendedora de teste e uma compradora de teste, por um script local (`scripts/`, sem segredos no repositório).
+
+### Provado
+- OAuth completo: a autorização da vendedora de teste e a troca do `code` por token funcionam, e a resposta de `/oauth/token` traz a `public_key` do vendedor. O redirect cadastrado exige correspondência exata (barra final incluída).
+- Pix criado com o token OAuth da vendedora e `application_fee` de R$ 0,99: o Mercado Pago aceitou (pagamento pendente), sem o erro 2034 que aparecia quando a aplicação havia sido criada na conta errada.
+- A tokenização do cartão só funciona com a chave pública do VENDEDOR (a da aplicação do Sai aê dá erro 2006 "Card Token not found"). Por isso a spec original, que falava da chave do integrador, foi corrigida na implementação: a chave vem do backend.
+
+### Não provado
+- Pagamento de cartão com token OAuth: `POST /v1/payments` devolveu HTTP 500 (`internal_error`) no sandbox, com e sem `application_fee`, com o cartão de teste oficial (APRO e OTHE). Hipótese: limite do sandbox para cartão com token OAuth de teste. A implementação segue o contrato documentado.
+- O campo da comissão no pagamento: não aparece no pagamento Pix pendente nem no 500 do cartão. O código lê `fee_details[type = 'application_fee']` e trata a ausência como comissão desconhecida (conciliação manual).
+- Estorno total com devolução da taxa: só é possível depois de aprovado (HTTP 400 em pendente); não foi exercitado com pagamento aprovado.
+- Idempotência da chave de estorno do Mercado Pago e divisão do estorno dos R$ 0,99.
+
+### Risco registrado
+- O painel do Mercado Pago avisa que a API de Payments será descontinuada em breve. A API de Orders, a alternativa, hoje recusa `notification_url` por pagamento. Acompanhar o cronograma e planejar a migração do adaptador `mercadopago.ts`.
+
+### Decisões em aberto do dono
+- Data do corte do token colado e período de aviso (sugestão: 14 dias de aviso).
+- Pedido de total zero por cupom: foi implementado SEM taxa; confirmar.
+- Responsabilidade por chargeback na barraca: confirmar nas regras do Mercado Pago.
+- Escopo PCI: hoje o número do cartão passa pelo JavaScript da página (SAQ A-EP). Com MP Secure Fields (iframes) seria SAQ A, como esta spec descrevia. Também não enviamos `device_id`, o que pode aumentar recusas do antifraude. Decidir se avalia Secure Fields depois do lançamento.
+- Texto sobre o prazo de liberação do cartão: aguardando confirmação com o Mercado Pago antes de mostrar ao dono.
+- Quantas barracas usam Pix hoje (define o tamanho do aviso e do corte).
+
+### Pendências de entrega (Task 11 do plano)
+- Passo 1 (verificação ponta a ponta no staging): NÃO feito, depende de um ambiente de staging com a migration e as functions publicadas e de contas de teste conectadas.
+- Passo 3 (definir com o dono a data do corte e o aviso): NÃO feito, depende do dono.
+
 ## Fora deste projeto
 
 - Projeto 2: visual do cardápio (categorias, promoções por item, personalização do item), no estilo iFood.
