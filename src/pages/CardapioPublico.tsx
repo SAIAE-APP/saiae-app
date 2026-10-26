@@ -125,6 +125,9 @@ function totalOnline(cobraTaxa: boolean, semTaxaCentavos: number): number {
 
 const MAXIMO_MAIS_PEDIDOS = 8
 const INTERVALO_POLLING_MS = 3000
+// Cartão: o pendente não expira no servidor, então a espera tem prazo aqui. Passou dele, a tela vira "em análise"
+// (sem spinner) e o polling continua: se o emissor aprovar depois, a senha ainda aparece.
+const PRAZO_CONFIRMACAO_CARTAO_MS = 2 * 60 * 1000
 
 function BottomSheetFinalizarBalcao({
   open,
@@ -836,9 +839,19 @@ export function CardapioPublico() {
       }
     }, INTERVALO_POLLING_MS)
 
+    const prazo =
+      cartao && !pagamento.semConfirmacao
+        ? window.setTimeout(() => {
+            setPagamento((atual) =>
+              atual.fase === 'aguardando' && atual.pendenteId === pendenteId ? { ...atual, emAnalise: true, semConfirmacao: true } : atual,
+            )
+          }, PRAZO_CONFIRMACAO_CARTAO_MS)
+        : undefined
+
     return () => {
       cancelado = true
       window.clearInterval(intervalo)
+      window.clearTimeout(prazo)
     }
   }, [pagamento])
 
@@ -1066,12 +1079,19 @@ export function CardapioPublico() {
       : 'Não foi possível gerar o Pix agora. Tente novamente em instantes ou chame o atendente.'
   }
 
-  /** Cartão enviado: recusado volta para tentar de novo; aprovado ou em análise espera o webhook criar o pedido. */
-  function seguirCartao(data: { pendente_id?: unknown; status?: unknown; total_centavos?: unknown; taxa_plataforma_centavos?: unknown }) {
+  /**
+   * Cartão enviado: recusado volta para tentar de novo; aprovado com o pedido já criado pelo servidor mostra a senha;
+   * aprovado sem pedido ainda ou em análise espera o webhook criar o pedido.
+   */
+  function seguirCartao(data: { pendente_id?: unknown; status?: unknown; total_centavos?: unknown; taxa_plataforma_centavos?: unknown; senha?: unknown }) {
     pendenteAnteriorRef.current = typeof data.pendente_id === 'string' ? data.pendente_id : null
     if (data.status === 'rejeitado' || typeof data.pendente_id !== 'string') {
       clientUuidRef.current = crypto.randomUUID()
       setPagamento({ fase: 'recusado', cartao: true })
+      return
+    }
+    if (data.status === 'aprovado' && typeof data.senha === 'number') {
+      setPagamento({ fase: 'aprovado', senha: data.senha })
       return
     }
     setPagamento({
@@ -2273,7 +2293,11 @@ export function CardapioPublico() {
 
         {pagamento.fase === 'aguardando' && pagamento.cartao && (
           <div className="flex flex-col items-center gap-3 py-6 text-center">
-            <Icone nome="progress_activity" size={32} className="animate-spin text-mesa-text-tertiary" />
+            <Icone
+              nome={pagamento.semConfirmacao ? 'schedule' : 'progress_activity'}
+              size={32}
+              className={`${pagamento.semConfirmacao ? '' : 'animate-spin '}text-mesa-text-tertiary`}
+            />
             <h2 className="text-lg font-semibold text-mesa-text-primary">
               {pagamento.emAnalise ? 'Pagamento em análise' : 'Confirmando o pagamento'}
             </h2>

@@ -104,3 +104,15 @@ test('cartaoMercadoPago: dados do cartão nunca vão para console, storage nem s
   const tela = readFileSync(new URL('../src/pages/CardapioPublico.tsx', import.meta.url), 'utf8')
   assert.doesNotMatch(tela, /card_number|security_code|cardholder/)
 })
+
+test('cartão: espera com prazo (vira "em análise" sem spinner) e aprovado na hora já mostra a senha', async () => {
+  const { readFileSync } = await import('node:fs')
+  const tela = readFileSync(new URL('../src/pages/CardapioPublico.tsx', import.meta.url), 'utf8').replace(/\r\n/g, '\n')
+  // o pendente do cartão não expira no servidor (expira_em nulo): o prazo é do próprio front
+  assert.match(tela, /const PRAZO_CONFIRMACAO_CARTAO_MS = /)
+  assert.match(tela, /window\.setTimeout\([\s\S]{0,300}semConfirmacao: true[\s\S]{0,120}PRAZO_CONFIRMACAO_CARTAO_MS\)/)
+  // depois do prazo, ícone parado em vez do spinner
+  assert.match(tela, /pagamento\.semConfirmacao \? 'schedule' : 'progress_activity'/)
+  // aprovado na resposta síncrona, com senha: vai direto para a tela da senha
+  assert.match(tela, /data\.status === 'aprovado' && typeof data\.senha === 'number'/)
+})
