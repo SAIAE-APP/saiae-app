@@ -24,6 +24,7 @@ import {
   corteTokenAtingido,
   decidirCredencial,
   emitidoViaOauth,
+  expiraEmDoPendente,
   lerMeioPagamento,
   statusCartaoParaCliente,
   totalDaCobranca,
@@ -526,9 +527,10 @@ Deno.serve(async (req: Request) => {
     pendente = criado
   }
 
-  // Mesma data vai pro provedor (QR vence nele) e pro pendente (cron de expiração).
+  // Mesma data vai pro provedor (QR vence nele) e pro pendente (cron de expiração). Cartão: sem validade no
+  // pendente (o cron não o marca `expirado`); a data só segura a reserva do cupom.
   const expiraEm = new Date(Date.now() + minutosExpiracaoPix(barraca.pix_expiracao_minutos) * 60 * 1000)
-  await supabase.from('pagamentos_pendentes').update({ expira_em: expiraEm.toISOString() }).eq('id', pendente.id)
+  await supabase.from('pagamentos_pendentes').update({ expira_em: expiraEmDoPendente(meioPedido.meio, expiraEm) }).eq('id', pendente.id)
 
   // Cupom: reserva ATÔMICA no banco, ligada a esta cobrança, vigente até o Pix vencer. Sem cupom, uma
   // reserva antiga da mesma cobrança (cliente tirou o código) é liberada.

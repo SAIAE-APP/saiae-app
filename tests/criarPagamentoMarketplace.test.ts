@@ -55,3 +55,22 @@ describe('criarPagamentoMarketplace', () => {
     assert.doesNotMatch(pix.slice(pix.indexOf("acao === 'chave_publica'"), pix.indexOf("acao === 'chave_publica'") + 600), /access_token|token:/)
   })
 })
+
+describe('validade do pendente do cartão', () => {
+  test('cartão não recebe a validade do Pix (o cron de expiração ignora expira_em nulo); Pix recebe', async () => {
+    const { expiraEmDoPendente } = await import('../supabase/functions/_shared/pagamento/cobrancaOnline.ts')
+    const data = new Date('2026-10-26T12:30:00Z')
+    assert.equal(expiraEmDoPendente('cartao', data), null)
+    assert.equal(expiraEmDoPendente('pix', data), '2026-10-26T12:30:00.000Z')
+  })
+
+  test('a function grava a validade pela regra pura', () => {
+    assert.match(pix, /expira_em: expiraEmDoPendente\(meioPedido\.meio, expiraEm\)/)
+    assert.doesNotMatch(pix, /expira_em: expiraEm\.toISOString\(\)/)
+  })
+
+  test('o cron de expiração só pega pendente com expira_em preenchido', () => {
+    const sql = readFileSync(new URL('../supabase/migrations/20261014110000_pix_expiracao.sql', import.meta.url), 'utf8')
+    assert.match(sql, /expira_em is not null/)
+  })
+})

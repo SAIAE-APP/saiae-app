@@ -83,6 +83,14 @@ export function emitidoViaOauth(pendente: { taxa_plataforma_centavos?: unknown }
   return Number(pendente.taxa_plataforma_centavos ?? 0) > 0
 }
 
+/**
+ * Validade gravada no pendente. Só o Pix vence (o QR expira no provedor e o cron marca `expirado`); o cartão
+ * fica sem validade (nulo, ignorado pelo cron) porque o emissor pode aprovar depois e o webhook ainda confirma.
+ */
+export function expiraEmDoPendente(meio: MeioPagamento, expiraEm: Date): string | null {
+  return meio === 'cartao' ? null : expiraEm.toISOString()
+}
+
 /** Status do cartão para o cliente. Cancelado/expirado conta como recusa (pode tentar de novo ou ir de Pix). */
 export function statusCartaoParaCliente(status: StatusPagamento): 'aprovado' | 'pendente' | 'rejeitado' {
   return status === 'aprovado' || status === 'pendente' ? status : 'rejeitado'
