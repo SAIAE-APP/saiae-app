@@ -42,3 +42,6 @@ export function retornoOauthMp(search: string): 'ok' | 'erro' | null {
   const v = new URLSearchParams(search).get('mp')
   return v === 'ok' || v === 'erro' ? v : null
 }
+
+/** Slug da loja que iniciou o OAuth: o callback volta em /ajustes (sem slug) e usamos isto para achar a loja. */
+export const CHAVE_SLUG_MP = 'saiae:mp-oauth-slug'
