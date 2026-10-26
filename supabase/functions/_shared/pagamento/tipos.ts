@@ -36,6 +36,22 @@ export type ParamsCobranca = {
   urlNotificacao: string
   /** Opcional: o cardápio público não coleta dados do pagador. */
   pagador?: { email?: string; nome?: string }
+  /** Comissão da plataforma em centavos INTEIROS (0/ausente = sem comissão). Vira decimal só na serialização. */
+  taxaPlataformaCentavos?: number
+}
+
+/** Cobrança no cartão com o token gerado no navegador (nenhum dado de cartão passa pelo servidor). Parcela única. */
+export type ParamsCobrancaCartao = Omit<ParamsCobranca, 'expiraEm'> & {
+  cardToken: string
+  paymentMethodId: string
+  issuerId?: string
+  emailPagador: string
+}
+
+export type ResultadoCartao = {
+  idExterno: string
+  status: StatusPagamento
+  statusDetalhe: string | null
 }
 
 export type QrPix = {
@@ -54,6 +70,8 @@ export type ConsultaPagamento = {
   valorCentavos: number
   /** `referencia` enviada na cobrança (id do pendente). */
   referencia: string
+  /** Comissão da plataforma efetivamente registrada pelo provedor, em centavos; null = o provedor não informou. */
+  comissaoCentavos: number | null
 }
 
 /**
@@ -104,6 +122,15 @@ export interface ProvedorPix {
    * provedor de volta com o token da barraca.
    */
   validarNotificacao?(req: Request, segredo: string | null): Promise<ResultadoAssinatura>
+
+  /** Cobrança no cartão (à vista). Idempotente por `referencia`. Lança ErroProvedor em recusa de requisição/rede. */
+  criarCobrancaCartao?(params: ParamsCobrancaCartao): Promise<ResultadoCartao>
+
+  /**
+   * Estorno TOTAL. `recusado` (4xx do provedor) vira ok:false; falha transitória (5xx/rede) lança ErroProvedor
+   * (quem chama pode tentar de novo).
+   */
+  estornar?(params: { token: string; idExterno: string }): Promise<{ ok: true } | { ok: false; motivo: 'saldo_insuficiente' | 'outro' }>
 }
 
 /** "12.34" | 12.34 | "12" → 1234 (centavos inteiros, sem erro de ponto flutuante). */

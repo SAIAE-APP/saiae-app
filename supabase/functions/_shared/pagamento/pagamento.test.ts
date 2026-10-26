@@ -8,6 +8,7 @@ import {
   extrairNotificacaoMercadoPago,
   extrairQrMercadoPago,
   mercadoPago,
+  montarCorpoCobrancaCartaoMercadoPago,
   montarCorpoCobrancaMercadoPago,
   statusDoMercadoPago,
   validarAssinaturaMercadoPago,
@@ -361,6 +362,83 @@ const naoRenova = async (): Promise<TokensMp> => {
   const outra = { ...(await linhaBase(new Date(AGORA.getTime() + 9 * 3600_000))), access_token_cifrado: await cif('mp_access_token', 'AT-da-outra'), atualizado_em: '2026-11-04T11:59:59.000Z' }
   const { cliente } = bancoFalso(vencida, { perderCorrida: outra })
   assert.deepEqual(await obterTokenVendedor(cliente, BARRACA, envFake, { agora: () => AGORA, renovar: naoRenova }), { ok: true, token: 'AT-da-outra', publicKey: 'PK-velha' })
+}
+
+// --- comissão (application_fee em reais, vinda de centavos), cartão e estorno
+{
+  const base = { token: 'T', valorCentavos: 1000, referencia: 'ref-1', descricao: 'Pedido', expiraEm: new Date('2026-11-04T15:00:00Z'), urlNotificacao: 'https://x/n' }
+  assert.equal(montarCorpoCobrancaMercadoPago({ ...base, taxaPlataformaCentavos: 99 }).application_fee, 0.99)
+  assert.equal('application_fee' in montarCorpoCobrancaMercadoPago(base), false)
+  assert.equal('application_fee' in montarCorpoCobrancaMercadoPago({ ...base, taxaPlataformaCentavos: 0 }), false)
+
+  const semExpira = { token: base.token, valorCentavos: base.valorCentavos, referencia: base.referencia, descricao: base.descricao, urlNotificacao: base.urlNotificacao }
+  const corpo = montarCorpoCobrancaCartaoMercadoPago({ ...semExpira, taxaPlataformaCentavos: 99, cardToken: 'CT', paymentMethodId: 'visa', issuerId: '24', emailPagador: 'a@b.com' })
+  assert.deepEqual(corpo, {
+    transaction_amount: 10,
+    token: 'CT',
+    installments: 1,
+    payment_method_id: 'visa',
+    issuer_id: 24,
+    description: 'Pedido',
+    external_reference: 'ref-1',
+    payer: { email: 'a@b.com' },
+    notification_url: 'https://x/n',
+    application_fee: 0.99,
+  })
+  const sem = montarCorpoCobrancaCartaoMercadoPago({ ...semExpira, cardToken: 'CT', paymentMethodId: 'visa', emailPagador: 'a@b.com' })
+  assert.equal('application_fee' in sem, false)
+  assert.equal('issuer_id' in sem, false)
+  assert.equal(statusDoMercadoPago('in_process'), 'pendente')
+
+  const fetchOriginal = globalThis.fetch
+  const chamadas: { url: string; init: RequestInit }[] = []
+  const simular = (resp: () => Response | Promise<Response>) => {
+    chamadas.length = 0
+    globalThis.fetch = (async (url: string, init: RequestInit) => {
+      chamadas.push({ url: String(url), init })
+      return resp()
+    }) as typeof fetch
+  }
+  const json = (status: number, corpoJson: unknown) => new Response(JSON.stringify(corpoJson), { status })
+  const consulta = () => mercadoPago.consultarPagamento({ token: 'T', idExterno: '1' })
+  const cartao = () => mercadoPago.criarCobrancaCartao!({ ...semExpira, cardToken: 'CT', paymentMethodId: 'visa', emailPagador: 'a@b.com' })
+  const estorno = () => mercadoPago.estornar!({ token: 'T', idExterno: '77' })
+  try {
+    // comissão lida de fee_details
+    simular(() => json(200, { status: 'approved', transaction_amount: 10, external_reference: 'ref-1', fee_details: [{ type: 'mercadopago_fee', amount: 0.5 }, { type: 'application_fee', amount: 0.99 }] }))
+    assert.equal((await consulta()).comissaoCentavos, 99)
+    simular(() => json(200, { status: 'approved', transaction_amount: 10, fee_details: [{ type: 'mercadopago_fee', amount: 0.5 }] }))
+    assert.equal((await consulta()).comissaoCentavos, null)
+    simular(() => json(200, { status: 'approved', transaction_amount: 10 }))
+    assert.equal((await consulta()).comissaoCentavos, null)
+    simular(() => json(200, { status: 'approved', transaction_amount: 10, fee_details: [null, { type: 'application_fee', amount: 'abc' }] }))
+    assert.equal((await consulta()).comissaoCentavos, null)
+
+    // cartão: idempotência = referencia; resultado tipado; erro não ecoa o token
+    simular(() => json(201, { id: 555, status: 'in_process', status_detail: 'pending_contingency' }))
+    assert.deepEqual(await cartao(), { idExterno: '555', status: 'pendente', statusDetalhe: 'pending_contingency' })
+    assert.equal((chamadas[0].init.headers as Record<string, string>)['X-Idempotency-Key'], 'ref-1')
+    simular(() => json(400, { message: 'invalid token' }))
+    await assert.rejects(cartao, (e: Error) => e.name === 'ErroProvedor' && !/CT/.test(e.message))
+
+    // estorno
+    simular(() => json(201, { id: 9, status: 'approved' }))
+    assert.deepEqual(await estorno(), { ok: true })
+    assert.equal(chamadas[0].url, 'https://api.mercadopago.com/v1/payments/77/refunds')
+    assert.equal(chamadas[0].init.method, 'POST')
+    assert.equal(chamadas[0].init.body, undefined)
+    assert.ok((chamadas[0].init.headers as Record<string, string>)['X-Idempotency-Key'])
+    simular(() => json(400, { message: 'Not enough balance in seller account to refund' }))
+    assert.deepEqual(await estorno(), { ok: false, motivo: 'saldo_insuficiente' })
+    simular(() => json(400, { message: 'payment already refunded' }))
+    assert.deepEqual(await estorno(), { ok: false, motivo: 'outro' })
+    simular(() => json(503, { message: 'unavailable' }))
+    await assert.rejects(estorno, (e: Error & { rede?: boolean }) => e.name === 'ErroProvedor' && e.rede === false)
+    simular(() => { throw new Error('boom') })
+    await assert.rejects(estorno, (e: Error & { rede?: boolean }) => e.name === 'ErroProvedor' && e.rede === true)
+  } finally {
+    globalThis.fetch = fetchOriginal
+  }
 }
 
 // --- as functions OAuth nunca registram token/código/segredo
