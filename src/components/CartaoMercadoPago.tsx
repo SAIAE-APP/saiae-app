@@ -24,8 +24,8 @@ export function CartaoMercadoPago({
   onGerarToken: (d: TokenCartaoGerado) => void
   desabilitado: boolean
   textoBotao: string
-  /** Validação do resto da tela (ex.: endereço) ANTES de gerar o token, que é de uso único. */
-  onAntesDeGerar?: () => boolean
+  /** Validação do resto da tela (endereço, identificação do cliente) ANTES de gerar o token, que é de uso único. */
+  onAntesDeGerar?: () => boolean | Promise<boolean>
 }) {
   const [dados, setDados] = useState<DadosCartaoTela>(VAZIO)
   const [erros, setErros] = useState<Partial<Record<CampoCartao, string>>>({})
@@ -51,8 +51,11 @@ export function CartaoMercadoPago({
     const encontrados = validarDadosCartao(dados, new Date())
     setErros(encontrados)
     if (Object.keys(encontrados).length > 0) return
-    if (onAntesDeGerar && !onAntesDeGerar()) return
     setGerando(true)
+    if (onAntesDeGerar && !(await onAntesDeGerar())) {
+      setGerando(false)
+      return
+    }
     const r = await gerarTokenCartao(publicKey, dados)
     setGerando(false)
     if (!r.ok) {

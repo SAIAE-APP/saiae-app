@@ -104,6 +104,8 @@ type EstadoPagamento =
       /** Cartão: sem QR; espera o webhook confirmar (em análise = o provedor ainda decide). */
       cartao?: boolean
       emAnalise?: boolean
+      /** Cartão sem confirmação dentro do prazo: continua esperando o emissor, sem oferecer nova cobrança. */
+      semConfirmacao?: boolean
     }
   | { fase: 'aprovado'; senha: number | null; gratis?: boolean }
   // "Pagar na entrega": dados do cliente -> envio -> pedido já na cozinha + wa.me do dono.
@@ -665,6 +667,8 @@ export function CardapioPublico() {
   const modoEfetivo: ModoConsumo = modosPublicos.includes(modoConsumo) ? modoConsumo : modosPublicos[0]
   const [mostrarAvisoBalcao, setMostrarAvisoBalcao] = useState(false)
   const clientUuidRef = useRef(crypto.randomUUID())
+  // Forma de pagamento da última cobrança feita com o client_uuid atual.
+  const meioDoUuidRef = useRef<'pix' | 'cartao' | 'na_entrega' | null>(null)
   const pendenteAnteriorRef = useRef<string | null>(null)
 
   useEffect(() => {
@@ -821,7 +825,11 @@ export function CardapioPublico() {
 
       if (data.status === 'aprovado') {
         setPagamento({ fase: 'aprovado', senha: data.senha })
-      } else if (data.status === 'rejeitado' || data.status === 'expirado') {
+      } else if (cartao && data.status === 'expirado') {
+        // Cartão: só `rejeitado` é final. O emissor ainda pode aprovar e o webhook confirmar, então segue
+        // esperando, sem client_uuid novo e sem oferecer uma segunda cobrança.
+        setPagamento((atual) => (atual.fase === 'aguardando' && !atual.semConfirmacao ? { ...atual, emAnalise: true, semConfirmacao: true } : atual))
+      } else if (data.status === 'rejeitado' || (!cartao && data.status === 'expirado')) {
         // Cobrança recusada não se reaproveita: a próxima tentativa é outra.
         clientUuidRef.current = crypto.randomUUID()
         setPagamento({ fase: 'recusado', cartao })
@@ -1124,11 +1132,19 @@ export function CardapioPublico() {
     })
   }
 
+  /** client_uuid do envio: repetir a MESMA forma reaproveita a cobrança; trocar de forma é outra cobrança. */
+  function uuidDoEnvio(meio: 'pix' | 'cartao' | 'na_entrega'): string {
+    if (meioDoUuidRef.current !== null && meioDoUuidRef.current !== meio) clientUuidRef.current = crypto.randomUUID()
+    meioDoUuidRef.current = meio
+    return clientUuidRef.current
+  }
+
   function fecharCheckout() {
     setMostrarCheckout(false)
     // Saiu do QR sem pagar: um próximo Pix é OUTRA cobrança (client_uuid novo),
     // senão o servidor devolveria o QR antigo, com o endereço/taxa antigos.
-    if (pagamento.fase === 'aguardando') clientUuidRef.current = crypto.randomUUID()
+    // Cartão em espera: mantém o client_uuid, e repetir o cartão consulta a MESMA cobrança (nunca cobra de novo).
+    if (pagamento.fase === 'aguardando' && !pagamento.cartao) clientUuidRef.current = crypto.randomUUID()
     if (pagamento.fase === 'aprovado' || pagamento.fase === 'entrega_enviada') {
       setTelefoneAviso('')
       setCarrinho({})
@@ -1160,7 +1176,7 @@ export function CardapioPublico() {
         barraca_id: barracaId,
         viagem: modoEfetivo === 'retirada',
         observacao: observacao.trim() || null,
-        client_uuid: clientUuidRef.current,
+        client_uuid: uuidDoEnvio(cartao ? 'cartao' : 'pix'),
         website: honeypot,
         // Só quando preenchido; o servidor ignora número inválido.
         ...(telefoneAviso.trim() ? { cliente_telefone: telefoneAviso.trim() } : {}),
@@ -1259,7 +1275,7 @@ export function CardapioPublico() {
         ...tokenCliente(),
         ...corpoCupom(),
         barraca_id: itensCarrinho[0].item.barraca_id,
-        client_uuid: clientUuidRef.current,
+        client_uuid: uuidDoEnvio('na_entrega'),
         website: honeypot,
         ms_no_checkout: msNoCheckout,
         nome,
@@ -1440,7 +1456,7 @@ export function CardapioPublico() {
         barraca_id: itensCarrinho[0].item.barraca_id,
         tipo_atendimento: 'entrega',
         observacao: observacao.trim() || null,
-        client_uuid: clientUuidRef.current,
+        client_uuid: uuidDoEnvio(cartao ? 'cartao' : 'pix'),
         itens: itensParaEnvio(),
         total_esperado_centavos: totalPixEntregaCentavos,
         website: honeypot,
@@ -1831,29 +1847,32 @@ export function CardapioPublico() {
             </div>
 
             {podeComprar && !entregaNoCardapio && chaveMp && !ehPedidoGratis(subtotalCentavos) && (
-              <div className="grid grid-cols-2 gap-3" role="radiogroup" aria-label="Forma de pagamento online">
-                {(['pix', 'cartao'] as const).map((meio) => {
-                  const selecionado = meioEfetivo === meio
-                  return (
-                    <button
-                      key={meio}
-                      type="button"
-                      role="radio"
-                      aria-checked={selecionado}
-                      onClick={() => setMeioOnline(meio)}
-                      className={clsx(
-                        'flex min-h-14 items-center gap-3 rounded-mesa-lg border-2 p-3 text-left outline-none transition-colors',
-                        selecionado
-                          ? 'border-mesa-neutral-900 bg-mesa-neutral-100 dark:border-mesa-neutral-50 dark:bg-mesa-neutral-800'
-                          : 'border-mesa-border-subtle bg-mesa-surface',
-                      )}
-                    >
-                      <Icone nome={meio === 'pix' ? 'qr_code' : 'credit_card'} size={20} />
-                      <span className="text-sm font-semibold text-mesa-text-primary">{meio === 'pix' ? 'Pix' : 'Cartão de crédito'}</span>
-                    </button>
-                  )
-                })}
-              </div>
+              <fieldset className="grid grid-cols-2 gap-3">
+                <legend className="sr-only">Forma de pagamento online</legend>
+                {(['pix', 'cartao'] as const).map((meio) => (
+                  // Rádio nativo: setas e Tab funcionam como em qualquer grupo de opções.
+                  <label
+                    key={meio}
+                    className={clsx(
+                      'flex min-h-14 cursor-pointer items-center gap-3 rounded-mesa-lg border-2 p-3 transition-colors has-[:focus-visible]:[box-shadow:var(--mesa-focus-ring-primary)]',
+                      meioEfetivo === meio
+                        ? 'border-mesa-neutral-900 bg-mesa-neutral-100 dark:border-mesa-neutral-50 dark:bg-mesa-neutral-800'
+                        : 'border-mesa-border-subtle bg-mesa-surface',
+                    )}
+                  >
+                    <input
+                      type="radio"
+                      name="meio-pagamento-online"
+                      value={meio}
+                      checked={meioEfetivo === meio}
+                      onChange={() => setMeioOnline(meio)}
+                      className="sr-only"
+                    />
+                    <Icone nome={meio === 'pix' ? 'qr_code' : 'credit_card'} size={20} />
+                    <span className="text-sm font-semibold text-mesa-text-primary">{meio === 'pix' ? 'Pix' : 'Cartão de crédito'}</span>
+                  </label>
+                ))}
+              </fieldset>
             )}
 
             {mostrarPagarNaEntrega && (
@@ -1914,6 +1933,7 @@ export function CardapioPublico() {
                 publicKey={chaveMp}
                 desabilitado={itensCarrinho.length === 0}
                 textoBotao={`Pagar ${formatarPrecoBR(totalOnline(cobraTaxaPlataforma, subtotalCentavos))}`}
+                onAntesDeGerar={garantirPerfil}
                 onGerarToken={(t) => void pagar(t)}
               />
             ) : podeComprar ? (
@@ -2164,10 +2184,13 @@ export function CardapioPublico() {
                 publicKey={chaveMp}
                 desabilitado={false}
                 textoBotao={`Pagar ${formatarPrecoBR(totalPixEntregaCentavos)}`}
-                onAntesDeGerar={() => {
+                onAntesDeGerar={async () => {
                   const erroForm = erroDoFormularioEntrega()
-                  if (erroForm) setPagamento({ fase: 'dados_entrega', erro: erroForm })
-                  return erroForm === null
+                  if (erroForm) {
+                    setPagamento({ fase: 'dados_entrega', erro: erroForm })
+                    return false
+                  }
+                  return garantirPerfil()
                 }}
                 onGerarToken={(t) => void pagarPixEntrega(t)}
               />
@@ -2255,7 +2278,9 @@ export function CardapioPublico() {
               {pagamento.emAnalise ? 'Pagamento em análise' : 'Confirmando o pagamento'}
             </h2>
             <p role="status" className="text-sm text-mesa-text-secondary">
-              {pagamento.emAnalise
+              {pagamento.semConfirmacao
+                ? 'Não conseguimos confirmar ainda; se o emissor aprovar, o pedido segue para a cozinha. Nada será cobrado de novo.'
+                : pagamento.emAnalise
                 ? 'O emissor do cartão está analisando o pagamento. Pode levar alguns minutos; deixe esta tela aberta. Aprovado, o pedido vai direto pra cozinha.'
                 : 'Falta pouco: assim que a confirmação chegar, seu pedido vai direto pra cozinha.'}
             </p>
