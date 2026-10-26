@@ -4,6 +4,7 @@
 import assert from 'node:assert/strict'
 import { createHmac } from 'node:crypto'
 import {
+  comissaoDoMercadoPago,
   dataExpiracaoMercadoPago,
   extrairNotificacaoMercadoPago,
   extrairQrMercadoPago,
@@ -30,6 +31,7 @@ import {
   totalDaCobranca,
 } from './cobrancaOnline.ts'
 import { centavosParaDecimal, ehProvedorValido, valorDecimalParaCentavos } from './tipos.ts'
+import { decidirAprovadoDoPendente, tokenDoWebhook } from './webhookAprovado.ts'
 
 const semCorpo = async () => null
 
@@ -539,6 +541,74 @@ for (const f of ['oauthMercadoPago.ts', '../../mp-oauth-iniciar/index.ts', '../.
   assert.equal(await chavePublicaDaBarraca(banco(true, { ...linhaOk, public_key: null }), ID), null)
   assert.equal(await chavePublicaDaBarraca(banco(true, null), ID), null)
   assert.equal(await chavePublicaDaBarraca(banco(true, linhaOk), 'nao-e-uuid'), null)
+}
+
+{ // comissão do MP: amount ausente, vazio ou não numérico é "não informada" (null), nunca 0
+  for (const amount of [null, '', '  ', 'abc', undefined, true, {}]) {
+    assert.equal(comissaoDoMercadoPago({ fee_details: [{ type: 'application_fee', amount }] }), null, `amount ${JSON.stringify(amount)}`)
+  }
+  assert.equal(comissaoDoMercadoPago({ fee_details: [{ type: 'application_fee', amount: 0.99 }] }), 99)
+  assert.equal(comissaoDoMercadoPago({ fee_details: [{ type: 'application_fee', amount: '0.99' }] }), 99)
+  assert.equal(comissaoDoMercadoPago({ fee_details: [{ type: 'application_fee', amount: 0 }] }), 0)
+}
+{ // webhook: total esperado com a taxa Sai aê e comissão conferida
+  const itens = [{ quantidade: 1, preco_centavos_unitario: 1500 }]
+  const novo = { status: 'pendente', itens, taxa_entrega_centavos: 300, desconto_cupom_centavos: 200, taxa_plataforma_centavos: 99 }
+  // pago sem a taxa: não confere
+  const semTaxa = decidirAprovadoDoPendente(novo, { valorCentavos: 1600, comissaoCentavos: 99 })
+  assert.deepEqual(semTaxa.decisao, { acao: 'conciliar_valor' })
+  assert.equal(semTaxa.totalCentavos, 1699)
+  assert.equal(semTaxa.taxaPlataformaCentavos, 99)
+  assert.equal(semTaxa.taxaEntregaCentavos, 300)
+  // comissão diferente de 99 (ou não informada): não confere
+  assert.deepEqual(decidirAprovadoDoPendente(novo, { valorCentavos: 1699, comissaoCentavos: 50 }).decisao, { acao: 'conciliar_valor' })
+  assert.deepEqual(decidirAprovadoDoPendente(novo, { valorCentavos: 1699, comissaoCentavos: null }).decisao, { acao: 'conciliar_valor' })
+  // tudo certo
+  assert.deepEqual(decidirAprovadoDoPendente(novo, { valorCentavos: 1699, comissaoCentavos: 99 }).decisao, { acao: 'criar_pedido', tardio: false })
+  assert.deepEqual(decidirAprovadoDoPendente({ ...novo, status: 'expirado' }, { valorCentavos: 1699, comissaoCentavos: 99 }).decisao, { acao: 'criar_pedido', tardio: true })
+  // pendente antigo (sem taxa, colunas ausentes): segue criando o pedido como antes, sem olhar comissão
+  const antigo = decidirAprovadoDoPendente({ status: 'pendente', itens }, { valorCentavos: 1500, comissaoCentavos: null })
+  assert.deepEqual(antigo.decisao, { acao: 'criar_pedido', tardio: false })
+  assert.equal(antigo.taxaPlataformaCentavos, 0)
+  assert.deepEqual(decidirAprovadoDoPendente({ status: 'pendente', itens, taxa_plataforma_centavos: 0 }, { valorCentavos: 1500, comissaoCentavos: null }).decisao, { acao: 'criar_pedido', tardio: false })
+  // já processado
+  assert.deepEqual(decidirAprovadoDoPendente({ ...novo, status: 'aprovado' }, { valorCentavos: 1699, comissaoCentavos: 99 }).decisao, { acao: 'ignorar' })
+}
+{ // webhook: qual token consulta o provedor de volta
+  let chamadas: string[] = []
+  const fontes = (vendedor: unknown, colado: string | null) => {
+    chamadas = []
+    return {
+      vendedor: async () => { chamadas.push('vendedor'); return vendedor as never },
+      colado: async () => { chamadas.push('colado'); return colado },
+    }
+  }
+  // pendente com taxa = cobrado pelo OAuth
+  assert.deepEqual(await tokenDoWebhook({ taxa_plataforma_centavos: 99 }, fontes({ ok: true, token: 'OAUTH', publicKey: null }, 'COLADO')), { ok: true, token: 'OAUTH' })
+  assert.deepEqual(chamadas, ['vendedor'])
+  // renovação falhou ou barraca desconectada: 500 (o provedor reenvia), nunca cai no token colado
+  const falhou = await tokenDoWebhook({ taxa_plataforma_centavos: 99 }, fontes({ ok: false, motivo: 'renovacao_falhou' }, 'COLADO'))
+  assert.equal(falhou.ok, false)
+  assert.equal(!falhou.ok && falhou.status, 500)
+  assert.deepEqual(chamadas, ['vendedor'])
+  const desconectada = await tokenDoWebhook({ taxa_plataforma_centavos: 99 }, fontes({ ok: false, motivo: 'nao_conectada' }, 'COLADO'))
+  assert.equal(!desconectada.ok && desconectada.status, 500)
+  // pendente antigo: token colado, como sempre
+  assert.deepEqual(await tokenDoWebhook({ taxa_plataforma_centavos: 0 }, fontes({ ok: true, token: 'OAUTH', publicKey: null }, 'COLADO')), { ok: true, token: 'COLADO' })
+  assert.deepEqual(chamadas, ['colado'])
+  assert.deepEqual(await tokenDoWebhook({}, fontes({ ok: true, token: 'OAUTH', publicKey: null }, 'COLADO')), { ok: true, token: 'COLADO' })
+  const semToken = await tokenDoWebhook({}, fontes({ ok: true, token: 'OAUTH', publicKey: null }, null))
+  assert.equal(!semToken.ok && semToken.status, 200)
+}
+{ // webhook (fiação): sem log de token, cartão ou e-mail; taxa gravada no pedido depois do criar_pedido
+  const fonte = readFileSync(new URL('../../webhook-mercadopago/index.ts', import.meta.url), 'utf8')
+  assert.ok(fonte.includes('tokenDoWebhook('))
+  assert.ok(fonte.includes('decidirAprovadoDoPendente('))
+  assert.ok(/update\(\{ taxa_plataforma_centavos: taxaPlataformaCentavos \}\)/.test(fonte))
+  assert.ok(!fonte.includes('buscarTokenDoProvedor(supabase, pendente.barraca_id, provedor.chave, Deno.env)\n  if'))
+  for (const linha of fonte.split('\n').filter((l) => /console\.(log|warn|error|info)/.test(l))) {
+    assert.ok(!/token|card|cartao|email|payer/i.test(linha.replace(/'[^']*'/g, '')), `log suspeito: ${linha.trim()}`)
+  }
 }
 
 console.log('pagamento.test.ts: tudo certo')

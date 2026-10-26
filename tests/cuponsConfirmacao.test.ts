@@ -7,6 +7,7 @@ import { totalEsperadoDoPendente } from '../supabase/functions/_shared/pagamento
 
 const ler = (p: string) => readFileSync(new URL(`../${p}`, import.meta.url), 'utf8')
 const webhook = ler('supabase/functions/webhook-mercadopago/index.ts')
+const regrasWebhook = ler('supabase/functions/_shared/pagamento/webhookAprovado.ts')
 const entrega = ler('supabase/functions/criar-pedido-cardapio/index.ts')
 const mig = ler('supabase/migrations/20261018112000_cupom_liberar_uso.sql')
 
@@ -22,7 +23,8 @@ describe('totalEsperadoDoPendente (valor que o Pix deve ter)', () => {
 
 describe('webhook do Pix', () => {
   test('confere o valor pago contra o total JÁ descontado do pendente', () => {
-    assert.match(webhook, /Number\(pendente\.desconto_cupom_centavos \?\? 0\)/)
+    assert.match(webhook, /decidirAprovadoDoPendente\(pendente, leitura\)/)
+    assert.match(regrasWebhook, /Number\(pendente\.desconto_cupom_centavos \?\? 0\)/)
   })
   test('aprovado confirma o uso ANTES de marcar o pendente aprovado (falha = 500, o provedor reenvia)', () => {
     const iConfirma = webhook.indexOf("rpc('cupom_confirmar'")

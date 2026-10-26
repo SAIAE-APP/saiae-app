@@ -1,4 +1,4 @@
-// Recebe a notificação de pagamento Pix de QUALQUER provedor (Mercado Pago,
+// Recebe a notificação de pagamento (Pix ou cartão) de QUALQUER provedor (Mercado Pago,
 // Payments API type "payment", e os que vierem em ../_shared/pagamento) — Fase
 // 2+3 do Cardápio Digital (CLAUDE.md, roadmap). NUNCA confia no corpo do
 // webhook: confirma o status de verdade consultando o provedor de volta, com o
@@ -22,20 +22,14 @@
 import { createClient } from 'jsr:@supabase/supabase-js@2'
 import { desfechoDaCriacao } from '../_shared/pagamento/corrida.ts'
 import { chaveDoProvedor, obterProvedor } from '../_shared/pagamento/registro.ts'
-import { buscarSegredoWebhook, buscarTokenDoProvedor } from '../_shared/pagamento/token.ts'
+import { buscarSegredoWebhook, buscarTokenDoProvedor, obterTokenVendedor } from '../_shared/pagamento/token.ts'
+import { decidirAprovadoDoPendente, tokenDoWebhook } from '../_shared/pagamento/webhookAprovado.ts'
 import { ErroProvedor, decidirAssinatura, type ConsultaPagamento } from '../_shared/pagamento/tipos.ts'
-import {
-  STATUS_PENDENTE_ABERTOS,
-  decidirAprovado,
-  totalEsperadoDoPendente,
-  type TipoConciliacao,
-} from '../_shared/pagamento/conciliacao.ts'
+import { STATUS_PENDENTE_ABERTOS, type TipoConciliacao } from '../_shared/pagamento/conciliacao.ts'
 
 function jsonResponse(body: unknown, status = 200) {
   return new Response(JSON.stringify(body), { status, headers: { 'Content-Type': 'application/json' } })
 }
-
-type ItemPendente = { quantidade: number; preco_centavos_unitario: number }
 
 type EntregaPendente = {
   nome: string
@@ -129,10 +123,17 @@ Deno.serve(async (req: Request) => {
     }
   }
 
-  const tokenProvedor = await buscarTokenDoProvedor(supabase, pendente.barraca_id, provedor.chave, Deno.env)
-  if (!tokenProvedor) {
-    return jsonResponse({ ok: true, aviso: 'token da barraca não encontrado' })
+  // Mesma credencial que emitiu a cobrança: pendente com taxa Sai aê = OAuth do vendedor; sem taxa (anterior ao
+  // corte) = token colado. Falha do OAuth devolve 500 (o provedor reenvia) sem confirmar nada.
+  const credencial = await tokenDoWebhook(pendente, {
+    vendedor: () => obterTokenVendedor(supabase, pendente.barraca_id, Deno.env),
+    colado: () => buscarTokenDoProvedor(supabase, pendente.barraca_id, provedor.chave, Deno.env),
+  })
+  if (!credencial.ok) {
+    if (credencial.status !== 200) console.error('webhook-mercadopago: credencial indisponível', { pendente: pendente.id, aviso: credencial.aviso })
+    return jsonResponse({ ok: credencial.status === 200, aviso: credencial.aviso }, credencial.status)
   }
+  const tokenProvedor = credencial.token
 
   // Confirmação de verdade: consulta o provedor com o token da própria barraca,
   // nunca confiando só no corpo do webhook.
@@ -153,23 +154,11 @@ Deno.serve(async (req: Request) => {
   }
 
   if (leitura.status === 'aprovado') {
-    // Total esperado = itens + taxa de entrega DO SNAPSHOT do pendente (gravado
-    // no momento da cobrança). A taxa NUNCA é recalculada aqui: se o dono
-    // mudou a tabela de bairros depois, vale o que o cliente viu e pagou.
-    // Pendente sem entrega tem taxa 0 => conta idêntica à de antes.
-    const taxaEntregaCentavos = Number(pendente.taxa_entrega_centavos ?? 0)
-    // O valor cobrado no Pix já é o DESCONTADO (cupom): o pendente guarda o desconto da hora da cobrança.
-    const totalCentavos = totalEsperadoDoPendente(
-      pendente.itens as ItemPendente[],
-      taxaEntregaCentavos,
-      Number(pendente.desconto_cupom_centavos ?? 0),
-    )
-
-    const decisao = decidirAprovado({
-      statusPendente: pendente.status,
-      valorPagoCentavos: leitura.valorCentavos,
-      totalEsperadoCentavos: totalCentavos,
-    })
+    // Total esperado = itens − cupom + taxa de entrega + taxa Sai aê, tudo DO SNAPSHOT do pendente (gravado no
+    // momento da cobrança). Nada é recalculado aqui: se o dono mudou a tabela de bairros depois, vale o que o
+    // cliente viu e pagou. Com taxa Sai aê, a comissão registrada no provedor tem que ser a mesma. Pendente
+    // antigo (sem entrega, sem taxa) => conta idêntica à de antes. Vale igual para Pix e cartão.
+    const { decisao, totalCentavos, taxaEntregaCentavos, taxaPlataformaCentavos } = decidirAprovadoDoPendente(pendente, leitura)
     if (decisao.acao === 'ignorar') return jsonResponse({ ok: true })
 
     const registrarConciliacao = async (
@@ -202,9 +191,13 @@ Deno.serve(async (req: Request) => {
         pago_centavos: leitura.valorCentavos,
         esperado_centavos: totalCentavos,
         taxa_entrega_centavos: taxaEntregaCentavos,
+        taxa_plataforma_centavos: taxaPlataformaCentavos,
+        comissao_centavos: leitura.comissaoCentavos,
       })
       const registrado = await registrarConciliacao('valor_divergente', {
-        detalhe: `pendente ${pendente.status}; taxa de entrega ${taxaEntregaCentavos}`,
+        detalhe:
+          `pendente ${pendente.status}; taxa de entrega ${taxaEntregaCentavos}` +
+          (taxaPlataformaCentavos > 0 ? `; taxa Sai aê ${taxaPlataformaCentavos}; comissão no provedor ${leitura.comissaoCentavos ?? 'não informada'}` : ''),
       })
       // Sem registro o pagamento ficaria invisível: 500 faz o provedor reenviar.
       if (!registrado) return jsonResponse({ ok: false, aviso: 'falha ao registrar conciliação' }, 500)
@@ -279,6 +272,11 @@ Deno.serve(async (req: Request) => {
     if (pendente.cliente_id) {
       const { error: erroVinculo } = await supabase.from('pedidos').update({ cliente_id: pendente.cliente_id }).eq('id', pedidoId)
       if (erroVinculo) console.error('webhook-mercadopago: falha ao vincular cliente ao pedido', erroVinculo.message)
+    }
+    // Taxa Sai aê copiada para o pedido (mesmo padrão do cliente_id). Best-effort: o pedido já existe e foi pago.
+    if (taxaPlataformaCentavos > 0) {
+      const { error: erroTaxa } = await supabase.from('pedidos').update({ taxa_plataforma_centavos: taxaPlataformaCentavos }).eq('id', pedidoId)
+      if (erroTaxa) console.error('webhook-mercadopago: falha ao gravar a taxa Sai aê no pedido', erroTaxa.message)
     }
     await supabase
       .from('pagamentos_pendentes')
