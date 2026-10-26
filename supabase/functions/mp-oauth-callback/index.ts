@@ -6,7 +6,7 @@
 // Secrets: MP_CLIENT_ID, MP_CLIENT_SECRET, MP_OAUTH_REDIRECT_URI, TOKENS_CHAVE_V1..; opcional APP_PUBLIC_URL.
 import { createClient } from 'jsr:@supabase/supabase-js@2'
 import { cifrar, configDoEnv } from '../_shared/segredoCifrado.ts'
-import { ErroOauthMp, trocarCodigo, urlRetornoApp } from '../_shared/pagamento/oauthMercadoPago.ts'
+import { contaMpAlterada, ErroOauthMp, trocarCodigo, urlRetornoApp } from '../_shared/pagamento/oauthMercadoPago.ts'
 
 const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i
 
@@ -45,6 +45,8 @@ Deno.serve(async (req: Request) => {
     const cfg = configDoEnv(Deno.env)
     const acesso = await cifrar(novos.accessToken, { barracaId, campo: 'mp_access_token' }, cfg)
     const renovacao = await cifrar(novos.refreshToken, { barracaId, campo: 'mp_refresh_token' }, cfg)
+    // Conta anterior: reconectar com OUTRA conta não é bloqueado, mas fica no log (sem ids nem tokens).
+    const { data: anterior } = await supabase.from('barracas_mp_oauth').select('mp_user_id').eq('barraca_id', barracaId).maybeSingle()
     const { error } = await supabase.from('barracas_mp_oauth').upsert(
       {
         barraca_id: barracaId,
@@ -61,6 +63,9 @@ Deno.serve(async (req: Request) => {
     if (error) {
       console.error('mp-oauth-callback: falha ao gravar conexão', error.message)
       return voltar(false)
+    }
+    if (contaMpAlterada((anterior as { mp_user_id?: unknown } | null)?.mp_user_id, novos.userId)) {
+      console.warn('mp-oauth-callback: reconexão com outra conta do Mercado Pago', { conta_alterada: true })
     }
   } catch (e) {
     // Só a classe do erro (ErroOauthMp traz o status HTTP); nunca a mensagem nem dados do MP.

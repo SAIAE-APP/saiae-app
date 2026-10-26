@@ -118,3 +118,8 @@ export function urlRetornoApp(baseApp: string, ok: boolean): string {
 }
 
 export const VALIDADE_STATE_MINUTOS = 10
+
+/** Reconexão trocou a conta do Mercado Pago da barraca? Sem conta anterior gravada não é troca. */
+export function contaMpAlterada(anterior: unknown, nova: unknown): boolean {
+  return anterior != null && String(anterior) !== String(nova)
+}

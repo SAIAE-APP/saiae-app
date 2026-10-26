@@ -23,7 +23,14 @@ import { createClient } from 'jsr:@supabase/supabase-js@2'
 import { desfechoDaCriacao } from '../_shared/pagamento/corrida.ts'
 import { chaveDoProvedor, obterProvedor } from '../_shared/pagamento/registro.ts'
 import { buscarSegredoWebhook, buscarTokenDoProvedor, obterTokenVendedor } from '../_shared/pagamento/token.ts'
-import { decidirAprovadoDoPendente, metodoDoPedido, statusFinalDoPendente, tokenDoWebhook } from '../_shared/pagamento/webhookAprovado.ts'
+import {
+  conciliacaoSemConfirmacao,
+  decidirAprovadoDoPendente,
+  metodoDoPedido,
+  statusFinalDoPendente,
+  tokenDoWebhook,
+} from '../_shared/pagamento/webhookAprovado.ts'
+import { registrarConciliacao, type BaseConciliacao } from '../_shared/pagamento/pedidoAprovado.ts'
 import { ErroProvedor, decidirAssinatura, type ConsultaPagamento } from '../_shared/pagamento/tipos.ts'
 import { STATUS_PENDENTE_ABERTOS, type TipoConciliacao } from '../_shared/pagamento/conciliacao.ts'
 
@@ -129,8 +136,20 @@ Deno.serve(async (req: Request) => {
     vendedor: () => obterTokenVendedor(supabase, pendente.barraca_id, Deno.env),
     colado: () => buscarTokenDoProvedor(supabase, pendente.barraca_id, provedor.chave, Deno.env),
   })
+  // Base dos registros de conciliação deste pagamento (antes e depois da consulta ao provedor).
+  const baseConciliacao: BaseConciliacao = {
+    supabase,
+    barracaId: pendente.barraca_id,
+    pendenteId: pendente.id,
+    provedor: provedor.chave,
+    idExterno: pagamentoId,
+    origem: 'webhook-mercadopago',
+  }
   if (!credencial.ok) {
     if (credencial.status !== 200) console.error('webhook-mercadopago: credencial indisponível', { pendente: pendente.id, aviso: credencial.aviso })
+    // OAuth indisponível: registra ANTES do 500 (o provedor reenvia, mas pode desistir e o dinheiro sumiria).
+    const semCredencial = conciliacaoSemConfirmacao(pendente, pagamentoId, 'credencial')
+    if (semCredencial) await registrarConciliacao(baseConciliacao, semCredencial.tipo, { detalhe: semCredencial.detalhe })
     return jsonResponse({ ok: credencial.status === 200, aviso: credencial.aviso }, credencial.status)
   }
   const tokenProvedor = credencial.token
@@ -142,6 +161,9 @@ Deno.serve(async (req: Request) => {
     leitura = await provedor.consultarPagamento({ token: tokenProvedor, idExterno: pagamentoId })
   } catch (erro) {
     if (erro instanceof ErroProvedor && !erro.rede) {
+      // Provedor recusou a consulta (não encontrado/sem permissão): reenviar não resolve; fica a conciliação.
+      const recusada = conciliacaoSemConfirmacao(pendente, pagamentoId, 'consulta_recusada')
+      if (recusada) await registrarConciliacao(baseConciliacao, recusada.tipo, { detalhe: recusada.detalhe })
       return jsonResponse({ ok: true, aviso: erro.message })
     }
     // Sem rede até o provedor: 500 faz ele tentar de novo (nada foi processado).
@@ -162,27 +184,12 @@ Deno.serve(async (req: Request) => {
     const { decisao, totalCentavos, taxaEntregaCentavos, taxaPlataformaCentavos } = decidirAprovadoDoPendente(pendente, leitura)
     if (decisao.acao === 'ignorar') return jsonResponse({ ok: true })
 
-    const registrarConciliacao = async (
+    // Idempotente: a mesma notificação repetida não duplica (unique provedor+id+tipo).
+    const registrarConciliacaoAprovado = (
       tipo: TipoConciliacao,
       extra: { situacao?: string; pedido_id?: string | null; detalhe?: string } = {},
-    ): Promise<boolean> => {
-      // Idempotente: a mesma notificação repetida não duplica (unique provedor+id+tipo).
-      const { error } = await supabase.from('pagamentos_conciliacao').upsert(
-        {
-          barraca_id: pendente.barraca_id,
-          pendente_id: pendente.id,
-          provedor: provedor.chave,
-          id_externo: pagamentoId,
-          tipo,
-          valor_pago_centavos: leitura.valorCentavos,
-          valor_esperado_centavos: totalCentavos,
-          ...extra,
-        },
-        { onConflict: 'provedor,id_externo,tipo', ignoreDuplicates: true },
-      )
-      if (error) console.error('webhook-mercadopago: conciliação não registrada', error.message)
-      return !error
-    }
+    ): Promise<boolean> =>
+      registrarConciliacao(baseConciliacao, tipo, { valor_pago_centavos: leitura.valorCentavos, valor_esperado_centavos: totalCentavos, ...extra })
 
     if (decisao.acao === 'conciliar_valor') {
       // Pago mas não confere: NÃO cria pedido; registra para o dono conferir (e
@@ -195,7 +202,7 @@ Deno.serve(async (req: Request) => {
         taxa_plataforma_centavos: taxaPlataformaCentavos,
         comissao_centavos: leitura.comissaoCentavos,
       })
-      const registrado = await registrarConciliacao('valor_divergente', {
+      const registrado = await registrarConciliacaoAprovado('valor_divergente', {
         detalhe:
           `pendente ${pendente.status}; taxa de entrega ${taxaEntregaCentavos}` +
           (taxaPlataformaCentavos > 0 ? `; taxa Sai aê ${taxaPlataformaCentavos}; comissão no provedor ${leitura.comissaoCentavos ?? 'não informada'}` : ''),
@@ -254,7 +261,7 @@ Deno.serve(async (req: Request) => {
       // pedido ainda não existe, então NÃO pode ser engolido como sucesso.
       // Fica também registrado, pra o dinheiro não ficar invisível se o provedor
       // desistir de reenviar.
-      await registrarConciliacao('pedido_nao_criado', { detalhe: desfecho.detalhe.slice(0, 300) })
+      await registrarConciliacaoAprovado('pedido_nao_criado', { detalhe: desfecho.detalhe.slice(0, 300) })
       return jsonResponse({ ok: false, aviso: `falha ao criar pedido: ${desfecho.detalhe}` }, 500)
     }
 
@@ -297,7 +304,7 @@ Deno.serve(async (req: Request) => {
       // Pago depois de expirar, com valor certo: o pedido nasceu; o registro
       // informa o dono de que ele chegou fora do prazo.
       if (decisao.tardio) {
-        await registrarConciliacao('pago_apos_expirar', {
+        await registrarConciliacaoAprovado('pago_apos_expirar', {
           situacao: 'pedido_criado',
           pedido_id: pedidoId,
           detalhe: 'Pix pago depois do prazo; o pedido foi criado normalmente.',
@@ -305,7 +312,7 @@ Deno.serve(async (req: Request) => {
       }
       // Valor e referência certos, mas o provedor não devolveu a comissão: o pedido nasceu e a taxa fica para conferir.
       if (decisao.comissaoNaoInformada) {
-        await registrarConciliacao('comissao_nao_informada', {
+        await registrarConciliacaoAprovado('comissao_nao_informada', {
           situacao: 'pedido_criado',
           pedido_id: pedidoId,
           detalhe: `taxa Sai aê ${taxaPlataformaCentavos}; comissão não informada pelo provedor; o pedido foi criado normalmente.`,

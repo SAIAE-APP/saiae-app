@@ -16,7 +16,7 @@ import {
 } from './mercadopago.ts'
 import { chaveDoProvedor, obterProvedor, urlNotificacaoPagamento } from './registro.ts'
 import { buscarTokenDoProvedor, obterTokenVendedor } from './token.ts'
-import { ErroOauthMp, montarUrlAutorizacao, precisaRenovar, type TokensMp } from './oauthMercadoPago.ts'
+import { contaMpAlterada, ErroOauthMp, montarUrlAutorizacao, precisaRenovar, type TokensMp } from './oauthMercadoPago.ts'
 import { cifrar, configDoEnv } from '../segredoCifrado.ts'
 import { readFileSync } from 'node:fs'
 import { decidirAprovado, totalEsperadoDoPendente } from './conciliacao.ts'
@@ -32,7 +32,8 @@ import {
 } from './cobrancaOnline.ts'
 import { centavosParaDecimal, ehProvedorValido, ErroProvedor, valorDecimalParaCentavos } from './tipos.ts'
 import { estornarPedido } from './estorno.ts'
-import { decidirAprovadoDoPendente, metodoDoPedido, statusFinalDoPendente, tokenDoWebhook } from './webhookAprovado.ts'
+import { registrarConciliacao } from './pedidoAprovado.ts'
+import { conciliacaoSemConfirmacao, decidirAprovadoDoPendente, metodoDoPedido, statusFinalDoPendente, tokenDoWebhook } from './webhookAprovado.ts'
 
 const semCorpo = async () => null
 
@@ -621,13 +622,66 @@ for (const f of ['oauthMercadoPago.ts', '../../mp-oauth-iniciar/index.ts', '../.
   const semToken = await tokenDoWebhook({}, fontes({ ok: true, token: 'OAUTH', publicKey: null }, null))
   assert.equal(!semToken.ok && semToken.status, 200)
 }
+{ // webhook: confirmação travada (credencial OAuth ou consulta recusada) vira conciliação, só para a cobrança deste pendente
+  const oauth = { taxa_plataforma_centavos: 99, mercadopago_order_id: '555' }
+  assert.deepEqual(conciliacaoSemConfirmacao(oauth, '555', 'credencial'), { tipo: 'pedido_nao_criado', detalhe: 'credencial OAuth indisponível' })
+  assert.deepEqual(conciliacaoSemConfirmacao(oauth, '555', 'consulta_recusada'), { tipo: 'pedido_nao_criado', detalhe: 'consulta ao provedor recusada' })
+  // pendente sem taxa (token colado): nada muda
+  assert.equal(conciliacaoSemConfirmacao({ taxa_plataforma_centavos: 0, mercadopago_order_id: '555' }, '555', 'credencial'), null)
+  // id da notificação que não é o da cobrança gravada (ou cobrança sem id ainda): não grava, para notificação falsa não encher a tabela
+  assert.equal(conciliacaoSemConfirmacao(oauth, '999', 'consulta_recusada'), null)
+  assert.equal(conciliacaoSemConfirmacao({ taxa_plataforma_centavos: 99 }, '555', 'credencial'), null)
+}
+{ // registrarConciliacao: upsert idempotente (retries do provedor não duplicam) e falha devolvida
+  const upserts: { linha: Record<string, unknown>; opcoes: Record<string, unknown> }[] = []
+  const cliente = (erro: { message: string } | null) =>
+    ({
+      from: (tabela: string) => {
+        assert.equal(tabela, 'pagamentos_conciliacao')
+        return { upsert: async (linha: Record<string, unknown>, opcoes: Record<string, unknown>) => (upserts.push({ linha, opcoes }), { error: erro }) }
+      },
+    }) as never
+  const base = { barracaId: 'b', pendenteId: 'p', provedor: 'mercadopago', idExterno: '555', origem: 'teste' }
+  assert.equal(await registrarConciliacao({ ...base, supabase: cliente(null) }, 'pedido_nao_criado', { detalhe: 'credencial OAuth indisponível' }), true)
+  assert.deepEqual(upserts[0], {
+    linha: { barraca_id: 'b', pendente_id: 'p', provedor: 'mercadopago', id_externo: '555', tipo: 'pedido_nao_criado', detalhe: 'credencial OAuth indisponível' },
+    opcoes: { onConflict: 'provedor,id_externo,tipo', ignoreDuplicates: true },
+  })
+  const errosOriginal = console.error
+  console.error = () => {}
+  try {
+    assert.equal(await registrarConciliacao({ ...base, supabase: cliente({ message: 'x' }) }, 'pedido_nao_criado'), false)
+  } finally {
+    console.error = errosOriginal
+  }
+}
+{ // webhook (fiação): conciliação gravada ANTES do 500 da credencial e na consulta recusada
+  const fonte = readFileSync(new URL('../../webhook-mercadopago/index.ts', import.meta.url), 'utf8')
+  const iCredencial = fonte.indexOf("conciliacaoSemConfirmacao(pendente, pagamentoId, 'credencial')")
+  assert.ok(iCredencial > 0 && iCredencial < fonte.indexOf('return jsonResponse({ ok: credencial.status === 200'))
+  const iConsulta = fonte.indexOf("conciliacaoSemConfirmacao(pendente, pagamentoId, 'consulta_recusada')")
+  assert.ok(iConsulta > fonte.indexOf('provedor.consultarPagamento(') && iConsulta < fonte.indexOf("aviso: 'provedor inacessível'"))
+}
+{ // mp-oauth-callback: troca de conta na reconexão vira log sem dado sensível
+  assert.equal(contaMpAlterada(null, '123'), false)
+  assert.equal(contaMpAlterada(undefined, '123'), false)
+  assert.equal(contaMpAlterada('123', '123'), false)
+  assert.equal(contaMpAlterada(123, '123'), false)
+  assert.equal(contaMpAlterada('123', '456'), true)
+  const fonte = readFileSync(new URL('../../mp-oauth-callback/index.ts', import.meta.url), 'utf8')
+  assert.ok(fonte.includes('contaMpAlterada('))
+  assert.ok(fonte.includes('{ conta_alterada: true }'))
+  for (const linha of fonte.split('\n').filter((l) => /console\.(log|warn|error|info)/.test(l))) {
+    assert.ok(!/token|user_?id|userId|barraca/i.test(linha.replace(/'[^']*'/g, '')), `log suspeito: ${linha.trim()}`)
+  }
+}
 { // webhook (fiação): sem log de token, cartão ou e-mail; taxa gravada no pedido depois do criar_pedido
   const fonte = readFileSync(new URL('../../webhook-mercadopago/index.ts', import.meta.url), 'utf8')
   assert.ok(fonte.includes('tokenDoWebhook('))
   assert.ok(fonte.includes('decidirAprovadoDoPendente('))
   assert.ok(/update\(\{ taxa_plataforma_centavos: taxaPlataformaCentavos \}\)/.test(fonte))
   // comissão não informada: o pedido nasce e fica o registro de conciliação
-  assert.ok(/if \(decisao\.comissaoNaoInformada\) \{\s*await registrarConciliacao\('comissao_nao_informada'/.test(fonte))
+  assert.ok(/if \(decisao\.comissaoNaoInformada\) \{\s*await registrarConciliacaoAprovado\('comissao_nao_informada'/.test(fonte))
   assert.ok(!fonte.includes('buscarTokenDoProvedor(supabase, pendente.barraca_id, provedor.chave, Deno.env)\n  if'))
   for (const linha of fonte.split('\n').filter((l) => /console\.(log|warn|error|info)/.test(l))) {
     assert.ok(!/token|card|cartao|email|payer/i.test(linha.replace(/'[^']*'/g, '')), `log suspeito: ${linha.trim()}`)

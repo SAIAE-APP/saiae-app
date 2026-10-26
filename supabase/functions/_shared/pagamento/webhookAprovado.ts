@@ -75,3 +75,18 @@ export function decidirAprovadoDoPendente(
   })
   return { decisao, totalCentavos, taxaEntregaCentavos, taxaPlataformaCentavos }
 }
+
+/**
+ * Pendente cobrado pelo OAuth cuja confirmação travou ANTES de ler o pagamento (credencial indisponível ou consulta
+ * recusada pelo provedor): devolve o registro de conciliação para o dinheiro não ficar invisível se o provedor
+ * desistir de reenviar. Só para a cobrança gravada neste pendente (notificação com outro id não grava nada).
+ * Repetições não duplicam: a tabela é única por provedor + id externo + tipo.
+ */
+export function conciliacaoSemConfirmacao(
+  pendente: { taxa_plataforma_centavos?: unknown; mercadopago_order_id?: unknown },
+  idExterno: string,
+  motivo: 'credencial' | 'consulta_recusada',
+): { tipo: 'pedido_nao_criado'; detalhe: string } | null {
+  if (!emitidoViaOauth(pendente) || !pendente.mercadopago_order_id || pendente.mercadopago_order_id !== idExterno) return null
+  return { tipo: 'pedido_nao_criado', detalhe: motivo === 'credencial' ? 'credencial OAuth indisponível' : 'consulta ao provedor recusada' }
+}
