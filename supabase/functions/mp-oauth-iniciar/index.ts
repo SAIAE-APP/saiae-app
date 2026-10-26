@@ -4,6 +4,8 @@
 import { createClient } from 'jsr:@supabase/supabase-js@2'
 import { montarUrlAutorizacao, VALIDADE_STATE_MINUTOS } from '../_shared/pagamento/oauthMercadoPago.ts'
 
+const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i
+
 const CORS = {
   'Access-Control-Allow-Origin': '*',
   'Access-Control-Allow-Headers': 'authorization, x-client-info, apikey, content-type',
@@ -27,7 +29,7 @@ Deno.serve(async (req: Request) => {
   } catch {
     return json({ erro: 'JSON inválido' }, 400)
   }
-  if (!barracaId) return json({ erro: 'Loja inválida' }, 400)
+  if (!UUID.test(barracaId)) return json({ erro: 'Loja inválida' }, 400)
 
   const clientId = Deno.env.get('MP_CLIENT_ID')
   const redirectUri = Deno.env.get('MP_OAUTH_REDIRECT_URI')

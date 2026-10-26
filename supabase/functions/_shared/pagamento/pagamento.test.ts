@@ -251,9 +251,10 @@ const envFake = {
 const cfgFake = configDoEnv(envFake)
 const cif = async (campo: string, v: string) => (await cifrar(v, { barracaId: BARRACA, campo }, cfgFake)).valor
 type Linha = Record<string, unknown>
-function bancoFalso(linha: Linha | null, opcoes: { perderCorrida?: Linha } = {}) {
+function bancoFalso(linha: Linha | null, opcoes: { perderCorrida?: Linha; falharEscritaApos?: number } = {}) {
   const estado = { linha: linha ? { ...linha } : null, updates: [] as Linha[] }
   let perder = opcoes.perderCorrida
+  let chamadasUpdate = 0
   const cliente = {
     from: () => ({
       select: () => ({ eq: async () => ({ data: estado.linha ? [{ ...estado.linha }] : [], error: null }) }),
@@ -261,6 +262,8 @@ function bancoFalso(linha: Linha | null, opcoes: { perderCorrida?: Linha } = {})
         eq: () => ({
           eq: (_c: string, lido: unknown) => ({
             select: async () => {
+              chamadasUpdate++
+              if (opcoes.falharEscritaApos !== undefined && chamadasUpdate > opcoes.falharEscritaApos) return { data: null, error: { message: 'falha simulada' } }
               if (perder) {
                 estado.linha = { ...perder }
                 perder = undefined
@@ -336,6 +339,11 @@ const naoRenova = async (): Promise<TokensMp> => {
   })
   assert.deepEqual(r, { ok: false, motivo: 'renovacao_falhou' })
   assert.equal(estado.linha?.status, 'desconectada')
+}
+{ // gravação dos tokens novos falha (error do supabase-js, sem throw): renovacao_falhou
+  const { cliente } = bancoFalso(await linhaBase(new Date(AGORA.getTime() + 10 * 60_000)), { falharEscritaApos: 1 })
+  const r = await obterTokenVendedor(cliente, BARRACA, envFake, { agora: () => AGORA, renovar: async () => novosTokens })
+  assert.deepEqual(r, { ok: false, motivo: 'renovacao_falhou' })
 }
 { // falha de rede/5xx: erro, mas NÃO desconecta
   const { cliente, estado } = bancoFalso(await linhaBase(new Date(AGORA.getTime() + 10 * 60_000)))

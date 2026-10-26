@@ -22,6 +22,7 @@ export class ErroOauthMp extends Error {
   status: number
   constructor(status: number) {
     super(`oauth_mp_${status}`)
+    this.name = 'ErroOauthMp'
     this.status = status
   }
   get definitivo(): boolean {

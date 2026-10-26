@@ -6,7 +6,7 @@
 // Secrets: MP_CLIENT_ID, MP_CLIENT_SECRET, MP_OAUTH_REDIRECT_URI, TOKENS_CHAVE_V1..; opcional APP_PUBLIC_URL.
 import { createClient } from 'jsr:@supabase/supabase-js@2'
 import { cifrar, configDoEnv } from '../_shared/segredoCifrado.ts'
-import { trocarCodigo, urlRetornoApp } from '../_shared/pagamento/oauthMercadoPago.ts'
+import { ErroOauthMp, trocarCodigo, urlRetornoApp } from '../_shared/pagamento/oauthMercadoPago.ts'
 
 const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i
 
@@ -64,7 +64,7 @@ Deno.serve(async (req: Request) => {
     }
   } catch (e) {
     // Só a classe do erro (ErroOauthMp traz o status HTTP); nunca a mensagem nem dados do MP.
-    console.error('mp-oauth-callback: falha ao conectar', e instanceof Error ? e.name : 'erro')
+    console.error('mp-oauth-callback: falha ao conectar', e instanceof ErroOauthMp ? `${e.name} status=${e.status}` : e instanceof Error ? e.name : 'erro')
     return voltar(false)
   }
   return voltar(true)

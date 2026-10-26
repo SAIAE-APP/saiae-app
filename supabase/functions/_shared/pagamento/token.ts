@@ -146,7 +146,8 @@ export async function obterTokenVendedor(
     novos = await renovarFn({ clientId, clientSecret, refreshToken })
   } catch (e) {
     if (e instanceof ErroOauthMp && e.definitivo) {
-      await gravar({ status: 'desconectada', atualizado_em: agora().toISOString() })
+      const r = await gravar({ status: 'desconectada', atualizado_em: agora().toISOString() })
+      if (r.error) console.error('obterTokenVendedor: falha ao marcar desconectada', r.error.message)
     }
     return { ok: false, motivo: 'renovacao_falhou' }
   }
@@ -154,7 +155,7 @@ export async function obterTokenVendedor(
   try {
     const acesso = await cifrar(novos.accessToken, ctx(barracaId, 'mp_access_token'), cfg)
     const refresh = await cifrar(novos.refreshToken, ctx(barracaId, 'mp_refresh_token'), cfg)
-    await gravar({
+    const r = await gravar({
       access_token_cifrado: acesso.valor,
       refresh_token_cifrado: refresh.valor,
       mp_user_id: novos.userId,
@@ -163,6 +164,10 @@ export async function obterTokenVendedor(
       status: 'conectada',
       atualizado_em: agora().toISOString(),
     })
+    if (r.error || !r.data?.length) {
+      console.error('obterTokenVendedor: falha ao gravar a renovação', r.error?.message ?? 'nenhuma linha atualizada')
+      return { ok: false, motivo: 'renovacao_falhou' }
+    }
   } catch {
     return { ok: false, motivo: 'renovacao_falhou' }
   }
