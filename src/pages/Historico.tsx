@@ -2,7 +2,8 @@ import { useEffect, useMemo, useState } from 'react'
 import { supabase } from '../lib/supabase'
 import { classesBotaoIcone } from '../lib/estiloBotaoIcone'
 import { ehAppIOS } from '../lib/plataforma'
-import { useBarracaAtual, useModulosDaLoja } from '../layouts/contextoBarraca'
+import { useBarracaAtual, useModulosDaLoja, useSouDonoDaLoja } from '../layouts/contextoBarraca'
+import { acaoDeEstorno } from '../lib/estornoPedido'
 import { useTheme } from '../hooks/useTheme'
 import { MOTIVOS_CANCELAMENTO, type MotivoCancelamento } from '../lib/cancelamento'
 import { enfileirar } from '../lib/fila'
@@ -302,8 +303,9 @@ function BotaoEmitirNota({ pedido, moduloFiscal }: { pedido: PedidoComItens; mod
   )
 }
 
-// Pedido pago online: estorna TOTAL (itens + entrega + taxa Sai aê) e só então cancela, pelo caminho de sempre
-// (fila 'mudar_status', como a Cozinha). Recusa do provedor (ex.: sem saldo) mostra o motivo e NÃO cancela.
+// Pedido pago online (só o dono): estorna TOTAL (itens + entrega + taxa Sai aê) e só então cancela, pelo caminho de
+// sempre (fila 'mudar_status', como a Cozinha). Pedido já cancelado (a Cozinha não estorna) ganha só o estorno.
+// Recusa do provedor (ex.: sem saldo) mostra o motivo e NÃO cancela.
 function BotaoCancelarEstornar({
   pedido,
   onCancelado,
@@ -312,9 +314,13 @@ function BotaoCancelarEstornar({
   onCancelado: (pedidoId: string, motivo: MotivoCancelamento, canceladoEm: string) => void
 }) {
   const { mostrarToast } = useToast()
+  const souDono = useSouDonoDaLoja()
   const [aberto, setAberto] = useState(false)
   const [estornando, setEstornando] = useState(false)
+  const [estornado, setEstornado] = useState(false)
   const [erro, setErro] = useState<string | null>(null)
+  const acao = acaoDeEstorno(pedido, souDono, estornado)
+  if (!acao) return null
 
   async function confirmar(motivo: MotivoCancelamento) {
     setEstornando(true)
@@ -329,6 +335,14 @@ function BotaoCancelarEstornar({
       mostrarToast(mensagem, { variante: 'erro', duracaoMs: 10000 })
       return
     }
+    if (acao === 'estornar') {
+      // Já cancelado: não enfileira outro cancelamento.
+      setEstornando(false)
+      setAberto(false)
+      setEstornado(true)
+      mostrarToast('Pagamento estornado.', { variante: 'sucesso' })
+      return
+    }
     const agora = new Date().toISOString()
     await enfileirar('mudar_status', {
       pedido_id: pedido.id,
@@ -338,23 +352,34 @@ function BotaoCancelarEstornar({
     })
     setEstornando(false)
     setAberto(false)
+    setEstornado(true)
     onCancelado(pedido.id, motivo, agora)
     mostrarToast('Pagamento estornado e pedido cancelado.', { variante: 'sucesso' })
   }
+
+  const soEstorno = acao === 'estornar'
+  const rotulo = soEstorno ? 'Estornar pagamento' : 'Cancelar e estornar'
+  const descricao =
+    `O valor total pago (itens, entrega e a taxa de ${formatarPrecoBR(pedido.taxa_plataforma_centavos ?? 0)}) ` +
+    'volta para o cliente. O estorno não pode ser desfeito.'
 
   return (
     <div className="mt-3">
       <Button variant="outline" size="md" onClick={() => setAberto(true)} className="w-full">
         <Icone nome="cancel" size={18} />
-        Cancelar e estornar
+        {rotulo}
       </Button>
-      {erro && <p className="mt-1.5 text-xs text-mesa-error-500">{erro}</p>}
+      {erro && <p role="alert" className="mt-1.5 text-xs text-mesa-error-500">{erro}</p>}
       {aberto && (
         <ModalCancelamento
           pedido={pedido}
           cancelando={estornando}
           onFechar={() => !estornando && setAberto(false)}
           onConfirmar={confirmar}
+          titulo={soEstorno ? `Estornar o pagamento do pedido #${pedido.senha}?` : `Cancelar e estornar o pedido #${pedido.senha}?`}
+          descricao={descricao}
+          rotuloConfirmar={rotulo}
+          motivoFixo={soEstorno ? ((pedido.motivo_cancelamento as MotivoCancelamento | null) ?? 'outro') : undefined}
         />
       )}
     </div>
@@ -493,9 +518,7 @@ function CardHistorico({
         <BotaoEmitirNota pedido={pedido} moduloFiscal={temModulo(modulos, 'fiscal')} />
       )}
 
-      {!cancelado && (pedido.taxa_plataforma_centavos ?? 0) > 0 && (
-        <BotaoCancelarEstornar pedido={pedido} onCancelado={onCancelado} />
-      )}
+      <BotaoCancelarEstornar pedido={pedido} onCancelado={onCancelado} />
 
       {pedido.status === 'entregue' && (
         <Button

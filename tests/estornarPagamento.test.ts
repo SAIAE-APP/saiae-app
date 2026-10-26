@@ -4,6 +4,7 @@
 import assert from 'node:assert/strict'
 import { readFileSync } from 'node:fs'
 import { describe, test } from 'node:test'
+import { acaoDeEstorno } from '../src/lib/estornoPedido.ts'
 
 const ler = (caminho: string) => readFileSync(new URL(caminho, import.meta.url), 'utf8').replace(/\r\n/g, '\n')
 const fonte = ler('../supabase/functions/estornar-pagamento/index.ts')
@@ -32,6 +33,31 @@ describe('estornarPagamento', () => {
     for (const linha of fonte.split('\n').filter((l) => /console\.(log|info|warn|error|debug)/.test(l))) {
       assert.doesNotMatch(linha.replace(/'[^']*'/g, ''), /token|card|cartao|email|payer|order_id|idExterno|pedidoId|pendente/i, 'log suspeito: ' + linha)
     }
+  })
+
+  test('acaoDeEstorno: só o dono, só pedido pago online (taxa > 0), some depois do estorno feito aqui', () => {
+    const pago = { status: 'entregue', taxa_plataforma_centavos: 99 }
+    assert.equal(acaoDeEstorno(pago, true, false), 'cancelar_e_estornar')
+    assert.equal(acaoDeEstorno({ ...pago, status: 'a_fazer' }, true, false), 'cancelar_e_estornar')
+    // cancelado pela Cozinha sem estorno: o cliente continua cobrado, então só estorna (sem cancelar de novo)
+    assert.equal(acaoDeEstorno({ ...pago, status: 'cancelado' }, true, false), 'estornar')
+    assert.equal(acaoDeEstorno({ ...pago, status: 'cancelado' }, true, true), null)
+    assert.equal(acaoDeEstorno(pago, true, true), null)
+    assert.equal(acaoDeEstorno(pago, false, false), null)
+    assert.equal(acaoDeEstorno({ status: 'entregue', taxa_plataforma_centavos: 0 }, true, false), null)
+    assert.equal(acaoDeEstorno({ status: 'cancelado' }, true, false), null)
+  })
+
+  test('Histórico: botão só para o dono e erro anunciado ao leitor de tela', () => {
+    assert.match(historico, /useSouDonoDaLoja\(\)/)
+    assert.match(historico, /acaoDeEstorno\(/)
+    assert.match(historico, /<p role="alert" className="mt-1\.5 text-xs text-mesa-error-500">\{erro\}<\/p>/)
+  })
+
+  test('Histórico: pedido já cancelado só estorna, não enfileira outro cancelamento', () => {
+    const i = historico.indexOf("functions.invoke('estornar-pagamento'")
+    const j = historico.indexOf("enfileirar('mudar_status'", i)
+    assert.match(historico.slice(i, j), /if \(acao === 'estornar'\)[\s\S]*?return/)
   })
 
   test('Histórico: só cancela o pedido depois do estorno confirmado, pelo caminho de cancelamento de sempre', () => {
