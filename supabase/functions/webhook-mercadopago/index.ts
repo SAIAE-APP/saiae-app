@@ -20,33 +20,20 @@
 // dois pedidos. Pendentes órfãos (sem pagamento no MP) nunca recebem
 // notificação e portanto nunca viram pedido.
 import { createClient } from 'jsr:@supabase/supabase-js@2'
-import { desfechoDaCriacao } from '../_shared/pagamento/corrida.ts'
 import { chaveDoProvedor, obterProvedor } from '../_shared/pagamento/registro.ts'
 import { buscarSegredoWebhook, buscarTokenDoProvedor, obterTokenVendedor } from '../_shared/pagamento/token.ts'
 import {
   conciliacaoSemConfirmacao,
   decidirAprovadoDoPendente,
-  metodoDoPedido,
   statusFinalDoPendente,
   tokenDoWebhook,
 } from '../_shared/pagamento/webhookAprovado.ts'
-import { registrarConciliacao, type BaseConciliacao } from '../_shared/pagamento/pedidoAprovado.ts'
+import { criarPedidoAprovado, registrarConciliacao, type BaseConciliacao } from '../_shared/pagamento/pedidoAprovado.ts'
 import { ErroProvedor, decidirAssinatura, type ConsultaPagamento } from '../_shared/pagamento/tipos.ts'
 import { STATUS_PENDENTE_ABERTOS, type TipoConciliacao } from '../_shared/pagamento/conciliacao.ts'
 
 function jsonResponse(body: unknown, status = 200) {
   return new Response(JSON.stringify(body), { status, headers: { 'Content-Type': 'application/json' } })
-}
-
-type EntregaPendente = {
-  nome: string
-  telefone: string
-  rua: string
-  numero: string
-  bairro: string
-  referencia: string | null
-  consentimento_lgpd_em?: string | null
-  consentimento_marketing_em?: string | null
 }
 
 Deno.serve(async (req: Request) => {
@@ -212,149 +199,21 @@ Deno.serve(async (req: Request) => {
       return jsonResponse({ ok: true, aviso: 'valor pago não confere com o pedido' })
     }
 
-    // Argumentos de sempre; os de entrega só entram quando o pendente é de
-    // Entrega, pra pedido comum chamar criar_pedido EXATAMENTE como hoje.
-    const entrega: EntregaPendente | null =
-      pendente.tipo_atendimento === 'entrega' && pendente.entrega ? (pendente.entrega as EntregaPendente) : null
-    const argsPedido: Record<string, unknown> = {
-      p_barraca_id: pendente.barraca_id,
-      p_mesa: pendente.mesa,
-      p_viagem: pendente.viagem,
-      p_observacao: pendente.observacao,
-      p_client_uuid: pendente.client_uuid,
-      p_metodo_pagamento: metodoDoPedido(pendente),
-      p_itens: pendente.itens,
-    }
-    if (entrega) {
-      argsPedido.p_tipo_atendimento = 'entrega'
-      argsPedido.p_entrega = {
-        nome: entrega.nome,
-        telefone: entrega.telefone,
-        rua: entrega.rua,
-        numero: entrega.numero,
-        bairro: entrega.bairro,
-        referencia: entrega.referencia,
-      }
-      argsPedido.p_taxa_entrega_centavos = taxaEntregaCentavos
-      if (pendente.cliente_nome) argsPedido.p_cliente_nome = pendente.cliente_nome
-    }
-    // Telefone do aviso "pedido pronto": só entra quando existe (sem ele a chamada
-    // é IDÊNTICA à de antes).
-    if (pendente.cliente_telefone) argsPedido.p_cliente_telefone = pendente.cliente_telefone
-
-    const { data: resultadoPedido, error: erroPedido } = await supabase.rpc('criar_pedido', argsPedido).single()
-
-    // Corrida de notificações: se outra já criou o pedido (23505 em pedidos_client_uuid_key), busca-o
-    // e segue como sucesso idempotente. Qualquer outro erro continua sendo falha.
-    const desfecho = await desfechoDaCriacao(resultadoPedido as { pedido_id?: string } | null, erroPedido, async () => {
-      const { data } = await supabase
-        .from('pedidos')
-        .select('id')
-        .eq('barraca_id', pendente.barraca_id)
-        .eq('client_uuid', pendente.client_uuid)
-        .maybeSingle()
-      return (data as { id: string } | null)?.id ?? null
-    })
-
-    if (desfecho.acao === 'falha') {
+    // Cria o pedido (mesmo caminho do cartão aprovado na resposta síncrona, ver pedidoAprovado.ts).
+    const criado = await criarPedidoAprovado(
+      { ...baseConciliacao, pendente, valorPagoCentavos: leitura.valorCentavos, totalCentavos, taxaEntregaCentavos, taxaPlataformaCentavos },
+      decisao,
+    )
+    if (!criado.ok && criado.etapa === 'pedido') {
       // 500 faz o MP tentar de novo depois — o pagamento já foi aprovado e o
       // pedido ainda não existe, então NÃO pode ser engolido como sucesso.
       // Fica também registrado, pra o dinheiro não ficar invisível se o provedor
       // desistir de reenviar.
-      await registrarConciliacaoAprovado('pedido_nao_criado', { detalhe: desfecho.detalhe.slice(0, 300) })
-      return jsonResponse({ ok: false, aviso: `falha ao criar pedido: ${desfecho.detalhe}` }, 500)
+      await registrarConciliacaoAprovado('pedido_nao_criado', { detalhe: criado.detalhe.slice(0, 300) })
+      return jsonResponse({ ok: false, aviso: `falha ao criar pedido: ${criado.detalhe}` }, 500)
     }
-
-    const pedidoId = desfecho.pedidoId
-    // Cupom: o uso vira CONFIRMADO só com o pagamento aprovado (mesmo se a reserva já venceu ou foi liberada:
-    // pagamento aprovado vale mais que a validade). Idempotente: webhook duplicado não confirma de novo.
-    // Se falhar, 500 ANTES de marcar o pendente aprovado: o provedor reenvia e tentamos de novo.
-    if (pendente.cupom_uso_id) {
-      const { error: erroCupom } = await supabase.rpc('cupom_confirmar', { p_uso_id: pendente.cupom_uso_id, p_pedido_id: pedidoId })
-      if (erroCupom) {
-        console.error('webhook-mercadopago: cupom não confirmado', erroCupom.message)
-        return jsonResponse({ ok: false, aviso: 'falha ao confirmar o cupom' }, 500)
-      }
-    }
-    // Vínculo com o perfil do cliente (a cobrança carrega o cliente_id). Best-effort.
-    if (pendente.cliente_id) {
-      const { error: erroVinculo } = await supabase.from('pedidos').update({ cliente_id: pendente.cliente_id }).eq('id', pedidoId)
-      if (erroVinculo) console.error('webhook-mercadopago: falha ao vincular cliente ao pedido', erroVinculo.message)
-    }
-    // Taxa Sai aê copiada para o pedido (mesmo padrão do cliente_id). Best-effort: o pedido já existe e foi pago.
-    if (taxaPlataformaCentavos > 0) {
-      const { error: erroTaxa } = await supabase.from('pedidos').update({ taxa_plataforma_centavos: taxaPlataformaCentavos }).eq('id', pedidoId)
-      if (erroTaxa) console.error('webhook-mercadopago: falha ao gravar a taxa Sai aê no pedido', erroTaxa.message)
-    }
-    await supabase
-      .from('pagamentos_pendentes')
-      .update({ status: 'aprovado', pedido_id: pedidoId })
-      .eq('id', pendente.id)
-
-    // Registros de conciliação (best-effort: o pedido já existe e foi pago, então
-    // NADA aqui pode falhar a resposta ao provedor).
-    try {
-      // Uma falha anterior de criar_pedido, agora resolvida.
-      await supabase
-        .from('pagamentos_conciliacao')
-        .update({ situacao: 'resolvido', pedido_id: pedidoId, resolvido_em: new Date().toISOString() })
-        .eq('provedor', provedor.chave)
-        .eq('id_externo', pagamentoId)
-        .eq('tipo', 'pedido_nao_criado')
-      // Pago depois de expirar, com valor certo: o pedido nasceu; o registro
-      // informa o dono de que ele chegou fora do prazo.
-      if (decisao.tardio) {
-        await registrarConciliacaoAprovado('pago_apos_expirar', {
-          situacao: 'pedido_criado',
-          pedido_id: pedidoId,
-          detalhe: 'Pix pago depois do prazo; o pedido foi criado normalmente.',
-        })
-      }
-      // Valor e referência certos, mas o provedor não devolveu a comissão: o pedido nasceu e a taxa fica para conferir.
-      if (decisao.comissaoNaoInformada) {
-        await registrarConciliacaoAprovado('comissao_nao_informada', {
-          situacao: 'pedido_criado',
-          pedido_id: pedidoId,
-          detalhe: `taxa Sai aê ${taxaPlataformaCentavos}; comissão não informada pelo provedor; o pedido foi criado normalmente.`,
-        })
-      }
-    } catch (erroConciliacao) {
-      console.warn('webhook-mercadopago: conciliação não atualizada', String(erroConciliacao))
-    }
-
-    // Entrega: guarda/atualiza o cliente (endereço pra próximos pedidos), com o
-    // consentimento LGPD que ele deu no formulário. Best-effort: o pedido já
-    // existe e foi pago, então NADA aqui pode falhar a resposta ao MP.
-    if (entrega?.consentimento_lgpd_em) {
-      try {
-        // Perfil já confirmado por código: o pedido NÃO sobrescreve nome nem aceite (só endereço).
-        const { data: existente } = await supabase
-          .from('clientes_finais')
-          .select('telefone_confirmado_em')
-          .eq('barraca_id', pendente.barraca_id)
-          .eq('telefone', entrega.telefone)
-          .maybeSingle()
-        const confirmado = Boolean((existente as { telefone_confirmado_em?: string | null } | null)?.telefone_confirmado_em)
-        const { error: erroCliente } = await supabase.from('clientes_finais').upsert(
-          {
-            barraca_id: pendente.barraca_id,
-            ...(confirmado ? {} : { nome: entrega.nome }),
-            telefone: entrega.telefone,
-            rua: entrega.rua,
-            numero: entrega.numero,
-            bairro: entrega.bairro,
-            referencia: entrega.referencia,
-            origem: 'cardapio',
-            ...(confirmado ? {} : { consentimento_lgpd_em: entrega.consentimento_lgpd_em }),
-            ...(entrega.consentimento_marketing_em ? { consentimento_marketing_em: entrega.consentimento_marketing_em } : {}),
-          },
-          { onConflict: 'barraca_id,telefone' },
-        )
-        if (erroCliente) console.warn('webhook-mercadopago: cliente_final não salvo', erroCliente.message)
-      } catch (erroCliente) {
-        console.warn('webhook-mercadopago: cliente_final não salvo', String(erroCliente))
-      }
-    }
+    // Cupom não confirmado: 500 ANTES de marcar o pendente aprovado; o provedor reenvia e tentamos de novo.
+    if (!criado.ok) return jsonResponse({ ok: false, aviso: 'falha ao confirmar o cupom' }, 500)
 
     return jsonResponse({ ok: true })
   }

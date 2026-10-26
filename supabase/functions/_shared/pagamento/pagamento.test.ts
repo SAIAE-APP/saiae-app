@@ -32,7 +32,8 @@ import {
 } from './cobrancaOnline.ts'
 import { centavosParaDecimal, ehProvedorValido, ErroProvedor, valorDecimalParaCentavos } from './tipos.ts'
 import { estornarPedido } from './estorno.ts'
-import { registrarConciliacao } from './pedidoAprovado.ts'
+import { concluirCartaoAprovado, criarPedidoAprovado, registrarConciliacao } from './pedidoAprovado.ts'
+import type { ConsultaPagamento } from './tipos.ts'
 import { conciliacaoSemConfirmacao, decidirAprovadoDoPendente, metodoDoPedido, statusFinalDoPendente, tokenDoWebhook } from './webhookAprovado.ts'
 
 const semCorpo = async () => null
@@ -655,6 +656,141 @@ for (const f of ['oauthMercadoPago.ts', '../../mp-oauth-iniciar/index.ts', '../.
     console.error = errosOriginal
   }
 }
+{ // criarPedidoAprovado / concluirCartaoAprovado: mesmo caminho para o webhook e o cartão aprovado na hora
+  type Op = { alvo: string; op: string; valor?: unknown; filtros: unknown[][] }
+  // Cliente falso: cada chamada vira uma Op; `responder` decide o { data, error } de cada uma.
+  const banco = (responder: (op: Op) => { data?: unknown; error?: unknown }) => {
+    const ops: Op[] = []
+    const consulta = (op: Op) => {
+      ops.push(op)
+      const q: Record<string, unknown> = {
+        select: () => q,
+        eq: (...f: unknown[]) => (op.filtros.push(f), q),
+        maybeSingle: () => q,
+        single: () => q,
+        then: (ok: (v: unknown) => unknown, erro: (e: unknown) => unknown) =>
+          Promise.resolve({ data: null, error: null, ...responder(op) }).then(ok, erro),
+      }
+      return q
+    }
+    const cliente = {
+      from: (tabela: string) => ({
+        select: () => consulta({ alvo: tabela, op: 'select', filtros: [] }),
+        update: (valor: unknown) => consulta({ alvo: tabela, op: 'update', valor, filtros: [] }),
+        upsert: (valor: unknown) => consulta({ alvo: tabela, op: 'upsert', valor, filtros: [] }),
+      }),
+      rpc: (nome: string, valor: unknown) => consulta({ alvo: nome, op: 'rpc', valor, filtros: [] }),
+    }
+    return { ops, supabase: cliente as never }
+  }
+  const pendente = {
+    id: 'pend-1',
+    barraca_id: 'b',
+    client_uuid: 'uuid-1',
+    status: 'pendente',
+    itens: [{ quantidade: 1, preco_centavos_unitario: 1500 }],
+    mesa: null,
+    viagem: true,
+    observacao: null,
+    meio_pagamento: 'cartao',
+    cupom_uso_id: 'uso-1',
+    taxa_plataforma_centavos: 99,
+  }
+  const ctx = (supabase: never) => ({
+    supabase,
+    barracaId: 'b',
+    pendenteId: 'pend-1',
+    provedor: 'mercadopago',
+    idExterno: '555',
+    origem: 'teste',
+    pendente,
+    valorPagoCentavos: 1599,
+    totalCentavos: 1599,
+    taxaEntregaCentavos: 0,
+    taxaPlataformaCentavos: 99,
+  })
+
+  // caminho feliz com comissão não informada: pedido, cupom, taxa, pendente aprovado e conciliação 'comissao_nao_informada'
+  const feliz = banco((op) => (op.alvo === 'criar_pedido' ? { data: { pedido_id: 'ped-1', senha: 42 } } : {}))
+  assert.deepEqual(await criarPedidoAprovado(ctx(feliz.supabase), { tardio: false, comissaoNaoInformada: true }), { ok: true, pedidoId: 'ped-1', senha: 42 })
+  const resumo = feliz.ops.map((o) => `${o.op}:${o.alvo}`)
+  assert.deepEqual(resumo, [
+    'rpc:criar_pedido',
+    'rpc:cupom_confirmar',
+    'update:pedidos',
+    'update:pagamentos_pendentes',
+    'update:pagamentos_conciliacao',
+    'upsert:pagamentos_conciliacao',
+  ])
+  assert.equal((feliz.ops[0].valor as Record<string, unknown>).p_metodo_pagamento, 'credito')
+  assert.deepEqual(feliz.ops[2].valor, { taxa_plataforma_centavos: 99 })
+  assert.deepEqual(feliz.ops[3].valor, { status: 'aprovado', pedido_id: 'ped-1' })
+  assert.equal((feliz.ops[5].valor as Record<string, unknown>).tipo, 'comissao_nao_informada')
+  assert.equal((feliz.ops[5].valor as Record<string, unknown>).pedido_id, 'ped-1')
+
+  // corrida: outro caminho já criou (23505) = sucesso, sem senha conhecida
+  const corrida = banco((op) =>
+    op.alvo === 'criar_pedido'
+      ? { error: { code: '23505', message: 'duplicate key value violates unique constraint "pedidos_client_uuid_key"' } }
+      : op.alvo === 'pedidos' && op.op === 'select'
+        ? { data: { id: 'ped-1' } }
+        : {},
+  )
+  assert.deepEqual(await criarPedidoAprovado(ctx(corrida.supabase), { tardio: false }), { ok: true, pedidoId: 'ped-1', senha: null })
+
+  // falha no criar_pedido: devolve a etapa e não marca o pendente aprovado
+  const errosOriginal = console.error
+  const avisosOriginal = console.warn
+  console.error = () => {}
+  console.warn = () => {}
+  try {
+    const falha = banco((op) => (op.alvo === 'criar_pedido' ? { error: { message: 'boom' } } : {}))
+    assert.deepEqual(await criarPedidoAprovado(ctx(falha.supabase), { tardio: false }), { ok: false, etapa: 'pedido', detalhe: 'boom' })
+    assert.ok(!falha.ops.some((o) => o.alvo === 'pagamentos_pendentes'))
+    // cupom não confirmado: falha ANTES de marcar o pendente aprovado
+    const cupom = banco((op) => (op.alvo === 'criar_pedido' ? { data: { pedido_id: 'ped-1', senha: 1 } } : op.alvo === 'cupom_confirmar' ? { error: { message: 'x' } } : {}))
+    assert.deepEqual(await criarPedidoAprovado(ctx(cupom.supabase), { tardio: false }), { ok: false, etapa: 'cupom', detalhe: 'x' })
+    assert.ok(!cupom.ops.some((o) => o.alvo === 'pagamentos_pendentes'))
+
+    // cartão aprovado na hora: lê de volta, decide sobre o snapshot e cria o pedido
+    const provedorFalso = (leitura: Partial<ConsultaPagamento> | Error) => ({
+      chave: 'mercadopago' as const,
+      consultarPagamento: async () => {
+        if (leitura instanceof Error) throw leitura
+        return { status: 'aprovado', valorCentavos: 1599, referencia: 'pend-1', comissaoCentavos: 99, ...leitura } as ConsultaPagamento
+      },
+    })
+    const cartao = (leitura: Partial<ConsultaPagamento> | Error, responder = (op: Op) => (op.alvo === 'criar_pedido' ? { data: { pedido_id: 'ped-1', senha: 7 } } : op.alvo === 'pagamentos_pendentes' && op.op === 'select' ? { data: pendente } : {})) => {
+      const db = banco(responder)
+      return { db, rodar: () => concluirCartaoAprovado({ supabase: db.supabase, provedor: provedorFalso(leitura), token: 'T', idExterno: '555', pendenteId: 'pend-1', origem: 'teste' }) }
+    }
+    const ok = cartao({})
+    assert.deepEqual(await ok.rodar(), { pedidoId: 'ped-1', senha: 7 })
+    // valor que não confere, referência de outro pendente, leitura ainda pendente ou erro do provedor: fica para o webhook
+    for (const leitura of [{ valorCentavos: 1500 }, { referencia: 'outro' }, { status: 'pendente' as const }, { comissaoCentavos: 50 }, new Error('rede')]) {
+      const c = cartao(leitura)
+      assert.equal(await c.rodar(), null)
+      assert.ok(!c.db.ops.some((o) => o.alvo === 'criar_pedido'))
+    }
+    // pendente já aprovado (o webhook chegou antes): não recria
+    const jaAprovado = cartao({}, (op) => (op.alvo === 'pagamentos_pendentes' ? { data: { ...pendente, status: 'aprovado' } } : {}))
+    assert.equal(await jaAprovado.rodar(), null)
+    assert.ok(!jaAprovado.db.ops.some((o) => o.alvo === 'criar_pedido'))
+    // falha ao criar: null (a resposta ao cliente não muda)
+    assert.equal(await cartao({}, (op) => (op.alvo === 'criar_pedido' ? { error: { message: 'boom' } } : op.op === 'select' ? { data: pendente } : {})).rodar(), null)
+  } finally {
+    console.error = errosOriginal
+    console.warn = avisosOriginal
+  }
+}
+{ // fiação: o webhook e o criar-pagamento-pix usam o mesmo módulo
+  const webhook = readFileSync(new URL('../../webhook-mercadopago/index.ts', import.meta.url), 'utf8')
+  assert.ok(webhook.includes('criarPedidoAprovado('))
+  assert.ok(!webhook.includes("rpc('criar_pedido'"))
+  const pix = readFileSync(new URL('../../criar-pagamento-pix/index.ts', import.meta.url), 'utf8')
+  assert.match(pix, /statusCartao === 'aprovado'\s*\?\s*await concluirCartaoAprovado\(/)
+  assert.ok(!pix.includes("rpc('criar_pedido'"))
+}
 { // webhook (fiação): conciliação gravada ANTES do 500 da credencial e na consulta recusada
   const fonte = readFileSync(new URL('../../webhook-mercadopago/index.ts', import.meta.url), 'utf8')
   const iCredencial = fonte.indexOf("conciliacaoSemConfirmacao(pendente, pagamentoId, 'credencial')")
@@ -677,14 +813,15 @@ for (const f of ['oauthMercadoPago.ts', '../../mp-oauth-iniciar/index.ts', '../.
 }
 { // webhook (fiação): sem log de token, cartão ou e-mail; taxa gravada no pedido depois do criar_pedido
   const fonte = readFileSync(new URL('../../webhook-mercadopago/index.ts', import.meta.url), 'utf8')
+  const modulo = readFileSync(new URL('./pedidoAprovado.ts', import.meta.url), 'utf8')
   assert.ok(fonte.includes('tokenDoWebhook('))
   assert.ok(fonte.includes('decidirAprovadoDoPendente('))
-  assert.ok(/update\(\{ taxa_plataforma_centavos: taxaPlataformaCentavos \}\)/.test(fonte))
+  assert.ok(/update\(\{ taxa_plataforma_centavos: taxaPlataformaCentavos \}\)/.test(modulo))
   // comissão não informada: o pedido nasce e fica o registro de conciliação
-  assert.ok(/if \(decisao\.comissaoNaoInformada\) \{\s*await registrarConciliacaoAprovado\('comissao_nao_informada'/.test(fonte))
+  assert.ok(/if \(decisao\.comissaoNaoInformada\) \{\s*await registrar\('comissao_nao_informada'/.test(modulo))
   assert.ok(!fonte.includes('buscarTokenDoProvedor(supabase, pendente.barraca_id, provedor.chave, Deno.env)\n  if'))
-  for (const linha of fonte.split('\n').filter((l) => /console\.(log|warn|error|info)/.test(l))) {
-    assert.ok(!/token|card|cartao|email|payer/i.test(linha.replace(/'[^']*'/g, '')), `log suspeito: ${linha.trim()}`)
+  for (const linha of [...fonte.split('\n'), ...modulo.split('\n')].filter((l) => /console\.(log|warn|error|info)/.test(l))) {
+    assert.ok(!/token|card|cartao|email|payer/i.test(linha.replace(/'[^']*'/g, '').replace(/`[^`]*`/g, '')), `log suspeito: ${linha.trim()}`)
   }
 }
 
@@ -703,8 +840,9 @@ for (const f of ['oauthMercadoPago.ts', '../../mp-oauth-iniciar/index.ts', '../.
   const pix = readFileSync(new URL('../../criar-pagamento-pix/index.ts', import.meta.url), 'utf8')
   assert.equal((pix.match(/meio_pagamento: meioPedido\.meio,/g) ?? []).length, 2, 'insert e reaproveitamento')
   const webhook = readFileSync(new URL('../../webhook-mercadopago/index.ts', import.meta.url), 'utf8')
-  assert.ok(webhook.includes('p_metodo_pagamento: metodoDoPedido(pendente),'))
-  assert.ok(!webhook.includes("p_metodo_pagamento: 'pix'"))
+  const modulo = readFileSync(new URL('./pedidoAprovado.ts', import.meta.url), 'utf8')
+  assert.ok(modulo.includes('p_metodo_pagamento: metodoDoPedido(pendente),'))
+  assert.ok(!modulo.includes("p_metodo_pagamento: 'pix'"))
   assert.ok(/update\(\{ status: statusFinalDoPendente\(pendente, leitura\.status\) \}\)\.eq\('id', pendente\.id\)\.eq\('status', 'pendente'\)/.test(webhook))
 }
 

@@ -19,6 +19,7 @@ import { buscarTokenDoProvedor, obterTokenVendedor } from '../_shared/pagamento/
 import { minutosExpiracaoPix } from '../_shared/pagamento/expiracao.ts'
 import { ErroProvedor, ehProvedorValido, type QrPix, type ResultadoCartao } from '../_shared/pagamento/tipos.ts'
 import { totalEsperadoDoPendente } from '../_shared/pagamento/conciliacao.ts'
+import { concluirCartaoAprovado } from '../_shared/pagamento/pedidoAprovado.ts'
 import {
   chavePublicaDaBarraca,
   corteTokenAtingido,
@@ -620,7 +621,7 @@ Deno.serve(async (req: Request) => {
   const descricao = ehEntrega ? 'Pedido com entrega no cardápio digital' : 'Pedido no cardápio digital'
   const urlNotificacao = urlNotificacaoPagamento(Deno.env.get('SUPABASE_URL') ?? '', pendente.id, provedor.chave)
 
-  // Cartão à vista. O pedido só nasce no webhook (mesmo caminho do Pix); aqui só o status para o cliente.
+  // Cartão à vista. Aprovado na hora: o pedido nasce aqui (concluirCartaoAprovado); senão, no webhook, como o Pix.
   if (meioPedido.meio === 'cartao') {
     if (!provedor.criarCobrancaCartao) {
       if (cupomCodigo) await supabase.rpc('cupom_liberar', { p_pendente_id: pendente.id })
@@ -652,11 +653,25 @@ Deno.serve(async (req: Request) => {
       await supabase.from('pagamentos_pendentes').update({ status: 'rejeitado' }).eq('id', pendente.id).eq('status', 'pendente')
       await supabase.rpc('cupom_liberar', { p_pendente_id: pendente.id })
     }
+    // Aprovado já na resposta: cria o pedido aqui, pela mesma decisão e o mesmo criar_pedido idempotente do webhook
+    // (que depois acha o pendente aprovado e não faz nada). Falhou? Fica para o webhook; a resposta segue a mesma.
+    const pedidoCartao =
+      statusCartao === 'aprovado'
+        ? await concluirCartaoAprovado({
+            supabase,
+            provedor,
+            token: tokenProvedor,
+            idExterno: resultadoCartao.idExterno,
+            pendenteId: pendente.id,
+            origem: 'criar-pagamento-pix',
+          })
+        : null
     return jsonResponse({
       pendente_id: pendente.id,
       status: statusCartao,
       total_centavos: totalCobradoCentavos,
       taxa_plataforma_centavos: taxaPlataformaCentavos,
+      ...(pedidoCartao ? { pedido_id: pedidoCartao.pedidoId, senha: pedidoCartao.senha } : {}),
     })
   }
 

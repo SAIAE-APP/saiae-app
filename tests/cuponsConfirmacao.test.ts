@@ -8,6 +8,8 @@ import { totalEsperadoDoPendente } from '../supabase/functions/_shared/pagamento
 const ler = (p: string) => readFileSync(new URL(`../${p}`, import.meta.url), 'utf8')
 const webhook = ler('supabase/functions/webhook-mercadopago/index.ts')
 const regrasWebhook = ler('supabase/functions/_shared/pagamento/webhookAprovado.ts')
+// Criação do pedido aprovado (cupom incluído), comum ao webhook e ao cartão aprovado na hora.
+const pedidoAprovado = ler('supabase/functions/_shared/pagamento/pedidoAprovado.ts')
 const entrega = ler('supabase/functions/criar-pedido-cardapio/index.ts')
 const mig = ler('supabase/migrations/20261018112000_cupom_liberar_uso.sql')
 
@@ -27,8 +29,8 @@ describe('webhook do Pix', () => {
     assert.match(regrasWebhook, /Number\(pendente\.desconto_cupom_centavos \?\? 0\)/)
   })
   test('aprovado confirma o uso ANTES de marcar o pendente aprovado (falha = 500, o provedor reenvia)', () => {
-    const iConfirma = webhook.indexOf("rpc('cupom_confirmar'")
-    const iAprova = webhook.indexOf("update({ status: 'aprovado'")
+    const iConfirma = pedidoAprovado.indexOf("rpc('cupom_confirmar'")
+    const iAprova = pedidoAprovado.indexOf("update({ status: 'aprovado'")
     assert.ok(iConfirma > 0 && iAprova > iConfirma)
     assert.match(webhook, /falha ao confirmar o cupom' \}, 500\)/)
   })
@@ -36,7 +38,7 @@ describe('webhook do Pix', () => {
     assert.equal((webhook.match(/rpc\('cupom_liberar', \{ p_pendente_id: pendente\.id \}\)/g) ?? []).length, 2)
   })
   test('só confirma quando o pendente tem uso de cupom (sem cupom, fluxo de antes)', () => {
-    assert.match(webhook, /if \(pendente\.cupom_uso_id\) \{/)
+    assert.match(pedidoAprovado, /if \(pendente\.cupom_uso_id\) \{/)
   })
 })
 
