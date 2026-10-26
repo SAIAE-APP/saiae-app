@@ -93,3 +93,14 @@ test('cartaoMercadoPago: falha de rede ou recusa do token vira mensagem amigáve
   assert.equal(recusa.ok, false)
   if (!recusa.ok) assert.doesNotMatch(recusa.erro, /invalid|E301/)
 })
+
+test('cartaoMercadoPago: dados do cartão nunca vão para console, storage nem servidor do Sai aê', async () => {
+  const { readFileSync } = await import('node:fs')
+  for (const arquivo of ['../src/lib/cartaoMercadoPago.ts', '../src/components/CartaoMercadoPago.tsx']) {
+    const fonte = readFileSync(new URL(arquivo, import.meta.url), 'utf8')
+    assert.doesNotMatch(fonte, /console\.|localStorage|sessionStorage|supabase/, arquivo)
+  }
+  // A tela manda ao servidor só o token, o meio e o e-mail.
+  const tela = readFileSync(new URL('../src/pages/CardapioPublico.tsx', import.meta.url), 'utf8')
+  assert.doesNotMatch(tela, /card_number|security_code|cardholder/)
+})

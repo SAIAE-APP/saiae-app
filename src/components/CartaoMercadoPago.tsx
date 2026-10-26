@@ -15,14 +15,17 @@ const VAZIO: DadosCartaoTela = { numero: '', validade: '', cvv: '', nome: '', cp
  */
 export function CartaoMercadoPago({
   publicKey,
-  aoGerarToken,
+  onGerarToken,
   desabilitado,
   textoBotao,
+  onAntesDeGerar,
 }: {
   publicKey: string
-  aoGerarToken: (d: TokenCartaoGerado) => void
+  onGerarToken: (d: TokenCartaoGerado) => void
   desabilitado: boolean
   textoBotao: string
+  /** Validação do resto da tela (ex.: endereço) ANTES de gerar o token, que é de uso único. */
+  onAntesDeGerar?: () => boolean
 }) {
   const [dados, setDados] = useState<DadosCartaoTela>(VAZIO)
   const [erros, setErros] = useState<Partial<Record<CampoCartao, string>>>({})
@@ -48,6 +51,7 @@ export function CartaoMercadoPago({
     const encontrados = validarDadosCartao(dados, new Date())
     setErros(encontrados)
     if (Object.keys(encontrados).length > 0) return
+    if (onAntesDeGerar && !onAntesDeGerar()) return
     setGerando(true)
     const r = await gerarTokenCartao(publicKey, dados)
     setGerando(false)
@@ -58,7 +62,7 @@ export function CartaoMercadoPago({
     const email = dados.email.trim()
     // Token é de uso único: a próxima tentativa digita de novo número, validade e código.
     setDados((d) => ({ ...d, numero: '', validade: '', cvv: '' }))
-    aoGerarToken({ cardToken: r.cardToken, paymentMethodId: r.paymentMethodId, ...(r.issuerId ? { issuerId: r.issuerId } : {}), email })
+    onGerarToken({ cardToken: r.cardToken, paymentMethodId: r.paymentMethodId, ...(r.issuerId ? { issuerId: r.issuerId } : {}), email })
   }
 
   return (
