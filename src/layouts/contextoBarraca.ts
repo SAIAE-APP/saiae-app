@@ -22,6 +22,13 @@ export function useSincronizacaoAtual(): EstadoSincronizacao {
   return estado
 }
 
+/** O usuário é dono (papel 'dono') da loja ativa. Fecha por padrão (false) fora do LayoutBarraca. */
+export const SouDonoContext = createContext(false)
+
+export function useSouDonoDaLoja(): boolean {
+  return useContext(SouDonoContext)
+}
+
 /** Módulos pagos ativos da loja; `null` = ainda sem resposta (tudo fechado). */
 export const ModulosContext = createContext<string[] | null>(null)
 
