@@ -20,6 +20,15 @@ import { cifrar, configDoEnv } from '../segredoCifrado.ts'
 import { readFileSync } from 'node:fs'
 import { decidirAprovado, totalEsperadoDoPendente } from './conciliacao.ts'
 import { aplicarTaxaPlataforma, TAXA_PLATAFORMA_CENTAVOS } from './taxaPlataforma.ts'
+import {
+  chavePublicaDaBarraca,
+  corteTokenAtingido,
+  decidirCredencial,
+  emitidoViaOauth,
+  lerMeioPagamento,
+  statusCartaoParaCliente,
+  totalDaCobranca,
+} from './cobrancaOnline.ts'
 import { centavosParaDecimal, ehProvedorValido, valorDecimalParaCentavos } from './tipos.ts'
 
 const semCorpo = async () => null
@@ -199,6 +208,7 @@ assert.equal(await mercadoPago.validarNotificacao!(reqMp({ 'x-signature': 'ts=3,
 assert.equal(TAXA_PLATAFORMA_CENTAVOS, 99)
 assert.deepEqual(aplicarTaxaPlataforma(1500), { taxaPlataformaCentavos: 99, totalCentavos: 1599 })
 assert.deepEqual(aplicarTaxaPlataforma(0), { taxaPlataformaCentavos: 0, totalCentavos: 0 })
+for (const invalido of [-1, 1.5, NaN, Infinity]) assert.throws(() => aplicarTaxaPlataforma(invalido), RangeError)
 
 // total esperado com taxa: itens 1500 + entrega 300 - cupom 200 + taxa 99; sem o 4º argumento é a conta de antes
 assert.equal(totalEsperadoDoPendente([{ quantidade: 1, preco_centavos_unitario: 1500 }], 300, 200, 99), 1699)
@@ -449,6 +459,86 @@ for (const f of ['oauthMercadoPago.ts', '../../mp-oauth-iniciar/index.ts', '../.
       assert.doesNotMatch(linha, /token|code|secret|refresh|\bbody\b|resposta/i, f + ': log suspeito: ' + linha)
     }
   }
+}
+
+// --- cobrança online (criar-pagamento-pix): meio, credencial, corte, total com a taxa
+{
+  // meio: ausente/pix = Pix; cartão exige token, método e e-mail
+  assert.deepEqual(lerMeioPagamento({}), { ok: true, meio: 'pix' })
+  assert.deepEqual(lerMeioPagamento({ meio: 'pix', card_token: 'x' }), { ok: true, meio: 'pix' })
+  assert.equal((lerMeioPagamento({ meio: 'boleto' }) as { status: number }).status, 400)
+  const cartaoOk = { meio: 'cartao', card_token: 'CT', payment_method_id: 'visa', issuer_id: 24, email_pagador: 'a@b.com' }
+  assert.deepEqual(lerMeioPagamento(cartaoOk), {
+    ok: true,
+    meio: 'cartao',
+    cartao: { cardToken: 'CT', paymentMethodId: 'visa', issuerId: '24', emailPagador: 'a@b.com' },
+  })
+  assert.equal('issuerId' in (lerMeioPagamento({ ...cartaoOk, issuer_id: undefined }) as { cartao: object }).cartao, false)
+  for (const faltando of [{ card_token: undefined }, { card_token: '  ' }, { payment_method_id: '' }, { email_pagador: 'sem-arroba' }, { issuer_id: {} }]) {
+    const r = lerMeioPagamento({ ...cartaoOk, ...faltando })
+    assert.equal(r.ok, false)
+    assert.equal((r as { status: number }).status, 422)
+  }
+
+  // corte: sem variável ou inválida = ainda não chegou
+  const agora = new Date('2026-11-20T12:00:00Z')
+  assert.equal(corteTokenAtingido(undefined, agora), false)
+  assert.equal(corteTokenAtingido('', agora), false)
+  assert.equal(corteTokenAtingido('lixo', agora), false)
+  assert.equal(corteTokenAtingido('2026-11-20T12:00:00Z', agora), true)
+  assert.equal(corteTokenAtingido('2026-11-19', agora), true)
+  assert.equal(corteTokenAtingido('2026-12-01', agora), false)
+
+  // credencial
+  const conectada = { ok: true as const, token: 'AT', publicKey: 'PK' }
+  const semOauth = { ok: false as const, motivo: 'nao_conectada' as const }
+  assert.deepEqual(decidirCredencial({ vendedor: conectada, corteAtingido: false, meio: 'pix' }), { ok: true, modo: 'oauth', token: 'AT' })
+  assert.deepEqual(decidirCredencial({ vendedor: conectada, corteAtingido: true, meio: 'cartao' }), { ok: true, modo: 'oauth', token: 'AT' })
+  assert.deepEqual(decidirCredencial({ vendedor: semOauth, corteAtingido: false, meio: 'pix' }), { ok: true, modo: 'token_colado' })
+  const depoisDoCorte = decidirCredencial({ vendedor: semOauth, corteAtingido: true, meio: 'pix' }) as { status: number; corpo: { codigo: string } }
+  assert.equal(depoisDoCorte.status, 409)
+  assert.equal(depoisDoCorte.corpo.codigo, 'mp_nao_conectado')
+  const cartaoSemOauth = decidirCredencial({ vendedor: semOauth, corteAtingido: false, meio: 'cartao' }) as { status: number; corpo: { codigo: string } }
+  assert.equal(cartaoSemOauth.corpo.codigo, 'mp_nao_conectado')
+  const renovacao = decidirCredencial({ vendedor: { ok: false, motivo: 'renovacao_falhou' }, corteAtingido: false, meio: 'pix' }) as { status: number; corpo: object }
+  assert.equal(renovacao.status, 503)
+  assert.ok(!JSON.stringify(renovacao).includes('AT'))
+
+  // total = itens − cupom + entrega + 99 (OAuth); token colado não leva taxa; total zero não leva taxa
+  assert.deepEqual(totalDaCobranca({ subtotalItensCentavos: 1500, descontoCentavos: 200, taxaEntregaCentavos: 300, modo: 'oauth' }), { taxaPlataformaCentavos: 99, totalCentavos: 1699 })
+  assert.deepEqual(totalDaCobranca({ subtotalItensCentavos: 1500, descontoCentavos: 200, taxaEntregaCentavos: 300, modo: 'token_colado' }), { taxaPlataformaCentavos: 0, totalCentavos: 1600 })
+  assert.deepEqual(totalDaCobranca({ subtotalItensCentavos: 1500, descontoCentavos: 1500, taxaEntregaCentavos: 0, modo: 'oauth' }), { taxaPlataformaCentavos: 0, totalCentavos: 0 })
+  // o total gravado bate com o que o webhook espera do pendente
+  assert.equal(totalEsperadoDoPendente([{ quantidade: 1, preco_centavos_unitario: 1500 }], 300, 200, 99), 1699)
+
+  assert.equal(emitidoViaOauth({ taxa_plataforma_centavos: 99 }), true)
+  assert.equal(emitidoViaOauth({ taxa_plataforma_centavos: 0 }), false)
+  assert.equal(emitidoViaOauth({}), false)
+
+  assert.equal(statusCartaoParaCliente('aprovado'), 'aprovado')
+  assert.equal(statusCartaoParaCliente('pendente'), 'pendente')
+  assert.equal(statusCartaoParaCliente('rejeitado'), 'rejeitado')
+  assert.equal(statusCartaoParaCliente('expirado'), 'rejeitado')
+}
+{ // chave pública: só barraca com pagamento online ligado e OAuth conectado; nunca o token
+  const ID = '11000000-0000-4000-8000-000000000001'
+  const banco = (online: unknown, oauth: Record<string, unknown> | null) => ({
+    from: (tabela: string) => ({
+      select: () => ({
+        eq: async () => ({
+          data: tabela === 'barracas' ? [{ pagamento_online_habilitado: online }] : oauth ? [oauth] : [],
+          error: null,
+        }),
+      }),
+    }),
+  })
+  const linhaOk = { status: 'conectada', public_key: 'APP_USR-pk', access_token_cifrado: 'v1.segredo' }
+  assert.equal(await chavePublicaDaBarraca(banco(true, linhaOk), ID), 'APP_USR-pk')
+  assert.equal(await chavePublicaDaBarraca(banco(false, linhaOk), ID), null)
+  assert.equal(await chavePublicaDaBarraca(banco(true, { ...linhaOk, status: 'desconectada' }), ID), null)
+  assert.equal(await chavePublicaDaBarraca(banco(true, { ...linhaOk, public_key: null }), ID), null)
+  assert.equal(await chavePublicaDaBarraca(banco(true, null), ID), null)
+  assert.equal(await chavePublicaDaBarraca(banco(true, linhaOk), 'nao-e-uuid'), null)
 }
 
 console.log('pagamento.test.ts: tudo certo')
