@@ -35,6 +35,7 @@ describe('migration pagamento marketplace', () => {
     assert.match(sql, /status text[^,]*check \(status in \('conectada', 'desconectada'\)\)/)
     assert.match(sql, /access_token_cifrado text/)
     assert.match(sql, /refresh_token_cifrado text/)
+    assert.match(sql, /public_key text/)
   })
 
   test('mp_oauth_status é security definer, confere acesso e dá erro genérico', () => {

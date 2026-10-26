@@ -36,6 +36,9 @@ create table if not exists public.barracas_mp_oauth (
   access_token_cifrado text,
   refresh_token_cifrado text,
   mp_user_id text,
+  -- Chave pública do vendedor (vem no /oauth/token): o token do cartão é criado no
+  -- navegador com ELA. Pública por desenho, por isso não é cifrada.
+  public_key text,
   expira_em timestamptz,
   status text not null default 'desconectada'
     check (status in ('conectada', 'desconectada')),
