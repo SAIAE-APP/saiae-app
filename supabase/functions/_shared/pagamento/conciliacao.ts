@@ -7,15 +7,17 @@ export type TipoConciliacao = 'valor_divergente' | 'pago_apos_expirar' | 'pedido
 /** Status do pendente em que o webhook ainda precisa olhar o provedor. */
 export const STATUS_PENDENTE_ABERTOS = ['pendente', 'expirado'] as const
 
-/** itens (snapshot) + taxa de entrega (snapshot) em centavos inteiros. */
+/** itens (snapshot) + taxa de entrega (snapshot) + taxa da plataforma, em centavos inteiros. */
 export function totalEsperadoDoPendente(
   itens: { quantidade: number; preco_centavos_unitario: number }[],
   taxaEntregaCentavos: number,
   /** Cupom: desconto só nos itens, gravado no pendente na hora da cobrança. Sem cupom = 0 (conta de antes). */
   descontoCupomCentavos = 0,
+  /** Taxa Sai aê gravada no pendente. Pendente antigo (sem taxa) = 0. */
+  taxaPlataformaCentavos = 0,
 ): number {
   const itensCentavos = itens.reduce((soma, item) => soma + item.preco_centavos_unitario * item.quantidade, 0)
-  return itensCentavos - descontoCupomCentavos + taxaEntregaCentavos
+  return itensCentavos - descontoCupomCentavos + taxaEntregaCentavos + taxaPlataformaCentavos
 }
 
 export type DecisaoAprovado =
@@ -31,9 +33,14 @@ export function decidirAprovado(params: {
   statusPendente: string
   valorPagoCentavos: number
   totalEsperadoCentavos: number
+  /** Comissão que o provedor registrou (marketplace). null = não informada. Opcional: o webhook atual não passa. */
+  comissaoPagaCentavos?: number | null
+  /** Taxa Sai aê esperada. 0 = pendente sem taxa: a comissão não é comparada. */
+  taxaPlataformaEsperadaCentavos?: number
 }): DecisaoAprovado {
-  const { statusPendente, valorPagoCentavos, totalEsperadoCentavos } = params
+  const { statusPendente, valorPagoCentavos, totalEsperadoCentavos, comissaoPagaCentavos = null, taxaPlataformaEsperadaCentavos = 0 } = params
   if (!(STATUS_PENDENTE_ABERTOS as readonly string[]).includes(statusPendente)) return { acao: 'ignorar' }
   if (valorPagoCentavos !== totalEsperadoCentavos) return { acao: 'conciliar_valor' }
+  if (taxaPlataformaEsperadaCentavos > 0 && comissaoPagaCentavos !== taxaPlataformaEsperadaCentavos) return { acao: 'conciliar_valor' }
   return { acao: 'criar_pedido', tardio: statusPendente === 'expirado' }
 }

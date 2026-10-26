@@ -15,6 +15,7 @@ import {
 import { chaveDoProvedor, obterProvedor, urlNotificacaoPagamento } from './registro.ts'
 import { buscarTokenDoProvedor } from './token.ts'
 import { decidirAprovado, totalEsperadoDoPendente } from './conciliacao.ts'
+import { aplicarTaxaPlataforma, TAXA_PLATAFORMA_CENTAVOS } from './taxaPlataforma.ts'
 import { centavosParaDecimal, ehProvedorValido, valorDecimalParaCentavos } from './tipos.ts'
 
 const semCorpo = async () => null
@@ -189,5 +190,37 @@ assert.equal(
   'valida',
 )
 assert.equal(await mercadoPago.validarNotificacao!(reqMp({ 'x-signature': 'ts=3,v1=00', 'x-request-id': 'rq' }), SEG), 'invalida')
+
+// --- taxa da plataforma (R$ 0,99 por pedido pago online; pedido grátis não paga taxa)
+assert.equal(TAXA_PLATAFORMA_CENTAVOS, 99)
+assert.deepEqual(aplicarTaxaPlataforma(1500), { taxaPlataformaCentavos: 99, totalCentavos: 1599 })
+assert.deepEqual(aplicarTaxaPlataforma(0), { taxaPlataformaCentavos: 0, totalCentavos: 0 })
+
+// total esperado com taxa: itens 1500 + entrega 300 - cupom 200 + taxa 99; sem o 4º argumento é a conta de antes
+assert.equal(totalEsperadoDoPendente([{ quantidade: 1, preco_centavos_unitario: 1500 }], 300, 200, 99), 1699)
+assert.equal(totalEsperadoDoPendente([{ quantidade: 1, preco_centavos_unitario: 1500 }], 300, 200), 1600)
+
+// comissão do marketplace: com taxa esperada > 0, comissão paga diferente = conciliar; igual = cria o pedido
+assert.deepEqual(
+  decidirAprovado({ statusPendente: 'pendente', valorPagoCentavos: 1699, totalEsperadoCentavos: 1699, comissaoPagaCentavos: 50, taxaPlataformaEsperadaCentavos: 99 }),
+  { acao: 'conciliar_valor' },
+)
+assert.deepEqual(
+  decidirAprovado({ statusPendente: 'pendente', valorPagoCentavos: 1699, totalEsperadoCentavos: 1699, comissaoPagaCentavos: null, taxaPlataformaEsperadaCentavos: 99 }),
+  { acao: 'conciliar_valor' },
+)
+assert.deepEqual(
+  decidirAprovado({ statusPendente: 'pendente', valorPagoCentavos: 1699, totalEsperadoCentavos: 1699, comissaoPagaCentavos: 99, taxaPlataformaEsperadaCentavos: 99 }),
+  { acao: 'criar_pedido', tardio: false },
+)
+assert.deepEqual(
+  decidirAprovado({ statusPendente: 'aprovado', valorPagoCentavos: 1699, totalEsperadoCentavos: 1699, comissaoPagaCentavos: 50, taxaPlataformaEsperadaCentavos: 99 }),
+  { acao: 'ignorar' },
+)
+// pendente antigo sem taxa: comissão não é comparada
+assert.deepEqual(
+  decidirAprovado({ statusPendente: 'pendente', valorPagoCentavos: 4700, totalEsperadoCentavos: 4700, comissaoPagaCentavos: null, taxaPlataformaEsperadaCentavos: 0 }),
+  { acao: 'criar_pedido', tardio: false },
+)
 
 console.log('pagamento.test.ts: tudo certo')
