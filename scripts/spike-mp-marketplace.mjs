@@ -13,7 +13,7 @@
 // NAO confirmado nas docs consultadas: formato exato de POST /v1/card_tokens (usado o corpo padrao do
 // tokenizador do SDK JS) e o caminho exato da comissao na resposta (por isso o script varre a resposta).
 import { randomUUID, randomBytes } from 'node:crypto';
-import { readFileSync, appendFileSync, existsSync } from 'node:fs';
+import { readFileSync, appendFileSync, writeFileSync, existsSync } from 'node:fs';
 import { execFileSync } from 'node:child_process';
 import { fileURLToPath } from 'node:url';
 
@@ -125,6 +125,20 @@ const comandos = {
     resultado([`(c) escopo/permissoes vistos: scope="${json.scope}", expires_in=${json.expires_in}, live_mode=${json.live_mode}`, `(d) redirect_uri usada: ${process.env.MP_REDIRECT_URI}`]);
   },
 
+  // Renova o token e guarda a public_key do VENDEDOR (marketplace tokeniza o cartao com ela).
+  async renovar() {
+    sandbox(); exige('MP_CLIENT_ID', 'MP_CLIENT_SECRET', 'MP_SELLER_REFRESH_TOKEN');
+    const { http, json } = await chamar('POST', '/oauth/token', { corpo: {
+      client_id: process.env.MP_CLIENT_ID, client_secret: process.env.MP_CLIENT_SECRET,
+      grant_type: 'refresh_token', refresh_token: process.env.MP_SELLER_REFRESH_TOKEN, test_token: 'true',
+    } });
+    if (!json.access_token) return resultado([`renovar falhou: HTTP ${http} ${json.message ?? json.error ?? ''}`]);
+    const novos = { MP_SELLER_ACCESS_TOKEN: json.access_token, MP_SELLER_REFRESH_TOKEN: json.refresh_token ?? '', MP_SELLER_PUBLIC_KEY: json.public_key ?? '' };
+    const linhas = readFileSync(ENV_FILE, 'utf8').split(/\r?\n/).filter((l) => !/^\s*(MP_SELLER_ACCESS_TOKEN|MP_SELLER_REFRESH_TOKEN|MP_SELLER_PUBLIC_KEY)\s*=/.test(l));
+    writeFileSync(ENV_FILE, `${linhas.filter((l) => l !== '').join('\n')}\n${Object.entries(novos).map(([k, v]) => `${k}=${v}`).join('\n')}\n`, { mode: 0o600 });
+    console.log(`renovado; public_key do vendedor ${json.public_key ? 'recebida (' + json.public_key.slice(0, 8) + '...)' : 'AUSENTE na resposta'}`);
+  },
+
   async pix() {
     sandbox(); exige('MP_SELLER_ACCESS_TOKEN');
     const token = process.env.MP_SELLER_ACCESS_TOKEN;
@@ -139,8 +153,8 @@ const comandos = {
     sandbox(); exige('MP_SELLER_ACCESS_TOKEN', 'MP_PUBLIC_KEY');
     const token = process.env.MP_SELLER_ACCESS_TOKEN;
     // Mastercard de teste documentado; o nome do titular define o resultado (APRO aprova, OTHE recusa).
-    const tk = await chamar('POST', `/v1/card_tokens?public_key=${encodeURIComponent(process.env.MP_PUBLIC_KEY)}`, { corpo: {
-      card_number: '5480832801033311', security_code: '123', expiration_month: 11, expiration_year: 2030,
+    const tk = await chamar('POST', `/v1/card_tokens?public_key=${encodeURIComponent(process.env.MP_SELLER_PUBLIC_KEY || process.env.MP_PUBLIC_KEY)}`, { corpo: {
+      card_number: '5031433215406351', security_code: '123', expiration_month: 11, expiration_year: 2030,
       cardholder: { name: nome, identification: { type: 'CPF', number: '12345678909' } },
     } });
     if (!tk.json.id) {
@@ -148,7 +162,7 @@ const comandos = {
       return resultado([`Tokenizacao do cartao falhou (HTTP ${tk.http}); formato de card_tokens nao confirmado nas docs.`]);
     }
     const criado = await chamar('POST', '/v1/payments', { token, idem: true, corpo: {
-      transaction_amount: VALOR, token: tk.json.id, installments: 1, payment_method_id: 'master', application_fee: FEE,
+      transaction_amount: VALOR, token: tk.json.id, installments: 1, payment_method_id: 'master', ...(process.env.MP_SPIKE_SEM_FEE === 'sim' ? {} : { application_fee: FEE }),
       description: `Spike Sai ae - cartao ${nome}`, payer: { email: process.env.MP_PAYER_EMAIL || 'comprador.teste@example.com' },
     } });
     await fatosPagamento(`Cartao (${nome})`, token, criado);
