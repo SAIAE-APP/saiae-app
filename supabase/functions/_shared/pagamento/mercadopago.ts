@@ -109,8 +109,11 @@ export function comissaoDoMercadoPago(pagamento: unknown): number | null {
   const taxa = detalhes.find((d) => (d as { type?: unknown } | null)?.type === 'application_fee') as
     | { amount?: unknown }
     | undefined
-  const centavos = valorDecimalParaCentavos(taxa?.amount)
-  return taxa && Number.isFinite(centavos) ? centavos : null
+  const amount = taxa?.amount
+  // Number(null) e Number('') dão 0: só número ou texto numérico não vazio contam como comissão informada.
+  if (typeof amount !== 'number' && !(typeof amount === 'string' && amount.trim())) return null
+  const centavos = valorDecimalParaCentavos(amount)
+  return Number.isFinite(centavos) ? centavos : null
 }
 
 /**
