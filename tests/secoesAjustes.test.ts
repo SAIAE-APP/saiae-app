@@ -21,9 +21,9 @@ describe('grupos de Ajustes', () => {
 })
 
 describe('ligação em Ajustes', () => {
-  test('toda seção pertence a um grupo que existe (29 seções, nenhuma órfã)', () => {
+  test('toda seção pertence a um grupo que existe (30 seções, nenhuma órfã)', () => {
     const grupos = [...ajustes.matchAll(/<SecaoDaCategoria categoria="(conta|cardapio)" grupo="([\w-]+)"/g)]
-    assert.equal(grupos.length, 29)
+    assert.equal(grupos.length, 30)
     const ids = new Set(GRUPOS_AJUSTES.map((g) => `${g.categoria}:${g.id}`))
     for (const [, cat, grupo] of grupos) assert.ok(ids.has(`${cat}:${grupo}`), `${cat}:${grupo}`)
   })

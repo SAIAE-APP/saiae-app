@@ -24,6 +24,10 @@ import { useClienteSessao } from '../hooks/useClienteSessao'
 import { usePerfilConfig } from '../hooks/usePerfilConfig'
 import { useCupom } from '../hooks/useCupom'
 import { CampoCupom } from '../components/CampoCupom'
+import { useCashback } from '../hooks/useCashback'
+import { BlocoCashbackCheckout } from '../components/cashback/BlocoCashbackCheckout'
+import { LinhaCashbackGanho } from '../components/cashback/LinhaCashbackGanho'
+import { AvisoCashbackGanho } from '../components/cashback/AvisoCashbackGanho'
 import { textoDesconto } from '../lib/cupomApi'
 import { lerSessao, limparSessao } from '../lib/clienteApi'
 import { lerPedirDeNovo } from '../lib/clientePerfil'
@@ -111,7 +115,7 @@ type EstadoPagamento =
       /** Cartão sem confirmação dentro do prazo: continua esperando o emissor, sem oferecer nova cobrança. */
       semConfirmacao?: boolean
     }
-  | { fase: 'aprovado'; senha: number | null; gratis?: boolean }
+  | { fase: 'aprovado'; senha: number | null; gratis?: boolean; pendenteId?: string; cashback?: { cashback_gerado_centavos?: unknown; cashback_vence_em?: unknown } }
   // "Pagar na entrega": dados do cliente -> envio -> pedido já na cozinha + wa.me do dono.
   | { fase: 'dados_entrega'; erro?: string }
   | { fase: 'enviando_entrega' }
@@ -732,6 +736,29 @@ export function CardapioPublico() {
     }
   }, [])
 
+  // O crédito do cashback é gravado logo DEPOIS de o pagamento ser marcado aprovado (best-effort no servidor):
+  // se o primeiro retorno veio sem ele, relê uma vez para mostrar "Você ganhou R$ X".
+  const pendenteDoAviso = pagamento.fase === 'aprovado' && !pagamento.gratis ? pagamento.pendenteId : undefined
+  const avisoCashbackPendente = pagamento.fase === 'aprovado' && !(Number(pagamento.cashback?.cashback_gerado_centavos) > 0)
+  useEffect(() => {
+    if (!pendenteDoAviso || !avisoCashbackPendente) return
+    let cancelado = false
+    const espera = window.setTimeout(async () => {
+      const { data: linha } = await supabase.rpc('consultar_status_pagamento', { p_id: pendenteDoAviso }).maybeSingle()
+      const data = linha as { cashback_gerado_centavos?: unknown; cashback_vence_em?: unknown } | null
+      if (cancelado || !(Number(data?.cashback_gerado_centavos) > 0)) return
+      setPagamento((atual) =>
+        atual.fase === 'aprovado' && atual.pendenteId === pendenteDoAviso
+          ? { ...atual, cashback: { cashback_gerado_centavos: data?.cashback_gerado_centavos, cashback_vence_em: data?.cashback_vence_em } }
+          : atual,
+      )
+    }, 3000)
+    return () => {
+      cancelado = true
+      window.clearTimeout(espera)
+    }
+  }, [pendenteDoAviso, avisoCashbackPendente])
+
   // Polling do status do pagamento — mesmo espírito do polling de
   // fallback que useRealtimePedidos usa quando o Realtime cai, só que
   // aqui é sempre polling (o cliente é anônimo, sem sessão pra abrir uma
@@ -746,11 +773,16 @@ export function CardapioPublico() {
       const { data: linha } = await supabase
         .rpc('consultar_status_pagamento', { p_id: pendenteId })
         .maybeSingle()
-      const data = linha as { status: string; senha: number | null } | null
+      const data = linha as { status: string; senha: number | null; cashback_gerado_centavos?: unknown; cashback_vence_em?: unknown } | null
       if (cancelado || !data) return
 
       if (data.status === 'aprovado') {
-        setPagamento({ fase: 'aprovado', senha: data.senha })
+        setPagamento({
+          fase: 'aprovado',
+          senha: data.senha,
+          pendenteId,
+          cashback: { cashback_gerado_centavos: data.cashback_gerado_centavos, cashback_vence_em: data.cashback_vence_em },
+        })
       } else if (cartao && data.status === 'expirado') {
         // Cartão: só `rejeitado` é final. O emissor ainda pode aprovar e o webhook confirmar, então segue
         // esperando, sem client_uuid novo e sem oferecer uma segunda cobrança.
@@ -950,7 +982,16 @@ export function CardapioPublico() {
     [itensCarrinho],
   )
   const cupom = useCupom(slug, itensDoCarrinhoParaCupom, slug ? (lerSessao(slug)?.token ?? null) : null)
-  const descontoCupom = cupom.aplicado?.descontoCentavos ?? 0
+  // Cashback (prévia; o servidor recalcula). Só vale em pagamento online: no "Pagar na entrega" usadoCentavos é 0.
+  const cashback = useCashback({
+    slug,
+    token: slug ? (lerSessao(slug)?.token ?? null) : null,
+    itensCentavos: totalCentavosCarrinho,
+    cupomAplicado: Boolean(cupom.aplicado),
+    pagamentoOnline: Boolean(linhas[0]?.pagamento_online_habilitado) && !(formularioEntregaAberto && formaEntrega === 'na_entrega'),
+  })
+  // Desconto de benefício: cupom OU saldo de cashback (um por pedido). Todas as contas de total seguem usando este valor.
+  const descontoCupom = (cupom.aplicado?.descontoCentavos ?? 0) + cashback.usadoCentavos
   /** Só o código vai ao servidor: ele recalcula o desconto e recusa (409) se o total que o cliente viu divergir. */
   function corpoCupom(): { cupom_codigo?: string } {
     return cupom.aplicado ? { cupom_codigo: cupom.aplicado.codigo } : {}
@@ -1010,7 +1051,15 @@ export function CardapioPublico() {
    * Cartão enviado: recusado volta para tentar de novo; aprovado com o pedido já criado pelo servidor mostra a senha;
    * aprovado sem pedido ainda ou em análise espera o webhook criar o pedido.
    */
-  function seguirCartao(data: { pendente_id?: unknown; status?: unknown; total_centavos?: unknown; taxa_plataforma_centavos?: unknown; senha?: unknown }) {
+  function seguirCartao(data: {
+    pendente_id?: unknown
+    status?: unknown
+    total_centavos?: unknown
+    taxa_plataforma_centavos?: unknown
+    senha?: unknown
+    cashback_gerado_centavos?: unknown
+    cashback_vence_em?: unknown
+  }) {
     pendenteAnteriorRef.current = typeof data.pendente_id === 'string' ? data.pendente_id : null
     if (data.status === 'rejeitado' || typeof data.pendente_id !== 'string') {
       clientUuidRef.current = crypto.randomUUID()
@@ -1018,7 +1067,12 @@ export function CardapioPublico() {
       return
     }
     if (data.status === 'aprovado' && typeof data.senha === 'number') {
-      setPagamento({ fase: 'aprovado', senha: data.senha })
+      setPagamento({
+        fase: 'aprovado',
+        senha: data.senha,
+        pendenteId: data.pendente_id,
+        cashback: { cashback_gerado_centavos: data.cashback_gerado_centavos, cashback_vence_em: data.cashback_vence_em },
+      })
       return
     }
     setPagamento({
@@ -1120,6 +1174,7 @@ export function CardapioPublico() {
         ...corpoCupom(),
         ...corpoPixAnterior(),
         ...corpoCartao(cartao),
+        ...cashback.corpoCashback(),
         barraca_id: barracaId,
         viagem: modoEfetivo === 'retirada',
         observacao: observacao.trim() || null,
@@ -1400,6 +1455,7 @@ export function CardapioPublico() {
         ...corpoCupom(),
         ...corpoPixAnterior(),
         ...corpoCartao(cartao),
+        ...cashback.corpoCashback(),
         barraca_id: itensCarrinho[0].item.barraca_id,
         tipo_atendimento: 'entrega',
         observacao: observacao.trim() || null,
@@ -1796,11 +1852,19 @@ export function CardapioPublico() {
               />
             )}
 
+            <BlocoCashbackCheckout cashback={cashback} />
+
             <div className="flex flex-col gap-1 border-t border-mesa-border-subtle pt-3">
-              {descontoCupom > 0 && (
+              {cupom.aplicado && descontoCupom > 0 && (
                 <div className="flex items-center justify-between text-sm text-mesa-text-secondary">
-                  <span>Cupom {cupom.aplicado?.codigo}</span>
+                  <span>Cupom {cupom.aplicado.codigo}</span>
                   <span>{textoDesconto(descontoCupom)}</span>
+                </div>
+              )}
+              {cashback.usadoCentavos > 0 && (
+                <div className="flex items-center justify-between text-sm text-mesa-text-secondary">
+                  <span>Saldo de cashback</span>
+                  <span>{textoDesconto(cashback.usadoCentavos)}</span>
                 </div>
               )}
               {mostrarTaxaFormulario && (
@@ -1815,6 +1879,7 @@ export function CardapioPublico() {
                   {formatarPrecoBR(mostrarTaxaFormulario ? totalOnline(cobraTaxaPlataforma, subtotalCentavos) : subtotalCentavos)}
                 </span>
               </div>
+              <LinhaCashbackGanho cashback={cashback} />
               {mostrarTaxaFormulario && mostrarPagarNaEntrega && (
                 <p className="text-xs text-mesa-text-tertiary">
                   Pagando na entrega não há taxa de serviço: {formatarPrecoBR(subtotalCentavos)}.
@@ -2112,6 +2177,7 @@ export function CardapioPublico() {
                 onEditar={cupom.limparErro}
               />
             )}
+            <BlocoCashbackCheckout cashback={cashback} />
             <div className="flex flex-col gap-1 border-t border-mesa-border-subtle pt-3">
               {entregaNoCardapio && (
                 <>
@@ -2119,10 +2185,16 @@ export function CardapioPublico() {
                     <span>Itens</span>
                     <span>{formatarPrecoBR(totalCentavosCarrinho)}</span>
                   </div>
-                  {descontoCupom > 0 && (
+                  {cupom.aplicado && descontoCupom > 0 && (
                     <div className="flex items-center justify-between text-sm text-mesa-text-secondary">
-                      <span>Cupom {cupom.aplicado?.codigo}</span>
+                      <span>Cupom {cupom.aplicado.codigo}</span>
                       <span>{textoDesconto(descontoCupom)}</span>
+                    </div>
+                  )}
+                  {cashback.usadoCentavos > 0 && (
+                    <div className="flex items-center justify-between text-sm text-mesa-text-secondary">
+                      <span>Saldo de cashback</span>
+                      <span>{textoDesconto(cashback.usadoCentavos)}</span>
                     </div>
                   )}
                   <div className="flex items-center justify-between text-sm text-mesa-text-secondary">
@@ -2323,6 +2395,7 @@ export function CardapioPublico() {
                 Senha {String(pagamento.senha).padStart(3, '0')}
               </p>
             )}
+            <AvisoCashbackGanho resposta={pagamento.cashback} />
             <Button variant="ghost" size="md" onClick={fecharCheckout} className="mt-2 w-full">
               Fechar
             </Button>

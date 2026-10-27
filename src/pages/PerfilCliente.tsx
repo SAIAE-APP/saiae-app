@@ -1,6 +1,8 @@
 import { useCallback, useEffect, useState } from 'react'
 import { useNavigate, useParams } from 'react-router'
 import { ModalIdentificacao } from '../components/cliente/ModalIdentificacao'
+import { BlocoSaldoCashback } from '../components/cashback/BlocoSaldoCashback'
+import { textoSaldoPerdido } from '../lib/cashbackTexto'
 import { BottomSheet } from '../components/ui/BottomSheet'
 import { Button } from '../components/ui/Button'
 import { Card } from '../components/ui/Card'
@@ -67,6 +69,7 @@ export function PerfilCliente() {
   const [pedirDeNovo, setPedirDeNovo] = useState<{ avisos: string[]; montar: LinhaPedirDeNovo[] } | null>(null)
   const [confirmandoApagar, setConfirmandoApagar] = useState(false)
   const [apagando, setApagando] = useState(false)
+  const [saldoCashback, setSaldoCashback] = useState(0)
 
   const tratarFalha = useCallback((r: { sessaoInvalida: boolean; erro: string }) => {
     if (r.sessaoInvalida) setPrecisaEntrar(true)
@@ -297,6 +300,8 @@ export function PerfilCliente() {
             </Card>
           </section>
 
+          <BlocoSaldoCashback slug={slug} aoCarregar={(d) => setSaldoCashback(d?.saldoCentavos ?? 0)} />
+
           <section>
             <h2 className="mb-2 text-xs font-semibold uppercase tracking-wider text-mesa-text-secondary">Meus pedidos</h2>
             <Card>
@@ -415,6 +420,11 @@ export function PerfilCliente() {
         <p className="mt-1 text-sm text-mesa-text-secondary">
           Vamos apagar seu perfil, endereços e histórico de dados pessoais. Os pedidos ficam registrados sem o seu nome.
         </p>
+        {textoSaldoPerdido(saldoCashback) && (
+          <p role="alert" className="mt-2 text-sm font-medium text-mesa-error-500">
+            {textoSaldoPerdido(saldoCashback)}
+          </p>
+        )}
         <div className="mt-6 flex flex-col gap-2">
           <Button variant="destructive" size="xl" className="w-full" loading={apagando} onClick={() => void apagarDados()}>
             Apagar meus dados

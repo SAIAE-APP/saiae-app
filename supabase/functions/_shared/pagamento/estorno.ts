@@ -26,6 +26,18 @@ export type DepsEstorno = {
   provedor: (chave: unknown) => ProvedorPix | null
   /** Grava `estornado_em`; false = falhou ao gravar. */
   marcarEstornado: (pendenteId: string) => Promise<boolean>
+  /** Cashback: reverte o crédito e devolve o saldo usado. Best-effort (o dinheiro já voltou) e idempotente no banco. */
+  aposEstorno?: (pedidoId: string) => Promise<void>
+}
+
+/** Nunca lança e nunca muda a resposta do estorno: falha do cashback só vai para o log. */
+async function reverterCashback(pedidoId: string, deps: DepsEstorno): Promise<void> {
+  if (!deps.aposEstorno) return
+  try {
+    await deps.aposEstorno(pedidoId)
+  } catch {
+    console.error('estorno: reversão do cashback falhou', pedidoId)
+  }
 }
 
 // Mesmo texto para pedido inexistente e pedido de outra barraca: não revela se o pedido existe.
@@ -47,7 +59,11 @@ export async function estornarPedido(pedidoId: string, deps: DepsEstorno): Promi
   const pendente = pendentePago(await deps.pendentesDoPedido(pedidoId, barracaId))
   if (!pendente) return NAO_PAGO
   // Idempotente: já estornado é sucesso, sem falar com o provedor de novo.
-  if (pendente.estornado_em) return { status: 200, corpo: { ok: true, codigo: 'ja_estornado' } }
+  // Repetir também reverte o cashback: se a reversão falhou na primeira vez, a repetição conserta (a RPC é idempotente).
+  if (pendente.estornado_em) {
+    await reverterCashback(pedidoId, deps)
+    return { status: 200, corpo: { ok: true, codigo: 'ja_estornado' } }
+  }
 
   const provedor = deps.provedor(chaveDoProvedor(pendente.provedor))
   if (!provedor?.estornar) return { status: 422, corpo: { erro: 'Estorno indisponível para este meio de pagamento.' } }
@@ -100,5 +116,6 @@ export async function estornarPedido(pedidoId: string, deps: DepsEstorno): Promi
   if (!(await deps.marcarEstornado(String(pendente.id)))) {
     return { status: 500, corpo: { erro: 'O estorno foi feito, mas não foi registrado. Toque de novo para concluir.' } }
   }
+  await reverterCashback(pedidoId, deps)
   return { status: 200, corpo: { ok: true } }
 }

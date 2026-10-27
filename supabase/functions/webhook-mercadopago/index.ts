@@ -86,6 +86,15 @@ Deno.serve(async (req: Request) => {
   // 'expirado' NÃO é final: o cliente pode ter pago depois de expirar, e esse
   // dinheiro não pode sumir (ver decidirAprovado / pagamentos_conciliacao).
   if (!(STATUS_PENDENTE_ABERTOS as readonly string[]).includes(pendente.status)) {
+    // Cashback: se o crédito falhou da primeira vez (best-effort), o reenvio do provedor tenta de novo. A RPC é idempotente
+    // por pedido e nunca muda a resposta ao provedor.
+    if (pendente.status === 'aprovado' && pendente.pedido_id && pendente.cliente_id) {
+      try {
+        await supabase.rpc('cashback_creditar_pedido', { p_pedido_id: pendente.pedido_id })
+      } catch {
+        console.error('cashback_credito_falhou', pendente.pedido_id)
+      }
+    }
     return jsonResponse({ ok: true })
   }
 
@@ -212,6 +221,8 @@ Deno.serve(async (req: Request) => {
       await registrarConciliacaoAprovado('pedido_nao_criado', { detalhe: criado.detalhe.slice(0, 300) })
       return jsonResponse({ ok: false, aviso: `falha ao criar pedido: ${criado.detalhe}` }, 500)
     }
+    // Resgate de cashback não confirmado: mesma regra do cupom (500 antes de marcar aprovado; o provedor reenvia).
+    if (!criado.ok && criado.etapa === 'cashback') return jsonResponse({ ok: false, aviso: 'falha ao confirmar o saldo de cashback' }, 500)
     // Cupom não confirmado: 500 ANTES de marcar o pendente aprovado; o provedor reenvia e tentamos de novo.
     if (!criado.ok) return jsonResponse({ ok: false, aviso: 'falha ao confirmar o cupom' }, 500)
 

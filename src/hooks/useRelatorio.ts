@@ -1,5 +1,8 @@
 import { calcularOpcoesVendidas, type OpcaoVendida } from '../lib/opcoesRelatorio'
 import { calcularDescontosCupom, type DescontosCupom } from '../lib/descontosCupom'
+import { calcularCashbackUsado, type CashbackUsado } from '../lib/descontosCashback'
+import type { ResumoCashback } from '../lib/cashbackResumo'
+import { carregarResumoCashback } from '../lib/cashbackResumoDados'
 import { useEffect, useMemo, useState } from 'react'
 import { supabase } from '../lib/supabase'
 import {
@@ -51,6 +54,10 @@ export type AgregadosRelatorio = {
   maisVendidos: ItemMaisVendido[]
   opcoesVendidas: OpcaoVendida[]
   descontosCupom: DescontosCupom
+  /** Saldo de cashback usado nos pedidos do período (À PARTE dos itens, como o cupom). */
+  cashbackUsado: CashbackUsado
+  /** Resumo do razão (`cashback_resumo`); null = banco sem a função, sem acesso ou falha (nunca derruba o relatório). */
+  cashbackResumo: ResumoCashback | null
   /** Taxa de serviço das comandas fechadas no período: À PARTE, nunca somada a `totalBruto`. */
   taxaServico: TaxasServico
   ritmoDoDia: RitmoDoDia
@@ -124,6 +131,7 @@ function agregar(
   taxaCreditoBps: number | null,
   intervalo: IntervaloData,
   taxaServico: TaxasServico,
+  cashbackResumo: ResumoCashback | null,
 ): AgregadosRelatorio {
   const serieTemporal: AgregadosRelatorio['serieTemporal'] =
     intervalo.inicio === intervalo.fim
@@ -141,6 +149,8 @@ function agregar(
     maisVendidos: calcularMaisVendidos(pedidos),
     opcoesVendidas: calcularOpcoesVendidas(pedidos),
     descontosCupom: calcularDescontosCupom(pedidos),
+    cashbackUsado: calcularCashbackUsado(pedidos),
+    cashbackResumo,
     taxaServico,
     ritmoDoDia: calcularRitmoDoDia(pedidos),
     serieTemporal,
@@ -215,6 +225,7 @@ export function useRelatorio(
   const [pedidosAtuais, setPedidosAtuais] = useState<PedidoComItens[] | null>(null)
   const [pedidosComparacao, setPedidosComparacao] = useState<PedidoComItens[] | null>(null)
   const [taxaServicoAtual, setTaxaServicoAtual] = useState<TaxasServico>(SEM_TAXA_SERVICO)
+  const [resumoCashbackAtual, setResumoCashbackAtual] = useState<ResumoCashback | null>(null)
   const [catalogoPrecos, setCatalogoPrecos] = useState<Map<string, number>>(new Map())
   const [carregando, setCarregando] = useState(true)
   const [erro, setErro] = useState<string | null>(null)
@@ -249,9 +260,16 @@ export function useRelatorio(
       ? Promise.resolve(SEM_TAXA_SERVICO)
       : buscaAtual.then((pedidos) => buscarTaxaServico(barraca.id, ligada, pedidos, intervalos.atual))
 
-    Promise.all([buscaAtual, buscaComparacao, buscaCatalogo, buscaTaxa])
-      .then(([atual, comparacao, catalogo, taxa]) => {
+    // Cashback é informativo: banco sem a função, sem acesso ou falha de rede viram null e o relatório segue.
+    const janela = janelaDoIntervalo(intervalos.atual)
+    const buscaCashback: Promise<ResumoCashback | null> = itemFiltradoId
+      ? Promise.resolve(null)
+      : carregarResumoCashback(barraca.id, janela.de, janela.ate).catch(() => null)
+
+    Promise.all([buscaAtual, buscaComparacao, buscaCatalogo, buscaTaxa, buscaCashback])
+      .then(([atual, comparacao, catalogo, taxa, cashback]) => {
         if (cancelado) return
+        setResumoCashbackAtual(cashback)
         setTaxaServicoAtual(taxa)
         setPedidosAtuais(atual)
         setPedidosComparacao(comparacao)
@@ -292,8 +310,10 @@ export function useRelatorio(
       barraca.taxa_credito_bps,
       intervalos.atual,
       taxaServicoAtual,
+      resumoCashbackAtual,
     )
   }, [taxaServicoAtual,
+    resumoCashbackAtual,
     itemFiltradoId,
     pedidosAtuais,
     catalogoPrecos,
@@ -311,6 +331,7 @@ export function useRelatorio(
       barraca.taxa_credito_bps,
       intervalos.comparacao,
       SEM_TAXA_SERVICO,
+      null,
     )
   }, [
     itemFiltradoId,

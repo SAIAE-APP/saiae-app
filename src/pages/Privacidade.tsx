@@ -200,6 +200,14 @@ export function Privacidade() {
             embaralhado (hash) do endereço de rede, sem guardar o IP. Ao apagar os dados do perfil, o uso do
             cupom continua contando para o limite da loja, mas deixa de estar ligado à pessoa.
           </p>
+          <p>
+            <strong>Saldo de cashback.</strong> Quando a loja oferece cashback, o cliente que pagou online
+            ganha um saldo de cashback para usar nos pedidos seguintes. Ele é por loja: vale só na loja que o deu e
+            vence na data mostrada em &quot;Meu perfil&quot;. Guardamos o histórico de lançamentos (quando
+            ganhou, usou, teve estorno ou venceu) ligado ao perfil confirmado (telefone), sem pedir nenhum
+            dado novo. Ao apagar os dados do perfil, o saldo é apagado junto, e o histórico de lançamentos
+            continua na loja para contabilidade, sem identificação da pessoa.
+          </p>
         </Secao>
 
         <Secao titulo="4. Dados de clientes de entrega (informados pela barraca)">

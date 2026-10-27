@@ -46,6 +46,8 @@ type PendenteAprovado = {
   itens: unknown
   taxa_entrega_centavos?: unknown
   desconto_cupom_centavos?: unknown
+  /** Saldo de cashback usado: desconto de benefício como o cupom (cupom OU saldo, nunca os dois). */
+  cashback_usado_centavos?: unknown
   taxa_plataforma_centavos?: unknown
 }
 
@@ -63,7 +65,7 @@ export function decidirAprovadoDoPendente(
   const totalCentavos = totalEsperadoDoPendente(
     pendente.itens as { quantidade: number; preco_centavos_unitario: number }[],
     taxaEntregaCentavos,
-    Number(pendente.desconto_cupom_centavos ?? 0),
+    Number(pendente.desconto_cupom_centavos ?? 0) + Number(pendente.cashback_usado_centavos ?? 0),
     taxaPlataformaCentavos,
   )
   const decisao = decidirAprovado({
