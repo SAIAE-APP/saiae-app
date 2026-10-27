@@ -7,7 +7,11 @@
 
 /** Crédito máximo por pedido: R$ 20,00. Constante no servidor, fora da configuração da barraca. */
 export const CASHBACK_CREDITO_MAX_CENTAVOS = 2000
-/** Piso pago em dinheiro nos itens: o saldo nunca zera os itens (R$ 1,00). */
+/**
+ * Piso pago em dinheiro nos itens: o saldo nunca zera os itens (R$ 1,00).
+ * SUPOSIÇÃO-CASHBACK-6 (spec §20.6): por isso o cashback nunca gera pedido de total zero, e a regra de "pedido grátis
+ * sem taxa" continua só do cupom de 100%.
+ */
 export const CASHBACK_PISO_ITENS_CENTAVOS = 100
 
 // SUPOSIÇÃO-CASHBACK-3 (spec §20.3): 5% e 60 dias por padrão; faixas 1–15% e 30–90 dias; teto de uso 10–90%.

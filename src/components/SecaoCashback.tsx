@@ -39,6 +39,7 @@ const percentualDigitado = (t: string) => t.replace(/[^\d,]/g, '').replace(/,(?=
  * por isso ligar exige ler o aviso e aceitar o termo, e o aceite é gravado na MESMA gravação que liga. Nasce desligado e
  * desligar não cancela o que já foi dado (SUPOSIÇÃO-CASHBACK-2). Salva por botão explícito. Banco sem a migration = some.
  */
+// SUPOSIÇÃO-CASHBACK-5 (spec §20.5): sem módulo pago e sem feature flag de front na V1; o gate é só o interruptor da barraca.
 export function SecaoCashback({ barraca }: { barraca: Barraca }) {
   const habilitado = Boolean(barraca.cashback_habilitado)
   const lojaUsaPerfil = Boolean(barraca.perfil_cliente_obrigatorio)
