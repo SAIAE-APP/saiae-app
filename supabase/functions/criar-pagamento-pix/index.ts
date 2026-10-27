@@ -33,6 +33,8 @@ import {
 import { hashIp, ipDoCliente, limitePorLoja, pareceBot, registrarTentativa } from '../_shared/antiabuso.ts'
 import { resolverPerfilDoPedido } from '../_shared/perfilNoPedido.ts'
 import { avaliarCupomDoPedido, liberarReservasAbandonadas, reservarCupomDoPedido } from '../_shared/cupomPedido.ts'
+import { avaliarCashbackDoPedido, liberarCashbackAbandonado, reservarCashbackDoPedido } from '../_shared/cashbackPedido.ts'
+import { descontoDoBeneficio } from '../_shared/cashback.ts'
 import { argsPedidoGratis, ehPedidoGratis, telefoneDoPedidoGratis } from '../_shared/pedidoGratis.ts'
 import { MENSAGEM_FECHADO, foraDoHorarioBloqueado } from '../_shared/horario.ts'
 import { interpretarResolver, itensAcimaDoEstoque, montarLinhas, respostaDeErros } from '../_shared/carrinho.ts'
@@ -87,6 +89,8 @@ Deno.serve(async (req: Request) => {
     sessao_token?: string
     /** Cupom digitado pelo cliente. Só o CÓDIGO viaja: o desconto é calculado aqui, no banco. */
     cupom_codigo?: string | null
+    /** Usar o saldo de cashback neste pedido (só `true` conta). Só o pedido de uso viaja: o valor é calculado aqui, no banco. */
+    usar_cashback?: boolean
     /** Pix anterior deste cliente (id que o próprio front recebeu): checkout refeito libera a reserva dele. */
     pendente_anterior_id?: string | null
     mesa?: string | null
@@ -170,7 +174,8 @@ Deno.serve(async (req: Request) => {
       (pendenteExistente.itens ?? []) as { quantidade: number; preco_centavos_unitario: number }[],
       Number(pendenteExistente.taxa_entrega_centavos ?? 0),
       // Cupom: o total do QR já emitido é o DESCONTADO.
-      Number(pendenteExistente.desconto_cupom_centavos ?? 0),
+      // Cashback: o saldo usado também é desconto de benefício (cupom OU saldo, nunca os dois).
+      Number(pendenteExistente.desconto_cupom_centavos ?? 0) + Number(pendenteExistente.cashback_usado_centavos ?? 0),
       Number(pendenteExistente.taxa_plataforma_centavos ?? 0),
     )
     const esperadoRetry = body.total_esperado_centavos
@@ -214,6 +219,7 @@ Deno.serve(async (req: Request) => {
         qr_code: qr.copiaECola,
         qr_code_base64: qr.qrCodeBase64,
         ticket_url: qr.ticketUrl ?? null,
+        cashback_usado_centavos: Number(pendenteExistente.cashback_usado_centavos ?? 0),
         taxa_plataforma_centavos: Number(pendenteExistente.taxa_plataforma_centavos ?? 0),
       })
     }
@@ -427,8 +433,29 @@ Deno.serve(async (req: Request) => {
   const descontoCentavos = avCupom.desconto
   const cupomCodigo = avCupom.codigo
 
+  // ---- Cashback (só quando `usar_cashback`; sem ele nada muda). SUPOSIÇÃO-CASHBACK-1 (spec §20.1): a barraca financia, o
+  // saldo é desconto nos itens; a taxa Sai aê (application_fee) não muda. SUPOSIÇÃO-CASHBACK-4 (spec §20.4): cupom OU saldo.
+  // Libera as reservas abandonadas ANTES de avaliar, senão o saldo "esgota" contra a própria reserva anterior. ----
+  if (body.usar_cashback === true || body.pendente_anterior_id) {
+    await liberarCashbackAbandonado(supabase, {
+      barracaId: barraca_id,
+      clienteId: perfil.clienteId,
+      pendenteAnteriorId: body.pendente_anterior_id,
+    })
+  }
+  const avCashback = await avaliarCashbackDoPedido(supabase, {
+    barracaId: barraca_id,
+    usar: body.usar_cashback,
+    clienteId: perfil.clienteId,
+    itensCentavos: totalCentavos,
+    temCupom: Boolean(cupomCodigo),
+  })
+  if (!avCashback.ok) return jsonResponse(avCashback.corpo, avCashback.status)
+  const cashbackCentavos = avCashback.resgate
+  const descontoBeneficio = descontoDoBeneficio(descontoCentavos, cashbackCentavos)
+
   // Tudo em centavos INTEIROS; só vira reais na última linha (MP). A taxa Sai aê entra só no OAuth.
-  const { taxaPlataformaCentavos, totalCentavos: totalCobradoCentavos } = totalDaCobranca({ subtotalItensCentavos: totalCentavos, descontoCentavos, taxaEntregaCentavos, modo: credencial.modo })
+  const { taxaPlataformaCentavos, totalCentavos: totalCobradoCentavos } = totalDaCobranca({ subtotalItensCentavos: totalCentavos, descontoCentavos: descontoBeneficio, taxaEntregaCentavos, modo: credencial.modo })
 
   // Cliente viu um total na tela; se o servidor chegou a outro (dono mexeu na
   // taxa/preço no meio), NÃO cobra sem o cliente ver o novo valor.
@@ -571,6 +598,40 @@ Deno.serve(async (req: Request) => {
       .eq('id', pendente.id)
   }
 
+  // Cashback: reserva ATÔMICA ligada a esta cobrança, vigente até o Pix vencer. Sem saldo nesta chamada, uma reserva
+  // antiga da mesma cobrança (cliente tirou o saldo) é liberada.
+  if (cashbackCentavos > 0 && perfil.clienteId) {
+    const res = await reservarCashbackDoPedido(supabase, {
+      barracaId: barraca_id,
+      clienteId: perfil.clienteId,
+      itensCentavos: totalCentavos,
+      pendenteId: pendente.id,
+      reservadoAte: expiraEm,
+    })
+    if (!res.ok) return jsonResponse(res.corpo, res.status)
+    if (res.resgate !== cashbackCentavos) {
+      // Saldo mudou no meio (outro checkout gastou parte): o cliente confirma o novo total antes de pagar.
+      await supabase.rpc('cashback_liberar', { p_pendente_id: pendente.id })
+      const novo = totalDaCobranca({ subtotalItensCentavos: totalCentavos, descontoCentavos: res.resgate, taxaEntregaCentavos, modo: credencial.modo })
+      return jsonResponse(
+        {
+          erro: 'O valor do pedido mudou. Confira o novo total antes de pagar.',
+          total_centavos: novo.totalCentavos,
+          taxa_entrega_centavos: taxaEntregaCentavos,
+          taxa_plataforma_centavos: novo.taxaPlataformaCentavos,
+        },
+        409,
+      )
+    }
+    await supabase
+      .from('pagamentos_pendentes')
+      .update({ cashback_usado_centavos: res.resgate, cashback_uso_id: res.usoId })
+      .eq('id', pendente.id)
+  } else if (pendenteExistente) {
+    await supabase.rpc('cashback_liberar', { p_pendente_id: pendente.id })
+    await supabase.from('pagamentos_pendentes').update({ cashback_usado_centavos: 0, cashback_uso_id: null }).eq('id', pendente.id)
+  }
+
   if (gratis) {
     // O cupom é o que "paga": a reserva acima é obrigatória e o pedido nasce junto da confirmação do uso.
     const { data: comUso } = await supabase.from('pagamentos_pendentes').select('cupom_uso_id').eq('id', pendente.id).single()
@@ -624,7 +685,7 @@ Deno.serve(async (req: Request) => {
   // Cartão à vista. Aprovado na hora: o pedido nasce aqui (concluirCartaoAprovado); senão, no webhook, como o Pix.
   if (meioPedido.meio === 'cartao') {
     if (!provedor.criarCobrancaCartao) {
-      if (cupomCodigo) await supabase.rpc('cupom_liberar', { p_pendente_id: pendente.id })
+      if (cupomCodigo || cashbackCentavos > 0) await supabase.rpc('cupom_liberar', { p_pendente_id: pendente.id })
       return jsonResponse({ erro: 'Pagamento com cartão indisponível nesta barraca.' }, 422)
     }
     let resultadoCartao: ResultadoCartao
@@ -640,7 +701,7 @@ Deno.serve(async (req: Request) => {
       })
     } catch (erro) {
       // A cobrança não saiu: devolve a vaga do cupom. Mensagem limpa, sem nada do provedor.
-      if (cupomCodigo) await supabase.rpc('cupom_liberar', { p_pendente_id: pendente.id })
+      if (cupomCodigo || cashbackCentavos > 0) await supabase.rpc('cupom_liberar', { p_pendente_id: pendente.id })
       if (erro instanceof ErroProvedor) {
         return jsonResponse({ erro: 'Não foi possível processar o cartão. Confira os dados ou pague com Pix.', codigo: 'cartao_falhou' }, 502)
       }
@@ -671,6 +732,7 @@ Deno.serve(async (req: Request) => {
       status: statusCartao,
       total_centavos: totalCobradoCentavos,
       taxa_plataforma_centavos: taxaPlataformaCentavos,
+      cashback_usado_centavos: cashbackCentavos,
       ...(pedidoCartao ? { pedido_id: pedidoCartao.pedidoId, senha: pedidoCartao.senha } : {}),
     })
   }
@@ -688,7 +750,7 @@ Deno.serve(async (req: Request) => {
     })
   } catch (erro) {
     // A cobrança não saiu: devolve a vaga do cupom (a cobrança nunca existiu para o cliente).
-    if (cupomCodigo) await supabase.rpc('cupom_liberar', { p_pendente_id: pendente.id })
+    if (cupomCodigo || cashbackCentavos > 0) await supabase.rpc('cupom_liberar', { p_pendente_id: pendente.id })
     if (erro instanceof ErroProvedor) {
       return jsonResponse(
         { erro: erro.message, detalhe: erro.detalhe },
@@ -713,6 +775,7 @@ Deno.serve(async (req: Request) => {
     total_centavos: totalCobradoCentavos,
     taxa_entrega_centavos: taxaEntregaCentavos,
     desconto_cupom_centavos: descontoCentavos,
+    cashback_usado_centavos: cashbackCentavos,
     taxa_plataforma_centavos: taxaPlataformaCentavos,
   })
 })
