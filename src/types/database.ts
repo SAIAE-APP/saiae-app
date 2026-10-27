@@ -287,6 +287,9 @@ export type Pedido = {
   cupom_id?: string | null
   cupom_codigo?: string | null
   desconto_cupom_centavos?: number
+  /** Cashback (cópia na hora da venda): saldo usado como desconto nos itens e saldo gerado pelo pedido. À PARTE dos itens. */
+  cashback_usado_centavos?: number
+  cashback_gerado_centavos?: number
   entrega_confirmada_em?: string | null
   cliente_final_id?: string | null
   observacao: string | null

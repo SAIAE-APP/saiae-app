@@ -8,6 +8,7 @@ import { Button } from './ui/Button'
 import { Icone } from './ui/Icone'
 import { textoOpcoes } from '../lib/opcoes'
 import { textoCupomDoPedido } from '../lib/descontosCupom'
+import { textoCashbackGeradoDoPedido, textoCashbackUsadoDoPedido } from '../lib/descontosCashback'
 import { buscarComandasPorIds, textoComandaDoPedido, type ComandaDoPedido } from '../lib/comandasPeriodo'
 import { iconeAtendimento, nomeDoCliente, rotuloAtendimento } from '../lib/atendimento'
 import { ROTULO_A_RECEBER, pagarDepoisLigado, pedidoAReceber } from '../lib/pagarDepois'
@@ -304,6 +305,8 @@ export function DetalheComanda({
             </p>
           )}
           {textoCupomDoPedido(pedido) && <p className="mt-1 truncate text-xs text-mesa-neutral-400">{textoCupomDoPedido(pedido)}</p>}
+        {textoCashbackUsadoDoPedido(pedido) && <p className="mt-1 truncate text-xs text-mesa-neutral-400">{textoCashbackUsadoDoPedido(pedido)}</p>}
+        {textoCashbackGeradoDoPedido(pedido) && <p className="mt-1 truncate text-xs text-mesa-neutral-400">{textoCashbackGeradoDoPedido(pedido)}</p>}
           {textoComandaDoPedido(comanda, formatarPrecoBR) && (
             <p className="mt-1 truncate text-xs text-mesa-neutral-400">{textoComandaDoPedido(comanda, formatarPrecoBR)}</p>
           )}
