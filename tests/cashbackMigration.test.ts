@@ -113,7 +113,7 @@ async function novoBanco(migrations: string[]): Promise<PGlite> {
     create role authenticated; create role anon; create role service_role;
     create table public.barracas (id uuid primary key, slug text, nome text);
     create table public.clientes_finais (id uuid primary key, barraca_id uuid, telefone_confirmado_em timestamptz);
-    create table public.pedidos (id uuid primary key, barraca_id uuid, cliente_id uuid, desconto_cupom_centavos integer not null default 0, status text not null default 'novo');
+    create table public.pedidos (id uuid primary key, barraca_id uuid, cliente_id uuid, desconto_cupom_centavos integer not null default 0, status text not null default 'novo', criado_em timestamptz not null default now());
     create table public.pagamentos_pendentes (id uuid primary key default gen_random_uuid(), barraca_id uuid, pedido_id uuid, status text not null default 'pendente');
     create table public.itens_do_pedido (id uuid primary key default gen_random_uuid(), pedido_id uuid, quantidade integer, preco_centavos_unitario integer, removido boolean default false);
     create table public.cupom_usos (id uuid primary key default gen_random_uuid(), pagamento_pendente_id uuid, estado text);
@@ -522,6 +522,69 @@ describe('M5 crédito e estorno', () => {
       const r = await estornar()
       assert.deepEqual([r.ok, r.credito_revertido_centavos, r.saldo_devolvido_centavos], [true, 0, 0])
       assert.equal(await razao(), 0)
+    })
+  })
+})
+
+// ---------------------------------------------------------------- M6 (texto + PGlite)
+const m6 = ler('20261106150000_cashback_resumo.sql')
+
+describe('M6 resumo', () => {
+  test('security invoker (sem security definer), grant para authenticated e os seis campos', () => {
+    assert.doesNotMatch(semComentarios(m6), /security definer/i)
+    assert.match(m6, /security invoker/)
+    assert.match(m6, /grant execute on function public\.cashback_resumo\(uuid, timestamptz, timestamptz\) to authenticated/)
+    assert.doesNotMatch(m6, /to anon/)
+    for (const campo of ['concedido_centavos', 'usado_centavos', 'vencido_centavos', 'estornado_centavos', 'excedente_centavos', 'saldo_em_aberto_centavos']) {
+      assert.match(m6, new RegExp(campo), campo)
+    }
+  })
+
+  describe('no PGlite', () => {
+    let db: PGlite
+    before(async () => {
+      db = await novoBanco([m1, m2, m3, m4, m5, m6])
+      await db.exec(`
+        insert into public.pedidos (id, barraca_id, cliente_id, cashback_usado_centavos) values ('f2000000-0000-4000-8000-000000000001', '${BARRACA}', '${CLIENTE}', 300);
+        insert into public.cashback_lancamentos (barraca_id, cliente_id, tipo, valor_centavos, expira_em, pedido_id) values
+          ('${BARRACA}', '${CLIENTE}', 'credito', 1000, now() + interval '20 days', null),
+          ('${BARRACA}', '${CLIENTE}', 'resgate', -200, null, 'f2000000-0000-4000-8000-000000000001'),
+          ('${BARRACA}', '${CLIENTE}', 'estorno_credito', -100, null, null),
+          ('${BARRACA}', '${CLIENTE}', 'estorno_resgate', 50, now() + interval '20 days', null);
+        -- Outro cliente com saldo vencido ainda não materializado e um com expiração já gravada.
+        insert into public.clientes_finais (id, barraca_id, telefone_confirmado_em) values ('c2000000-0000-4000-8000-000000000002', '${BARRACA}', now());
+        insert into public.cashback_lancamentos (barraca_id, cliente_id, tipo, valor_centavos, expira_em) values
+          ('${BARRACA}', 'c2000000-0000-4000-8000-000000000002', 'credito', 400, now() - interval '1 day');
+        insert into public.cashback_lancamentos (barraca_id, cliente_id, tipo, valor_centavos, expira_em) values
+          ('${BARRACA}', null, 'credito', 999, now() + interval '20 days');`)
+    })
+    after(async () => {
+      await db.close()
+    })
+
+    test('os seis números batem e clientes apagados ficam fora do saldo em aberto', async () => {
+      const r = await db.query<Record<string, string | number>>(
+        `select * from public.cashback_resumo('${BARRACA}', now() - interval '1 hour', now() + interval '1 hour')`,
+      )
+      const l = Object.fromEntries(Object.entries(r.rows[0]).map(([k, v]) => [k, Number(v)]))
+      assert.equal(l.concedido_centavos, 1000 + 400 + 999)
+      assert.equal(l.usado_centavos, 200)
+      assert.equal(l.vencido_centavos, 400) // saldo vencido não materializado
+      assert.equal(l.estornado_centavos, 150)
+      assert.equal(l.excedente_centavos, 100) // desconto de 300, razão debitou 200
+      assert.equal(l.saldo_em_aberto_centavos, 1000 - 200 - 100 + 50) // cliente 1; cliente apagado fora
+    })
+
+    test('período vazio devolve zeros, exceto o saldo em aberto (independe do período)', async () => {
+      const r = await db.query<Record<string, string | number>>(
+        `select * from public.cashback_resumo('${BARRACA}', now() - interval '3 days', now() - interval '2 days')`,
+      )
+      const l = Object.fromEntries(Object.entries(r.rows[0]).map(([k, v]) => [k, Number(v)]))
+      assert.equal(l.concedido_centavos, 0)
+      assert.equal(l.usado_centavos, 0)
+      assert.equal(l.estornado_centavos, 0)
+      assert.equal(l.excedente_centavos, 0)
+      assert.equal(l.saldo_em_aberto_centavos, 750)
     })
   })
 })
