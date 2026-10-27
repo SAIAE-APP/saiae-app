@@ -175,7 +175,7 @@ Risco da leitura A: o chip selecionado (mostarda) e o herói (mostarda) também 
 
 - Uma condição "aberta" calculada uma vez (`status === null || status.aberto`) e passada a `BotaoAdicionar`, ao herói do destaque e à barra do carrinho. "Fechada" vira mais um estado do botão, ao lado de esgotado.
 - Botão fechado: desabilitado, neutro (não mostarda). Nos cards pequenos o texto completo não cabe; o botão mostra "Fechado" e o horário de abertura aparece no selo do topo e no herói do destaque. O `aria-label` do botão traz o estado completo.
-- O cliente sempre pode remover: o stepper "− N +" de itens já no carrinho continua permitindo diminuir; aumentar fica desabilitado. A barra do carrinho continua visível com o total; "Ver pedido" fica desabilitado com o texto "Fechado" se a loja fechou depois de o cliente montar o pedido.
+- O cliente sempre pode remover: o stepper "− N +" de itens já no carrinho continua permitindo diminuir; aumentar fica desabilitado. A barra do carrinho continua visível e HABILITADA com o total e "· Fechado" na linha dos itens; "Ver pedido" abre o "Seu pedido", onde o cliente revisa e remove itens (inclusive os com opções). **Ruling do dono-delegado (2026-10-27, no lugar do texto antigo "Ver pedido fica desabilitado"):** com a loja fechada o cliente SEMPRE pode remover itens; só o avanço ao pagamento/envio fica desabilitado, com o aviso de estado ("Fechado · abre ... Você ainda pode revisar e tirar itens do pedido").
 - O estado é recalculado ao abrir a página e quando a aba volta ao foco.
 - Preço, itens e descrição nunca somem.
 

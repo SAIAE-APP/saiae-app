@@ -14,7 +14,7 @@ import { Chip } from '../components/ui/Chip'
 import { BotaoPedir } from '../components/cardapio/BotaoPedir'
 import { CardDestaque } from '../components/cardapio/CardDestaque'
 import { resolverDestaque } from '../lib/destaque'
-import { lojaAberta } from '../lib/estadoBotaoPedir'
+import { lojaAberta, podeFinalizarPedido } from '../lib/estadoBotaoPedir'
 import { Icone } from '../components/ui/Icone'
 import { Input } from '../components/ui/Input'
 import { Textarea } from '../components/ui/Textarea'
@@ -376,7 +376,7 @@ function CardItemHorizontal({
   onRemover: () => void
 }) {
   return (
-    <div className="w-36 shrink-0 overflow-hidden rounded-mesa-xl border border-mesa-border-subtle bg-mesa-surface shadow-mesa-1">
+    <div className="flex w-36 shrink-0 flex-col overflow-hidden rounded-mesa-xl border border-mesa-border-subtle bg-mesa-surface shadow-mesa-1">
       <div className="relative aspect-square w-full bg-mesa-neutral-100 dark:bg-mesa-neutral-700">
         {item.item_foto_url ? (
           <img src={item.item_foto_url} alt="" className="size-full object-cover" />
@@ -397,7 +397,7 @@ function CardItemHorizontal({
           </span>
         )}
       </div>
-      <div className="p-2.5">
+      <div className="flex flex-1 flex-col p-2.5">
         <p className="line-clamp-1 text-sm font-semibold text-mesa-text-primary">{item.item_nome}</p>
         <span className="mt-1.5 flex flex-col font-mesa-display text-xs font-semibold text-mesa-text-primary">
           {item.a_partir_de && item.item_preco_centavos > 0 && (
@@ -407,7 +407,7 @@ function CardItemHorizontal({
             {item.item_preco_centavos > 0 ? formatarPrecoBR(item.item_preco_centavos) : 'Consulta'}
           </span>
         </span>
-        <div className="mt-2">
+        <div className="mt-auto pt-2">
           <BotaoPedir
             larguraTotal
             podeAdicionar={!podeComprar || item.item_preco_centavos > 0}
@@ -781,6 +781,7 @@ export function CardapioPublico() {
   const status = useMemo(() => statusFuncionamento(horarios, agora), [horarios, agora])
   const aberta = lojaAberta(status)
   const textoFechado = !aberta ? status?.texto : undefined
+  const podeFinalizar = podeFinalizarPedido(aberta)
 
   const itemPorId = useMemo(() => new Map(linhas.map((l) => [l.item_id, l])), [linhas])
 
@@ -1645,21 +1646,19 @@ export function CardapioPublico() {
           <button
             type="button"
             onClick={() => setMostrarCheckout(true)}
-            disabled={!aberta}
-            aria-label={aberta ? undefined : `Fechado. ${textoFechado ?? ''}`.trim()}
             className="flex w-full items-center justify-between gap-3 rounded-mesa-lg bg-mesa-neutral-900 py-4 pl-5 pr-4 text-left text-white shadow-mesa-3 outline-none transition-transform active:scale-[0.99] disabled:active:scale-100 dark:bg-mesa-neutral-50 dark:text-mesa-neutral-900"
           >
             <span>
               <span className="block text-sm text-white/80 dark:text-mesa-neutral-900/70">
-                {totalItensCarrinho} {totalItensCarrinho === 1 ? 'item' : 'itens'}
+                {totalItensCarrinho} {totalItensCarrinho === 1 ? 'item' : 'itens'}{aberta ? '' : ' · Fechado'}
               </span>
               <span className="block font-mesa-display text-xl font-bold leading-tight">
                 {formatarPrecoBR(totalCentavosCarrinho)}
               </span>
             </span>
             <span className="flex items-center gap-1 rounded-mesa-full bg-mesa-neutral-50 px-4 py-2.5 text-sm font-bold text-mesa-neutral-900 dark:bg-mesa-neutral-900 dark:text-mesa-neutral-50">
-              {aberta ? 'Ver pedido' : 'Fechado'}
-              {aberta && <Icone nome="arrow_forward" size={16} />}
+              Ver pedido
+              <Icone nome="arrow_forward" size={16} />
             </span>
           </button>
         </div>
@@ -1833,13 +1832,19 @@ export function CardapioPublico() {
               </fieldset>
             )}
 
+            {!podeFinalizar && (
+              <p role="status" className="rounded-mesa-lg bg-mesa-neutral-100 p-3 text-sm font-medium text-mesa-text-primary dark:bg-mesa-neutral-800">
+                {textoFechado ? `${textoFechado}. Você ainda pode revisar e tirar itens do pedido.` : 'Estamos fechados. Você ainda pode revisar e tirar itens do pedido.'}
+              </p>
+            )}
+
             {mostrarPagarNaEntrega && (
               <Button
                 variant="outline"
                 size="xl"
                 icon={<Icone nome="two_wheeler" size={20} />}
                 className="w-full"
-                disabled={itensCarrinho.length === 0}
+                disabled={itensCarrinho.length === 0 || !podeFinalizar}
                 onClick={() => {
                   aberturaCheckoutRef.current = Date.now()
                   setFormaEntrega('na_entrega')
@@ -1859,7 +1864,7 @@ export function CardapioPublico() {
                     size="xl"
                     icon={<Icone nome="qr_code" size={20} />}
                     className="w-full"
-                    disabled={itensCarrinho.length === 0}
+                    disabled={itensCarrinho.length === 0 || !podeFinalizar}
                     onClick={() => {
                       aberturaCheckoutRef.current = Date.now()
                       setFormaEntrega('pix')
@@ -1874,7 +1879,7 @@ export function CardapioPublico() {
                       size="xl"
                       icon={<Icone nome="credit_card" size={20} />}
                       className="w-full"
-                      disabled={itensCarrinho.length === 0}
+                      disabled={itensCarrinho.length === 0 || !podeFinalizar}
                       onClick={() => {
                         aberturaCheckoutRef.current = Date.now()
                         setFormaEntrega('cartao')
@@ -1889,7 +1894,7 @@ export function CardapioPublico() {
             ) : podeComprar && meioEfetivo === 'cartao' && chaveMp && !ehPedidoGratis(subtotalCentavos) ? (
               <CartaoMercadoPago
                 publicKey={chaveMp}
-                desabilitado={itensCarrinho.length === 0}
+                desabilitado={itensCarrinho.length === 0 || !podeFinalizar}
                 textoBotao={`Pagar ${formatarPrecoBR(totalOnline(cobraTaxaPlataforma, subtotalCentavos))}`}
                 onAntesDeGerar={garantirPerfil}
                 onGerarToken={(t) => void pagar(t)}
@@ -1899,7 +1904,7 @@ export function CardapioPublico() {
                 size="xl"
                 icon={<Icone nome={ehPedidoGratis(totalCentavosCarrinho - descontoCupom) ? 'check_circle' : 'qr_code'} size={20} />}
                 className="w-full"
-                disabled={itensCarrinho.length === 0}
+                disabled={itensCarrinho.length === 0 || !podeFinalizar}
                 onClick={() => void pagar()}
               >
                 {ehPedidoGratis(totalCentavosCarrinho - descontoCupom) ? TEXTO_BOTAO_PEDIDO_GRATIS : 'Pagar com Pix'}
@@ -1909,7 +1914,7 @@ export function CardapioPublico() {
                 size="xl"
                 icon={<Icone nome="point_of_sale" size={20} />}
                 className="w-full"
-                disabled={itensCarrinho.length === 0}
+                disabled={itensCarrinho.length === 0 || !podeFinalizar}
                 onClick={() => setMostrarAvisoBalcao(true)}
               >
                 Finalizar no caixa

@@ -1,6 +1,6 @@
 import assert from 'node:assert/strict'
 import { describe, test } from 'node:test'
-import { estadoBotaoPedir, lojaAberta } from '../src/lib/estadoBotaoPedir.ts'
+import { estadoBotaoPedir, lojaAberta, podeFinalizarPedido } from '../src/lib/estadoBotaoPedir.ts'
 import { statusFuncionamento, type HorarioPublico } from '../src/lib/horarioFuncionamento.ts'
 
 const base = { esgotado: false, lojaAberta: true, podeAdicionar: true, comOpcoes: false, quantidade: 0 }
@@ -10,6 +10,20 @@ describe('lojaAberta', () => {
   test('respeita o status', () => {
     assert.equal(lojaAberta({ aberto: true }), true)
     assert.equal(lojaAberta({ aberto: false }), false)
+  })
+})
+
+describe('podeFinalizarPedido (loja fechada nunca prende o cliente)', () => {
+  test('aberta finaliza; fechada não finaliza, mas o item com opções segue removível pelo pedido', () => {
+    assert.equal(podeFinalizarPedido(true), true)
+    assert.equal(podeFinalizarPedido(false), false)
+  })
+
+  test('fechada com item simples no carrinho: stepper visível e só diminui', () => {
+    const e = estadoBotaoPedir({ ...base, lojaAberta: false, quantidade: 3 })
+    assert.equal(e.tipo, 'contador')
+    assert.equal(e.podeDiminuir, true)
+    assert.equal(e.podeAumentar, false)
   })
 })
 

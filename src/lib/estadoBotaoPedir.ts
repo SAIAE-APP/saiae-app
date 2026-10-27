@@ -3,6 +3,11 @@ export function lojaAberta(status: { aberto: boolean } | null): boolean {
   return status === null || status.aberto
 }
 
+/** Loja fechada: o cliente ainda abre o pedido para revisar e tirar itens, mas não avança ao pagamento/envio. */
+export function podeFinalizarPedido(lojaAberta: boolean): boolean {
+  return lojaAberta
+}
+
 export type TipoBotaoPedir = 'esgotado' | 'fechado' | 'escolher' | 'adicionar' | 'contador'
 
 export type EntradaBotaoPedir = {

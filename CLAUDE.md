@@ -1136,8 +1136,9 @@ nenhum item daqui sozinho, só quando for pedido explicitamente.
     Todo card usa o mesmo `BotaoPedir` (`src/components/cardapio/`), mostarda de 44px, estado decidido por
     `estadoBotaoPedir` (`src/lib/estadoBotaoPedir.ts`). Fora do horário (`horarios_publicos` + `statusFuncionamento`,
     relógio do visitante, recalculado ao voltar o foco; sem horário cadastrado = sempre aberta) os botões ficam
-    desabilitados com "Fechado" e o "Ver pedido" vira "Fechado"; preço e itens continuam visíveis; item sem opções já
-    no carrinho ainda diminui. O bloqueio é SÓ NA TELA: o servidor só recusa pedido fechado se a barraca ligou
+    desabilitados com "Fechado"; preço e itens continuam visíveis; o cliente SEMPRE pode remover itens (stepper
+    só diminui, barra do carrinho habilitada abre o "Seu pedido") e só o avanço ao pagamento/envio fica desabilitado,
+    com aviso (`podeFinalizarPedido`). O bloqueio é SÓ NA TELA: o servidor só recusa pedido fechado se a barraca ligou
     `bloquear_fora_do_horario`. ORDEM DE DEPLOY: migration → app (app novo sem a migration funciona, sem destaque).
     Métrica (pedidos do cardápio por semana por barraca, antes e depois): `docs/consulta-pedidos-cardapio-semana.sql`
     (não há coluna de origem em `pedidos`; a consulta usa rastros e declara os limites).
