@@ -11,7 +11,7 @@ export const STATUS_PENDENTE_ABERTOS = ['pendente', 'expirado'] as const
 export function totalEsperadoDoPendente(
   itens: { quantidade: number; preco_centavos_unitario: number }[],
   taxaEntregaCentavos: number,
-  /** Cupom: desconto só nos itens, gravado no pendente na hora da cobrança. Sem cupom = 0 (conta de antes). */
+  /** Benefício (cupom OU saldo de cashback): desconto só nos itens, gravado no pendente na hora da cobrança. Sem benefício = 0 (conta de antes). */
   descontoCupomCentavos = 0,
   /** Taxa Sai aê gravada no pendente. Pendente antigo (sem taxa) = 0. */
   taxaPlataformaCentavos = 0,

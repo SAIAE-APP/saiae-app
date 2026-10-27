@@ -331,6 +331,7 @@ repetir `versionCode`: subir a cada build. Validar em aparelho Android 7–11 e
   de cartão com token OAuth devolveu HTTP 500 no sandbox (com e sem taxa); o campo da comissão
   (`fee_details`, tipo `application_fee`) ainda não foi visto em pagamento aprovado; falta o teste ponta a ponta no
   staging e o pagamento real de valor mínimo, com aprovação do dono. Sandbox do Mercado Pago: ver `docs/staging.md`.
+- Cashback do cardápio digital (2026-10-27, branch `feat/cashback`, empilhada sobre `feat/cardapio-hierarquia`; spec `docs/superpowers/specs/2026-10-27-cashback-design.md`, plano `docs/superpowers/plans/2026-10-27-cashback.md`, relatório `docs/superpowers/plans/2026-10-27-cashback-relatorio.md`, roteiro `docs/roteiro-cashback.md`). A BARRACA financia (**SUPOSIÇÃO-CASHBACK-1**): o cliente identificado (telefone confirmado) que paga ONLINE (Pix ou cartão, `criar-pagamento-pix`) ganha saldo, usado como desconto nos ITENS do pedido seguinte; `application_fee` e a taxa de R$ 0,99 não mudam. Desligado por padrão e só liga depois de o dono aceitar o aviso fiscal/de passivo (`barracas.cashback_termo_aceito_em`, check no banco); desligar só para novos créditos, saldo já concedido segue valendo até vencer (**SUPOSIÇÃO-CASHBACK-2**). Padrão 5% e 60 dias, faixas 1–15%, 30–90 dias e teto de uso 10–90% dos itens (**SUPOSIÇÃO-CASHBACK-3**). Um benefício por pedido, cupom OU saldo (422 `cashback_e_cupom`), e piso de R$ 1,00 em dinheiro nos itens: resgate = `min(saldo disponível, floor(itens × teto%), itens − 100)` (**SUPOSIÇÃO-CASHBACK-4**); crédito = `floor((itens − cupom − saldo usado) × bp / 10000)`, no máximo R$ 20,00 por pedido. Sem módulo pago na V1 (**SUPOSIÇÃO-CASHBACK-5**). Pedido de total zero por cupom continua sem taxa e o cashback nunca zera o pedido (**SUPOSIÇÃO-CASHBACK-6**). Tudo em centavos inteiros com `floor`; fórmulas em `src/lib/cashbackRegras.ts` e espelho SQL (`cashback_calcular_credito`/`_resgate`), ligados pelos vetores de `tests/fixtures/cashback-vetores.json`; o servidor SEMPRE recalcula (o front só mostra prévia; 409 com o novo total se divergir). Banco: razão só-inserção `cashback_lancamentos` (credito, resgate, estorno_credito, estorno_resgate, expiracao, ajuste) e reservas `cashback_resgates` (mesmo desenho de `cupom_usos`), escritas só por RPC de serviço, com advisory lock por loja+cliente; saldo por loja, calculado na leitura, com validade que não depende de cron (o saldo inteiro vence N dias depois do último crédito; resgatar não renova). A reserva vive até o vencimento do Pix e é liberada por `cupom_liberar` (redefinida para liberar também o saldo); `cashback_liberar_abandonadas` libera só o Pix anterior do MESMO cliente. Pagamento aprovado nunca é recusado: `cashback_confirmar_resgate` confirma mesmo com a reserva vencida (o que o saldo já não cobre vira `excedente_centavos`, absorvido pela barraca) e a falha do crédito só vai ao log, com reprocesso no reenvio do webhook (RPC idempotente). Estorno total (`estornar-pagamento`) reverte o crédito até o saldo atual e devolve o saldo usado com validade renovada; cancelar sem estornar não mexe no saldo; chargeback não tem tratamento automático. NFC-e: o saldo usado é rateado como desconto por item (`descontoTotalNfceCentavos`); a concessão não aparece na nota. LGPD: "Apagar meus dados" apaga o saldo e anonimiza o razão (`cliente_id` nulo). Front: `SecaoCashback` (Ajustes > Cardápio, só com perfil do cliente ligado), `useCashback` + `src/components/cashback/*` no checkout do cardápio (pontos mínimos em `CardapioPublico.tsx`, guardados por `tests/cashbackCardapioContato.test.ts`), saldo no perfil do cliente, texto na Política de Privacidade, histórico/relatório do dono (`cashback_resumo`). ORDEM DE DEPLOY: migrations `20261106100000` a `20261106170000` (M1..M8, nesta ordem) → functions (`criar-pagamento-pix`, `webhook-mercadopago`, `estornar-pagamento`, `cliente-sessao`, `emitir-nfce`) → app. NÃO VALIDADO: pagamento real (Pix e cartão) com saldo, piso de R$ 1,00 com a comissão de R$ 0,99 no Mercado Pago, primeira NFC-e com desconto em homologação, concorrência real de duas reservas, telas com sessão de cliente e Ajustes (exigem login), e a parte fiscal/CDC (parecer do contador e de quem entende de CDC antes de ligar em produção).
 - Avisar cliente "pedido pronto" (2026-10-08, Sprint 3, migration
   `20261008120000`): campo OPCIONAL "WhatsApp do cliente" em Confirmar Pedido
   (Mesa/Balcão/Retirada; na Entrega vale o telefone do formulário) e no
@@ -645,7 +646,15 @@ repetir `versionCode`: subir a cada build. Validar em aparelho Android 7–11 e
   duas cores de marca, teal/esmeralda saiu do app inteiro. Texto
   sobre mostarda é SEMPRE tinta, nunca branco (mostarda não sustenta
   contraste com branco). "Um primário por tela": só a ação principal
-  de cada tela é mostarda, o resto usa tinta/outline/ghost. Cada
+  de cada tela é mostarda, o resto usa tinta/outline/ghost. Leitura A
+  no cardápio público (2026-10-27, decisão do João): o papel principal
+  da tela é "pedir", então todo botão que cumpre esse papel (Adicionar/
+  Escolher em todo card) é mostarda, por ser a mesma ação repetida e
+  não ações concorrentes; Esgotado e Fechado são neutros (contorno
+  desabilitado); o carrinho fixo é tinta com o pill "Ver pedido" claro;
+  o herói do destaque é mostarda com botão tinta. Se ficar "amarelo
+  demais" no celular, o recuo é o herói com borda mostarda, nunca tirar
+  a cor dos botões. Cada
   barraca define apenas logo, nome e modo claro/escuro — cor
   primária por barraca continua eliminada, não sugerir customização
   de cor.
@@ -1118,6 +1127,22 @@ nenhum item daqui sozinho, só quando for pedido explicitamente.
     no WhatsApp"). Método `na_entrega` aparece como "A definir na entrega"
     (Histórico, comanda, Relatório/Faturamento em linha própria); o método
     real é definido depois (frente F, link do entregador).
+  - Hierarquia do cardápio público (2026-10-27, branch `feat/cardapio-hierarquia`; spec
+    `docs/superpowers/specs/2026-10-27-cardapio-hierarquia-design.md`, migration `20261105100000`). Ordem, de cima
+    para baixo: capa/logo/horário, banner, DESTAQUE, Mais pedidos, Populares, busca + categorias com a lista, carrinho
+    fixo. Destaque = `barracas.item_destaque_id` (Ajustes > Cardápio digital > "Item em destaque", uma escolha por
+    barraca) lido pela função `destaque_publico(slug)` (anon; só devolve o item se for da mesma barraca, ativo e de
+    preço fechado); `cardapio_publico` NÃO foi tocada. O bloco some sozinho sem escolha, com item esgotado (inclusive
+    pelas opções) ou durante a busca (`resolverDestaque`, `src/lib/destaque.ts`); o item continua nas outras seções.
+    Todo card usa o mesmo `BotaoPedir` (`src/components/cardapio/`), mostarda de 44px, estado decidido por
+    `estadoBotaoPedir` (`src/lib/estadoBotaoPedir.ts`). Fora do horário (`horarios_publicos` + `statusFuncionamento`,
+    no FUSO DA BARRACA (função uso_publico, migration 20261105110000; sem ela ou com erro vale America/Sao_Paulo), recalculado ao voltar o foco; sem horário cadastrado = sempre aberta) os botões ficam
+    desabilitados com "Fechado"; preço e itens continuam visíveis; o cliente SEMPRE pode remover itens (stepper
+    só diminui, barra do carrinho habilitada abre o "Seu pedido") e só o avanço ao pagamento/envio fica desabilitado,
+    com aviso (`podeFinalizarPedido`). O bloqueio é SÓ NA TELA: o servidor só recusa pedido fechado se a barraca ligou
+    `bloquear_fora_do_horario`. ORDEM DE DEPLOY: migrations 20261105100000 e 20261105110000 → app (app novo sem elas funciona: sem destaque e com fuso de Brasília).
+    Métrica (pedidos do cardápio por semana por barraca, antes e depois): `docs/consulta-pedidos-cardapio-semana.sql`
+    (não há coluna de origem em `pedidos`; a consulta usa rastros e declara os limites).
   - Fase 2 (futura): cliente monta pedido e ele cai direto na
     Cozinha, mas o pagamento continua fora do app (maquininha/Pix na
     mesa, como já funciona hoje) — só tira a fila de atendimento,

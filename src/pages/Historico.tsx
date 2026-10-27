@@ -37,6 +37,7 @@ import { ambienteDaNota, cpfValido, formatarCpf, mensagemErroEmissao, podeMostra
 import { temModulo } from '../lib/modulos'
 import { nomeComOpcoes } from '../lib/opcoes'
 import { textoCupomDoPedido } from '../lib/descontosCupom'
+import { textoCashbackGeradoDoPedido, textoCashbackUsadoDoPedido } from '../lib/descontosCashback'
 import { buscarComandasPorIds, textoComandaDoPedido, type ComandaDoPedido } from '../lib/comandasPeriodo'
 import { descreverErroImpressao, imprimirCupomFiscal, impressoraSuportada } from '../lib/impressoraTermica'
 import { ROTULO_SAIU } from '../lib/saiuEntrega'
@@ -108,6 +109,8 @@ async function gerarPlanilha(pedidos: PedidoComItens[]): Promise<ArrayBuffer> {
     { header: 'Taxa de entrega', key: 'taxaEntrega', width: 16 },
     { header: 'Cupom', key: 'cupom', width: 14 },
     { header: 'Desconto do cupom', key: 'descontoCupom', width: 18 },
+    { header: 'Cashback usado', key: 'cashbackUsado', width: 16 },
+    { header: 'Cashback gerado', key: 'cashbackGerado', width: 16 },
   ]
 
   const linhaCabecalho = planilha.getRow(1)
@@ -118,7 +121,7 @@ async function gerarPlanilha(pedidos: PedidoComItens[]): Promise<ArrayBuffer> {
   linhaCabecalho.alignment = { vertical: 'middle' }
   linhaCabecalho.height = 20
   planilha.views = [{ state: 'frozen', ySplit: 1 }]
-  planilha.autoFilter = { from: 'A1', to: 'N1' }
+  planilha.autoFilter = { from: 'A1', to: 'P1' }
 
   for (const pedido of pedidos) {
     const itensTexto = pedido.itens_do_pedido
@@ -143,6 +146,8 @@ async function gerarPlanilha(pedidos: PedidoComItens[]): Promise<ArrayBuffer> {
       taxaEntrega: (pedido.taxa_entrega_centavos ?? 0) > 0 ? formatarPrecoBR(pedido.taxa_entrega_centavos ?? 0) : '',
       cupom: (pedido.desconto_cupom_centavos ?? 0) > 0 ? (pedido.cupom_codigo ?? '') : '',
       descontoCupom: (pedido.desconto_cupom_centavos ?? 0) > 0 ? formatarPrecoBR(pedido.desconto_cupom_centavos ?? 0) : '',
+      cashbackUsado: (pedido.cashback_usado_centavos ?? 0) > 0 ? formatarPrecoBR(pedido.cashback_usado_centavos ?? 0) : '',
+      cashbackGerado: (pedido.cashback_gerado_centavos ?? 0) > 0 ? formatarPrecoBR(pedido.cashback_gerado_centavos ?? 0) : '',
     })
 
     linha.alignment = { vertical: 'middle', wrapText: false }
@@ -435,6 +440,8 @@ function CardHistorico({
             </p>
           )}
           {textoCupomDoPedido(pedido) && <p className="text-xs text-mesa-text-tertiary">{textoCupomDoPedido(pedido)}</p>}
+          {textoCashbackUsadoDoPedido(pedido) && <p className="text-xs text-mesa-text-tertiary">{textoCashbackUsadoDoPedido(pedido)}</p>}
+          {textoCashbackGeradoDoPedido(pedido) && <p className="text-xs text-mesa-text-tertiary">{textoCashbackGeradoDoPedido(pedido)}</p>}
           {textoComandaDoPedido(comanda, formatarPrecoBR) && (
             <p className="text-xs text-mesa-text-tertiary">{textoComandaDoPedido(comanda, formatarPrecoBR)}</p>
           )}

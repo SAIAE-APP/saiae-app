@@ -7,6 +7,8 @@ import { useEvolucao14Dias } from '../hooks/useEvolucao14Dias'
 import { calcularIntervalosRelatorio, METODOS_OU_NAO_INFORMADO } from '../lib/relatorio'
 import type { DetalhamentoLiquido, IntervaloData, MetodoOuNaoInformado } from '../lib/relatorio'
 import { formatarPrecoBR } from '../lib/preco'
+import { recebidoNosItensCentavos } from '../lib/descontosCashback'
+import type { ResumoCashback } from '../lib/cashbackResumo'
 import { bpsParaPercentual } from '../lib/taxas'
 import { humanizarMetodo, METODOS_DISPONIVEIS } from '../lib/metodoPagamento'
 import { MOTIVOS_CANCELAMENTO } from '../lib/cancelamento'
@@ -18,6 +20,11 @@ import { Card } from './ui/Card'
 import { Icone } from './ui/Icone'
 import { SegmentedControl } from './ui/SegmentedControl'
 import type { Barraca } from '../types/database'
+
+/** A seção Cashback só aparece quando a loja tem algum movimento ou saldo (senão o relatório fica como sempre foi). */
+function temMovimentoCashback(r: ResumoCashback | null): boolean {
+  return r !== null && Object.values(r).some((v) => v > 0)
+}
 
 function formatarDataCurta(iso: string): string {
   const [ano, mes, dia] = iso.split('-').map(Number)
@@ -460,8 +467,52 @@ export function PainelRelatorio({
           <p className="mt-2 text-sm text-mesa-text-secondary">
             Recebido nos itens (faturamento − descontos):{' '}
             <strong className="font-mesa-display text-mesa-text-primary">
-              {formatarPrecoBR(atual.totalBruto - atual.descontosCupom.valor)}
+              {formatarPrecoBR(recebidoNosItensCentavos(atual.totalBruto, atual.descontosCupom.valor, atual.cashbackUsado.valor))}
             </strong>
+          </p>
+        </SecaoRelatorio>
+      )}
+
+      {(atual.cashbackUsado.quantidade > 0 || temMovimentoCashback(atual.cashbackResumo)) && (
+        <SecaoRelatorio titulo="Cashback" icone="paid">
+          {atual.cashbackResumo && (
+            <dl className="grid grid-cols-[1fr_auto] gap-x-4 gap-y-1 text-sm text-mesa-text-secondary">
+              <dt>Concedido</dt>
+              <dd className="text-right font-mesa-display text-mesa-text-primary">{formatarPrecoBR(atual.cashbackResumo.concedidoCentavos)}</dd>
+              <dt>Usado</dt>
+              <dd className="text-right font-mesa-display text-mesa-text-primary">{formatarPrecoBR(atual.cashbackResumo.usadoCentavos)}</dd>
+              <dt>Vencido</dt>
+              <dd className="text-right font-mesa-display text-mesa-text-primary">{formatarPrecoBR(atual.cashbackResumo.vencidoCentavos)}</dd>
+              <dt>Estornado</dt>
+              <dd className="text-right font-mesa-display text-mesa-text-primary">{formatarPrecoBR(atual.cashbackResumo.estornadoCentavos)}</dd>
+              <dt className="font-semibold text-mesa-text-primary">Saldo em aberto hoje</dt>
+              <dd className="text-right font-mesa-display font-bold text-mesa-text-primary">
+                {formatarPrecoBR(atual.cashbackResumo.saldoEmAbertoCentavos)}
+              </dd>
+            </dl>
+          )}
+          <p className="mt-2 text-sm text-mesa-text-secondary">
+            Cashback usado nos pedidos:{' '}
+            <strong className="font-mesa-display text-mesa-text-primary">{formatarPrecoBR(atual.cashbackUsado.valor)}</strong>{' '}
+            em {atual.cashbackUsado.quantidade} pedido{atual.cashbackUsado.quantidade === 1 ? '' : 's'}. Fica à parte: o
+            faturamento acima é a soma dos itens.
+          </p>
+          {atual.descontosCupom.quantidade === 0 && (
+            <p className="mt-2 text-sm text-mesa-text-secondary">
+              Recebido nos itens (faturamento − descontos):{' '}
+              <strong className="font-mesa-display text-mesa-text-primary">
+                {formatarPrecoBR(recebidoNosItensCentavos(atual.totalBruto, 0, atual.cashbackUsado.valor))}
+              </strong>
+            </p>
+          )}
+          {atual.cashbackResumo && atual.cashbackResumo.excedenteCentavos > 0 && (
+            <p className="mt-2 text-xs text-mesa-text-tertiary">
+              Saldo gasto além do que havia no razão (pagamento aprovado depois de o saldo ser usado em outro pedido):{' '}
+              {formatarPrecoBR(atual.cashbackResumo.excedenteCentavos)}. É custo da barraca.
+            </p>
+          )}
+          <p className="mt-2 text-xs text-mesa-text-tertiary">
+            O saldo em aberto é um desconto que a barraca ainda deve aos clientes. Quem decide como lançar na contabilidade é o contador.
           </p>
         </SecaoRelatorio>
       )}

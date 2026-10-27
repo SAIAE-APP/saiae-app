@@ -11,6 +11,10 @@ import { Button } from '../components/ui/Button'
 import { BottomSheet } from '../components/ui/BottomSheet'
 import { Checkbox } from '../components/ui/Checkbox'
 import { Chip } from '../components/ui/Chip'
+import { BotaoPedir } from '../components/cardapio/BotaoPedir'
+import { CardDestaque } from '../components/cardapio/CardDestaque'
+import { resolverDestaque } from '../lib/destaque'
+import { lojaAberta, podeFinalizarPedido } from '../lib/estadoBotaoPedir'
 import { Icone } from '../components/ui/Icone'
 import { Input } from '../components/ui/Input'
 import { Textarea } from '../components/ui/Textarea'
@@ -20,6 +24,10 @@ import { useClienteSessao } from '../hooks/useClienteSessao'
 import { usePerfilConfig } from '../hooks/usePerfilConfig'
 import { useCupom } from '../hooks/useCupom'
 import { CampoCupom } from '../components/CampoCupom'
+import { useCashback } from '../hooks/useCashback'
+import { BlocoCashbackCheckout } from '../components/cashback/BlocoCashbackCheckout'
+import { LinhaCashbackGanho } from '../components/cashback/LinhaCashbackGanho'
+import { AvisoCashbackGanho } from '../components/cashback/AvisoCashbackGanho'
 import { textoDesconto } from '../lib/cupomApi'
 import { lerSessao, limparSessao } from '../lib/clienteApi'
 import { lerPedirDeNovo } from '../lib/clientePerfil'
@@ -34,14 +42,14 @@ import {
   type GrupoItem,
   type LinhaOpcaoPublica,
 } from '../lib/opcoes'
-import { statusFuncionamento, type HorarioPublico } from '../lib/horarioFuncionamento'
+import { fusoDaBarraca, statusFuncionamento, type HorarioPublico } from '../lib/horarioFuncionamento'
 import { montarMensagemPagarNaEntrega, urlWhatsappDono } from '../lib/pagarNaEntrega'
 import { formatarTelefoneBR } from '../lib/entrega'
 import { bairroCanonico, buscarBairrosPublicos, taxaDoBairro, type BairrosPublicos } from '../lib/bairros'
 import { TAXA_PLATAFORMA_CENTAVOS, totalComTaxaPlataforma } from '../lib/taxaPlataforma'
 import { CartaoMercadoPago, type TokenCartaoGerado } from '../components/CartaoMercadoPago'
 
-type LinhaCardapioPublico = {
+export type LinhaCardapioPublico = {
   barraca_id: string
   barraca_nome: string
   barraca_logo_url: string | null
@@ -107,7 +115,7 @@ type EstadoPagamento =
       /** Cartão sem confirmação dentro do prazo: continua esperando o emissor, sem oferecer nova cobrança. */
       semConfirmacao?: boolean
     }
-  | { fase: 'aprovado'; senha: number | null; gratis?: boolean }
+  | { fase: 'aprovado'; senha: number | null; gratis?: boolean; pendenteId?: string; cashback?: { cashback_gerado_centavos?: unknown; cashback_vence_em?: unknown } }
   // "Pagar na entrega": dados do cliente -> envio -> pedido já na cozinha + wa.me do dono.
   | { fase: 'dados_entrega'; erro?: string }
   | { fase: 'enviando_entrega' }
@@ -153,98 +161,12 @@ function BottomSheetFinalizarBalcao({
   )
 }
 
-/** Mesmo padrão de stepper de Lançar Pedido (BotaoStepper): vira +/- assim
- * que tem quantidade no carrinho, em vez de só "N no carrinho" sem jeito de
- * tirar item — precisava dar pra ajustar direto no card, não só dentro do
- * checkout. */
-function BotaoAdicionar({
-  variant,
-  podeAdicionar,
-  esgotado,
-  comOpcoes = false,
-  quantidadeNoCarrinho,
-  onAdicionar,
-  onRemover,
-}: {
-  variant: 'sm' | 'md'
-  podeAdicionar: boolean
-  esgotado: boolean
-  /** Item com variação/adicionais: o botão abre o seletor; os ajustes de quantidade ficam no pedido. */
-  comOpcoes?: boolean
-  quantidadeNoCarrinho: number
-  onAdicionar: () => void
-  onRemover: () => void
-}) {
-  if (esgotado) {
-    return (
-      <Button variant="outline" size={variant} disabled>
-        Esgotado
-      </Button>
-    )
-  }
-
-  if (comOpcoes) {
-    return (
-      <Button
-        variant="outline"
-        size={variant}
-        icon={<Icone nome="add" size={16} />}
-        disabled={!podeAdicionar}
-        onClick={onAdicionar}
-      >
-        {quantidadeNoCarrinho > 0 ? `Escolher (${quantidadeNoCarrinho})` : 'Escolher'}
-      </Button>
-    )
-  }
-
-  if (quantidadeNoCarrinho > 0) {
-    return (
-      <div className="flex items-center gap-1 rounded-mesa-full bg-mesa-neutral-100 p-1 dark:bg-mesa-neutral-800">
-        <button
-          type="button"
-          onClick={onRemover}
-          aria-label="Diminuir quantidade"
-          className="flex size-11 -m-2 items-center justify-center"
-        >
-          <span className="flex size-7 items-center justify-center rounded-mesa-full bg-mesa-neutral-900 text-white transition-transform active:scale-90 dark:bg-mesa-neutral-50 dark:text-mesa-neutral-900">
-            <Icone nome="remove" size={14} />
-          </span>
-        </button>
-        <span className="min-w-[1.5ch] text-center font-mesa-display text-sm font-bold text-mesa-text-primary">
-          {quantidadeNoCarrinho}
-        </span>
-        <button
-          type="button"
-          onClick={onAdicionar}
-          disabled={!podeAdicionar}
-          aria-label="Aumentar quantidade"
-          className="flex size-11 -m-2 items-center justify-center disabled:opacity-40"
-        >
-          <span className="flex size-7 items-center justify-center rounded-mesa-full bg-mesa-neutral-900 text-white transition-transform active:scale-90 dark:bg-mesa-neutral-50 dark:text-mesa-neutral-900">
-            <Icone nome="add" size={14} />
-          </span>
-        </button>
-      </div>
-    )
-  }
-
-  return (
-    <Button
-      variant="outline"
-      size={variant}
-      icon={<Icone nome="add" size={16} />}
-      disabled={!podeAdicionar}
-      onClick={onAdicionar}
-    >
-      Adicionar
-    </Button>
-  )
-}
-
 function CardItemPublico({
   item,
   posicaoPopular,
   podeComprar,
+  aberta,
+  textoFechado,
   quantidadeNoCarrinho,
   onAdicionar,
   onRemover,
@@ -252,6 +174,8 @@ function CardItemPublico({
   item: LinhaCardapioPublico
   posicaoPopular: number | null
   podeComprar: boolean
+  aberta: boolean
+  textoFechado?: string
   quantidadeNoCarrinho: number
   onAdicionar: () => void
   onRemover: () => void
@@ -290,10 +214,11 @@ function CardItemPublico({
               {item.item_preco_centavos > 0 ? formatarPrecoBR(item.item_preco_centavos) : 'Sob consulta'}
             </span>
           </span>
-          <BotaoAdicionar
-            variant="sm"
+          <BotaoPedir
             podeAdicionar={!podeComprar || item.item_preco_centavos > 0}
             esgotado={item.item_esgotado}
+            lojaAberta={aberta}
+            textoFechado={textoFechado}
             comOpcoes={item.com_opcoes === true}
             quantidadeNoCarrinho={quantidadeNoCarrinho}
             onAdicionar={onAdicionar}
@@ -431,63 +356,6 @@ function CarrosselBanners({ banners }: { banners: BannerPublico[] }) {
   )
 }
 
-/** Versão compacta do stepper — a versão com texto de BotaoAdicionar não
- * cabe no card estreito das seções horizontais (Populares/Mais pedido). O
- * aviso de "sem pagamento online" aparece só na hora de finalizar
- * (BottomSheetFinalizarBalcao), não mais no clique de cada item. */
-function BotaoAdicionarCompacto({
-  podeAdicionar,
-  esgotado,
-  comOpcoes = false,
-  quantidadeNoCarrinho,
-  onAdicionar,
-  onRemover,
-}: {
-  podeAdicionar: boolean
-  esgotado: boolean
-  comOpcoes?: boolean
-  quantidadeNoCarrinho: number
-  onAdicionar: () => void
-  onRemover: () => void
-}) {
-  if (quantidadeNoCarrinho > 0 && !comOpcoes) {
-    return (
-      <div className="flex items-center gap-0.5 rounded-mesa-full bg-mesa-neutral-900 px-1 py-1 text-white dark:bg-mesa-neutral-50 dark:text-mesa-neutral-900">
-        <button
-          type="button"
-          onClick={onRemover}
-          aria-label="Diminuir quantidade"
-          className="flex size-5 items-center justify-center"
-        >
-          <Icone nome="remove" size={12} />
-        </button>
-        <span className="min-w-[1ch] text-center font-mesa-display text-xs font-bold">{quantidadeNoCarrinho}</span>
-        <button
-          type="button"
-          onClick={onAdicionar}
-          disabled={!podeAdicionar}
-          aria-label="Aumentar quantidade"
-          className="flex size-5 items-center justify-center disabled:opacity-40"
-        >
-          <Icone nome="add" size={12} />
-        </button>
-      </div>
-    )
-  }
-
-  return (
-    <button
-      type="button"
-      disabled={esgotado || !podeAdicionar}
-      onClick={onAdicionar}
-      aria-label={comOpcoes ? 'Escolher opções' : 'Adicionar ao carrinho'}
-      className="flex size-8 shrink-0 items-center justify-center rounded-mesa-full border border-mesa-border-strong text-mesa-text-primary disabled:opacity-40"
-    >
-      <Icone nome="add" size={16} />
-    </button>
-  )
-}
-
 /** Card compacto usado nas seções horizontais Populares/Mais pedido —
  * mais estreito que CardItemPublico (que é a linha da lista completa
  * abaixo). `destaque` reaproveita o mesmo selo Top1/Popular do card do
@@ -496,6 +364,8 @@ function CardItemHorizontal({
   item,
   destaque,
   podeComprar,
+  aberta,
+  textoFechado,
   quantidadeNoCarrinho,
   onAdicionar,
   onRemover,
@@ -503,12 +373,14 @@ function CardItemHorizontal({
   item: LinhaCardapioPublico
   destaque: 'top1' | 'popular' | null
   podeComprar: boolean
+  aberta: boolean
+  textoFechado?: string
   quantidadeNoCarrinho: number
   onAdicionar: () => void
   onRemover: () => void
 }) {
   return (
-    <div className="w-36 shrink-0 overflow-hidden rounded-mesa-xl border border-mesa-border-subtle bg-mesa-surface shadow-mesa-1">
+    <div className="flex w-36 shrink-0 flex-col overflow-hidden rounded-mesa-xl border border-mesa-border-subtle bg-mesa-surface shadow-mesa-1">
       <div className="relative aspect-square w-full bg-mesa-neutral-100 dark:bg-mesa-neutral-700">
         {item.item_foto_url ? (
           <img src={item.item_foto_url} alt="" className="size-full object-cover" />
@@ -529,20 +401,23 @@ function CardItemHorizontal({
           </span>
         )}
       </div>
-      <div className="p-2.5">
+      <div className="flex flex-1 flex-col p-2.5">
         <p className="line-clamp-1 text-sm font-semibold text-mesa-text-primary">{item.item_nome}</p>
-        <div className="mt-1.5 flex items-center justify-between gap-1">
-          <span className="flex flex-col font-mesa-display text-xs font-semibold text-mesa-text-primary">
-            {item.a_partir_de && item.item_preco_centavos > 0 && (
-              <span className="text-[10px] font-normal text-mesa-text-secondary">a partir de</span>
-            )}
-            <span className="whitespace-nowrap">
-              {item.item_preco_centavos > 0 ? formatarPrecoBR(item.item_preco_centavos) : 'Consulta'}
-            </span>
+        <span className="mt-1.5 flex flex-col font-mesa-display text-xs font-semibold text-mesa-text-primary">
+          {item.a_partir_de && item.item_preco_centavos > 0 && (
+            <span className="text-[10px] font-normal text-mesa-text-secondary">a partir de</span>
+          )}
+          <span className="whitespace-nowrap">
+            {item.item_preco_centavos > 0 ? formatarPrecoBR(item.item_preco_centavos) : 'Consulta'}
           </span>
-          <BotaoAdicionarCompacto
+        </span>
+        <div className="mt-auto pt-2">
+          <BotaoPedir
+            larguraTotal
             podeAdicionar={!podeComprar || item.item_preco_centavos > 0}
             esgotado={item.item_esgotado}
+            lojaAberta={aberta}
+            textoFechado={textoFechado}
             comOpcoes={item.com_opcoes === true}
             quantidadeNoCarrinho={quantidadeNoCarrinho}
             onAdicionar={onAdicionar}
@@ -610,6 +485,10 @@ export function CardapioPublico() {
   const apelido = useResolverApelido(slug, estado.status === 'erro')
   const [banners, setBanners] = useState<BannerPublico[]>([])
   const [horarios, setHorarios] = useState<HorarioPublico[]>([])
+  const [itemDestaqueId, setItemDestaqueId] = useState<string | null>(null)
+  const [fusoBarraca, setFusoBarraca] = useState('America/Sao_Paulo')
+  // Relógio do visitante: recalcula ao abrir e quando a aba volta ao foco (sem timer).
+  const [agora, setAgora] = useState(() => new Date())
   const [busca, setBusca] = useState('')
   const [filtroAtivo, setFiltroAtivo] = useState<string | null>(null)
 
@@ -809,6 +688,77 @@ export function CardapioPublico() {
     }
   }, [slug])
 
+  // Item em destaque (migration 20261105100000). Falha ou banco sem a RPC = sem destaque, em silêncio.
+  useEffect(() => {
+    if (!slug) return
+
+    let cancelado = false
+    // Slug novo ou recarga: nunca deixa o destaque da carga anterior na tela.
+    // eslint-disable-next-line react-hooks/set-state-in-effect -- zera o estado da busca anterior antes da nova resposta
+    setItemDestaqueId(null)
+    supabase.rpc('destaque_publico', { p_slug: slug }).then(({ data, error }) => {
+      if (cancelado) return
+      if (error) {
+        console.warn('Cardápio: não consegui carregar o item em destaque', error.message)
+        setItemDestaqueId(null)
+        return
+      }
+      setItemDestaqueId((data as { item_id: string }[] | null)?.[0]?.item_id ?? null)
+    })
+
+    return () => {
+      cancelado = true
+    }
+  }, [slug])
+
+  // Fuso da barraca (migration 20261105110000). Sem a função ou com erro: America/Sao_Paulo (documentado no relatório).
+  useEffect(() => {
+    if (!slug) return
+    let cancelado = false
+    supabase.rpc('fuso_publico', { p_slug: slug }).then(({ data, error }) => {
+      if (cancelado) return
+      setFusoBarraca(error ? 'America/Sao_Paulo' : fusoDaBarraca(typeof data === 'string' ? data : null))
+    })
+    return () => {
+      cancelado = true
+    }
+  }, [slug])
+
+  useEffect(() => {
+    function aoVoltarAoFoco() {
+      if (document.visibilityState === 'visible') setAgora(new Date())
+    }
+    document.addEventListener('visibilitychange', aoVoltarAoFoco)
+    window.addEventListener('focus', aoVoltarAoFoco)
+    return () => {
+      document.removeEventListener('visibilitychange', aoVoltarAoFoco)
+      window.removeEventListener('focus', aoVoltarAoFoco)
+    }
+  }, [])
+
+  // O crédito do cashback é gravado logo DEPOIS de o pagamento ser marcado aprovado (best-effort no servidor):
+  // se o primeiro retorno veio sem ele, relê uma vez para mostrar "Você ganhou R$ X".
+  const pendenteDoAviso = pagamento.fase === 'aprovado' && !pagamento.gratis ? pagamento.pendenteId : undefined
+  const avisoCashbackPendente = pagamento.fase === 'aprovado' && !(Number(pagamento.cashback?.cashback_gerado_centavos) > 0)
+  useEffect(() => {
+    if (!pendenteDoAviso || !avisoCashbackPendente) return
+    let cancelado = false
+    const espera = window.setTimeout(async () => {
+      const { data: linha } = await supabase.rpc('consultar_status_pagamento', { p_id: pendenteDoAviso }).maybeSingle()
+      const data = linha as { cashback_gerado_centavos?: unknown; cashback_vence_em?: unknown } | null
+      if (cancelado || !(Number(data?.cashback_gerado_centavos) > 0)) return
+      setPagamento((atual) =>
+        atual.fase === 'aprovado' && atual.pendenteId === pendenteDoAviso
+          ? { ...atual, cashback: { cashback_gerado_centavos: data?.cashback_gerado_centavos, cashback_vence_em: data?.cashback_vence_em } }
+          : atual,
+      )
+    }, 3000)
+    return () => {
+      cancelado = true
+      window.clearTimeout(espera)
+    }
+  }, [pendenteDoAviso, avisoCashbackPendente])
+
   // Polling do status do pagamento — mesmo espírito do polling de
   // fallback que useRealtimePedidos usa quando o Realtime cai, só que
   // aqui é sempre polling (o cliente é anônimo, sem sessão pra abrir uma
@@ -823,11 +773,16 @@ export function CardapioPublico() {
       const { data: linha } = await supabase
         .rpc('consultar_status_pagamento', { p_id: pendenteId })
         .maybeSingle()
-      const data = linha as { status: string; senha: number | null } | null
+      const data = linha as { status: string; senha: number | null; cashback_gerado_centavos?: unknown; cashback_vence_em?: unknown } | null
       if (cancelado || !data) return
 
       if (data.status === 'aprovado') {
-        setPagamento({ fase: 'aprovado', senha: data.senha })
+        setPagamento({
+          fase: 'aprovado',
+          senha: data.senha,
+          pendenteId,
+          cashback: { cashback_gerado_centavos: data.cashback_gerado_centavos, cashback_vence_em: data.cashback_vence_em },
+        })
       } else if (cartao && data.status === 'expirado') {
         // Cartão: só `rejeitado` é final. O emissor ainda pode aprovar e o webhook confirmar, então segue
         // esperando, sem client_uuid novo e sem oferecer uma segunda cobrança.
@@ -873,7 +828,10 @@ export function CardapioPublico() {
     })
   }, [estado, gruposPorItem])
 
-  const status = useMemo(() => statusFuncionamento(horarios), [horarios])
+  const status = useMemo(() => statusFuncionamento(horarios, agora, fusoBarraca), [horarios, agora, fusoBarraca])
+  const aberta = lojaAberta(status)
+  const textoFechado = !aberta ? status?.texto : undefined
+  const podeFinalizar = podeFinalizarPedido(aberta)
 
   const itemPorId = useMemo(() => new Map(linhas.map((l) => [l.item_id, l])), [linhas])
 
@@ -911,6 +869,7 @@ export function CardapioPublico() {
       : (categorias.find((c) => c.nome === filtroEfetivo)?.itens ?? [])
 
   const buscaNormalizada = busca.trim().toLowerCase()
+  const destaque = resolverDestaque(itemDestaqueId, linhas, buscaNormalizada !== '')
   const itensExibidos = buscaNormalizada
     ? itensDoFiltro.filter(
         (i) =>
@@ -1023,7 +982,16 @@ export function CardapioPublico() {
     [itensCarrinho],
   )
   const cupom = useCupom(slug, itensDoCarrinhoParaCupom, slug ? (lerSessao(slug)?.token ?? null) : null)
-  const descontoCupom = cupom.aplicado?.descontoCentavos ?? 0
+  // Cashback (prévia; o servidor recalcula). Só vale em pagamento online: no "Pagar na entrega" usadoCentavos é 0.
+  const cashback = useCashback({
+    slug,
+    token: slug ? (lerSessao(slug)?.token ?? null) : null,
+    itensCentavos: totalCentavosCarrinho,
+    cupomAplicado: Boolean(cupom.aplicado),
+    pagamentoOnline: Boolean(linhas[0]?.pagamento_online_habilitado) && !(formularioEntregaAberto && formaEntrega === 'na_entrega'),
+  })
+  // Desconto de benefício: cupom OU saldo de cashback (um por pedido). Todas as contas de total seguem usando este valor.
+  const descontoCupom = (cupom.aplicado?.descontoCentavos ?? 0) + cashback.usadoCentavos
   /** Só o código vai ao servidor: ele recalcula o desconto e recusa (409) se o total que o cliente viu divergir. */
   function corpoCupom(): { cupom_codigo?: string } {
     return cupom.aplicado ? { cupom_codigo: cupom.aplicado.codigo } : {}
@@ -1083,7 +1051,15 @@ export function CardapioPublico() {
    * Cartão enviado: recusado volta para tentar de novo; aprovado com o pedido já criado pelo servidor mostra a senha;
    * aprovado sem pedido ainda ou em análise espera o webhook criar o pedido.
    */
-  function seguirCartao(data: { pendente_id?: unknown; status?: unknown; total_centavos?: unknown; taxa_plataforma_centavos?: unknown; senha?: unknown }) {
+  function seguirCartao(data: {
+    pendente_id?: unknown
+    status?: unknown
+    total_centavos?: unknown
+    taxa_plataforma_centavos?: unknown
+    senha?: unknown
+    cashback_gerado_centavos?: unknown
+    cashback_vence_em?: unknown
+  }) {
     pendenteAnteriorRef.current = typeof data.pendente_id === 'string' ? data.pendente_id : null
     if (data.status === 'rejeitado' || typeof data.pendente_id !== 'string') {
       clientUuidRef.current = crypto.randomUUID()
@@ -1091,7 +1067,12 @@ export function CardapioPublico() {
       return
     }
     if (data.status === 'aprovado' && typeof data.senha === 'number') {
-      setPagamento({ fase: 'aprovado', senha: data.senha })
+      setPagamento({
+        fase: 'aprovado',
+        senha: data.senha,
+        pendenteId: data.pendente_id,
+        cashback: { cashback_gerado_centavos: data.cashback_gerado_centavos, cashback_vence_em: data.cashback_vence_em },
+      })
       return
     }
     setPagamento({
@@ -1193,6 +1174,7 @@ export function CardapioPublico() {
         ...corpoCupom(),
         ...corpoPixAnterior(),
         ...corpoCartao(cartao),
+        ...cashback.corpoCashback(),
         barraca_id: barracaId,
         viagem: modoEfetivo === 'retirada',
         observacao: observacao.trim() || null,
@@ -1473,6 +1455,7 @@ export function CardapioPublico() {
         ...corpoCupom(),
         ...corpoPixAnterior(),
         ...corpoCartao(cartao),
+        ...cashback.corpoCashback(),
         barraca_id: itensCarrinho[0].item.barraca_id,
         tipo_atendimento: 'entrega',
         observacao: observacao.trim() || null,
@@ -1601,6 +1584,49 @@ export function CardapioPublico() {
 
       {!busca.trim() && <CarrosselBanners banners={banners} />}
 
+      {destaque && (
+        <CardDestaque
+          item={destaque}
+          formatarPreco={formatarPrecoBR}
+          textoFechado={textoFechado}
+          botao={
+            <BotaoPedir
+              variante="tinta"
+              larguraTotal
+              podeAdicionar={!podeComprar || destaque.item_preco_centavos > 0}
+              esgotado={destaque.item_esgotado}
+              lojaAberta={aberta}
+              textoFechado={textoFechado}
+              comOpcoes={destaque.com_opcoes === true}
+              quantidadeNoCarrinho={quantidadeDoItem(destaque.item_id)}
+              onAdicionar={() => (destaque.com_opcoes ? setItemSeletor(destaque) : adicionarAoCarrinho(destaque.item_id))}
+              onRemover={() => alterarQuantidade(destaque.item_id, -1)}
+            />
+          }
+        />
+      )}
+
+      {!busca.trim() && itensMaisPedidos.length > 0 && (
+        <div className="mb-5">
+          <h2 className="mb-2 px-6 text-base font-bold text-mesa-text-primary">Mais pedidos</h2>
+          <div className="flex gap-3 overflow-x-auto px-6 pb-1">
+            {itensMaisPedidos.map((item, indice) => (
+              <CardItemHorizontal
+                key={item.item_id}
+                item={item}
+                destaque={indice === 0 ? 'top1' : 'popular'}
+                podeComprar={podeComprar}
+                aberta={aberta}
+                textoFechado={textoFechado}
+                quantidadeNoCarrinho={quantidadeDoItem(item.item_id)}
+                onAdicionar={() => (item.com_opcoes ? setItemSeletor(item) : adicionarAoCarrinho(item.item_id))}
+                onRemover={() => alterarQuantidade(item.item_id, -1)}
+              />
+            ))}
+          </div>
+        </div>
+      )}
+
       {!busca.trim() && itensPopulares.length > 0 && (
         <div className="mb-5">
           <h2 className="mb-2 px-6 text-base font-bold text-mesa-text-primary">Populares</h2>
@@ -1611,25 +1637,8 @@ export function CardapioPublico() {
                 item={item}
                 destaque={null}
                 podeComprar={podeComprar}
-                quantidadeNoCarrinho={quantidadeDoItem(item.item_id)}
-                onAdicionar={() => (item.com_opcoes ? setItemSeletor(item) : adicionarAoCarrinho(item.item_id))}
-                onRemover={() => alterarQuantidade(item.item_id, -1)}
-              />
-            ))}
-          </div>
-        </div>
-      )}
-
-      {!busca.trim() && itensMaisPedidos.length > 0 && (
-        <div className="mb-5">
-          <h2 className="mb-2 px-6 text-base font-bold text-mesa-text-primary">Mais pedido</h2>
-          <div className="flex gap-3 overflow-x-auto px-6 pb-1">
-            {itensMaisPedidos.map((item, indice) => (
-              <CardItemHorizontal
-                key={item.item_id}
-                item={item}
-                destaque={indice === 0 ? 'top1' : 'popular'}
-                podeComprar={podeComprar}
+                aberta={aberta}
+                textoFechado={textoFechado}
                 quantidadeNoCarrinho={quantidadeDoItem(item.item_id)}
                 onAdicionar={() => (item.com_opcoes ? setItemSeletor(item) : adicionarAoCarrinho(item.item_id))}
                 onRemover={() => alterarQuantidade(item.item_id, -1)}
@@ -1688,6 +1697,8 @@ export function CardapioPublico() {
                 item={item}
                 posicaoPopular={indicePopular === -1 ? null : indicePopular}
                 podeComprar={podeComprar}
+                aberta={aberta}
+                textoFechado={textoFechado}
                 quantidadeNoCarrinho={quantidadeDoItem(item.item_id)}
                 onAdicionar={() => (item.com_opcoes ? setItemSeletor(item) : adicionarAoCarrinho(item.item_id))}
                 onRemover={() => alterarQuantidade(item.item_id, -1)}
@@ -1709,17 +1720,17 @@ export function CardapioPublico() {
           <button
             type="button"
             onClick={() => setMostrarCheckout(true)}
-            className="flex w-full items-center justify-between gap-3 rounded-mesa-lg bg-mesa-neutral-900 py-4 pl-5 pr-4 text-left text-white shadow-mesa-3 outline-none transition-transform active:scale-[0.99] dark:bg-mesa-neutral-50 dark:text-mesa-neutral-900"
+            className="flex w-full items-center justify-between gap-3 rounded-mesa-lg bg-mesa-neutral-900 py-4 pl-5 pr-4 text-left text-white shadow-mesa-3 outline-none transition-transform active:scale-[0.99] disabled:active:scale-100 dark:bg-mesa-neutral-50 dark:text-mesa-neutral-900"
           >
             <span>
               <span className="block text-sm text-white/80 dark:text-mesa-neutral-900/70">
-                {totalItensCarrinho} {totalItensCarrinho === 1 ? 'item' : 'itens'}
+                {totalItensCarrinho} {totalItensCarrinho === 1 ? 'item' : 'itens'}{aberta ? '' : ' · Fechado'}
               </span>
               <span className="block font-mesa-display text-xl font-bold leading-tight">
                 {formatarPrecoBR(totalCentavosCarrinho)}
               </span>
             </span>
-            <span className="flex items-center gap-1 rounded-mesa-full bg-mesa-orange-500 px-4 py-2.5 text-sm font-bold text-mesa-neutral-900">
+            <span className="flex items-center gap-1 rounded-mesa-full bg-mesa-neutral-50 px-4 py-2.5 text-sm font-bold text-mesa-neutral-900 dark:bg-mesa-neutral-900 dark:text-mesa-neutral-50">
               Ver pedido
               <Icone nome="arrow_forward" size={16} />
             </span>
@@ -1789,7 +1800,8 @@ export function CardapioPublico() {
                       type="button"
                       aria-label={`Aumentar ${item.item_nome}`}
                       onClick={() => alterarQuantidade(chave, 1)}
-                      className="flex size-11 -m-1.5 items-center justify-center"
+                      disabled={!aberta}
+                      className="flex size-11 -m-1.5 items-center justify-center disabled:opacity-40"
                     >
                       <span className="flex size-8 items-center justify-center rounded-mesa-full bg-mesa-neutral-900 text-white dark:bg-mesa-neutral-50 dark:text-mesa-neutral-900">
                         <Icone nome="add" size={14} />
@@ -1840,11 +1852,19 @@ export function CardapioPublico() {
               />
             )}
 
+            <BlocoCashbackCheckout cashback={cashback} />
+
             <div className="flex flex-col gap-1 border-t border-mesa-border-subtle pt-3">
-              {descontoCupom > 0 && (
+              {cupom.aplicado && descontoCupom > 0 && (
                 <div className="flex items-center justify-between text-sm text-mesa-text-secondary">
-                  <span>Cupom {cupom.aplicado?.codigo}</span>
+                  <span>Cupom {cupom.aplicado.codigo}</span>
                   <span>{textoDesconto(descontoCupom)}</span>
+                </div>
+              )}
+              {cashback.usadoCentavos > 0 && (
+                <div className="flex items-center justify-between text-sm text-mesa-text-secondary">
+                  <span>Saldo de cashback</span>
+                  <span>{textoDesconto(cashback.usadoCentavos)}</span>
                 </div>
               )}
               {mostrarTaxaFormulario && (
@@ -1859,6 +1879,7 @@ export function CardapioPublico() {
                   {formatarPrecoBR(mostrarTaxaFormulario ? totalOnline(cobraTaxaPlataforma, subtotalCentavos) : subtotalCentavos)}
                 </span>
               </div>
+              <LinhaCashbackGanho cashback={cashback} />
               {mostrarTaxaFormulario && mostrarPagarNaEntrega && (
                 <p className="text-xs text-mesa-text-tertiary">
                   Pagando na entrega não há taxa de serviço: {formatarPrecoBR(subtotalCentavos)}.
@@ -1895,13 +1916,19 @@ export function CardapioPublico() {
               </fieldset>
             )}
 
+            {!podeFinalizar && (
+              <p role="status" className="rounded-mesa-lg bg-mesa-neutral-100 p-3 text-sm font-medium text-mesa-text-primary dark:bg-mesa-neutral-800">
+                {textoFechado ? `${textoFechado}. Você ainda pode revisar e tirar itens do pedido.` : 'Estamos fechados. Você ainda pode revisar e tirar itens do pedido.'}
+              </p>
+            )}
+
             {mostrarPagarNaEntrega && (
               <Button
                 variant="outline"
                 size="xl"
                 icon={<Icone nome="two_wheeler" size={20} />}
                 className="w-full"
-                disabled={itensCarrinho.length === 0}
+                disabled={itensCarrinho.length === 0 || !podeFinalizar}
                 onClick={() => {
                   aberturaCheckoutRef.current = Date.now()
                   setFormaEntrega('na_entrega')
@@ -1921,7 +1948,7 @@ export function CardapioPublico() {
                     size="xl"
                     icon={<Icone nome="qr_code" size={20} />}
                     className="w-full"
-                    disabled={itensCarrinho.length === 0}
+                    disabled={itensCarrinho.length === 0 || !podeFinalizar}
                     onClick={() => {
                       aberturaCheckoutRef.current = Date.now()
                       setFormaEntrega('pix')
@@ -1936,7 +1963,7 @@ export function CardapioPublico() {
                       size="xl"
                       icon={<Icone nome="credit_card" size={20} />}
                       className="w-full"
-                      disabled={itensCarrinho.length === 0}
+                      disabled={itensCarrinho.length === 0 || !podeFinalizar}
                       onClick={() => {
                         aberturaCheckoutRef.current = Date.now()
                         setFormaEntrega('cartao')
@@ -1951,7 +1978,7 @@ export function CardapioPublico() {
             ) : podeComprar && meioEfetivo === 'cartao' && chaveMp && !ehPedidoGratis(subtotalCentavos) ? (
               <CartaoMercadoPago
                 publicKey={chaveMp}
-                desabilitado={itensCarrinho.length === 0}
+                desabilitado={itensCarrinho.length === 0 || !podeFinalizar}
                 textoBotao={`Pagar ${formatarPrecoBR(totalOnline(cobraTaxaPlataforma, subtotalCentavos))}`}
                 onAntesDeGerar={garantirPerfil}
                 onGerarToken={(t) => void pagar(t)}
@@ -1961,7 +1988,7 @@ export function CardapioPublico() {
                 size="xl"
                 icon={<Icone nome={ehPedidoGratis(totalCentavosCarrinho - descontoCupom) ? 'check_circle' : 'qr_code'} size={20} />}
                 className="w-full"
-                disabled={itensCarrinho.length === 0}
+                disabled={itensCarrinho.length === 0 || !podeFinalizar}
                 onClick={() => void pagar()}
               >
                 {ehPedidoGratis(totalCentavosCarrinho - descontoCupom) ? TEXTO_BOTAO_PEDIDO_GRATIS : 'Pagar com Pix'}
@@ -1971,7 +1998,7 @@ export function CardapioPublico() {
                 size="xl"
                 icon={<Icone nome="point_of_sale" size={20} />}
                 className="w-full"
-                disabled={itensCarrinho.length === 0}
+                disabled={itensCarrinho.length === 0 || !podeFinalizar}
                 onClick={() => setMostrarAvisoBalcao(true)}
               >
                 Finalizar no caixa
@@ -2150,6 +2177,7 @@ export function CardapioPublico() {
                 onEditar={cupom.limparErro}
               />
             )}
+            <BlocoCashbackCheckout cashback={cashback} />
             <div className="flex flex-col gap-1 border-t border-mesa-border-subtle pt-3">
               {entregaNoCardapio && (
                 <>
@@ -2157,10 +2185,16 @@ export function CardapioPublico() {
                     <span>Itens</span>
                     <span>{formatarPrecoBR(totalCentavosCarrinho)}</span>
                   </div>
-                  {descontoCupom > 0 && (
+                  {cupom.aplicado && descontoCupom > 0 && (
                     <div className="flex items-center justify-between text-sm text-mesa-text-secondary">
-                      <span>Cupom {cupom.aplicado?.codigo}</span>
+                      <span>Cupom {cupom.aplicado.codigo}</span>
                       <span>{textoDesconto(descontoCupom)}</span>
+                    </div>
+                  )}
+                  {cashback.usadoCentavos > 0 && (
+                    <div className="flex items-center justify-between text-sm text-mesa-text-secondary">
+                      <span>Saldo de cashback</span>
+                      <span>{textoDesconto(cashback.usadoCentavos)}</span>
                     </div>
                   )}
                   <div className="flex items-center justify-between text-sm text-mesa-text-secondary">
@@ -2361,6 +2395,7 @@ export function CardapioPublico() {
                 Senha {String(pagamento.senha).padStart(3, '0')}
               </p>
             )}
+            <AvisoCashbackGanho resposta={pagamento.cashback} />
             <Button variant="ghost" size="md" onClick={fecharCheckout} className="mt-2 w-full">
               Fechar
             </Button>

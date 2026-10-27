@@ -28,7 +28,7 @@ describe('criar-pagamento-pix com cupom', () => {
   })
   test('total esperado é conferido contra o total JÁ descontado', () => {
     // totalDaCobranca = totalCobrado (itens − desconto + entrega) + taxa Sai aê no OAuth.
-    assert.match(pix, /totalDaCobranca\(\{ subtotalItensCentavos: totalCentavos, descontoCentavos, taxaEntregaCentavos,/)
+    assert.match(pix, /totalDaCobranca\(\{ subtotalItensCentavos: totalCentavos, descontoCentavos: descontoBeneficio, taxaEntregaCentavos,/)
     assert.ok(pix.indexOf('avaliarCupomDoPedido(') < pix.indexOf('esperado !== totalCobradoCentavos'))
   })
   test('reserva dura até o Pix vencer e é ligada à cobrança', () => {

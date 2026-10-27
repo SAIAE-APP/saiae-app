@@ -62,6 +62,13 @@ export type Barraca = {
   checklist_oculto_ate?: string | null
   /** Cupons por código no cardápio digital (padrão false). Ausente em banco/cache de antes da migration. */
   cupons_habilitado?: boolean
+  /** Cashback do cardápio digital (padrão false; a barraca financia). Ausentes em banco/cache de antes da migration. */
+  cashback_habilitado?: boolean
+  cashback_percentual_bp?: number
+  cashback_validade_dias?: number
+  cashback_teto_uso_pct?: number
+  /** Quando o dono viu o aviso de passivo e do contador; obrigatório para ligar. */
+  cashback_termo_aceito_em?: string | null
   /** Atendente IA do WhatsApp (padrão false). Ausentes em banco/cache de antes da migration. */
   ia_habilitada?: boolean
   ia_texto_livre?: string | null
@@ -78,6 +85,8 @@ export type Barraca = {
   fuso?: string
   bloquear_fora_do_horario?: boolean
   imagem_capa_url: string | null
+  /** Item em destaque no topo do cardápio público; NULL = sem destaque. */
+  item_destaque_id?: string | null
   mostrar_horario_pedido: boolean
   /** Emitente fiscal e PROCON (cupom da NFC-e). Opcionais: cache local anterior à migration não tem. */
   emitente_razao_social?: string | null
@@ -278,6 +287,9 @@ export type Pedido = {
   cupom_id?: string | null
   cupom_codigo?: string | null
   desconto_cupom_centavos?: number
+  /** Cashback (cópia na hora da venda): saldo usado como desconto nos itens e saldo gerado pelo pedido. À PARTE dos itens. */
+  cashback_usado_centavos?: number
+  cashback_gerado_centavos?: number
   entrega_confirmada_em?: string | null
   cliente_final_id?: string | null
   observacao: string | null

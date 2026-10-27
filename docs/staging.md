@@ -82,3 +82,6 @@ supabase secrets set --project-ref qzcqwovbbylqxljcrqhk APP_PUBLIC_URL=<URL púb
 
 ### Verificação ponta a ponta (pendente)
 Falta rodar no staging, com contas de teste: conectar a barraca por OAuth, pagar Pix e cartão com taxa, conferir no painel que R$ 0,99 foi para o Sai aê e o resto para a barraca, repetir a notificação do webhook (um só pedido), forçar cartão recusado, estornar (taxa devolvida) e expirar o token OAuth (a barraca cai para "pagar na entrega").
+
+## Cashback
+O teste de regras de saldo contra o staging é 	ests/cashback.staging.mjs (variáveis STAGING_SUPABASE_URL, STAGING_CHAVE_SERVICO e, para o caso de RLS, STAGING_CHAVE_ANON; só dados fictícios TESTE-CASHBACK). As migrations do cashback (20261106100000 a 20261106170000) entram no staging uma por vez, em ordem. Roteiro manual: docs/roteiro-cashback.md.

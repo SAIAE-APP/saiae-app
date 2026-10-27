@@ -68,6 +68,8 @@ export type PendenteAprovado = {
   cliente_telefone?: unknown
   cliente_id?: unknown
   cupom_uso_id?: unknown
+  cashback_uso_id?: unknown
+  cashback_usado_centavos?: unknown
   meio_pagamento?: unknown
   taxa_entrega_centavos?: unknown
   desconto_cupom_centavos?: unknown
@@ -83,9 +85,10 @@ export type ContextoAprovado = BaseConciliacao & {
 }
 
 export type ResultadoPedidoAprovado =
-  | { ok: true; pedidoId: string; senha: number | null }
-  /** `pedido`: criar_pedido falhou (quem chama decide 500 + conciliação). `cupom`: cupom não confirmado (500). */
-  | { ok: false; etapa: 'pedido' | 'cupom'; detalhe: string }
+  /** `cashbackGeradoCentavos`/`cashbackVenceEm`: só presentes quando o pedido gerou crédito (aviso "você ganhou" no cliente). */
+  | { ok: true; pedidoId: string; senha: number | null; cashbackGeradoCentavos?: number; cashbackVenceEm?: string | null }
+  /** `pedido`: criar_pedido falhou (quem chama decide 500 + conciliação). `cupom`/`cashback`: benefício não confirmado (500). */
+  | { ok: false; etapa: 'pedido' | 'cupom' | 'cashback'; detalhe: string }
 
 /**
  * Pagamento aprovado e conferido (decisão 'criar_pedido'): cria o pedido pelo `criar_pedido` (idempotente por
@@ -157,6 +160,16 @@ export async function criarPedidoAprovado(
       return { ok: false, etapa: 'cupom', detalhe: erroCupom.message }
     }
   }
+  // Cashback: o resgate vira CONFIRMADO só com o pagamento aprovado, mesmo com a reserva vencida ou liberada (o cliente já
+  // pagou menos). SUPOSIÇÃO-CASHBACK-4 (spec §20.4): sem cashback_uso_id (pendente antigo ou sem saldo) nada acontece.
+  // Mesma regra do cupom: falhou, devolve antes de marcar o pendente aprovado; o provedor reenvia e a RPC é idempotente.
+  if (pendente.cashback_uso_id) {
+    const { error: erroCashback } = await supabase.rpc('cashback_confirmar_resgate', { p_uso_id: pendente.cashback_uso_id, p_pedido_id: pedidoId })
+    if (erroCashback) {
+      console.error(`${origem}: resgate de cashback não confirmado`, erroCashback.message)
+      return { ok: false, etapa: 'cashback', detalhe: erroCashback.message }
+    }
+  }
   // Vínculo com o perfil do cliente (a cobrança carrega o cliente_id). Best-effort.
   if (pendente.cliente_id) {
     const { error: erroVinculo } = await supabase.from('pedidos').update({ cliente_id: pendente.cliente_id }).eq('id', pedidoId)
@@ -168,6 +181,32 @@ export async function criarPedidoAprovado(
     if (erroTaxa) console.error(`${origem}: falha ao gravar a taxa Sai aê no pedido`, erroTaxa.message)
   }
   await supabase.from('pagamentos_pendentes').update({ status: 'aprovado', pedido_id: pedidoId }).eq('id', pendente.id)
+
+  // Cashback ganho: best-effort. "Pagamento aprovado nunca é recusado": nada aqui pode derrubar o pedido. A RPC é
+  // idempotente por pedido, então reprocessar é chamá-la de novo (falha fica só no log, sem mudar o CHECK de conciliação).
+  // Sem cliente identificado a RPC não creditaria nada: nem chama.
+  let cashbackGeradoCentavos = 0
+  let cashbackVenceEm: string | null = null
+  if (pendente.cliente_id) {
+    try {
+      const { data: credito, error: erroCredito } = await supabase.rpc('cashback_creditar_pedido', { p_pedido_id: pedidoId })
+      const gerado = (credito as { ok?: boolean; credito_centavos?: unknown } | null)?.credito_centavos
+      if (erroCredito) console.error('cashback_credito_falhou', pedidoId)
+      else if ((credito as { ok?: boolean } | null)?.ok === true && Number.isInteger(gerado) && (gerado as number) > 0) {
+        cashbackGeradoCentavos = gerado as number
+        const { data: linha } = await supabase
+          .from('cashback_lancamentos')
+          .select('expira_em')
+          .eq('pedido_id', pedidoId)
+          .eq('tipo', 'credito')
+          .maybeSingle()
+        const vence = (linha as { expira_em?: unknown } | null)?.expira_em
+        cashbackVenceEm = typeof vence === 'string' ? vence : null
+      }
+    } catch {
+      console.error('cashback_credito_falhou', pedidoId)
+    }
+  }
 
   // Registros de conciliação (best-effort: o pedido já existe e foi pago, então
   // NADA aqui pode falhar a resposta ao provedor).
@@ -234,7 +273,12 @@ export async function criarPedidoAprovado(
     }
   }
 
-  return { ok: true, pedidoId, senha: typeof senhaCriada === 'number' ? senhaCriada : null }
+  return {
+    ok: true,
+    pedidoId,
+    senha: typeof senhaCriada === 'number' ? senhaCriada : null,
+    ...(cashbackGeradoCentavos > 0 ? { cashbackGeradoCentavos, cashbackVenceEm } : {}),
+  }
 }
 
 /**
@@ -250,7 +294,7 @@ export async function concluirCartaoAprovado(p: {
   idExterno: string
   pendenteId: string
   origem: string
-}): Promise<{ pedidoId: string; senha: number | null } | null> {
+}): Promise<{ pedidoId: string; senha: number | null; cashbackGeradoCentavos?: number; cashbackVenceEm?: string | null } | null> {
   try {
     const leitura = await p.provedor.consultarPagamento({ token: p.token, idExterno: p.idExterno })
     if (leitura.status !== 'aprovado' || leitura.referencia !== p.pendenteId) return null
@@ -275,7 +319,13 @@ export async function concluirCartaoAprovado(p: {
       },
       decisao,
     )
-    return criado.ok ? { pedidoId: criado.pedidoId, senha: criado.senha } : null
+    return criado.ok
+      ? {
+          pedidoId: criado.pedidoId,
+          senha: criado.senha,
+          ...(criado.cashbackGeradoCentavos ? { cashbackGeradoCentavos: criado.cashbackGeradoCentavos, cashbackVenceEm: criado.cashbackVenceEm ?? null } : {}),
+        }
+      : null
   } catch (erro) {
     console.warn(`${p.origem}: pedido do cartão fica para o webhook`, erro instanceof Error ? erro.name : 'erro')
     return null

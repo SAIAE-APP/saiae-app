@@ -19,7 +19,7 @@
 // usada em todo o resto do app).
 import { comCors } from '../_shared/cors.ts'
 import { configDoEnv, lerSegredo } from '../_shared/segredoCifrado.ts'
-import { MENSAGEM_PEDIDO_GRATIS, ratearDesconto, totalDaNotaCentavos } from '../_shared/descontoNfce.ts'
+import { descontoTotalNfceCentavos, MENSAGEM_PEDIDO_GRATIS, ratearDesconto, totalDaNotaCentavos } from '../_shared/descontoNfce.ts'
 import { ratearTaxaServico } from '../_shared/taxaServicoNfce.ts'
 import { moduloAtivo } from '../_shared/modulos.ts'
 
@@ -256,8 +256,20 @@ function criarHandlerInterno(deps: DependenciasNfce) {
   const { data: descontoRow } = await supabase.from('pedidos').select('desconto_cupom_centavos').eq('id', pedidoId).maybeSingle()
   const descontoCupomCentavos = Math.max(0, Math.floor(Number((descontoRow as { desconto_cupom_centavos?: number } | null)?.desconto_cupom_centavos ?? 0)))
 
+  // Cashback: o saldo usado vale como o cupom (um benefício por pedido). Também lido à parte, para não quebrar
+  // antes da migration do cashback (coluna ausente = erro ignorado = 0).
+  const { data: cashbackRow } = await supabase.from('pedidos').select('cashback_usado_centavos').eq('id', pedidoId).maybeSingle()
+  const cashbackUsadoCentavos = Math.max(0, Math.floor(Number((cashbackRow as { cashback_usado_centavos?: number } | null)?.cashback_usado_centavos ?? 0)))
+  let descontoNotaCentavos: number
+  try {
+    descontoNotaCentavos = descontoTotalNfceCentavos(descontoCupomCentavos, cashbackUsadoCentavos)
+  } catch {
+    // Pedido com cupom E saldo contradiz a regra de um benefício: não emitir nota com desconto duvidoso.
+    return jsonResponse({ erro: 'Pedido com cupom e saldo ao mesmo tempo. Fale com o suporte antes de emitir a nota.' }, 422)
+  }
+
   // Pedido grátis (cupom de 100%): total R$ 0,00, nada a faturar. Sem nota e SEM chamar a FocusNFe.
-  if (totalDaNotaCentavos(itensAtivos.map((i) => i.preco_centavos_unitario * i.quantidade), descontoCupomCentavos) === 0) {
+  if (totalDaNotaCentavos(itensAtivos.map((i) => i.preco_centavos_unitario * i.quantidade), descontoNotaCentavos) === 0) {
     return jsonResponse({ erro: MENSAGEM_PEDIDO_GRATIS, codigo: 'pedido_gratis' }, 422)
   }
 
@@ -334,7 +346,7 @@ function criarHandlerInterno(deps: DependenciasNfce) {
   // `resultado` bruto da FocusNFe (valor_total = soma dos brutos − descontos).
   const descontosPorItem = ratearDesconto(
     itensAtivos.map((i) => i.preco_centavos_unitario * i.quantidade),
-    descontoCupomCentavos,
+    descontoNotaCentavos,
   )
 
   // Taxa de serviço da comanda (interruptor `nfce_incluir_taxas`, padrão desligado = fora da nota, como sempre).

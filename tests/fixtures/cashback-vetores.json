@@ -1,0 +1,90 @@
+{
+  "comentario": "Vetores compartilhados do cashback (spec 2026-10-27, secoes 7.3, 7.5, 7.6). Lidos por tests/cashbackRegras.test.ts e pelo teste de staging que compara com as funcoes SQL. Valores em centavos inteiros.",
+  "liquidos": [
+    { "nome": "sem beneficio", "itens": 4000, "beneficio": 0, "esperado": 4000 },
+    { "nome": "SUPOSIÇÃO-CASHBACK-4: cupom ou saldo abate dos itens", "itens": 4000, "beneficio": 500, "esperado": 3500 },
+    { "nome": "beneficio maior que os itens nunca fica negativo", "itens": 300, "beneficio": 500, "esperado": 0 }
+  ],
+  "credito": [
+    { "nome": "4000 itens a 5% rende 200", "itensLiquidos": 4000, "percentualBp": 500, "esperado": 200 },
+    { "nome": "3999 itens a 5% rende 199 (floor, nunca arredonda para cima)", "itensLiquidos": 3999, "percentualBp": 500, "esperado": 199 },
+    { "nome": "19 itens a 5% rende 0", "itensLiquidos": 19, "percentualBp": 500, "esperado": 0 },
+    { "nome": "teto de R$ 20,00 por pedido", "itensLiquidos": 100000, "percentualBp": 1500, "esperado": 2000 },
+    { "nome": "zero itens rende 0", "itensLiquidos": 0, "percentualBp": 500, "esperado": 0 },
+    { "nome": "SUPOSIÇÃO-CASHBACK-4: base liquida de 4000 itens com 1000 de saldo usado rende 150", "itensLiquidos": 3000, "percentualBp": 500, "esperado": 150 },
+    { "nome": "cupom de 500 sobre 4000 itens rende 175", "itensLiquidos": 3500, "percentualBp": 500, "esperado": 175 },
+    { "nome": "percentual minimo de 1% sobre 4000 rende 40", "itensLiquidos": 4000, "percentualBp": 100, "esperado": 40 }
+  ],
+  "resgate": [
+    { "nome": "saldo menor que o teto usa tudo", "saldo": 1000, "itens": 4000, "tetoUsoPct": 50, "esperado": 1000 },
+    { "nome": "saldo maior que o teto usa o teto de 50%", "saldo": 5000, "itens": 4000, "tetoUsoPct": 50, "esperado": 2000 },
+    { "nome": "piso de R$ 1,00: itens 150 deixa 100 em dinheiro", "saldo": 5000, "itens": 150, "tetoUsoPct": 90, "esperado": 50 },
+    { "nome": "itens 100 nao gera resgate", "saldo": 5000, "itens": 100, "tetoUsoPct": 90, "esperado": 0 },
+    { "nome": "itens 99 nao gera resgate", "saldo": 5000, "itens": 99, "tetoUsoPct": 90, "esperado": 0 },
+    { "nome": "saldo zero nao gera resgate", "saldo": 0, "itens": 4000, "tetoUsoPct": 50, "esperado": 0 },
+    { "nome": "itens 1999 teto 33 arredonda o teto para baixo", "saldo": 5000, "itens": 1999, "tetoUsoPct": 33, "esperado": 659 },
+    { "nome": "R$ 1,50 em itens nao passa do piso", "saldo": 5000, "itens": 150, "tetoUsoPct": 10, "esperado": 15 }
+  ],
+  "validade": [
+    {
+      "nome": "dentro da validade devolve o saldo",
+      "lancamentos": [{ "valor_centavos": 200, "expira_em": "2026-12-01T00:00:00.000Z" }],
+      "agoraISO": "2026-11-30T00:00:00.000Z",
+      "saldo": 200,
+      "venceEm": "2026-12-01T00:00:00.000Z"
+    },
+    {
+      "nome": "vencido vira saldo 0 e sem vencimento",
+      "lancamentos": [{ "valor_centavos": 200, "expira_em": "2026-12-01T00:00:00.000Z" }],
+      "agoraISO": "2026-12-02T00:00:00.000Z",
+      "saldo": 0,
+      "venceEm": null
+    },
+    {
+      "nome": "exatamente no instante do vencimento ja venceu",
+      "lancamentos": [{ "valor_centavos": 200, "expira_em": "2026-12-01T00:00:00.000Z" }],
+      "agoraISO": "2026-12-01T00:00:00.000Z",
+      "saldo": 0,
+      "venceEm": null
+    },
+    {
+      "nome": "dois creditos: vale o maior expira_em e o saldo todo renova",
+      "lancamentos": [
+        { "valor_centavos": 200, "expira_em": "2026-12-01T00:00:00.000Z" },
+        { "valor_centavos": 300, "expira_em": "2027-01-15T00:00:00.000Z" }
+      ],
+      "agoraISO": "2026-12-10T00:00:00.000Z",
+      "saldo": 500,
+      "venceEm": "2027-01-15T00:00:00.000Z"
+    },
+    {
+      "nome": "resgate nao tem expira_em e nao renova",
+      "lancamentos": [
+        { "valor_centavos": 500, "expira_em": "2026-12-01T00:00:00.000Z" },
+        { "valor_centavos": -200 }
+      ],
+      "agoraISO": "2026-11-20T00:00:00.000Z",
+      "saldo": 300,
+      "venceEm": "2026-12-01T00:00:00.000Z"
+    },
+    {
+      "nome": "sem lancamentos o saldo e 0",
+      "lancamentos": [],
+      "agoraISO": "2026-11-20T00:00:00.000Z",
+      "saldo": 0,
+      "venceEm": null
+    }
+  ],
+  "config": [
+    { "nome": "99 bp recusado", "percentualBp": 99, "validadeDias": 60, "tetoUsoPct": 50, "ok": false, "campo": "percentualBp" },
+    { "nome": "1501 bp recusado", "percentualBp": 1501, "validadeDias": 60, "tetoUsoPct": 50, "ok": false, "campo": "percentualBp" },
+    { "nome": "100 bp aceito", "percentualBp": 100, "validadeDias": 60, "tetoUsoPct": 50, "ok": true },
+    { "nome": "1500 bp aceito", "percentualBp": 1500, "validadeDias": 60, "tetoUsoPct": 50, "ok": true },
+    { "nome": "validade 29 recusada", "percentualBp": 500, "validadeDias": 29, "tetoUsoPct": 50, "ok": false, "campo": "validadeDias" },
+    { "nome": "validade 91 recusada", "percentualBp": 500, "validadeDias": 91, "tetoUsoPct": 50, "ok": false, "campo": "validadeDias" },
+    { "nome": "validade 30 e 90 aceitas", "percentualBp": 500, "validadeDias": 30, "tetoUsoPct": 50, "ok": true },
+    { "nome": "teto 9 recusado", "percentualBp": 500, "validadeDias": 60, "tetoUsoPct": 9, "ok": false, "campo": "tetoUsoPct" },
+    { "nome": "teto 91 recusado", "percentualBp": 500, "validadeDias": 60, "tetoUsoPct": 91, "ok": false, "campo": "tetoUsoPct" },
+    { "nome": "SUPOSIÇÃO-CASHBACK-3: padrao 5%, 60 dias, teto 50% e valido", "percentualBp": 500, "validadeDias": 60, "tetoUsoPct": 50, "ok": true }
+  ]
+}
