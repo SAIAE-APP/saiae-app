@@ -637,3 +637,84 @@ describe('M7 consultar_status_pagamento com cashback', () => {
     })
   })
 })
+
+// ---------------------------------------------------------------- M8 (correções da revisão independente)
+const m8 = ler('20261106170000_cashback_correcoes_revisao.sql')
+
+describe('M8 correções da revisão', () => {
+  test('só o papel de serviço executa as quatro funções', () => {
+    for (const f of ['cashback_liberar_abandonadas(uuid, uuid, uuid)', 'cashback_confirmar_resgate(uuid, uuid)', 'cashback_creditar_pedido(uuid)', 'cashback_estornar_pedido(uuid)']) {
+      assert.ok(m8.includes(`revoke all on function public.${f} from public, anon, authenticated`), f)
+      assert.ok(m8.includes(`grant execute on function public.${f} to service_role`), f)
+    }
+  })
+
+  test('confirmar pega o lock da conta antes de travar a linha do resgate', () => {
+    const corpo = m8.slice(m8.indexOf('function public.cashback_confirmar_resgate'), m8.indexOf('function public.cashback_creditar_pedido'))
+    assert.ok(corpo.indexOf('cashback_travar') < corpo.indexOf('for update'))
+  })
+
+  describe('no PGlite', () => {
+    let db: PGlite
+    const PED = 'e8000000-0000-4000-8000-000000000001'
+    const PEND = 'd8000000-0000-4000-8000-000000000001'
+    const OUTRO = 'c8000000-0000-4000-8000-000000000002'
+    before(async () => {
+      db = await novoBanco([m1, m2, m3, m4, m5])
+      await db.exec('alter table public.pagamentos_pendentes add column if not exists cliente_id uuid')
+      await db.exec(m8)
+      await db.exec(`
+        update public.barracas set cashback_habilitado = true, cashback_termo_aceito_em = now() where id = '${BARRACA}';
+        insert into public.clientes_finais (id, barraca_id, telefone_confirmado_em) values ('${OUTRO}', '${BARRACA}', now()) on conflict do nothing;`)
+    })
+    after(async () => {
+      await db.close()
+    })
+    const q = async (sql: string) => (await db.query<Record<string, unknown>>(sql)).rows
+    const limpar = () =>
+      db.exec(`delete from public.cashback_resgates; delete from public.cashback_lancamentos; delete from public.itens_do_pedido; delete from public.pagamentos_pendentes; delete from public.pedidos;`)
+
+    test('liberar_abandonadas libera só o Pix anterior do MESMO cliente, nunca as reservas em paralelo', async () => {
+      await limpar()
+      await db.exec(`
+        insert into public.pagamentos_pendentes (id, barraca_id) values ('d8000000-0000-4000-8000-0000000000a1', '${BARRACA}'), ('d8000000-0000-4000-8000-0000000000a2', '${BARRACA}');
+        insert into public.cashback_resgates (barraca_id, cliente_id, pagamento_pendente_id, estado, valor_centavos, reservado_ate) values
+          ('${BARRACA}', '${CLIENTE}', 'd8000000-0000-4000-8000-0000000000a1', 'reservado', 500, now() + interval '30 minutes'),
+          ('${BARRACA}', '${CLIENTE}', 'd8000000-0000-4000-8000-0000000000a2', 'reservado', 500, now() + interval '30 minutes');`)
+      const semAnterior = await q(`select public.cashback_liberar_abandonadas('${BARRACA}', '${CLIENTE}', null) n`)
+      assert.equal(semAnterior[0].n, 0)
+      const outroCliente = await q(`select public.cashback_liberar_abandonadas('${BARRACA}', '${OUTRO}', 'd8000000-0000-4000-8000-0000000000a1') n`)
+      assert.equal(outroCliente[0].n, 0)
+      const certo = await q(`select public.cashback_liberar_abandonadas('${BARRACA}', '${CLIENTE}', 'd8000000-0000-4000-8000-0000000000a1') n`)
+      assert.equal(certo[0].n, 1)
+      const abertas = await q(`select count(*)::int n from public.cashback_resgates where estado = 'reservado'`)
+      assert.equal(abertas[0].n, 1)
+    })
+
+    test('creditar acha o cliente pela cobrança quando pedidos.cliente_id ficou nulo', async () => {
+      await limpar()
+      await db.exec(`
+        insert into public.pedidos (id, barraca_id, cliente_id) values ('${PED}', '${BARRACA}', null);
+        insert into public.itens_do_pedido (pedido_id, quantidade, preco_centavos_unitario) values ('${PED}', 2, 2000);
+        insert into public.pagamentos_pendentes (id, barraca_id, pedido_id, status, cliente_id) values ('${PEND}', '${BARRACA}', '${PED}', 'aprovado', '${CLIENTE}');`)
+      const r = await q(`select public.cashback_creditar_pedido('${PED}') r`)
+      assert.deepEqual(r[0].r, { ok: true, credito_centavos: 200 })
+      const l = await q(`select cliente_id from public.cashback_lancamentos where pedido_id = '${PED}' and tipo = 'credito'`)
+      assert.equal(l[0].cliente_id, CLIENTE)
+    })
+
+    test('creditar recusa pedido já estornado e o estorno devolve pelo cliente da cobrança', async () => {
+      await limpar()
+      await db.exec(`
+        insert into public.pedidos (id, barraca_id, cliente_id) values ('${PED}', '${BARRACA}', null);
+        insert into public.itens_do_pedido (pedido_id, quantidade, preco_centavos_unitario) values ('${PED}', 2, 2000);
+        insert into public.pagamentos_pendentes (id, barraca_id, pedido_id, status, cliente_id) values ('${PEND}', '${BARRACA}', '${PED}', 'aprovado', '${CLIENTE}');`)
+      await q(`select public.cashback_creditar_pedido('${PED}')`)
+      const e = await q(`select public.cashback_estornar_pedido('${PED}') r`)
+      assert.deepEqual(e[0].r, { ok: true, credito_revertido_centavos: 200, saldo_devolvido_centavos: 0 })
+      await db.exec(`delete from public.cashback_lancamentos where tipo = 'credito'`)
+      const r = await q(`select public.cashback_creditar_pedido('${PED}') r`)
+      assert.deepEqual(r[0].r, { ok: false, erro: 'estornado' })
+    })
+  })
+})

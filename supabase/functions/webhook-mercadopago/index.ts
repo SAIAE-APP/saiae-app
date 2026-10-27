@@ -86,6 +86,15 @@ Deno.serve(async (req: Request) => {
   // 'expirado' NÃO é final: o cliente pode ter pago depois de expirar, e esse
   // dinheiro não pode sumir (ver decidirAprovado / pagamentos_conciliacao).
   if (!(STATUS_PENDENTE_ABERTOS as readonly string[]).includes(pendente.status)) {
+    // Cashback: se o crédito falhou da primeira vez (best-effort), o reenvio do provedor tenta de novo. A RPC é idempotente
+    // por pedido e nunca muda a resposta ao provedor.
+    if (pendente.status === 'aprovado' && pendente.pedido_id && pendente.cliente_id) {
+      try {
+        await supabase.rpc('cashback_creditar_pedido', { p_pedido_id: pendente.pedido_id })
+      } catch {
+        console.error('cashback_credito_falhou', pendente.pedido_id)
+      }
+    }
     return jsonResponse({ ok: true })
   }
 
