@@ -1405,10 +1405,6 @@ function SecaoIdentidade({ barraca }: { barraca: Barraca }) {
   )
 }
 
-/** Extraída de dentro de SecaoIdentidade em 2026-09-27 (pedido do dono do
- * produto): é sobre o cardápio digital, não sobre identidade/conta da
- * barraca — precisava cair na categoria "Cardápio & Operação" do desktop,
- * não em "Conta" junto do resto de SecaoIdentidade. */
 function SeletorItemDestaque({ barraca }: { barraca: Barraca }) {
   const [itens, setItens] = useState<Item[]>([])
   const destaqueR = useRascunho(barraca.item_destaque_id ?? '')
@@ -1468,6 +1464,10 @@ function SeletorItemDestaque({ barraca }: { barraca: Barraca }) {
   )
 }
 
+/** Extraída de dentro de SecaoIdentidade em 2026-09-27 (pedido do dono do
+ * produto): é sobre o cardápio digital, não sobre identidade/conta da
+ * barraca — precisava cair na categoria "Cardápio & Operação" do desktop,
+ * não em "Conta" junto do resto de SecaoIdentidade. */
 function SecaoCardapioDigital({ barraca }: { barraca: Barraca }) {
   const [linkCopiado, setLinkCopiado] = useState(false)
   const linkCardapio = urlPublica(`/${barraca.slug}/cardapio`)

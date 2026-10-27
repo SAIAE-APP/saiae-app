@@ -68,7 +68,7 @@ export function BotaoPedir({
     return (
       <div
         className={clsx(
-          'flex items-center gap-1 rounded-mesa-full bg-mesa-neutral-100 p-1 dark:bg-mesa-neutral-800',
+          'flex min-h-11 items-center gap-1 rounded-mesa-full bg-mesa-neutral-100 p-1 px-2 dark:bg-mesa-neutral-800',
           larguraTotal ? 'w-full justify-between' : undefined,
         )}
       >
