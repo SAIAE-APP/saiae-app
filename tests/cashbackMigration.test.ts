@@ -586,3 +586,54 @@ describe('M6 resumo', () => {
     })
   })
 })
+
+// ---------------------------------------------------------------- M7 (aviso do cashback no status do Pix)
+const m7 = ler('20261106160000_cashback_aviso_pix.sql')
+
+describe('M7 consultar_status_pagamento com cashback', () => {
+  test('mantém as três colunas atuais na mesma ordem e acrescenta as duas novas', () => {
+    assert.match(m7, /returns table \(\s*status text,\s*senha int,\s*pedido_id uuid,\s*cashback_gerado_centavos integer,\s*cashback_vence_em timestamptz\s*\)/)
+  })
+
+  test('continua security definer com search_path fixo e executável por anon', () => {
+    assert.match(m7, /security definer/)
+    assert.match(m7, /set search_path = public, pg_temp/)
+    assert.match(m7, /grant execute on function public\.consultar_status_pagamento\(uuid\) to anon, authenticated/)
+  })
+
+  describe('no PGlite', () => {
+    let db: PGlite
+    const PEND = 'd7000000-0000-4000-8000-000000000001'
+    const PED = 'e7000000-0000-4000-8000-000000000001'
+    before(async () => {
+      db = await novoBanco([m1, m2, m3, m4, m5])
+      await db.exec('alter table public.pedidos add column if not exists senha int')
+      await db.exec(m7)
+      await db.exec(`
+        insert into public.pedidos (id, barraca_id, senha, cashback_gerado_centavos) values ('${PED}', '${BARRACA}', 42, 200);
+        insert into public.pagamentos_pendentes (id, barraca_id, pedido_id, status) values ('${PEND}', '${BARRACA}', '${PED}', 'aprovado');
+        insert into public.cashback_lancamentos (barraca_id, cliente_id, tipo, valor_centavos, pedido_id, expira_em) values ('${BARRACA}', '${CLIENTE}', 'credito', 200, '${PED}', '2026-12-31T12:00:00Z');`)
+    })
+    after(async () => {
+      await db.close()
+    })
+
+    test('devolve status, senha, cashback gerado e vencimento do próprio pagamento', async () => {
+      const r = await db.query<Record<string, unknown>>(`select * from public.consultar_status_pagamento('${PEND}')`)
+      assert.equal(r.rows.length, 1)
+      assert.equal(r.rows[0].status, 'aprovado')
+      assert.equal(r.rows[0].senha, 42)
+      assert.equal(r.rows[0].cashback_gerado_centavos, 200)
+      assert.ok(r.rows[0].cashback_vence_em)
+    })
+
+    test('pagamento sem pedido devolve zero e vencimento nulo; id desconhecido não devolve linha', async () => {
+      await db.exec(`insert into public.pagamentos_pendentes (id, barraca_id, status) values ('d7000000-0000-4000-8000-000000000002', '${BARRACA}', 'pendente')`)
+      const r = await db.query<Record<string, unknown>>(`select * from public.consultar_status_pagamento('d7000000-0000-4000-8000-000000000002')`)
+      assert.equal(r.rows[0].cashback_gerado_centavos, 0)
+      assert.equal(r.rows[0].cashback_vence_em, null)
+      const v = await db.query(`select * from public.consultar_status_pagamento('d7000000-0000-4000-8000-0000000000ff')`)
+      assert.equal(v.rows.length, 0)
+    })
+  })
+})
