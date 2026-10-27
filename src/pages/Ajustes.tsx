@@ -23,6 +23,7 @@ import { apagarLogoBarraca, enviarLogoBarraca } from '../lib/logoBarraca'
 import { apagarCapaBarraca, enviarCapaBarraca } from '../lib/capaBarraca'
 import { ativarFaceId, desativarFaceId, faceIdAtivado, faceIdSuportado } from '../lib/faceId'
 import { urlPublica } from '../lib/urlPublica'
+import { itensElegiveisParaDestaque } from '../lib/itensParaDestaque'
 import { BPS_MAX, bpsParaPercentual, percentualParaBps } from '../lib/taxas'
 import { ModalTrocarSenha } from '../components/ModalTrocarSenha'
 import { SeletorMetodos } from '../components/SeletorMetodos'
@@ -1408,6 +1409,65 @@ function SecaoIdentidade({ barraca }: { barraca: Barraca }) {
  * produto): é sobre o cardápio digital, não sobre identidade/conta da
  * barraca — precisava cair na categoria "Cardápio & Operação" do desktop,
  * não em "Conta" junto do resto de SecaoIdentidade. */
+function SeletorItemDestaque({ barraca }: { barraca: Barraca }) {
+  const [itens, setItens] = useState<Item[]>([])
+  const destaqueR = useRascunho(barraca.item_destaque_id ?? '')
+  const salvarDestaque = useSalvarBarraca(barraca)
+
+  useEffect(() => {
+    let cancelado = false
+    supabase
+      .from('itens')
+      .select('*')
+      .eq('barraca_id', barraca.id)
+      .then(({ data }) => {
+        if (!cancelado) setItens((data ?? []) as Item[])
+      })
+    return () => {
+      cancelado = true
+    }
+  }, [barraca.id])
+
+  const elegiveis = itensElegiveisParaDestaque(itens)
+  const atual = destaqueR.valor
+  // O destaque atual pode ter esgotado ou sido desativado: continua na lista para o dono trocar.
+  const atualIndisponivel = atual && !elegiveis.some((i) => i.id === atual) ? itens.find((i) => i.id === atual) : undefined
+
+  async function escolher(id: string) {
+    destaqueR.definir(id)
+    await salvarDestaque.salvar({ item_destaque_id: id || null })
+    // sucesso: o cache já traz o valor novo; falha: volta pro que está no banco
+    destaqueR.descartar()
+  }
+
+  return (
+    <div className="mt-4">
+      <label htmlFor="item-destaque" className="text-sm font-medium text-mesa-text-primary">
+        Item em destaque
+      </label>
+      <p className="mb-2 text-xs text-mesa-text-secondary">
+        Mostra este item no topo do cardápio, com o preço normal dele. Se ele esgotar, o destaque some sozinho.
+      </p>
+      <select
+        id="item-destaque"
+        value={atual}
+        onChange={(e) => void escolher(e.target.value)}
+        disabled={salvarDestaque.salvando}
+        className="h-11 w-full rounded-mesa-sm border-[1.5px] border-mesa-border-default bg-mesa-surface px-3 text-sm text-mesa-text-primary outline-none focus:border-mesa-orange-500"
+      >
+        <option value="">Nenhum</option>
+        {atualIndisponivel && <option value={atualIndisponivel.id}>{atualIndisponivel.nome} (indisponível)</option>}
+        {elegiveis.map((i) => (
+          <option key={i.id} value={i.id}>
+            {i.nome}
+          </option>
+        ))}
+      </select>
+      <ErroSalvar erro={salvarDestaque.erro} className="mt-2" />
+    </div>
+  )
+}
+
 function SecaoCardapioDigital({ barraca }: { barraca: Barraca }) {
   const [linkCopiado, setLinkCopiado] = useState(false)
   const linkCardapio = urlPublica(`/${barraca.slug}/cardapio`)
@@ -1449,6 +1509,7 @@ function SecaoCardapioDigital({ barraca }: { barraca: Barraca }) {
         >
           {linkCopiado ? 'Link copiado!' : 'Compartilhar cardápio'}
         </Button>
+        <SeletorItemDestaque barraca={barraca} />
         <EnderecoCardapio barraca={barraca} />
       </Card>
     </section>

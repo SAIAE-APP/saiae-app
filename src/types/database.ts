@@ -78,6 +78,8 @@ export type Barraca = {
   fuso?: string
   bloquear_fora_do_horario?: boolean
   imagem_capa_url: string | null
+  /** Item em destaque no topo do cardápio público; NULL = sem destaque. */
+  item_destaque_id?: string | null
   mostrar_horario_pedido: boolean
   /** Emitente fiscal e PROCON (cupom da NFC-e). Opcionais: cache local anterior à migration não tem. */
   emitente_razao_social?: string | null
