@@ -22,6 +22,29 @@ export function textoSaldoBotao(usadoCentavos: number): string {
   return `Usar meu saldo (${formatarPrecoBR(usadoCentavos)})`
 }
 
+/** Rótulo do lançamento do extrato do cliente. Tipo desconhecido vira "Ajuste". */
+export function rotuloLancamento(tipo: string): string {
+  switch (tipo) {
+    case 'credito':
+      return 'Ganhou'
+    case 'resgate':
+      return 'Usou'
+    case 'estorno_credito':
+    case 'estorno_resgate':
+      return 'Estorno'
+    case 'expiracao':
+      return 'Venceu'
+    default:
+      return 'Ajuste'
+  }
+}
+
+/** Aviso na confirmação de "Apagar meus dados": o saldo é apagado junto. Vazio sem saldo. */
+export function textoSaldoPerdido(saldoCentavos: number): string {
+  if (!Number.isInteger(saldoCentavos) || saldoCentavos <= 0) return ''
+  return `Você tem ${formatarPrecoBR(saldoCentavos)} de cashback nesta loja. Ao apagar seus dados, esse saldo é perdido.`
+}
+
 /** Confirmação do pedido: "Você ganhou R$ 2,00. Vale até 31/12." Sem ganho, vazio (nada a mostrar). */
 export function textoAvisoGanho(geradoCentavos: unknown, venceEm: unknown): string {
   if (typeof geradoCentavos !== 'number' || !Number.isInteger(geradoCentavos) || geradoCentavos <= 0) return ''
