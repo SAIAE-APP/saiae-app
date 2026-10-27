@@ -2,7 +2,8 @@
 // Rodar: npm test
 import assert from 'node:assert/strict'
 import { readFileSync } from 'node:fs'
-import { describe, test } from 'node:test'
+import { after, before, describe, test } from 'node:test'
+import { PGlite } from '@electric-sql/pglite'
 
 const ler = (nome: string) => readFileSync(new URL(`../supabase/migrations/${nome}`, import.meta.url), 'utf8')
 
@@ -88,5 +89,114 @@ describe('M2 razão', () => {
   test('colunas novas em pagamentos_pendentes e pedidos com default 0', () => {
     assert.match(m2, /alter table public\.pagamentos_pendentes[\s\S]*?cashback_usado_centavos integer not null default 0 check \(cashback_usado_centavos >= 0\)[\s\S]*?cashback_uso_id uuid/)
     assert.match(m2, /alter table public\.pedidos[\s\S]*?cashback_usado_centavos integer not null default 0[\s\S]*?cashback_gerado_centavos integer not null default 0 check \(cashback_gerado_centavos >= 0\)/)
+  })
+})
+
+// ---------------------------------------------------------------- M3 (texto + PGlite)
+const m3 = ler('20261106120000_cashback_funcoes_conta.sql')
+
+type Vetores = {
+  credito: Array<{ nome: string; itensLiquidos: number; percentualBp: number; esperado: number }>
+  resgate: Array<{ nome: string; saldo: number; itens: number; tetoUsoPct: number; esperado: number }>
+}
+const vetores = JSON.parse(
+  readFileSync(new URL('./fixtures/cashback-vetores.json', import.meta.url), 'utf8'),
+) as Vetores
+
+const BARRACA = 'b0000000-0000-4000-8000-000000000001'
+const CLIENTE = 'c0000000-0000-4000-8000-000000000001'
+
+// Banco mínimo no PGlite: só o que as migrations do cashback referenciam (nada do app inteiro).
+async function novoBanco(migrations: string[]): Promise<PGlite> {
+  const db = new PGlite()
+  await db.exec(`
+    create role authenticated; create role anon; create role service_role;
+    create table public.barracas (id uuid primary key, slug text, nome text);
+    create table public.clientes_finais (id uuid primary key, barraca_id uuid, telefone_confirmado_em timestamptz);
+    create table public.pedidos (id uuid primary key, barraca_id uuid, cliente_id uuid, desconto_cupom_centavos integer not null default 0);
+    create table public.pagamentos_pendentes (id uuid primary key default gen_random_uuid(), barraca_id uuid, pedido_id uuid, status text not null default 'pendente');
+    create table public.itens_do_pedido (id uuid primary key default gen_random_uuid(), pedido_id uuid, quantidade integer, preco_centavos_unitario integer, removido boolean default false);
+    create table public.cupom_usos (id uuid primary key default gen_random_uuid(), pagamento_pendente_id uuid, estado text);
+    create function public.usuario_tem_acesso_barraca(p uuid) returns boolean language sql as $$ select true $$;
+    create function public.cupom_liberar(p_pendente_id uuid) returns void language sql as $$
+      update public.cupom_usos set estado = 'liberado' where pagamento_pendente_id = p_pendente_id and estado = 'reservado' $$;
+    insert into public.barracas (id, slug, nome) values ('${BARRACA}', 'teste-cashback', 'TESTE-CASHBACK');
+    insert into public.clientes_finais (id, barraca_id, telefone_confirmado_em) values ('${CLIENTE}', '${BARRACA}', now());
+  `)
+  for (const m of migrations) await db.exec(m)
+  return db
+}
+
+describe('M3 funções de conta', () => {
+  test('as cinco funções existem; fórmulas são immutable; revoke e grant só para service_role', () => {
+    for (const f of ['cashback_calcular_credito', 'cashback_calcular_resgate', 'cashback_travar', 'cashback_expirar_se_vencido', 'cashback_saldo']) {
+      assert.match(m3, new RegExp(`create or replace function public\\.${f}\\(`), f)
+      assert.match(m3, new RegExp(`revoke all on function public\\.${f}\\([^)]*\\) from public, anon, authenticated`), f)
+      assert.match(m3, new RegExp(`grant execute on function public\\.${f}\\([^)]*\\) to service_role`), f)
+    }
+    assert.match(m3, /cashback_calcular_credito[\s\S]*?language sql\s+immutable/)
+    assert.match(m3, /cashback_calcular_resgate[\s\S]*?language sql\s+immutable/)
+    assert.match(m3, /pg_advisory_xact_lock\(hashtextextended\(p_barraca_id::text \|\| p_cliente_id::text, 0\)\)/)
+    assert.match(m3, /security definer\s+set search_path = public, pg_temp/)
+  })
+
+  test('cashback_expirar_se_vencido trava a conta e é o único que grava expiração', () => {
+    assert.match(m3, /cashback_expirar_se_vencido[\s\S]*?perform public\.cashback_travar/)
+    assert.doesNotMatch(m3, /\b(update|delete from) public\.cashback_lancamentos/)
+  })
+
+  describe('no PGlite', () => {
+    let db: PGlite
+    before(async () => {
+      db = await novoBanco([m2, m3])
+    })
+    after(async () => {
+      await db.close()
+    })
+
+    for (const v of vetores.credito) {
+      test(`vetor de crédito: ${v.nome}`, async () => {
+        const r = await db.query<{ v: number }>(`select public.cashback_calcular_credito(${v.itensLiquidos}, ${v.percentualBp}) as v`)
+        assert.equal(r.rows[0].v, v.esperado)
+      })
+    }
+    for (const v of vetores.resgate) {
+      test(`vetor de resgate: ${v.nome}`, async () => {
+        const r = await db.query<{ v: number }>(`select public.cashback_calcular_resgate(${v.saldo}, ${v.itens}, ${v.tetoUsoPct}) as v`)
+        assert.equal(r.rows[0].v, v.esperado)
+      })
+    }
+
+    test('Review Focus 1: saldo vencido não materializado vale 0 e a expiração grava a soma', async () => {
+      await db.exec(`
+        delete from public.cashback_lancamentos;
+        insert into public.cashback_lancamentos (barraca_id, cliente_id, tipo, valor_centavos, expira_em)
+        values ('${BARRACA}', '${CLIENTE}', 'credito', 300, now() - interval '1 day');`)
+      const s = await db.query<{ saldo_centavos: number; vence_em: string | null }>(`select * from public.cashback_saldo('${BARRACA}', '${CLIENTE}')`)
+      assert.equal(s.rows[0].saldo_centavos, 0)
+      assert.equal(s.rows[0].vence_em, null)
+      const e = await db.query<{ v: number }>(`select public.cashback_expirar_se_vencido('${BARRACA}', '${CLIENTE}') as v`)
+      assert.equal(e.rows[0].v, 300)
+      const again = await db.query<{ v: number }>(`select public.cashback_expirar_se_vencido('${BARRACA}', '${CLIENTE}') as v`)
+      assert.equal(again.rows[0].v, 0)
+      // Crédito novo depois da expiração: só o novo sobra.
+      await db.exec(`insert into public.cashback_lancamentos (barraca_id, cliente_id, tipo, valor_centavos, expira_em)
+        values ('${BARRACA}', '${CLIENTE}', 'credito', 100, now() + interval '30 days')`)
+      const s2 = await db.query<{ saldo_centavos: number }>(`select * from public.cashback_saldo('${BARRACA}', '${CLIENTE}')`)
+      assert.equal(s2.rows[0].saldo_centavos, 100)
+    })
+
+    test('reserva aberta desconta do disponível; reserva vencida é ignorada', async () => {
+      await db.exec(`
+        delete from public.cashback_resgates; delete from public.cashback_lancamentos;
+        insert into public.cashback_lancamentos (barraca_id, cliente_id, tipo, valor_centavos, expira_em)
+        values ('${BARRACA}', '${CLIENTE}', 'credito', 500, now() + interval '10 days');
+        insert into public.pagamentos_pendentes (id, barraca_id) values ('d0000000-0000-4000-8000-000000000001', '${BARRACA}'), ('d0000000-0000-4000-8000-000000000002', '${BARRACA}');
+        insert into public.cashback_resgates (barraca_id, cliente_id, pagamento_pendente_id, estado, valor_centavos, reservado_ate)
+        values ('${BARRACA}', '${CLIENTE}', 'd0000000-0000-4000-8000-000000000001', 'reservado', 200, now() + interval '10 minutes'),
+               ('${BARRACA}', '${CLIENTE}', 'd0000000-0000-4000-8000-000000000002', 'reservado', 100, now() - interval '1 minute');`)
+      const s = await db.query<{ saldo_centavos: number; reservado_centavos: number; disponivel_centavos: number }>(`select * from public.cashback_saldo('${BARRACA}', '${CLIENTE}')`)
+      assert.deepEqual([s.rows[0].saldo_centavos, s.rows[0].reservado_centavos, s.rows[0].disponivel_centavos], [500, 200, 300])
+    })
   })
 })
