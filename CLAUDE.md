@@ -645,7 +645,15 @@ repetir `versionCode`: subir a cada build. Validar em aparelho Android 7–11 e
   duas cores de marca, teal/esmeralda saiu do app inteiro. Texto
   sobre mostarda é SEMPRE tinta, nunca branco (mostarda não sustenta
   contraste com branco). "Um primário por tela": só a ação principal
-  de cada tela é mostarda, o resto usa tinta/outline/ghost. Cada
+  de cada tela é mostarda, o resto usa tinta/outline/ghost. Leitura A
+  no cardápio público (2026-10-27, decisão do João): o papel principal
+  da tela é "pedir", então todo botão que cumpre esse papel (Adicionar/
+  Escolher em todo card) é mostarda, por ser a mesma ação repetida e
+  não ações concorrentes; Esgotado e Fechado são neutros (contorno
+  desabilitado); o carrinho fixo é tinta com o pill "Ver pedido" claro;
+  o herói do destaque é mostarda com botão tinta. Se ficar "amarelo
+  demais" no celular, o recuo é o herói com borda mostarda, nunca tirar
+  a cor dos botões. Cada
   barraca define apenas logo, nome e modo claro/escuro — cor
   primária por barraca continua eliminada, não sugerir customização
   de cor.
@@ -1118,6 +1126,21 @@ nenhum item daqui sozinho, só quando for pedido explicitamente.
     no WhatsApp"). Método `na_entrega` aparece como "A definir na entrega"
     (Histórico, comanda, Relatório/Faturamento em linha própria); o método
     real é definido depois (frente F, link do entregador).
+  - Hierarquia do cardápio público (2026-10-27, branch `feat/cardapio-hierarquia`; spec
+    `docs/superpowers/specs/2026-10-27-cardapio-hierarquia-design.md`, migration `20261105100000`). Ordem, de cima
+    para baixo: capa/logo/horário, banner, DESTAQUE, Mais pedidos, Populares, busca + categorias com a lista, carrinho
+    fixo. Destaque = `barracas.item_destaque_id` (Ajustes > Cardápio digital > "Item em destaque", uma escolha por
+    barraca) lido pela função `destaque_publico(slug)` (anon; só devolve o item se for da mesma barraca, ativo e de
+    preço fechado); `cardapio_publico` NÃO foi tocada. O bloco some sozinho sem escolha, com item esgotado (inclusive
+    pelas opções) ou durante a busca (`resolverDestaque`, `src/lib/destaque.ts`); o item continua nas outras seções.
+    Todo card usa o mesmo `BotaoPedir` (`src/components/cardapio/`), mostarda de 44px, estado decidido por
+    `estadoBotaoPedir` (`src/lib/estadoBotaoPedir.ts`). Fora do horário (`horarios_publicos` + `statusFuncionamento`,
+    relógio do visitante, recalculado ao voltar o foco; sem horário cadastrado = sempre aberta) os botões ficam
+    desabilitados com "Fechado" e o "Ver pedido" vira "Fechado"; preço e itens continuam visíveis; item sem opções já
+    no carrinho ainda diminui. O bloqueio é SÓ NA TELA: o servidor só recusa pedido fechado se a barraca ligou
+    `bloquear_fora_do_horario`. ORDEM DE DEPLOY: migration → app (app novo sem a migration funciona, sem destaque).
+    Métrica (pedidos do cardápio por semana por barraca, antes e depois): `docs/consulta-pedidos-cardapio-semana.sql`
+    (não há coluna de origem em `pedidos`; a consulta usa rastros e declara os limites).
   - Fase 2 (futura): cliente monta pedido e ele cai direto na
     Cozinha, mas o pagamento continua fora do app (maquininha/Pix na
     mesa, como já funciona hoje) — só tira a fila de atendimento,
