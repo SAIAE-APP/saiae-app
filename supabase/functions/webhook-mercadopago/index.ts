@@ -212,6 +212,8 @@ Deno.serve(async (req: Request) => {
       await registrarConciliacaoAprovado('pedido_nao_criado', { detalhe: criado.detalhe.slice(0, 300) })
       return jsonResponse({ ok: false, aviso: `falha ao criar pedido: ${criado.detalhe}` }, 500)
     }
+    // Resgate de cashback não confirmado: mesma regra do cupom (500 antes de marcar aprovado; o provedor reenvia).
+    if (!criado.ok && criado.etapa === 'cashback') return jsonResponse({ ok: false, aviso: 'falha ao confirmar o saldo de cashback' }, 500)
     // Cupom não confirmado: 500 ANTES de marcar o pendente aprovado; o provedor reenvia e tentamos de novo.
     if (!criado.ok) return jsonResponse({ ok: false, aviso: 'falha ao confirmar o cupom' }, 500)
 

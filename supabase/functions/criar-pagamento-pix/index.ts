@@ -734,6 +734,10 @@ Deno.serve(async (req: Request) => {
       taxa_plataforma_centavos: taxaPlataformaCentavos,
       cashback_usado_centavos: cashbackCentavos,
       ...(pedidoCartao ? { pedido_id: pedidoCartao.pedidoId, senha: pedidoCartao.senha } : {}),
+      // Aditivo e opcional (aviso "você ganhou"): só quando o pedido gerou crédito.
+      ...(pedidoCartao?.cashbackGeradoCentavos
+        ? { cashback_gerado_centavos: pedidoCartao.cashbackGeradoCentavos, cashback_vence_em: pedidoCartao.cashbackVenceEm ?? null }
+        : {}),
     })
   }
 
