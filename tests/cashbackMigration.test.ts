@@ -200,3 +200,172 @@ describe('M3 funções de conta', () => {
     })
   })
 })
+
+// ---------------------------------------------------------------- M4 (texto + PGlite)
+const m4 = ler('20261106130000_cashback_resgate.sql')
+const semComentarios = (s: string) => s.replace(/--.*$/gm, '')
+
+function corpoDe(sqlTexto: string, funcao: string): string {
+  const ini = sqlTexto.indexOf(`create or replace function public.${funcao}(`)
+  assert.ok(ini >= 0, funcao)
+  const fim = sqlTexto.indexOf('\n$$;', ini)
+  return semComentarios(sqlTexto.slice(ini, fim))
+}
+
+describe('M4 resgate', () => {
+  test('as cinco funções novas e a redefinição de cupom_liberar chamando cashback_liberar', () => {
+    for (const f of ['cashback_avaliar_resgate', 'cashback_reservar', 'cashback_confirmar_resgate', 'cashback_liberar', 'cashback_liberar_abandonadas']) {
+      assert.match(m4, new RegExp(`create or replace function public\\.${f}\\(`), f)
+    }
+    assert.match(corpoDe(m4, 'cupom_liberar'), /perform public\.cashback_liberar\(p_pendente_id\)/)
+    assert.match(corpoDe(m4, 'cupom_liberar'), /update public\.cupom_usos set estado = 'liberado'/)
+  })
+
+  test('regra de ouro: confirmar não decide por cashback_habilitado nem por reservado_ate', () => {
+    const c = corpoDe(m4, 'cashback_confirmar_resgate')
+    assert.doesNotMatch(c, /cashback_habilitado/)
+    assert.doesNotMatch(c, /reservado_ate/)
+    assert.match(c, /estado = 'confirmado'/)
+  })
+
+  test('todas fechadas para anon/authenticated e abertas ao service_role', () => {
+    const assinaturas = [
+      'cashback_avaliar_resgate(uuid, uuid, integer)',
+      'cashback_reservar(uuid, uuid, integer, uuid, timestamptz)',
+      'cashback_confirmar_resgate(uuid, uuid)',
+      'cashback_liberar(uuid)',
+      'cashback_liberar_abandonadas(uuid, uuid, uuid)',
+      'cupom_liberar(uuid)',
+    ]
+    for (const a of assinaturas) {
+      const esc = a.replace(/[()]/g, '\\$&')
+      assert.match(m4, new RegExp(`revoke all on function public\\.${esc} from public, anon, authenticated`), a)
+      assert.match(m4, new RegExp(`grant execute on function public\\.${esc} to service_role`), a)
+    }
+  })
+
+  test('avaliar não exige cashback_habilitado (saldo concedido segue usável)', () => {
+    assert.doesNotMatch(corpoDe(m4, 'cashback_avaliar_resgate'), /cashback_habilitado/)
+    assert.doesNotMatch(corpoDe(m4, 'cashback_reservar'), /cashback_habilitado/)
+  })
+
+  describe('no PGlite', () => {
+    let db: PGlite
+    const P1 = 'e0000000-0000-4000-8000-000000000001'
+    const P2 = 'e0000000-0000-4000-8000-000000000002'
+    const PED = 'f0000000-0000-4000-8000-000000000001'
+    const dia = `now() + interval '30 days'`
+    const reservar = (pend: string, itens = 4000, ate = `now() + interval '15 minutes'`) =>
+      db.query<{ r: { ok: boolean; erro?: string; resgate_centavos?: number; uso_id?: string } }>(
+        `select public.cashback_reservar('${BARRACA}', '${CLIENTE}', ${itens}, '${pend}', ${ate}) as r`,
+      )
+    const saldoRazao = async () =>
+      Number((await db.query<{ s: string }>(`select coalesce(sum(valor_centavos), 0) s from public.cashback_lancamentos`)).rows[0].s)
+
+    before(async () => {
+      db = await novoBanco([m1, m2, m3, m4])
+    })
+    after(async () => {
+      await db.close()
+    })
+    const zerar = async (saldo = 1000) => {
+      await db.exec(`
+        delete from public.cashback_resgates; delete from public.cashback_lancamentos;
+        delete from public.pagamentos_pendentes; delete from public.pedidos;
+        insert into public.pagamentos_pendentes (id, barraca_id) values ('${P1}', '${BARRACA}'), ('${P2}', '${BARRACA}');
+        insert into public.pedidos (id, barraca_id, cliente_id) values ('${PED}', '${BARRACA}', '${CLIENTE}');
+        insert into public.cashback_lancamentos (barraca_id, cliente_id, tipo, valor_centavos, expira_em)
+        values ('${BARRACA}', '${CLIENTE}', 'credito', ${saldo}, ${dia});`)
+    }
+
+    test('avaliar: sem cliente, sem saldo, itens baixos e ok', async () => {
+      await zerar(1000)
+      const av = async (cli: string | null, itens: number) =>
+        (await db.query<{ r: Record<string, unknown> }>(`select public.cashback_avaliar_resgate('${BARRACA}', ${cli ? `'${cli}'` : 'null'}, ${itens}) as r`)).rows[0].r
+      assert.equal((await av(null, 4000)).erro, 'sem_cliente')
+      assert.equal((await av('c9999999-0000-4000-8000-000000000009', 4000)).erro, 'sem_cliente')
+      assert.equal((await av(CLIENTE, 100)).erro, 'itens_baixos')
+      const ok = await av(CLIENTE, 4000)
+      assert.equal(ok.ok, true)
+      assert.equal(ok.resgate_centavos, 1000)
+      await db.exec(`delete from public.cashback_lancamentos`)
+      assert.equal((await av(CLIENTE, 4000)).erro, 'sem_saldo')
+    })
+
+    test('reservar duas vezes a mesma cobrança não duplica a linha', async () => {
+      await zerar(1000)
+      const a = (await reservar(P1)).rows[0].r
+      const b = (await reservar(P1)).rows[0].r
+      assert.equal(a.ok, true)
+      assert.equal(b.resgate_centavos, 1000)
+      assert.equal(a.uso_id, b.uso_id)
+      const n = await db.query<{ n: string }>(`select count(*) n from public.cashback_resgates`)
+      assert.equal(Number(n.rows[0].n), 1)
+      const pend = await db.query<{ cashback_usado_centavos: number }>(`select cashback_usado_centavos from public.pagamentos_pendentes where id = '${P1}'`)
+      assert.equal(pend.rows[0].cashback_usado_centavos, 1000)
+    })
+
+    test('Review Focus 2: duas cobranças disputando o mesmo saldo, só uma reserva', async () => {
+      await zerar(1000)
+      const a = (await reservar(P1)).rows[0].r
+      const b = (await reservar(P2)).rows[0].r
+      assert.equal(a.ok, true)
+      assert.equal(b.ok, false)
+      assert.equal(b.erro, 'sem_saldo')
+    })
+
+    test('liberar devolve o disponível e não mexe em confirmado', async () => {
+      await zerar(1000)
+      const a = (await reservar(P1)).rows[0].r
+      await db.query(`select public.cupom_liberar('${P1}')`) // passa pelo cupom_liberar redefinido
+      let s = await db.query<{ disponivel_centavos: number }>(`select * from public.cashback_saldo('${BARRACA}', '${CLIENTE}')`)
+      assert.equal(s.rows[0].disponivel_centavos, 1000)
+      const c = (await reservar(P1)).rows[0].r
+      assert.equal(c.ok, true)
+      await db.query(`select public.cashback_confirmar_resgate('${c.uso_id}', '${PED}')`)
+      await db.query(`select public.cashback_liberar('${P1}')`)
+      const est = await db.query<{ estado: string }>(`select estado from public.cashback_resgates where id = '${a.uso_id}'`)
+      assert.equal(est.rows[0].estado, 'confirmado')
+      s = await db.query(`select * from public.cashback_saldo('${BARRACA}', '${CLIENTE}')`)
+      assert.equal(s.rows[0].disponivel_centavos, 0)
+    })
+
+    test('confirmar duas vezes grava um só resgate e o pedido guarda o desconto', async () => {
+      await zerar(1000)
+      const a = (await reservar(P1)).rows[0].r
+      await db.query(`select public.cashback_confirmar_resgate('${a.uso_id}', '${PED}')`)
+      await db.query(`select public.cashback_confirmar_resgate('${a.uso_id}', '${PED}')`)
+      const n = await db.query<{ n: string }>(`select count(*) n from public.cashback_lancamentos where tipo = 'resgate'`)
+      assert.equal(Number(n.rows[0].n), 1)
+      assert.equal(await saldoRazao(), 0)
+      const p = await db.query<{ cashback_usado_centavos: number }>(`select cashback_usado_centavos from public.pedidos where id = '${PED}'`)
+      assert.equal(p.rows[0].cashback_usado_centavos, 1000)
+    })
+
+    test('reserva vencida + saldo gasto em outro pedido + confirmação: razão >= 0 e excedente', async () => {
+      await zerar(1000)
+      const a = (await reservar(P1, 4000, `now() - interval '1 minute'`)).rows[0].r
+      // Outro pedido gasta o saldo (a reserva vencida não segura).
+      const b = (await reservar(P2)).rows[0].r
+      assert.equal(b.resgate_centavos, 1000)
+      await db.query(`select public.cashback_confirmar_resgate('${b.uso_id}', '${PED}')`)
+      assert.equal(await saldoRazao(), 0)
+      const PED2 = 'f0000000-0000-4000-8000-000000000002'
+      await db.exec(`insert into public.pedidos (id, barraca_id, cliente_id) values ('${PED2}', '${BARRACA}', '${CLIENTE}')`)
+      await db.query(`select public.cashback_confirmar_resgate('${a.uso_id}', '${PED2}')`)
+      assert.equal(await saldoRazao(), 0)
+      const r = await db.query<{ excedente_centavos: number }>(`select excedente_centavos from public.cashback_resgates where id = '${a.uso_id}'`)
+      assert.equal(r.rows[0].excedente_centavos, 1000)
+      const p = await db.query<{ cashback_usado_centavos: number }>(`select cashback_usado_centavos from public.pedidos where id = '${PED2}'`)
+      assert.equal(p.rows[0].cashback_usado_centavos, 1000)
+    })
+
+    test('Review Focus 1: reservar sobre saldo vencido não ressuscita nada', async () => {
+      await zerar(1000)
+      await db.exec(`update public.cashback_lancamentos set expira_em = now() - interval '1 day'`)
+      const a = (await reservar(P1)).rows[0].r
+      assert.equal(a.ok, false)
+      assert.equal(await saldoRazao(), 0) // expiração materializada
+    })
+  })
+})
