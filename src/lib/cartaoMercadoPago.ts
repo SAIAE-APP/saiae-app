@@ -78,6 +78,14 @@ type Buscar = (url: string, init?: RequestInit) => Promise<Response>
 const ERRO_DADOS = 'Não conseguimos validar o cartão. Confira os dados ou pague com Pix.'
 const ERRO_REDE = 'Não conseguimos falar com o processador do cartão. Confira sua internet e tente de novo.'
 
+// shortcut: só Visa, Mastercard e Amex pelo prefixo; Elo e outras sem resultado de BIN caem em ERRO_DADOS, ampliar se aparecer.
+function bandeiraPeloPrefixo(numero: string): string | undefined {
+  if (/^4/.test(numero)) return 'visa'
+  if (/^(5[1-5]|2(22[1-9]|2[3-9]\d|[3-6]\d\d|7[01]\d|720)|5031)/.test(numero)) return 'master'
+  if (/^3[47]/.test(numero)) return 'amex'
+  return undefined
+}
+
 /** Descobre a bandeira pelo BIN e gera o token. Só crédito (à vista); mensagens nunca expõem a resposta do provedor. */
 export async function gerarTokenCartao(publicKey: string, d: DadosCartaoTela, buscar: Buscar = fetch): Promise<ResultadoToken> {
   const numero = soDigitos(d.numero)
@@ -88,8 +96,10 @@ export async function gerarTokenCartao(publicKey: string, d: DadosCartaoTela, bu
     const rMeio = await buscar(`${API}/payment_methods/search?public_key=${chave}&bins=${numero.slice(0, 8)}`)
     if (!rMeio.ok) return { ok: false, erro: ERRO_DADOS }
     const meios = ((await rMeio.json().catch(() => null)) as { results?: { id?: string; payment_type_id?: string; issuer?: { id?: number | string } }[] } | null)?.results ?? []
-    const credito = meios.find((m) => m.payment_type_id === 'credit_card' && m.id)
-    if (!credito?.id) return { ok: false, erro: 'Use um cartão de crédito. Débito não é aceito aqui.' }
+    // BIN sem nenhum resultado (acontece no sandbox com cartão de teste): não é débito. Segue como crédito pela
+    // bandeira do prefixo e o Mercado Pago decide na cobrança; resultado só de débito continua recusado.
+    const credito = meios.length === 0 ? { id: bandeiraPeloPrefixo(numero), issuer: undefined } : meios.find((m) => m.payment_type_id === 'credit_card' && m.id)
+    if (!credito?.id) return { ok: false, erro: meios.length === 0 ? ERRO_DADOS : 'Use um cartão de crédito. Débito não é aceito aqui.' }
 
     const rToken = await buscar(`${API}/card_tokens?public_key=${chave}`, {
       method: 'POST',

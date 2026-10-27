@@ -76,6 +76,27 @@ test('cartaoMercadoPago: cartão só de débito é recusado antes de gerar token
   assert.equal(chamadas.length, 1)
 })
 
+test('cartaoMercadoPago: BIN sem resultado (sandbox) segue como crédito pela bandeira do prefixo', async () => {
+  const r = await gerarTokenCartao(
+    'k',
+    VALIDO,
+    fetchFalso(
+      [
+        { url: /payment_methods/, status: 200, corpo: { paging: { total: 0 }, results: [] } },
+        { url: /card_tokens/, status: 201, corpo: { id: 'tok_2' } },
+      ],
+      [],
+    ),
+  )
+  assert.deepEqual(r, { ok: true, cardToken: 'tok_2', paymentMethodId: 'master' })
+  const semBandeira = await gerarTokenCartao(
+    'k',
+    { ...VALIDO, numero: '6362970000457013' },
+    fetchFalso([{ url: /payment_methods/, status: 200, corpo: { results: [] } }], []),
+  )
+  assert.equal(semBandeira.ok, false)
+})
+
 test('cartaoMercadoPago: falha de rede ou recusa do token vira mensagem amigável, sem detalhe do provedor', async () => {
   const semRede = await gerarTokenCartao('k', VALIDO, fetchFalso([], []))
   assert.equal(semRede.ok, false)
