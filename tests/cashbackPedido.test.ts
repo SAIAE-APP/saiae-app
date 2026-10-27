@@ -14,8 +14,7 @@ function falso(resposta: { data?: unknown; error?: unknown } | (() => never)) {
       return Promise.resolve({ data: resposta.data ?? null, error: resposta.error ?? null })
     },
   }
-  // deno-lint-ignore no-explicit-any
-  return { supabase: supabase as any, chamadas }
+  return { supabase: supabase as never, chamadas }
 }
 
 const BASE = { barracaId: 'b1', clienteId: 'c1', itensCentavos: 4000, temCupom: false }
