@@ -48,6 +48,7 @@ import { SecaoComandaAberta } from '../components/SecaoComandaAberta'
 import { SecaoSaiuEntrega } from '../components/SecaoSaiuEntrega'
 import { SecaoEstoque } from '../components/SecaoEstoque'
 import { SecaoCupons } from '../components/SecaoCupons'
+import { SecaoCashback } from '../components/SecaoCashback'
 import { mostrarWhatsappAutomacao, temModulo } from '../lib/modulos'
 import { fiscalProntoParaEmitir } from '../lib/fiscal'
 import { SecaoWhatsappAutomacao } from '../components/SecaoWhatsappAutomacao'
@@ -3050,6 +3051,9 @@ export function Ajustes({ categoria = 'conta' }: { categoria?: CategoriaAjustes 
           </SecaoDaCategoria>
           <SecaoDaCategoria categoria="cardapio" grupo="cardapio" atual={categoria}>
             <SecaoCupons barraca={barraca} />
+          </SecaoDaCategoria>
+          <SecaoDaCategoria categoria="cardapio" grupo="cardapio" atual={categoria}>
+            <SecaoCashback barraca={barraca} />
           </SecaoDaCategoria>
           <SecaoDaCategoria categoria="cardapio" grupo="avisos" atual={categoria}>
             <SecaoAvisoPronto barraca={barraca} />
