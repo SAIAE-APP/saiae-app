@@ -181,7 +181,7 @@ function CardItemPublico({
   onRemover: () => void
 }) {
   return (
-    <div className="relative flex gap-3 rounded-mesa-xl border border-mesa-border-subtle bg-mesa-surface p-3 shadow-mesa-1">
+    <div className="relative flex min-w-0 gap-3 rounded-mesa-xl border border-mesa-border-subtle bg-mesa-surface p-3 shadow-mesa-1">
       <span className="relative flex size-16 shrink-0 items-center justify-center overflow-hidden rounded-mesa-md bg-mesa-neutral-100 text-mesa-text-tertiary dark:bg-mesa-neutral-700">
         {item.item_foto_url ? (
           <img src={item.item_foto_url} alt="" className="size-full object-cover" />
@@ -205,7 +205,7 @@ function CardItemPublico({
         {item.item_descricao && (
           <p className="mt-0.5 line-clamp-2 text-xs text-mesa-text-secondary">{item.item_descricao}</p>
         )}
-        <div className="mt-2 flex items-center justify-between gap-2">
+        <div className="mt-2 flex flex-wrap items-center justify-between gap-2">
           <span className="flex flex-col font-mesa-display text-sm font-semibold text-mesa-text-primary">
             {item.a_partir_de && item.item_preco_centavos > 0 && (
               <span className="text-xs font-normal text-mesa-text-secondary">a partir de</span>
