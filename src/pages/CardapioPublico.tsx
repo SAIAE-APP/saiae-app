@@ -11,6 +11,10 @@ import { Button } from '../components/ui/Button'
 import { BottomSheet } from '../components/ui/BottomSheet'
 import { Checkbox } from '../components/ui/Checkbox'
 import { Chip } from '../components/ui/Chip'
+import { BotaoPedir } from '../components/cardapio/BotaoPedir'
+import { CardDestaque } from '../components/cardapio/CardDestaque'
+import { resolverDestaque } from '../lib/destaque'
+import { lojaAberta } from '../lib/estadoBotaoPedir'
 import { Icone } from '../components/ui/Icone'
 import { Input } from '../components/ui/Input'
 import { Textarea } from '../components/ui/Textarea'
@@ -41,7 +45,7 @@ import { bairroCanonico, buscarBairrosPublicos, taxaDoBairro, type BairrosPublic
 import { TAXA_PLATAFORMA_CENTAVOS, totalComTaxaPlataforma } from '../lib/taxaPlataforma'
 import { CartaoMercadoPago, type TokenCartaoGerado } from '../components/CartaoMercadoPago'
 
-type LinhaCardapioPublico = {
+export type LinhaCardapioPublico = {
   barraca_id: string
   barraca_nome: string
   barraca_logo_url: string | null
@@ -153,98 +157,12 @@ function BottomSheetFinalizarBalcao({
   )
 }
 
-/** Mesmo padrão de stepper de Lançar Pedido (BotaoStepper): vira +/- assim
- * que tem quantidade no carrinho, em vez de só "N no carrinho" sem jeito de
- * tirar item — precisava dar pra ajustar direto no card, não só dentro do
- * checkout. */
-function BotaoAdicionar({
-  variant,
-  podeAdicionar,
-  esgotado,
-  comOpcoes = false,
-  quantidadeNoCarrinho,
-  onAdicionar,
-  onRemover,
-}: {
-  variant: 'sm' | 'md'
-  podeAdicionar: boolean
-  esgotado: boolean
-  /** Item com variação/adicionais: o botão abre o seletor; os ajustes de quantidade ficam no pedido. */
-  comOpcoes?: boolean
-  quantidadeNoCarrinho: number
-  onAdicionar: () => void
-  onRemover: () => void
-}) {
-  if (esgotado) {
-    return (
-      <Button variant="outline" size={variant} disabled>
-        Esgotado
-      </Button>
-    )
-  }
-
-  if (comOpcoes) {
-    return (
-      <Button
-        variant="outline"
-        size={variant}
-        icon={<Icone nome="add" size={16} />}
-        disabled={!podeAdicionar}
-        onClick={onAdicionar}
-      >
-        {quantidadeNoCarrinho > 0 ? `Escolher (${quantidadeNoCarrinho})` : 'Escolher'}
-      </Button>
-    )
-  }
-
-  if (quantidadeNoCarrinho > 0) {
-    return (
-      <div className="flex items-center gap-1 rounded-mesa-full bg-mesa-neutral-100 p-1 dark:bg-mesa-neutral-800">
-        <button
-          type="button"
-          onClick={onRemover}
-          aria-label="Diminuir quantidade"
-          className="flex size-11 -m-2 items-center justify-center"
-        >
-          <span className="flex size-7 items-center justify-center rounded-mesa-full bg-mesa-neutral-900 text-white transition-transform active:scale-90 dark:bg-mesa-neutral-50 dark:text-mesa-neutral-900">
-            <Icone nome="remove" size={14} />
-          </span>
-        </button>
-        <span className="min-w-[1.5ch] text-center font-mesa-display text-sm font-bold text-mesa-text-primary">
-          {quantidadeNoCarrinho}
-        </span>
-        <button
-          type="button"
-          onClick={onAdicionar}
-          disabled={!podeAdicionar}
-          aria-label="Aumentar quantidade"
-          className="flex size-11 -m-2 items-center justify-center disabled:opacity-40"
-        >
-          <span className="flex size-7 items-center justify-center rounded-mesa-full bg-mesa-neutral-900 text-white transition-transform active:scale-90 dark:bg-mesa-neutral-50 dark:text-mesa-neutral-900">
-            <Icone nome="add" size={14} />
-          </span>
-        </button>
-      </div>
-    )
-  }
-
-  return (
-    <Button
-      variant="outline"
-      size={variant}
-      icon={<Icone nome="add" size={16} />}
-      disabled={!podeAdicionar}
-      onClick={onAdicionar}
-    >
-      Adicionar
-    </Button>
-  )
-}
-
 function CardItemPublico({
   item,
   posicaoPopular,
   podeComprar,
+  aberta,
+  textoFechado,
   quantidadeNoCarrinho,
   onAdicionar,
   onRemover,
@@ -252,6 +170,8 @@ function CardItemPublico({
   item: LinhaCardapioPublico
   posicaoPopular: number | null
   podeComprar: boolean
+  aberta: boolean
+  textoFechado?: string
   quantidadeNoCarrinho: number
   onAdicionar: () => void
   onRemover: () => void
@@ -290,10 +210,11 @@ function CardItemPublico({
               {item.item_preco_centavos > 0 ? formatarPrecoBR(item.item_preco_centavos) : 'Sob consulta'}
             </span>
           </span>
-          <BotaoAdicionar
-            variant="sm"
+          <BotaoPedir
             podeAdicionar={!podeComprar || item.item_preco_centavos > 0}
             esgotado={item.item_esgotado}
+            lojaAberta={aberta}
+            textoFechado={textoFechado}
             comOpcoes={item.com_opcoes === true}
             quantidadeNoCarrinho={quantidadeNoCarrinho}
             onAdicionar={onAdicionar}
@@ -431,63 +352,6 @@ function CarrosselBanners({ banners }: { banners: BannerPublico[] }) {
   )
 }
 
-/** Versão compacta do stepper — a versão com texto de BotaoAdicionar não
- * cabe no card estreito das seções horizontais (Populares/Mais pedido). O
- * aviso de "sem pagamento online" aparece só na hora de finalizar
- * (BottomSheetFinalizarBalcao), não mais no clique de cada item. */
-function BotaoAdicionarCompacto({
-  podeAdicionar,
-  esgotado,
-  comOpcoes = false,
-  quantidadeNoCarrinho,
-  onAdicionar,
-  onRemover,
-}: {
-  podeAdicionar: boolean
-  esgotado: boolean
-  comOpcoes?: boolean
-  quantidadeNoCarrinho: number
-  onAdicionar: () => void
-  onRemover: () => void
-}) {
-  if (quantidadeNoCarrinho > 0 && !comOpcoes) {
-    return (
-      <div className="flex items-center gap-0.5 rounded-mesa-full bg-mesa-neutral-900 px-1 py-1 text-white dark:bg-mesa-neutral-50 dark:text-mesa-neutral-900">
-        <button
-          type="button"
-          onClick={onRemover}
-          aria-label="Diminuir quantidade"
-          className="flex size-5 items-center justify-center"
-        >
-          <Icone nome="remove" size={12} />
-        </button>
-        <span className="min-w-[1ch] text-center font-mesa-display text-xs font-bold">{quantidadeNoCarrinho}</span>
-        <button
-          type="button"
-          onClick={onAdicionar}
-          disabled={!podeAdicionar}
-          aria-label="Aumentar quantidade"
-          className="flex size-5 items-center justify-center disabled:opacity-40"
-        >
-          <Icone nome="add" size={12} />
-        </button>
-      </div>
-    )
-  }
-
-  return (
-    <button
-      type="button"
-      disabled={esgotado || !podeAdicionar}
-      onClick={onAdicionar}
-      aria-label={comOpcoes ? 'Escolher opções' : 'Adicionar ao carrinho'}
-      className="flex size-8 shrink-0 items-center justify-center rounded-mesa-full border border-mesa-border-strong text-mesa-text-primary disabled:opacity-40"
-    >
-      <Icone nome="add" size={16} />
-    </button>
-  )
-}
-
 /** Card compacto usado nas seções horizontais Populares/Mais pedido —
  * mais estreito que CardItemPublico (que é a linha da lista completa
  * abaixo). `destaque` reaproveita o mesmo selo Top1/Popular do card do
@@ -496,6 +360,8 @@ function CardItemHorizontal({
   item,
   destaque,
   podeComprar,
+  aberta,
+  textoFechado,
   quantidadeNoCarrinho,
   onAdicionar,
   onRemover,
@@ -503,6 +369,8 @@ function CardItemHorizontal({
   item: LinhaCardapioPublico
   destaque: 'top1' | 'popular' | null
   podeComprar: boolean
+  aberta: boolean
+  textoFechado?: string
   quantidadeNoCarrinho: number
   onAdicionar: () => void
   onRemover: () => void
@@ -531,18 +399,21 @@ function CardItemHorizontal({
       </div>
       <div className="p-2.5">
         <p className="line-clamp-1 text-sm font-semibold text-mesa-text-primary">{item.item_nome}</p>
-        <div className="mt-1.5 flex items-center justify-between gap-1">
-          <span className="flex flex-col font-mesa-display text-xs font-semibold text-mesa-text-primary">
-            {item.a_partir_de && item.item_preco_centavos > 0 && (
-              <span className="text-[10px] font-normal text-mesa-text-secondary">a partir de</span>
-            )}
-            <span className="whitespace-nowrap">
-              {item.item_preco_centavos > 0 ? formatarPrecoBR(item.item_preco_centavos) : 'Consulta'}
-            </span>
+        <span className="mt-1.5 flex flex-col font-mesa-display text-xs font-semibold text-mesa-text-primary">
+          {item.a_partir_de && item.item_preco_centavos > 0 && (
+            <span className="text-[10px] font-normal text-mesa-text-secondary">a partir de</span>
+          )}
+          <span className="whitespace-nowrap">
+            {item.item_preco_centavos > 0 ? formatarPrecoBR(item.item_preco_centavos) : 'Consulta'}
           </span>
-          <BotaoAdicionarCompacto
+        </span>
+        <div className="mt-2">
+          <BotaoPedir
+            larguraTotal
             podeAdicionar={!podeComprar || item.item_preco_centavos > 0}
             esgotado={item.item_esgotado}
+            lojaAberta={aberta}
+            textoFechado={textoFechado}
             comOpcoes={item.com_opcoes === true}
             quantidadeNoCarrinho={quantidadeNoCarrinho}
             onAdicionar={onAdicionar}
@@ -610,6 +481,9 @@ export function CardapioPublico() {
   const apelido = useResolverApelido(slug, estado.status === 'erro')
   const [banners, setBanners] = useState<BannerPublico[]>([])
   const [horarios, setHorarios] = useState<HorarioPublico[]>([])
+  const [itemDestaqueId, setItemDestaqueId] = useState<string | null>(null)
+  // Relógio do visitante: recalcula ao abrir e quando a aba volta ao foco (sem timer).
+  const [agora, setAgora] = useState(() => new Date())
   const [busca, setBusca] = useState('')
   const [filtroAtivo, setFiltroAtivo] = useState<string | null>(null)
 
@@ -809,6 +683,37 @@ export function CardapioPublico() {
     }
   }, [slug])
 
+  // Item em destaque (migration 20261105100000). Falha ou banco sem a RPC = sem destaque, em silêncio.
+  useEffect(() => {
+    if (!slug) return
+
+    let cancelado = false
+    supabase.rpc('destaque_publico', { p_slug: slug }).then(({ data, error }) => {
+      if (cancelado) return
+      if (error) {
+        console.warn('Cardápio: não consegui carregar o item em destaque', error.message)
+        return
+      }
+      setItemDestaqueId((data as { item_id: string }[] | null)?.[0]?.item_id ?? null)
+    })
+
+    return () => {
+      cancelado = true
+    }
+  }, [slug])
+
+  useEffect(() => {
+    function aoVoltarAoFoco() {
+      if (document.visibilityState === 'visible') setAgora(new Date())
+    }
+    document.addEventListener('visibilitychange', aoVoltarAoFoco)
+    window.addEventListener('focus', aoVoltarAoFoco)
+    return () => {
+      document.removeEventListener('visibilitychange', aoVoltarAoFoco)
+      window.removeEventListener('focus', aoVoltarAoFoco)
+    }
+  }, [])
+
   // Polling do status do pagamento — mesmo espírito do polling de
   // fallback que useRealtimePedidos usa quando o Realtime cai, só que
   // aqui é sempre polling (o cliente é anônimo, sem sessão pra abrir uma
@@ -873,7 +778,9 @@ export function CardapioPublico() {
     })
   }, [estado, gruposPorItem])
 
-  const status = useMemo(() => statusFuncionamento(horarios), [horarios])
+  const status = useMemo(() => statusFuncionamento(horarios, agora), [horarios, agora])
+  const aberta = lojaAberta(status)
+  const textoFechado = !aberta ? status?.texto : undefined
 
   const itemPorId = useMemo(() => new Map(linhas.map((l) => [l.item_id, l])), [linhas])
 
@@ -911,6 +818,7 @@ export function CardapioPublico() {
       : (categorias.find((c) => c.nome === filtroEfetivo)?.itens ?? [])
 
   const buscaNormalizada = busca.trim().toLowerCase()
+  const destaque = resolverDestaque(itemDestaqueId, linhas, buscaNormalizada !== '')
   const itensExibidos = buscaNormalizada
     ? itensDoFiltro.filter(
         (i) =>
@@ -1601,6 +1509,49 @@ export function CardapioPublico() {
 
       {!busca.trim() && <CarrosselBanners banners={banners} />}
 
+      {destaque && (
+        <CardDestaque
+          item={destaque}
+          formatarPreco={formatarPrecoBR}
+          textoFechado={textoFechado}
+          botao={
+            <BotaoPedir
+              variante="tinta"
+              larguraTotal
+              podeAdicionar={!podeComprar || destaque.item_preco_centavos > 0}
+              esgotado={destaque.item_esgotado}
+              lojaAberta={aberta}
+              textoFechado={textoFechado}
+              comOpcoes={destaque.com_opcoes === true}
+              quantidadeNoCarrinho={quantidadeDoItem(destaque.item_id)}
+              onAdicionar={() => (destaque.com_opcoes ? setItemSeletor(destaque) : adicionarAoCarrinho(destaque.item_id))}
+              onRemover={() => alterarQuantidade(destaque.item_id, -1)}
+            />
+          }
+        />
+      )}
+
+      {!busca.trim() && itensMaisPedidos.length > 0 && (
+        <div className="mb-5">
+          <h2 className="mb-2 px-6 text-base font-bold text-mesa-text-primary">Mais pedidos</h2>
+          <div className="flex gap-3 overflow-x-auto px-6 pb-1">
+            {itensMaisPedidos.map((item, indice) => (
+              <CardItemHorizontal
+                key={item.item_id}
+                item={item}
+                destaque={indice === 0 ? 'top1' : 'popular'}
+                podeComprar={podeComprar}
+                aberta={aberta}
+                textoFechado={textoFechado}
+                quantidadeNoCarrinho={quantidadeDoItem(item.item_id)}
+                onAdicionar={() => (item.com_opcoes ? setItemSeletor(item) : adicionarAoCarrinho(item.item_id))}
+                onRemover={() => alterarQuantidade(item.item_id, -1)}
+              />
+            ))}
+          </div>
+        </div>
+      )}
+
       {!busca.trim() && itensPopulares.length > 0 && (
         <div className="mb-5">
           <h2 className="mb-2 px-6 text-base font-bold text-mesa-text-primary">Populares</h2>
@@ -1611,25 +1562,8 @@ export function CardapioPublico() {
                 item={item}
                 destaque={null}
                 podeComprar={podeComprar}
-                quantidadeNoCarrinho={quantidadeDoItem(item.item_id)}
-                onAdicionar={() => (item.com_opcoes ? setItemSeletor(item) : adicionarAoCarrinho(item.item_id))}
-                onRemover={() => alterarQuantidade(item.item_id, -1)}
-              />
-            ))}
-          </div>
-        </div>
-      )}
-
-      {!busca.trim() && itensMaisPedidos.length > 0 && (
-        <div className="mb-5">
-          <h2 className="mb-2 px-6 text-base font-bold text-mesa-text-primary">Mais pedido</h2>
-          <div className="flex gap-3 overflow-x-auto px-6 pb-1">
-            {itensMaisPedidos.map((item, indice) => (
-              <CardItemHorizontal
-                key={item.item_id}
-                item={item}
-                destaque={indice === 0 ? 'top1' : 'popular'}
-                podeComprar={podeComprar}
+                aberta={aberta}
+                textoFechado={textoFechado}
                 quantidadeNoCarrinho={quantidadeDoItem(item.item_id)}
                 onAdicionar={() => (item.com_opcoes ? setItemSeletor(item) : adicionarAoCarrinho(item.item_id))}
                 onRemover={() => alterarQuantidade(item.item_id, -1)}
@@ -1688,6 +1622,8 @@ export function CardapioPublico() {
                 item={item}
                 posicaoPopular={indicePopular === -1 ? null : indicePopular}
                 podeComprar={podeComprar}
+                aberta={aberta}
+                textoFechado={textoFechado}
                 quantidadeNoCarrinho={quantidadeDoItem(item.item_id)}
                 onAdicionar={() => (item.com_opcoes ? setItemSeletor(item) : adicionarAoCarrinho(item.item_id))}
                 onRemover={() => alterarQuantidade(item.item_id, -1)}
@@ -1709,7 +1645,9 @@ export function CardapioPublico() {
           <button
             type="button"
             onClick={() => setMostrarCheckout(true)}
-            className="flex w-full items-center justify-between gap-3 rounded-mesa-lg bg-mesa-neutral-900 py-4 pl-5 pr-4 text-left text-white shadow-mesa-3 outline-none transition-transform active:scale-[0.99] dark:bg-mesa-neutral-50 dark:text-mesa-neutral-900"
+            disabled={!aberta}
+            aria-label={aberta ? undefined : `Fechado. ${textoFechado ?? ''}`.trim()}
+            className="flex w-full items-center justify-between gap-3 rounded-mesa-lg bg-mesa-neutral-900 py-4 pl-5 pr-4 text-left text-white shadow-mesa-3 outline-none transition-transform active:scale-[0.99] disabled:active:scale-100 dark:bg-mesa-neutral-50 dark:text-mesa-neutral-900"
           >
             <span>
               <span className="block text-sm text-white/80 dark:text-mesa-neutral-900/70">
@@ -1719,9 +1657,9 @@ export function CardapioPublico() {
                 {formatarPrecoBR(totalCentavosCarrinho)}
               </span>
             </span>
-            <span className="flex items-center gap-1 rounded-mesa-full bg-mesa-orange-500 px-4 py-2.5 text-sm font-bold text-mesa-neutral-900">
-              Ver pedido
-              <Icone nome="arrow_forward" size={16} />
+            <span className="flex items-center gap-1 rounded-mesa-full bg-mesa-neutral-50 px-4 py-2.5 text-sm font-bold text-mesa-neutral-900 dark:bg-mesa-neutral-900 dark:text-mesa-neutral-50">
+              {aberta ? 'Ver pedido' : 'Fechado'}
+              {aberta && <Icone nome="arrow_forward" size={16} />}
             </span>
           </button>
         </div>
