@@ -398,9 +398,7 @@ describe('M5 crédito e estorno', () => {
   describe('no PGlite', () => {
     let db: PGlite
     const PED = 'f1000000-0000-4000-8000-000000000001'
-    const PED2 = 'f1000000-0000-4000-8000-000000000002'
     const PEND = 'e1000000-0000-4000-8000-000000000001'
-    const PEND2 = 'e1000000-0000-4000-8000-000000000002'
     const CLI_SEM_TEL = 'c1000000-0000-4000-8000-000000000002'
     type R = { ok: boolean; erro?: string; credito_centavos?: number; credito_revertido_centavos?: number; saldo_devolvido_centavos?: number }
     const creditar = async (ped = PED) =>
