@@ -113,7 +113,7 @@ async function novoBanco(migrations: string[]): Promise<PGlite> {
     create role authenticated; create role anon; create role service_role;
     create table public.barracas (id uuid primary key, slug text, nome text);
     create table public.clientes_finais (id uuid primary key, barraca_id uuid, telefone_confirmado_em timestamptz);
-    create table public.pedidos (id uuid primary key, barraca_id uuid, cliente_id uuid, desconto_cupom_centavos integer not null default 0);
+    create table public.pedidos (id uuid primary key, barraca_id uuid, cliente_id uuid, desconto_cupom_centavos integer not null default 0, status text not null default 'novo');
     create table public.pagamentos_pendentes (id uuid primary key default gen_random_uuid(), barraca_id uuid, pedido_id uuid, status text not null default 'pendente');
     create table public.itens_do_pedido (id uuid primary key default gen_random_uuid(), pedido_id uuid, quantidade integer, preco_centavos_unitario integer, removido boolean default false);
     create table public.cupom_usos (id uuid primary key default gen_random_uuid(), pagamento_pendente_id uuid, estado text);
@@ -366,6 +366,162 @@ describe('M4 resgate', () => {
       const a = (await reservar(P1)).rows[0].r
       assert.equal(a.ok, false)
       assert.equal(await saldoRazao(), 0) // expiração materializada
+    })
+  })
+})
+
+// ---------------------------------------------------------------- M5 (texto + PGlite)
+const m5 = ler('20261106140000_cashback_credito_estorno.sql')
+
+describe('M5 crédito e estorno', () => {
+  test('as duas funções, só service_role, expirar antes do insert de crédito', () => {
+    for (const a of ['cashback_creditar_pedido(uuid)', 'cashback_estornar_pedido(uuid)']) {
+      const esc = a.replace(/[()]/g, '\\$&')
+      assert.match(m5, new RegExp(`revoke all on function public\\.${esc} from public, anon, authenticated`), a)
+      assert.match(m5, new RegExp(`grant execute on function public\\.${esc} to service_role`), a)
+    }
+    const c = corpoDe(m5, 'cashback_creditar_pedido')
+    assert.ok(c.indexOf('cashback_expirar_se_vencido') > 0)
+    assert.ok(c.indexOf('cashback_expirar_se_vencido') < c.indexOf('insert into public.cashback_lancamentos'))
+    const e = corpoDe(m5, 'cashback_estornar_pedido')
+    assert.ok(e.indexOf('cashback_expirar_se_vencido') < e.indexOf('insert into public.cashback_lancamentos'))
+  })
+
+  test('razão só-inserção: nenhum update/delete em cashback_lancamentos', () => {
+    assert.doesNotMatch(semComentarios(m5), /\b(update|delete\s+from)\s+public\.cashback_lancamentos/i)
+  })
+
+  test('estorno não olha o status do pedido (gatilho é só o estorno)', () => {
+    assert.doesNotMatch(corpoDe(m5, 'cashback_estornar_pedido'), /cancelado/)
+  })
+
+  describe('no PGlite', () => {
+    let db: PGlite
+    const PED = 'f1000000-0000-4000-8000-000000000001'
+    const PED2 = 'f1000000-0000-4000-8000-000000000002'
+    const PEND = 'e1000000-0000-4000-8000-000000000001'
+    const PEND2 = 'e1000000-0000-4000-8000-000000000002'
+    const CLI_SEM_TEL = 'c1000000-0000-4000-8000-000000000002'
+    type R = { ok: boolean; erro?: string; credito_centavos?: number; credito_revertido_centavos?: number; saldo_devolvido_centavos?: number }
+    const creditar = async (ped = PED) =>
+      (await db.query<{ r: R }>(`select public.cashback_creditar_pedido('${ped}') as r`)).rows[0].r
+    const estornar = async (ped = PED) =>
+      (await db.query<{ r: R }>(`select public.cashback_estornar_pedido('${ped}') as r`)).rows[0].r
+    const razao = async () =>
+      Number((await db.query<{ s: string }>(`select coalesce(sum(valor_centavos), 0) s from public.cashback_lancamentos where cliente_id = '${CLIENTE}'`)).rows[0].s)
+    const linhas = async (tipo: string) =>
+      Number((await db.query<{ n: string }>(`select count(*) n from public.cashback_lancamentos where tipo = '${tipo}'`)).rows[0].n)
+
+    before(async () => {
+      db = await novoBanco([m1, m2, m3, m4, m5])
+    })
+    after(async () => {
+      await db.close()
+    })
+    // Pedido de 2 × R$ 20,00 = 4000 de itens, pago online (pendente aprovado).
+    const preparar = async (opts: { cupom?: number; usado?: number; itens?: number; habilitado?: boolean; cliente?: string | null } = {}) => {
+      const cliente = opts.cliente === undefined ? CLIENTE : opts.cliente
+      await db.exec(`
+        delete from public.cashback_resgates; delete from public.cashback_lancamentos;
+        delete from public.itens_do_pedido; delete from public.pagamentos_pendentes; delete from public.pedidos;
+        update public.barracas set cashback_habilitado = ${opts.habilitado ?? true}, cashback_termo_aceito_em = now() where id = '${BARRACA}';
+        insert into public.clientes_finais (id, barraca_id, telefone_confirmado_em) values ('${CLI_SEM_TEL}', '${BARRACA}', null) on conflict do nothing;
+        insert into public.pedidos (id, barraca_id, cliente_id, desconto_cupom_centavos, cashback_usado_centavos)
+        values ('${PED}', '${BARRACA}', ${cliente ? `'${cliente}'` : 'null'}, ${opts.cupom ?? 0}, ${opts.usado ?? 0});
+        insert into public.itens_do_pedido (pedido_id, quantidade, preco_centavos_unitario) values ('${PED}', 2, ${(opts.itens ?? 4000) / 2});
+        insert into public.itens_do_pedido (pedido_id, quantidade, preco_centavos_unitario, removido) values ('${PED}', 1, 9999, true);
+        insert into public.pagamentos_pendentes (id, barraca_id, pedido_id, status) values ('${PEND}', '${BARRACA}', '${PED}', 'aprovado');`)
+    }
+
+    test('4000 de itens a 500 bp rende 200, segunda chamada não duplica, item removido fora da base', async () => {
+      await preparar()
+      const a = await creditar()
+      assert.deepEqual([a.ok, a.credito_centavos], [true, 200])
+      const b = await creditar()
+      assert.deepEqual([b.ok, b.credito_centavos], [true, 200])
+      assert.equal(await linhas('credito'), 1)
+      const p = await db.query<{ cashback_gerado_centavos: number }>(`select cashback_gerado_centavos from public.pedidos where id = '${PED}'`)
+      assert.equal(p.rows[0].cashback_gerado_centavos, 200)
+    })
+
+    test('cupom de 500 reduz a base: 175', async () => {
+      await preparar({ cupom: 500 })
+      assert.equal((await creditar()).credito_centavos, 175)
+    })
+
+    test('SUPOSIÇÃO-CASHBACK-4: saldo usado também sai da base', async () => {
+      await preparar({ usado: 1000 })
+      assert.equal((await creditar()).credito_centavos, 150)
+    })
+
+    test('Review Focus 5: 5% de R$ 0,19 vira crédito 0 sem linha no razão', async () => {
+      await preparar({ itens: 18 })
+      const r = await creditar()
+      assert.deepEqual([r.ok, r.credito_centavos], [true, 0])
+      assert.equal(await linhas('credito'), 0)
+    })
+
+    test('Review Focus 4: sem cliente, sem telefone confirmado, não pago online e desligado', async () => {
+      await preparar({ cliente: null })
+      assert.equal((await creditar()).erro, 'sem_cliente')
+      await preparar({ cliente: CLI_SEM_TEL })
+      assert.equal((await creditar()).erro, 'telefone_nao_confirmado')
+      await preparar()
+      await db.exec(`update public.pagamentos_pendentes set status = 'pendente'`)
+      assert.equal((await creditar()).erro, 'nao_pago_online')
+      await preparar({ habilitado: false })
+      assert.equal((await creditar()).erro, 'desligado')
+      assert.equal((await creditar('f1000000-0000-4000-8000-0000000000ff')).erro, 'pedido_inexistente')
+      assert.equal(await linhas('credito'), 0)
+    })
+
+    test('Review Focus 1: saldo vencido antigo vira expiração e só o crédito novo sobra', async () => {
+      await preparar()
+      await db.exec(`insert into public.cashback_lancamentos (barraca_id, cliente_id, tipo, valor_centavos, expira_em)
+        values ('${BARRACA}', '${CLIENTE}', 'credito', 700, now() - interval '2 days')`)
+      assert.equal((await creditar()).credito_centavos, 200)
+      assert.equal(await linhas('expiracao'), 1)
+      assert.equal(await razao(), 200)
+      const s = await db.query<{ saldo_centavos: number }>(`select * from public.cashback_saldo('${BARRACA}', '${CLIENTE}')`)
+      assert.equal(s.rows[0].saldo_centavos, 200)
+    })
+
+    test('Review Focus 3: estorno depois de o saldo ter sido gasto reverte só o que resta; repetido não duplica', async () => {
+      await preparar()
+      await creditar() // +200
+      await db.exec(`insert into public.cashback_lancamentos (barraca_id, cliente_id, tipo, valor_centavos, pedido_id)
+        values ('${BARRACA}', '${CLIENTE}', 'resgate', -150, null)`) // gastou 150 em outro pedido
+      const a = await estornar()
+      assert.deepEqual([a.ok, a.credito_revertido_centavos, a.saldo_devolvido_centavos], [true, 50, 0])
+      assert.equal(await razao(), 0)
+      const b = await estornar()
+      assert.deepEqual([b.credito_revertido_centavos, b.saldo_devolvido_centavos], [50, 0])
+      assert.equal(await linhas('estorno_credito'), 1)
+      assert.equal(await razao(), 0)
+    })
+
+    test('estorno devolve o saldo usado com validade renovada e não ressuscita saldo vencido', async () => {
+      await preparar({ usado: 300 })
+      await db.exec(`insert into public.cashback_lancamentos (barraca_id, cliente_id, tipo, valor_centavos, pedido_id, pagamento_pendente_id)
+        values ('${BARRACA}', '${CLIENTE}', 'credito', 900, null, null)`.replace(`'credito', 900`, `'credito', 900`))
+      // Linha de resgate real do pedido, e saldo antigo vencido que não pode voltar.
+      await db.exec(`
+        update public.cashback_lancamentos set expira_em = now() - interval '3 days' where tipo = 'credito';
+        insert into public.cashback_lancamentos (barraca_id, cliente_id, tipo, valor_centavos, pedido_id, pagamento_pendente_id)
+        values ('${BARRACA}', '${CLIENTE}', 'resgate', -300, '${PED}', '${PEND}');`)
+      const r = await estornar()
+      assert.deepEqual([r.credito_revertido_centavos, r.saldo_devolvido_centavos], [0, 300])
+      const s = await db.query<{ saldo_centavos: number }>(`select * from public.cashback_saldo('${BARRACA}', '${CLIENTE}')`)
+      assert.equal(s.rows[0].saldo_centavos, 300)
+      assert.equal(await linhas('expiracao'), 1)
+    })
+
+    test('Review Focus 3: estorno de pedido sem crédito nem resgate é no-op; cancelado não muda nada', async () => {
+      await preparar()
+      await db.exec(`update public.pedidos set status = 'cancelado'`)
+      const r = await estornar()
+      assert.deepEqual([r.ok, r.credito_revertido_centavos, r.saldo_devolvido_centavos], [true, 0, 0])
+      assert.equal(await razao(), 0)
     })
   })
 })
