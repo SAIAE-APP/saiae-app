@@ -1135,11 +1135,11 @@ nenhum item daqui sozinho, só quando for pedido explicitamente.
     pelas opções) ou durante a busca (`resolverDestaque`, `src/lib/destaque.ts`); o item continua nas outras seções.
     Todo card usa o mesmo `BotaoPedir` (`src/components/cardapio/`), mostarda de 44px, estado decidido por
     `estadoBotaoPedir` (`src/lib/estadoBotaoPedir.ts`). Fora do horário (`horarios_publicos` + `statusFuncionamento`,
-    relógio do visitante, recalculado ao voltar o foco; sem horário cadastrado = sempre aberta) os botões ficam
+    no FUSO DA BARRACA (função uso_publico, migration 20261105110000; sem ela ou com erro vale America/Sao_Paulo), recalculado ao voltar o foco; sem horário cadastrado = sempre aberta) os botões ficam
     desabilitados com "Fechado"; preço e itens continuam visíveis; o cliente SEMPRE pode remover itens (stepper
     só diminui, barra do carrinho habilitada abre o "Seu pedido") e só o avanço ao pagamento/envio fica desabilitado,
     com aviso (`podeFinalizarPedido`). O bloqueio é SÓ NA TELA: o servidor só recusa pedido fechado se a barraca ligou
-    `bloquear_fora_do_horario`. ORDEM DE DEPLOY: migration → app (app novo sem a migration funciona, sem destaque).
+    `bloquear_fora_do_horario`. ORDEM DE DEPLOY: migrations 20261105100000 e 20261105110000 → app (app novo sem elas funciona: sem destaque e com fuso de Brasília).
     Métrica (pedidos do cardápio por semana por barraca, antes e depois): `docs/consulta-pedidos-cardapio-semana.sql`
     (não há coluna de origem em `pedidos`; a consulta usa rastros e declara os limites).
   - Fase 2 (futura): cliente monta pedido e ele cai direto na

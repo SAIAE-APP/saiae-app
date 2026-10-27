@@ -41,6 +41,18 @@ Defeitos visuais corrigidos nesta validação:
 2. O aviso de loja fechada no "Seu pedido" repetia "Fechado" duas vezes: texto ajustado.
 
 Não validado: aparência em celular real (decisão do João), modo escuro, desktop largo, pagamento com cartão fechado (o botão do cartão recebe o mesmo bloqueio, mas não foi clicado), e o seletor de Ajustes (só tipos e build; não aberto no navegador).
+## Correções da revisão independente (PR #198)
+
+- Horário no fuso da barraca: `statusFuncionamento` ganhou o parâmetro `fuso` (Intl, sem depender do relógio do visitante). Nenhuma RPC pública expunha o fuso, então a migration nova `20261105110000_fuso_publico.sql` cria `fuso_publico(slug)` (só devolve o fuso). Aplicada SÓ no staging. Sem a função ou com erro o app usa America/Sao_Paulo. Testes: `tests/horarioFuncionamentoFuso.test.ts` (virada da meia-noite, Manaus e Rio Branco, TZ do processo diferente) e `tests/fusoPublicoMigration.test.ts`.
+- Botão Aumentar do sheet "Seu pedido" fica desabilitado com a loja fechada (remover continua livre).
+- Efeito de `destaque_publico`: zera o destaque no início e no erro.
+- `aria-label` do botão Fechado é o próprio texto de estado.
+- Botão "Escolher (N)" nos cards de 144px: padding menor (`px-2!`) e sem ícone com mais de 9 no carrinho; medido a 320px (`Escolher (99)` cabe, sem rolagem horizontal; print 11).
+
+## Decisão a confirmar pelo dono: bloqueio fora do horário só na tela
+
+Ruling do dono: o cardápio segue os horários cadastrados e fecha os botões fora deles. Risco: quem usa o horário só para exibir e aceita encomenda fora do horário perde a venda, porque o botão fecha mesmo sem `bloquear_fora_do_horario`; o servidor só recusa pedido fechado quando essa opção está ligada. `bloquear_fora_do_horario` NÃO chega ao cliente por nenhuma RPC pública (nem `cardapio_publico` nem `horarios_publicos`), então não mudei o comportamento: só documentei. Se o dono quiser respeitar a opção (botões ativos quando a barraca aceita encomenda), é preciso expor esse flag numa função pública e usá-lo em `aberta`.
+
 ## Rulings
 
 1. Subagentes: implementei as tarefas eu mesmo, em sequência, no mesmo worktree (evita conflito em `CardapioPublico.tsx`) e usei um subagente só para a revisão final. Motivo: custo e tarefas pequenas.
@@ -54,7 +66,7 @@ Não validado: aparência em celular real (decisão do João), modo escuro, desk
 
 ## Riscos
 
-- Bloqueio fora do horário é só na tela (o servidor recusa só com `bloquear_fora_do_horario`); relógio do visitante, não o fuso da barraca; a aba aberta passando da hora só atualiza ao voltar o foco.
+- Bloqueio fora do horário é só na tela (o servidor recusa só com `bloquear_fora_do_horario`); a aba aberta passando da hora só atualiza ao voltar o foco.
 - O destaque é lido uma vez por carga (dono trocando com a aba do cliente aberta: só vale ao recarregar).
 - Visual validado a 360px no staging (ver acima); falta o olhar do João em celular real (amarelo demais?).
 - Métrica por rastros, não por coluna de origem.
@@ -62,6 +74,6 @@ Não validado: aparência em celular real (decisão do João), modo escuro, desk
 ## Passos que dependem do dono
 
 1. Conferir o visual em celular real (portão de aceite do spec, seção 10).
-3. Produção, na ordem: aplicar a migration `20261105100000_destaque_cardapio.sql` no projeto `vimjwzumjggrlvlxdejr` (rollback no topo do arquivo) e só depois publicar o app. App novo sem a migration funciona, sem destaque.
+3. Produção, na ordem: aplicar as migrations `20261105100000_destaque_cardapio.sql` e `20261105110000_fuso_publico.sql` no projeto `vimjwzumjggrlvlxdejr` (rollback no topo de cada uma) e só depois publicar o app. App novo sem elas funciona (sem destaque, fuso de Brasília).
 4. Revisar e fazer o merge do PR (draft) em `main`; nada foi mesclado.
 5. Medir: rodar `docs/consulta-pedidos-cardapio-semana.sql` antes e 2 a 4 semanas depois do lançamento.

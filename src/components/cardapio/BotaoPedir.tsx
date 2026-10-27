@@ -57,7 +57,7 @@ export function BotaoPedir({
         size="md"
         disabled
         className={largura}
-        aria-label={textoFechado ? `Fechado. ${textoFechado}` : 'Fechado'}
+        aria-label={textoFechado ?? 'Fechado'}
       >
         Fechado
       </Button>
@@ -112,8 +112,8 @@ export function BotaoPedir({
     <Button
       variant={variante === 'tinta' ? 'confirm' : 'primary'}
       size="md"
-      className={largura}
-      icon={<Icone nome="add" size={16} />}
+      className={clsx(largura, larguraTotal && 'px-2!')}
+      icon={larguraTotal && quantidadeNoCarrinho > 9 ? undefined : <Icone nome="add" size={16} />}
       disabled={estado.desabilitado}
       onClick={onAdicionar}
     >

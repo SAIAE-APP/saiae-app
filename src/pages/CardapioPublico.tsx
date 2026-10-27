@@ -38,7 +38,7 @@ import {
   type GrupoItem,
   type LinhaOpcaoPublica,
 } from '../lib/opcoes'
-import { statusFuncionamento, type HorarioPublico } from '../lib/horarioFuncionamento'
+import { fusoDaBarraca, statusFuncionamento, type HorarioPublico } from '../lib/horarioFuncionamento'
 import { montarMensagemPagarNaEntrega, urlWhatsappDono } from '../lib/pagarNaEntrega'
 import { formatarTelefoneBR } from '../lib/entrega'
 import { bairroCanonico, buscarBairrosPublicos, taxaDoBairro, type BairrosPublicos } from '../lib/bairros'
@@ -482,6 +482,7 @@ export function CardapioPublico() {
   const [banners, setBanners] = useState<BannerPublico[]>([])
   const [horarios, setHorarios] = useState<HorarioPublico[]>([])
   const [itemDestaqueId, setItemDestaqueId] = useState<string | null>(null)
+  const [fusoBarraca, setFusoBarraca] = useState('America/Sao_Paulo')
   // Relógio do visitante: recalcula ao abrir e quando a aba volta ao foco (sem timer).
   const [agora, setAgora] = useState(() => new Date())
   const [busca, setBusca] = useState('')
@@ -688,15 +689,32 @@ export function CardapioPublico() {
     if (!slug) return
 
     let cancelado = false
+    // Slug novo ou recarga: nunca deixa o destaque da carga anterior na tela.
+    // eslint-disable-next-line react-hooks/set-state-in-effect -- zera o estado da busca anterior antes da nova resposta
+    setItemDestaqueId(null)
     supabase.rpc('destaque_publico', { p_slug: slug }).then(({ data, error }) => {
       if (cancelado) return
       if (error) {
         console.warn('Cardápio: não consegui carregar o item em destaque', error.message)
+        setItemDestaqueId(null)
         return
       }
       setItemDestaqueId((data as { item_id: string }[] | null)?.[0]?.item_id ?? null)
     })
 
+    return () => {
+      cancelado = true
+    }
+  }, [slug])
+
+  // Fuso da barraca (migration 20261105110000). Sem a função ou com erro: America/Sao_Paulo (documentado no relatório).
+  useEffect(() => {
+    if (!slug) return
+    let cancelado = false
+    supabase.rpc('fuso_publico', { p_slug: slug }).then(({ data, error }) => {
+      if (cancelado) return
+      setFusoBarraca(error ? 'America/Sao_Paulo' : fusoDaBarraca(typeof data === 'string' ? data : null))
+    })
     return () => {
       cancelado = true
     }
@@ -778,7 +796,7 @@ export function CardapioPublico() {
     })
   }, [estado, gruposPorItem])
 
-  const status = useMemo(() => statusFuncionamento(horarios, agora), [horarios, agora])
+  const status = useMemo(() => statusFuncionamento(horarios, agora, fusoBarraca), [horarios, agora, fusoBarraca])
   const aberta = lojaAberta(status)
   const textoFechado = !aberta ? status?.texto : undefined
   const podeFinalizar = podeFinalizarPedido(aberta)
@@ -1726,7 +1744,8 @@ export function CardapioPublico() {
                       type="button"
                       aria-label={`Aumentar ${item.item_nome}`}
                       onClick={() => alterarQuantidade(chave, 1)}
-                      className="flex size-11 -m-1.5 items-center justify-center"
+                      disabled={!aberta}
+                      className="flex size-11 -m-1.5 items-center justify-center disabled:opacity-40"
                     >
                       <span className="flex size-8 items-center justify-center rounded-mesa-full bg-mesa-neutral-900 text-white dark:bg-mesa-neutral-50 dark:text-mesa-neutral-900">
                         <Icone nome="add" size={14} />
