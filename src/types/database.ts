@@ -270,6 +270,8 @@ export type Pedido = {
   entrega_bairro?: string | null
   entrega_referencia?: string | null
   taxa_entrega_centavos?: number
+  /** Taxa Sai aê (marketplace): > 0 só em pedido pago online pelo OAuth do Mercado Pago. Ausente em banco de antes. */
+  taxa_plataforma_centavos?: number
   /** Link do entregador (/e/:token): só pedido de Entrega novo; NULL nos antigos. */
   entrega_token?: string | null
   /** Cupom (v2): cópia do código e do desconto na hora da venda; o desconto fica À PARTE dos itens. */

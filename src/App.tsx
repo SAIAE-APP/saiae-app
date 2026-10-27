@@ -29,6 +29,7 @@ import { NaoEncontrado } from './pages/NaoEncontrado'
 import { Login } from './pages/Login'
 import { Cadastro } from './pages/Cadastro'
 import { SelecionarBarraca } from './pages/SelecionarBarraca'
+import { RetornoMercadoPago } from './pages/RetornoMercadoPago'
 import { Configurar } from './pages/Configurar'
 import { EsqueciSenha } from './pages/EsqueciSenha'
 import { RedefinirSenha } from './pages/RedefinirSenha'
@@ -112,6 +113,9 @@ function App() {
                 </RotaProtegida>
               }
             />
+
+            {/* Callback do OAuth do Mercado Pago (sem slug): leva aos Ajustes da loja. */}
+            <Route path="/ajustes" element={<RetornoMercadoPago />} />
 
             <Route
               path="/selecionar-barraca"

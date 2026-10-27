@@ -43,3 +43,14 @@ describe('CSP Report-Only', () => {
     assert.doesNotMatch(ro, /report-(uri|to)/)
   })
 })
+
+describe('CSP e o cartão do cardápio', () => {
+  // O token do cartão é gerado no navegador direto na API do Mercado Pago (src/lib/cartaoMercadoPago.ts).
+  test('connect-src libera https://api.mercadopago.com nas duas políticas, sem mexer em script-src', () => {
+    for (const nome of ['Content-Security-Policy', 'Content-Security-Policy-Report-Only']) {
+      const csp = valor(nome)
+      assert.ok((diretiva(csp, 'connect-src') ?? '').split(/\s+/).includes('https://api.mercadopago.com'), nome)
+      assert.equal(diretiva(csp, 'script-src'), "script-src 'self'", nome)
+    }
+  })
+})

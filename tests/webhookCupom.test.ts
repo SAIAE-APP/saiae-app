@@ -6,6 +6,8 @@ import { describe, test } from 'node:test'
 import { decidirAprovado, totalEsperadoDoPendente } from '../supabase/functions/_shared/pagamento/conciliacao.ts'
 
 const webhook = readFileSync(new URL('../supabase/functions/webhook-mercadopago/index.ts', import.meta.url), 'utf8')
+// Criação do pedido aprovado (cupom incluído), comum ao webhook e ao cartão aprovado na hora.
+const pedidoAprovado = readFileSync(new URL('../supabase/functions/_shared/pagamento/pedidoAprovado.ts', import.meta.url), 'utf8')
 
 // Pendente de exemplo: 2 × R$ 25,00 de itens, R$ 7,00 de entrega, cupom de R$ 5,00 => Pix de R$ 52,00.
 const itens = [{ quantidade: 2, preco_centavos_unitario: 2500 }]
@@ -46,20 +48,20 @@ describe('webhook duplicado e fora de ordem', () => {
 })
 
 describe('ordem das chamadas do cupom no webhook', () => {
-  const iAprovado = webhook.indexOf("update({ status: 'aprovado'")
+  const iAprovado = pedidoAprovado.indexOf("update({ status: 'aprovado'")
   test('confirma o uso só depois de existir pedido e ANTES de marcar o pendente aprovado', () => {
-    const iPedido = webhook.indexOf('const pedidoId = desfecho.pedidoId')
-    const iConfirma = webhook.indexOf("rpc('cupom_confirmar'")
+    const iPedido = pedidoAprovado.indexOf('const pedidoId = desfecho.pedidoId')
+    const iConfirma = pedidoAprovado.indexOf("rpc('cupom_confirmar'")
     assert.ok(iPedido > 0 && iConfirma > iPedido && iAprovado > iConfirma)
   })
   test('falha ao confirmar devolve 500 (o provedor reenvia; confirmar é idempotente)', () => {
     assert.match(webhook, /falha ao confirmar o cupom' \}, 500\)/)
   })
   test('só confirma quando o pendente tem uso de cupom', () => {
-    assert.match(webhook, /if \(pendente\.cupom_uso_id\) \{/)
+    assert.match(pedidoAprovado, /if \(pendente\.cupom_uso_id\) \{/)
   })
   test('expirado e rejeitado devolvem a vaga; aprovado não libera', () => {
-    const blocoAprovado = webhook.slice(webhook.indexOf('const pedidoId = desfecho.pedidoId'), iAprovado)
+    const blocoAprovado = pedidoAprovado.slice(pedidoAprovado.indexOf('const pedidoId = desfecho.pedidoId'), iAprovado)
     assert.doesNotMatch(blocoAprovado, /cupom_liberar/)
     const fim = webhook.slice(webhook.indexOf("if (leitura.status === 'expirado')"))
     assert.equal((fim.match(/rpc\('cupom_liberar'/g) ?? []).length, 2)

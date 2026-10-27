@@ -11,7 +11,7 @@ import { mensagemDoErroFuncao } from '../lib/erroFuncao'
 import { salvarCredencial } from '../lib/salvarCredencial'
 import { classesBotaoIcone } from '../lib/estiloBotaoIcone'
 import { ehAppIOS } from '../lib/plataforma'
-import { useBarracaAtual, useModulosDaLoja } from '../layouts/contextoBarraca'
+import { useBarracaAtual, useModulosDaLoja, useSouDonoDaLoja } from '../layouts/contextoBarraca'
 import { useAuth } from '../hooks/useAuth'
 import { useTheme } from '../hooks/useTheme'
 import { useAssinaturaBarraca } from '../hooks/useAssinaturaBarraca'
@@ -57,6 +57,7 @@ import {
   type ChaveProvedorPix,
   type ProvedorPixInfo,
 } from '../lib/provedoresPix'
+import { CHAVE_SLUG_MP, dataDoCorte, estadoMercadoPago, lerCorte, retornoOauthMp } from '../lib/estadoMercadoPago'
 import { PIX_EXPIRACAO_OPCOES_MINUTOS, minutosExpiracaoPix } from '../lib/pixExpiracao'
 import { SecaoAvisoPronto } from '../components/SecaoAvisoPronto'
 import { EmitenteFiscal } from '../components/EmitenteFiscal'
@@ -2123,6 +2124,69 @@ function SecaoPagamentoOnline({ barraca }: { barraca: Barraca }) {
   const [recargaSegredo, setRecargaSegredo] = useState(0)
   const [mostrarSheetSegredo, setMostrarSheetSegredo] = useState(false)
 
+  // Conexão OAuth com o Mercado Pago (o servidor nunca devolve token, só o estado).
+  const souDono = useSouDonoDaLoja()
+  const [paramsMp, setParamsMp] = useSearchParams()
+  const [statusMp, setStatusMp] = useState<{ conectada: boolean; jaConectou: boolean } | null>(null)
+  const [erroStatusMp, setErroStatusMp] = useState(false)
+  const [recargaStatusMp, setRecargaStatusMp] = useState(0)
+  const [conectandoMp, setConectandoMp] = useState(false)
+  const [erroConectarMp, setErroConectarMp] = useState<string | null>(null)
+  // Resultado do retorno do OAuth, lido uma vez ao montar (a seção monta de novo ao voltar da página do Mercado Pago).
+  const [retornoMp] = useState(() => retornoOauthMp(`?${paramsMp.toString()}`))
+  const corteIso = import.meta.env.VITE_CORTE_TOKEN_MP_ISO as string | undefined
+
+  // Volta do OAuth: guarda o resultado para o aviso e limpa o parâmetro da URL.
+  useEffect(() => {
+    if (!retornoOauthMp(`?${paramsMp.toString()}`)) return
+    const proximos = new URLSearchParams(paramsMp)
+    proximos.delete('mp')
+    setParamsMp(proximos, { replace: true })
+    try {
+      sessionStorage.removeItem(CHAVE_SLUG_MP)
+    } catch {
+      // sem sessionStorage: nada a limpar
+    }
+  }, [paramsMp, setParamsMp])
+
+  useEffect(() => {
+    let cancelado = false
+    supabase.rpc('mp_oauth_status', { p_barraca_id: barraca.id }).then(({ data, error }) => {
+      if (cancelado) return
+      if (error) {
+        setErroStatusMp(true)
+        return
+      }
+      const linha = (Array.isArray(data) ? data[0] : data) as { conectada?: boolean; atualizado_em?: string | null } | undefined
+      setErroStatusMp(false)
+      setStatusMp({ conectada: Boolean(linha?.conectada), jaConectou: Boolean(linha?.atualizado_em) })
+    })
+    return () => {
+      cancelado = true
+    }
+  }, [barraca.id, recargaStatusMp])
+
+  async function conectarMp() {
+    if (conectandoMp) return
+    setConectandoMp(true)
+    setErroConectarMp(null)
+    const { data, error } = await supabase.functions.invoke('mp-oauth-iniciar', {
+      body: { barraca_id: barraca.id },
+    })
+    const url = typeof data?.url === 'string' ? data.url : null
+    if (error || !url) {
+      setErroConectarMp(await mensagemDoErroFuncao(error, 'Não foi possível iniciar a conexão. Tente novamente.'))
+      setConectandoMp(false)
+      return
+    }
+    try {
+      sessionStorage.setItem(CHAVE_SLUG_MP, barraca.slug)
+    } catch {
+      // sem sessionStorage: o retorno cai na regra de uma loja só
+    }
+    window.location.assign(url)
+  }
+
   useEffect(() => {
     let cancelado = false
     supabase
@@ -2170,6 +2234,21 @@ function SecaoPagamentoOnline({ barraca }: { barraca: Barraca }) {
     expiracaoR.descartar()
   }
 
+  const corte = lerCorte(corteIso)
+  const estadoMp = estadoMercadoPago({
+    conectada: statusMp?.conectada ?? false,
+    tokenAntigoConfigurado: tokenConfigurado === true,
+    jaConectou: statusMp?.jaConectou ?? false,
+    agora: new Date(),
+    corte,
+  })
+  const statusMpPronto = statusMp !== null && tokenConfigurado !== null
+  const dataCorte = dataDoCorte(corteIso)
+  // Token colado só até o corte; depois dele a conexão OAuth é o único caminho.
+  const mostrarTokenAntigo = estadoMp === 'aviso_corte' || (estadoMp === 'nao_configurada' && !(corte && new Date() >= corte))
+  // Só liga com conexão ativa (ou com o token antigo, ainda válido até o corte). Desligar é sempre livre.
+  const podeLigar = estadoMp === 'conectada' || estadoMp === 'aviso_corte'
+
   async function alternarHabilitado(valor: boolean) {
     habilitadoR.definir(valor)
     await salvarHabilitado.salvar({ pagamento_online_habilitado: valor })
@@ -2181,10 +2260,69 @@ function SecaoPagamentoOnline({ barraca }: { barraca: Barraca }) {
       <RotuloSecao icone="payments">Pagamento online</RotuloSecao>
       <Card>
         <p className="text-sm text-mesa-text-secondary">
-          {provedor.descricaoConta} — o dinheiro do Pix cai direto na sua conta, o Sai aê nunca guarda
-          nem repassa esse valor. Só depois do pagamento confirmado o pedido feito no cardápio digital
-          cai na Cozinha.
+          Conecte a conta do Mercado Pago da sua barraca. Depois de conectar, os pagamentos online (Pix e
+          cartão) caem direto na sua conta do Mercado Pago, o Sai aê nunca guarda nem repassa esse valor.
+          Só depois do pagamento confirmado o pedido feito no cardápio digital cai na Cozinha.
         </p>
+        <p className="mt-2 text-xs text-mesa-text-secondary">
+          Cada pedido online tem uma taxa de serviço de R$ 0,99, cobrada do cliente. As tarifas do
+          próprio Mercado Pago ficam por sua conta.
+        </p>
+
+        {provedor.chave === 'mercadopago' && (
+          <div className="mt-4 rounded-mesa-md border border-mesa-border-subtle p-3">
+            <div role="status" aria-live="polite">
+              {retornoMp === 'ok' && (
+                <p className="mb-2 text-sm font-medium text-mesa-success-700 dark:text-mesa-success-500">Mercado Pago conectado com sucesso.</p>
+              )}
+              {retornoMp === 'erro' && (
+                <p className="mb-2 text-sm font-medium text-mesa-error-500">
+                  Não foi possível conectar o Mercado Pago. Tente de novo.
+                </p>
+              )}
+            </div>
+            <p className="text-sm font-medium text-mesa-text-primary">Conexão com o Mercado Pago</p>
+            <p className="mt-1 text-sm text-mesa-text-secondary" aria-live="polite">
+              {!statusMpPronto
+                ? erroStatusMp
+                  ? 'Não foi possível verificar a conexão.'
+                  : 'Verificando...'
+                : estadoMp === 'conectada'
+                  ? 'Conectado'
+                  : estadoMp === 'desconectada'
+                    ? 'Desconectado. Reconecte para voltar a receber pagamentos online.'
+                    : estadoMp === 'aviso_corte'
+                      ? 'Você usa o token colado (método antigo).'
+                      : estadoMp === 'bloqueada'
+                        ? 'O token colado não vale mais. Conecte sua conta para receber pagamentos online.'
+                        : 'Não conectado'}
+            </p>
+            {statusMpPronto && estadoMp === 'aviso_corte' && dataCorte && (
+              <p className="mt-1 text-sm font-medium text-mesa-text-primary">Conecte até {dataCorte}.</p>
+            )}
+            {erroStatusMp && (
+              <Button variant="ghost" size="sm" className="mt-2" onClick={() => setRecargaStatusMp((n) => n + 1)}>
+                Tentar de novo
+              </Button>
+            )}
+            {statusMpPronto && estadoMp !== 'conectada' && (
+              <div className="mt-3">
+                {souDono ? (
+                  <Button size="md" loading={conectandoMp} onClick={() => void conectarMp()}>
+                    {estadoMp === 'desconectada' ? 'Reconectar' : 'Conectar Mercado Pago'}
+                  </Button>
+                ) : (
+                  <p className="text-xs text-mesa-text-secondary">Só o dono da barraca pode conectar o Mercado Pago.</p>
+                )}
+                {erroConectarMp && (
+                  <p role="alert" className="mt-2 text-sm font-medium text-mesa-error-500">
+                    {erroConectarMp}
+                  </p>
+                )}
+              </div>
+            )}
+          </div>
+        )}
 
         {PROVEDORES_PIX_DISPONIVEIS.length > 1 && (
           <div className="mt-4">
@@ -2209,9 +2347,13 @@ function SecaoPagamentoOnline({ barraca }: { barraca: Barraca }) {
           <Toggle
             checked={habilitado}
             onChange={alternarHabilitado}
+            disabled={!habilitado && statusMpPronto && !podeLigar}
             aria-label="Pagamento online habilitado"
           />
         </div>
+        {!habilitado && statusMpPronto && !podeLigar && (
+          <p className="mt-1 text-xs text-mesa-text-secondary">Conecte o Mercado Pago para ligar o pagamento online.</p>
+        )}
         <ErroSalvar erro={salvarHabilitado.erro} className="mt-2" />
 
         <div className="mt-4">
@@ -2233,6 +2375,14 @@ function SecaoPagamentoOnline({ barraca }: { barraca: Barraca }) {
           <ErroSalvar erro={salvarExpiracao.erro} className="mt-2" />
         </div>
 
+        {mostrarTokenAntigo && (
+          <details className="mt-4 rounded-mesa-md border border-mesa-border-subtle p-3">
+            <summary className="min-h-11 cursor-pointer py-3 text-sm text-mesa-text-secondary">
+              Usar token colado (método antigo)
+            </summary>
+            <p className="mt-1 text-xs text-mesa-text-secondary">
+              Funciona só até o corte{dataCorte ? ` (${dataCorte})` : ''}. Prefira conectar a conta acima.
+            </p>
         <div className="mt-4">
           <p className="mb-2 text-sm font-medium text-mesa-text-primary">
             {provedor.rotuloToken} do {provedor.nome}
@@ -2280,6 +2430,8 @@ function SecaoPagamentoOnline({ barraca }: { barraca: Barraca }) {
             <p className="mt-1 text-xs text-mesa-text-secondary">Defina o token antes.</p>
           )}
         </div>
+          </details>
+        )}
       </Card>
 
       <BottomSheetSegredoWebhook

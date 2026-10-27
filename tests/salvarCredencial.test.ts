@@ -94,6 +94,22 @@ describe('salvar-credencial', () => {
     assert.equal(linha.cifrado_chave, '1')
   })
 
+  test('pagamento: depois do corte (CORTE_TOKEN_MP_ISO) recusa token colado novo; antes do corte grava como antes', async () => {
+    const depois = montar({ TOKENS_CHAVE_V1: CHAVE, CORTE_TOKEN_MP_ISO: '2026-10-20T00:00:00Z' })
+    const r = await depois.chamar({ barraca_id: B1, tipo: 'pagamento', provedor: 'mercadopago', valor: TOKEN })
+    assert.equal(r.status, 409)
+    assert.equal(r.corpo.codigo, 'mp_conectar_oauth')
+    assert.equal(depois.banco.tabelas.barracas_pagamento_token.length, 0)
+    assert.ok(!r.texto.includes(TOKEN))
+
+    const antes = montar({ TOKENS_CHAVE_V1: CHAVE, CORTE_TOKEN_MP_ISO: '2026-12-01T00:00:00Z' })
+    assert.equal((await antes.chamar({ barraca_id: B1, tipo: 'pagamento', provedor: 'mercadopago', valor: TOKEN })).status, 200)
+    assert.equal(antes.banco.tabelas.barracas_pagamento_token.length, 1)
+
+    const fiscal = montar({ TOKENS_CHAVE_V1: CHAVE, CORTE_TOKEN_MP_ISO: '2026-10-20T00:00:00Z' })
+    assert.equal((await fiscal.chamar({ barraca_id: B1, tipo: 'fiscal', ambiente: 'producao', valor: TOKEN })).status, 200, 'o corte só vale para o token do Mercado Pago')
+  })
+
   test('fiscal em loja sem linha: cria a linha só com o cifrado', async () => {
     const { banco, chamar, cfg } = montar()
     assert.equal((await chamar({ barraca_id: B1, tipo: 'fiscal', ambiente: 'homologacao', valor: TOKEN })).status, 200)

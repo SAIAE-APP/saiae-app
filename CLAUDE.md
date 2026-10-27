@@ -296,6 +296,41 @@ repetir `versionCode`: subir a cada build. Validar em aparelho Android 7–11 e
   próximas stories, uma por PR. Testes das funções puras (status, centavos,
   notificação, token):
   `node --experimental-strip-types supabase/functions/_shared/pagamento/pagamento.test.ts`.
+- Pagamento marketplace: Pix e cartão à vista com taxa Sai aê (2026-11-04, branch `feat/pagamento-marketplace`;
+  spec `docs/superpowers/specs/2026-10-26-pagamento-marketplace-design.md`, migration `20261104100000`). A barraca
+  conecta a própria conta do Mercado Pago por OAuth (Ajustes > Pagamento online, funções `mp-oauth-iniciar` e
+  `mp-oauth-callback`; tabelas de tokens e de estados do OAuth sem policy de select, tokens cifrados). A cobrança
+  usa o token OAuth DA BARRACA em `POST /v1/payments` com `application_fee` = R$ 0,99 (constante no servidor,
+  `taxaPlataforma.ts`; copiada para `pagamentos_pendentes.taxa_plataforma_centavos` e para o pedido no momento da
+  cobrança). O webhook confere o valor pago contra o gravado no pendente (itens − cupom + entrega + taxa), nunca
+  contra a constante, e confere também a comissão devolvida pelo Mercado Pago. O dinheiro vai para a barraca e só a
+  taxa fica com o Sai aê. Pedido com total zero por cupom não cobra taxa (decisão deste projeto, a confirmar com o
+  dono) e segue sem passar pelo provedor. Cartão: o número é tokenizado NO NAVEGADOR, direto em
+  `api.mercadopago.com`, com a chave pública do VENDEDOR (devolvida pelo `/oauth/token` e guardada com a conexão), NÃO
+  com a chave da aplicação do Sai aê (a spike mostrou erro 2006 "Card Token not found" com a chave errada). O
+  front busca essa chave pela action `chave_publica` de `criar-pagamento-pix`; por isso `VITE_MP_PUBLIC_KEY` NÃO
+  é usada. O webhook confirma tanto cartão quanto Pix (`pagamentos_pendentes.meio_pagamento`: pix | cartão; cartão
+  grava o método `credito` no pedido, recusa vira pendente rejeitado). Estorno: função `estornar-pagamento` (JWT, só o
+  dono), estorno TOTAL do pagamento (a taxa volta junto), botão em pedidos pagos online com taxa, inclusive os
+  cancelados; saldo insuficiente da barraca mostra erro e o caso vai para o suporte; sem estorno parcial.
+  CORTE: depois de `CORTE_TOKEN_MP_ISO` a barraca sem OAuth deixa de cobrar Pix online com o token colado (cai para
+  "pagar na entrega") e `salvar-credencial` recusa token colado novo (409 `mp_conectar_oauth`). Sem a variável o corte
+  NÃO chegou (barraca sem OAuth segue com o token antigo, sem taxa). A data existe em DOIS lugares que precisam ser
+  iguais: `CORTE_TOKEN_MP_ISO` (secret das functions) e `VITE_CORTE_TOKEN_MP_ISO` (build do front, só para o aviso e
+  o texto da tela). Segredos novos das functions: `MP_CLIENT_ID`, `MP_CLIENT_SECRET`, `MP_OAUTH_REDIRECT_URI`
+  (tem de ser IGUAL à URL cadastrada na aplicação do Mercado Pago, inclusive a barra final), `APP_PUBLIC_URL`
+  (opcional, para o retorno ao app) e `CORTE_TOKEN_MP_ISO`. ORDEM DE DEPLOY: migration `20261104100000` → functions
+  (`mp-oauth-callback` com `--no-verify-jwt`, porque é aberta pelo redirecionamento do navegador; `criar-pagamento-pix`,
+  `webhook-mercadopago`, `mp-oauth-iniciar`, `estornar-pagamento`, `salvar-credencial`) → front. Procedimento de
+  corte: (1) ter barracas conectadas por OAuth; (2) avisar as barracas com antecedência (sugestão: 14 dias, decisão do
+  dono); (3) definir a mesma data em `CORTE_TOKEN_MP_ISO` e `VITE_CORTE_TOKEN_MP_ISO`, publicando o front; (4) depois da data,
+  quem não conectou cai para "pagar na entrega". RISCOS: o Mercado Pago avisou que a API de Payments será
+  descontinuada (o cartão e o Pix usam essa API; acompanhar a migração para a API de Orders, que hoje recusa
+  `notification_url` por pagamento); o número do cartão passa pelo JavaScript da nossa página (escopo PCI SAQ A-EP, e
+  não SAQ A como com MP Secure Fields) e não enviamos `device_id` (mais recusas do antifraude). NÃO VALIDADO: pagamento
+  de cartão com token OAuth devolveu HTTP 500 no sandbox (com e sem taxa); o campo da comissão
+  (`fee_details`, tipo `application_fee`) ainda não foi visto em pagamento aprovado; falta o teste ponta a ponta no
+  staging e o pagamento real de valor mínimo, com aprovação do dono. Sandbox do Mercado Pago: ver `docs/staging.md`.
 - Avisar cliente "pedido pronto" (2026-10-08, Sprint 3, migration
   `20261008120000`): campo OPCIONAL "WhatsApp do cliente" em Confirmar Pedido
   (Mesa/Balcão/Retirada; na Entrega vale o telefone do formulário) e no

@@ -1,4 +1,4 @@
-// Recebe a notificação de pagamento Pix de QUALQUER provedor (Mercado Pago,
+// Recebe a notificação de pagamento (Pix ou cartão) de QUALQUER provedor (Mercado Pago,
 // Payments API type "payment", e os que vierem em ../_shared/pagamento) — Fase
 // 2+3 do Cardápio Digital (CLAUDE.md, roadmap). NUNCA confia no corpo do
 // webhook: confirma o status de verdade consultando o provedor de volta, com o
@@ -20,32 +20,20 @@
 // dois pedidos. Pendentes órfãos (sem pagamento no MP) nunca recebem
 // notificação e portanto nunca viram pedido.
 import { createClient } from 'jsr:@supabase/supabase-js@2'
-import { desfechoDaCriacao } from '../_shared/pagamento/corrida.ts'
 import { chaveDoProvedor, obterProvedor } from '../_shared/pagamento/registro.ts'
-import { buscarSegredoWebhook, buscarTokenDoProvedor } from '../_shared/pagamento/token.ts'
-import { ErroProvedor, decidirAssinatura, type ConsultaPagamento } from '../_shared/pagamento/tipos.ts'
+import { buscarSegredoWebhook, buscarTokenDoProvedor, obterTokenVendedor } from '../_shared/pagamento/token.ts'
 import {
-  STATUS_PENDENTE_ABERTOS,
-  decidirAprovado,
-  totalEsperadoDoPendente,
-  type TipoConciliacao,
-} from '../_shared/pagamento/conciliacao.ts'
+  conciliacaoSemConfirmacao,
+  decidirAprovadoDoPendente,
+  statusFinalDoPendente,
+  tokenDoWebhook,
+} from '../_shared/pagamento/webhookAprovado.ts'
+import { criarPedidoAprovado, registrarConciliacao, type BaseConciliacao } from '../_shared/pagamento/pedidoAprovado.ts'
+import { ErroProvedor, decidirAssinatura, type ConsultaPagamento } from '../_shared/pagamento/tipos.ts'
+import { STATUS_PENDENTE_ABERTOS, type TipoConciliacao } from '../_shared/pagamento/conciliacao.ts'
 
 function jsonResponse(body: unknown, status = 200) {
   return new Response(JSON.stringify(body), { status, headers: { 'Content-Type': 'application/json' } })
-}
-
-type ItemPendente = { quantidade: number; preco_centavos_unitario: number }
-
-type EntregaPendente = {
-  nome: string
-  telefone: string
-  rua: string
-  numero: string
-  bairro: string
-  referencia: string | null
-  consentimento_lgpd_em?: string | null
-  consentimento_marketing_em?: string | null
 }
 
 Deno.serve(async (req: Request) => {
@@ -129,10 +117,29 @@ Deno.serve(async (req: Request) => {
     }
   }
 
-  const tokenProvedor = await buscarTokenDoProvedor(supabase, pendente.barraca_id, provedor.chave, Deno.env)
-  if (!tokenProvedor) {
-    return jsonResponse({ ok: true, aviso: 'token da barraca não encontrado' })
+  // Mesma credencial que emitiu a cobrança: pendente com taxa Sai aê = OAuth do vendedor; sem taxa (anterior ao
+  // corte) = token colado. Falha do OAuth devolve 500 (o provedor reenvia) sem confirmar nada.
+  const credencial = await tokenDoWebhook(pendente, {
+    vendedor: () => obterTokenVendedor(supabase, pendente.barraca_id, Deno.env),
+    colado: () => buscarTokenDoProvedor(supabase, pendente.barraca_id, provedor.chave, Deno.env),
+  })
+  // Base dos registros de conciliação deste pagamento (antes e depois da consulta ao provedor).
+  const baseConciliacao: BaseConciliacao = {
+    supabase,
+    barracaId: pendente.barraca_id,
+    pendenteId: pendente.id,
+    provedor: provedor.chave,
+    idExterno: pagamentoId,
+    origem: 'webhook-mercadopago',
   }
+  if (!credencial.ok) {
+    if (credencial.status !== 200) console.error('webhook-mercadopago: credencial indisponível', { pendente: pendente.id, aviso: credencial.aviso })
+    // OAuth indisponível: registra ANTES do 500 (o provedor reenvia, mas pode desistir e o dinheiro sumiria).
+    const semCredencial = conciliacaoSemConfirmacao(pendente, pagamentoId, 'credencial')
+    if (semCredencial) await registrarConciliacao(baseConciliacao, semCredencial.tipo, { detalhe: semCredencial.detalhe })
+    return jsonResponse({ ok: credencial.status === 200, aviso: credencial.aviso }, credencial.status)
+  }
+  const tokenProvedor = credencial.token
 
   // Confirmação de verdade: consulta o provedor com o token da própria barraca,
   // nunca confiando só no corpo do webhook.
@@ -141,6 +148,9 @@ Deno.serve(async (req: Request) => {
     leitura = await provedor.consultarPagamento({ token: tokenProvedor, idExterno: pagamentoId })
   } catch (erro) {
     if (erro instanceof ErroProvedor && !erro.rede) {
+      // Provedor recusou a consulta (não encontrado/sem permissão): reenviar não resolve; fica a conciliação.
+      const recusada = conciliacaoSemConfirmacao(pendente, pagamentoId, 'consulta_recusada')
+      if (recusada) await registrarConciliacao(baseConciliacao, recusada.tipo, { detalhe: recusada.detalhe })
       return jsonResponse({ ok: true, aviso: erro.message })
     }
     // Sem rede até o provedor: 500 faz ele tentar de novo (nada foi processado).
@@ -153,46 +163,20 @@ Deno.serve(async (req: Request) => {
   }
 
   if (leitura.status === 'aprovado') {
-    // Total esperado = itens + taxa de entrega DO SNAPSHOT do pendente (gravado
-    // no momento da cobrança). A taxa NUNCA é recalculada aqui: se o dono
-    // mudou a tabela de bairros depois, vale o que o cliente viu e pagou.
-    // Pendente sem entrega tem taxa 0 => conta idêntica à de antes.
-    const taxaEntregaCentavos = Number(pendente.taxa_entrega_centavos ?? 0)
-    // O valor cobrado no Pix já é o DESCONTADO (cupom): o pendente guarda o desconto da hora da cobrança.
-    const totalCentavos = totalEsperadoDoPendente(
-      pendente.itens as ItemPendente[],
-      taxaEntregaCentavos,
-      Number(pendente.desconto_cupom_centavos ?? 0),
-    )
-
-    const decisao = decidirAprovado({
-      statusPendente: pendente.status,
-      valorPagoCentavos: leitura.valorCentavos,
-      totalEsperadoCentavos: totalCentavos,
-    })
+    // Total esperado = itens − cupom + taxa de entrega + taxa Sai aê, tudo DO SNAPSHOT do pendente (gravado no
+    // momento da cobrança). Nada é recalculado aqui: se o dono mudou a tabela de bairros depois, vale o que o
+    // cliente viu e pagou. Com taxa Sai aê, a comissão informada pelo provedor tem que ser a mesma (não informada:
+    // cria o pedido e registra conciliação). Pendente
+    // antigo (sem entrega, sem taxa) => conta idêntica à de antes. Vale igual para Pix e cartão.
+    const { decisao, totalCentavos, taxaEntregaCentavos, taxaPlataformaCentavos } = decidirAprovadoDoPendente(pendente, leitura)
     if (decisao.acao === 'ignorar') return jsonResponse({ ok: true })
 
-    const registrarConciliacao = async (
+    // Idempotente: a mesma notificação repetida não duplica (unique provedor+id+tipo).
+    const registrarConciliacaoAprovado = (
       tipo: TipoConciliacao,
       extra: { situacao?: string; pedido_id?: string | null; detalhe?: string } = {},
-    ): Promise<boolean> => {
-      // Idempotente: a mesma notificação repetida não duplica (unique provedor+id+tipo).
-      const { error } = await supabase.from('pagamentos_conciliacao').upsert(
-        {
-          barraca_id: pendente.barraca_id,
-          pendente_id: pendente.id,
-          provedor: provedor.chave,
-          id_externo: pagamentoId,
-          tipo,
-          valor_pago_centavos: leitura.valorCentavos,
-          valor_esperado_centavos: totalCentavos,
-          ...extra,
-        },
-        { onConflict: 'provedor,id_externo,tipo', ignoreDuplicates: true },
-      )
-      if (error) console.error('webhook-mercadopago: conciliação não registrada', error.message)
-      return !error
-    }
+    ): Promise<boolean> =>
+      registrarConciliacao(baseConciliacao, tipo, { valor_pago_centavos: leitura.valorCentavos, valor_esperado_centavos: totalCentavos, ...extra })
 
     if (decisao.acao === 'conciliar_valor') {
       // Pago mas não confere: NÃO cria pedido; registra para o dono conferir (e
@@ -202,159 +186,49 @@ Deno.serve(async (req: Request) => {
         pago_centavos: leitura.valorCentavos,
         esperado_centavos: totalCentavos,
         taxa_entrega_centavos: taxaEntregaCentavos,
+        taxa_plataforma_centavos: taxaPlataformaCentavos,
+        comissao_centavos: leitura.comissaoCentavos,
       })
-      const registrado = await registrarConciliacao('valor_divergente', {
-        detalhe: `pendente ${pendente.status}; taxa de entrega ${taxaEntregaCentavos}`,
+      const registrado = await registrarConciliacaoAprovado('valor_divergente', {
+        detalhe:
+          `pendente ${pendente.status}; taxa de entrega ${taxaEntregaCentavos}` +
+          (taxaPlataformaCentavos > 0 ? `; taxa Sai aê ${taxaPlataformaCentavos}; comissão no provedor ${leitura.comissaoCentavos ?? 'não informada'}` : ''),
       })
       // Sem registro o pagamento ficaria invisível: 500 faz o provedor reenviar.
       if (!registrado) return jsonResponse({ ok: false, aviso: 'falha ao registrar conciliação' }, 500)
       return jsonResponse({ ok: true, aviso: 'valor pago não confere com o pedido' })
     }
 
-    // Argumentos de sempre; os de entrega só entram quando o pendente é de
-    // Entrega, pra pedido comum chamar criar_pedido EXATAMENTE como hoje.
-    const entrega: EntregaPendente | null =
-      pendente.tipo_atendimento === 'entrega' && pendente.entrega ? (pendente.entrega as EntregaPendente) : null
-    const argsPedido: Record<string, unknown> = {
-      p_barraca_id: pendente.barraca_id,
-      p_mesa: pendente.mesa,
-      p_viagem: pendente.viagem,
-      p_observacao: pendente.observacao,
-      p_client_uuid: pendente.client_uuid,
-      p_metodo_pagamento: 'pix',
-      p_itens: pendente.itens,
-    }
-    if (entrega) {
-      argsPedido.p_tipo_atendimento = 'entrega'
-      argsPedido.p_entrega = {
-        nome: entrega.nome,
-        telefone: entrega.telefone,
-        rua: entrega.rua,
-        numero: entrega.numero,
-        bairro: entrega.bairro,
-        referencia: entrega.referencia,
-      }
-      argsPedido.p_taxa_entrega_centavos = taxaEntregaCentavos
-      if (pendente.cliente_nome) argsPedido.p_cliente_nome = pendente.cliente_nome
-    }
-    // Telefone do aviso "pedido pronto": só entra quando existe (sem ele a chamada
-    // é IDÊNTICA à de antes).
-    if (pendente.cliente_telefone) argsPedido.p_cliente_telefone = pendente.cliente_telefone
-
-    const { data: resultadoPedido, error: erroPedido } = await supabase.rpc('criar_pedido', argsPedido).single()
-
-    // Corrida de notificações: se outra já criou o pedido (23505 em pedidos_client_uuid_key), busca-o
-    // e segue como sucesso idempotente. Qualquer outro erro continua sendo falha.
-    const desfecho = await desfechoDaCriacao(resultadoPedido as { pedido_id?: string } | null, erroPedido, async () => {
-      const { data } = await supabase
-        .from('pedidos')
-        .select('id')
-        .eq('barraca_id', pendente.barraca_id)
-        .eq('client_uuid', pendente.client_uuid)
-        .maybeSingle()
-      return (data as { id: string } | null)?.id ?? null
-    })
-
-    if (desfecho.acao === 'falha') {
+    // Cria o pedido (mesmo caminho do cartão aprovado na resposta síncrona, ver pedidoAprovado.ts).
+    const criado = await criarPedidoAprovado(
+      { ...baseConciliacao, pendente, valorPagoCentavos: leitura.valorCentavos, totalCentavos, taxaEntregaCentavos, taxaPlataformaCentavos },
+      decisao,
+    )
+    if (!criado.ok && criado.etapa === 'pedido') {
       // 500 faz o MP tentar de novo depois — o pagamento já foi aprovado e o
       // pedido ainda não existe, então NÃO pode ser engolido como sucesso.
       // Fica também registrado, pra o dinheiro não ficar invisível se o provedor
       // desistir de reenviar.
-      await registrarConciliacao('pedido_nao_criado', { detalhe: desfecho.detalhe.slice(0, 300) })
-      return jsonResponse({ ok: false, aviso: `falha ao criar pedido: ${desfecho.detalhe}` }, 500)
+      await registrarConciliacaoAprovado('pedido_nao_criado', { detalhe: criado.detalhe.slice(0, 300) })
+      return jsonResponse({ ok: false, aviso: `falha ao criar pedido: ${criado.detalhe}` }, 500)
     }
-
-    const pedidoId = desfecho.pedidoId
-    // Cupom: o uso vira CONFIRMADO só com o pagamento aprovado (mesmo se a reserva já venceu ou foi liberada:
-    // pagamento aprovado vale mais que a validade). Idempotente: webhook duplicado não confirma de novo.
-    // Se falhar, 500 ANTES de marcar o pendente aprovado: o provedor reenvia e tentamos de novo.
-    if (pendente.cupom_uso_id) {
-      const { error: erroCupom } = await supabase.rpc('cupom_confirmar', { p_uso_id: pendente.cupom_uso_id, p_pedido_id: pedidoId })
-      if (erroCupom) {
-        console.error('webhook-mercadopago: cupom não confirmado', erroCupom.message)
-        return jsonResponse({ ok: false, aviso: 'falha ao confirmar o cupom' }, 500)
-      }
-    }
-    // Vínculo com o perfil do cliente (a cobrança carrega o cliente_id). Best-effort.
-    if (pendente.cliente_id) {
-      const { error: erroVinculo } = await supabase.from('pedidos').update({ cliente_id: pendente.cliente_id }).eq('id', pedidoId)
-      if (erroVinculo) console.error('webhook-mercadopago: falha ao vincular cliente ao pedido', erroVinculo.message)
-    }
-    await supabase
-      .from('pagamentos_pendentes')
-      .update({ status: 'aprovado', pedido_id: pedidoId })
-      .eq('id', pendente.id)
-
-    // Registros de conciliação (best-effort: o pedido já existe e foi pago, então
-    // NADA aqui pode falhar a resposta ao provedor).
-    try {
-      // Uma falha anterior de criar_pedido, agora resolvida.
-      await supabase
-        .from('pagamentos_conciliacao')
-        .update({ situacao: 'resolvido', pedido_id: pedidoId, resolvido_em: new Date().toISOString() })
-        .eq('provedor', provedor.chave)
-        .eq('id_externo', pagamentoId)
-        .eq('tipo', 'pedido_nao_criado')
-      // Pago depois de expirar, com valor certo: o pedido nasceu; o registro
-      // informa o dono de que ele chegou fora do prazo.
-      if (decisao.tardio) {
-        await registrarConciliacao('pago_apos_expirar', {
-          situacao: 'pedido_criado',
-          pedido_id: pedidoId,
-          detalhe: 'Pix pago depois do prazo; o pedido foi criado normalmente.',
-        })
-      }
-    } catch (erroConciliacao) {
-      console.warn('webhook-mercadopago: conciliação não atualizada', String(erroConciliacao))
-    }
-
-    // Entrega: guarda/atualiza o cliente (endereço pra próximos pedidos), com o
-    // consentimento LGPD que ele deu no formulário. Best-effort: o pedido já
-    // existe e foi pago, então NADA aqui pode falhar a resposta ao MP.
-    if (entrega?.consentimento_lgpd_em) {
-      try {
-        // Perfil já confirmado por código: o pedido NÃO sobrescreve nome nem aceite (só endereço).
-        const { data: existente } = await supabase
-          .from('clientes_finais')
-          .select('telefone_confirmado_em')
-          .eq('barraca_id', pendente.barraca_id)
-          .eq('telefone', entrega.telefone)
-          .maybeSingle()
-        const confirmado = Boolean((existente as { telefone_confirmado_em?: string | null } | null)?.telefone_confirmado_em)
-        const { error: erroCliente } = await supabase.from('clientes_finais').upsert(
-          {
-            barraca_id: pendente.barraca_id,
-            ...(confirmado ? {} : { nome: entrega.nome }),
-            telefone: entrega.telefone,
-            rua: entrega.rua,
-            numero: entrega.numero,
-            bairro: entrega.bairro,
-            referencia: entrega.referencia,
-            origem: 'cardapio',
-            ...(confirmado ? {} : { consentimento_lgpd_em: entrega.consentimento_lgpd_em }),
-            ...(entrega.consentimento_marketing_em ? { consentimento_marketing_em: entrega.consentimento_marketing_em } : {}),
-          },
-          { onConflict: 'barraca_id,telefone' },
-        )
-        if (erroCliente) console.warn('webhook-mercadopago: cliente_final não salvo', erroCliente.message)
-      } catch (erroCliente) {
-        console.warn('webhook-mercadopago: cliente_final não salvo', String(erroCliente))
-      }
-    }
+    // Cupom não confirmado: 500 ANTES de marcar o pendente aprovado; o provedor reenvia e tentamos de novo.
+    if (!criado.ok) return jsonResponse({ ok: false, aviso: 'falha ao confirmar o cupom' }, 500)
 
     return jsonResponse({ ok: true })
   }
 
   // Só mexe em pendente ainda 'pendente': um 'expirado' que o provedor volta a
-  // reportar como cancelado/rejeitado continua como está.
+  // reportar como cancelado/rejeitado continua como está. Cartão cancelado ou
+  // recusado termina 'rejeitado' (mesmo status que o criar-pagamento-pix grava).
   if (leitura.status === 'expirado') {
-    await supabase.from('pagamentos_pendentes').update({ status: 'expirado' }).eq('id', pendente.id).eq('status', 'pendente')
+    await supabase.from('pagamentos_pendentes').update({ status: statusFinalDoPendente(pendente, leitura.status) }).eq('id', pendente.id).eq('status', 'pendente')
     await supabase.rpc('cupom_liberar', { p_pendente_id: pendente.id }) // devolve a vaga do cupom (se houver)
     return jsonResponse({ ok: true })
   }
 
   if (leitura.status === 'rejeitado') {
-    await supabase.from('pagamentos_pendentes').update({ status: 'rejeitado' }).eq('id', pendente.id).eq('status', 'pendente')
+    await supabase.from('pagamentos_pendentes').update({ status: statusFinalDoPendente(pendente, leitura.status) }).eq('id', pendente.id).eq('status', 'pendente')
     await supabase.rpc('cupom_liberar', { p_pendente_id: pendente.id }) // devolve a vaga do cupom (se houver)
     return jsonResponse({ ok: true })
   }

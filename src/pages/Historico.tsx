@@ -2,9 +2,12 @@ import { useEffect, useMemo, useState } from 'react'
 import { supabase } from '../lib/supabase'
 import { classesBotaoIcone } from '../lib/estiloBotaoIcone'
 import { ehAppIOS } from '../lib/plataforma'
-import { useBarracaAtual, useModulosDaLoja } from '../layouts/contextoBarraca'
+import { useBarracaAtual, useModulosDaLoja, useSouDonoDaLoja } from '../layouts/contextoBarraca'
+import { acaoDeEstorno } from '../lib/estornoPedido'
 import { useTheme } from '../hooks/useTheme'
-import { MOTIVOS_CANCELAMENTO } from '../lib/cancelamento'
+import { MOTIVOS_CANCELAMENTO, type MotivoCancelamento } from '../lib/cancelamento'
+import { enfileirar } from '../lib/fila'
+import { ModalCancelamento } from '../components/ModalCancelamento'
 import { formatarPrecoBR } from '../lib/preco'
 import { ROTULO_MODO, nomeDoCliente, rotuloAtendimento, tipoDoPedido } from '../lib/atendimento'
 import { corMetodo, humanizarMetodoDoPedido, METODOS_DISPONIVEIS } from '../lib/metodoPagamento'
@@ -300,16 +303,101 @@ function BotaoEmitirNota({ pedido, moduloFiscal }: { pedido: PedidoComItens; mod
   )
 }
 
+// Pedido pago online (só o dono): estorna TOTAL (itens + entrega + taxa Sai aê) e só então cancela, pelo caminho de
+// sempre (fila 'mudar_status', como a Cozinha). Pedido já cancelado (a Cozinha não estorna) ganha só o estorno.
+// Recusa do provedor (ex.: sem saldo) mostra o motivo e NÃO cancela.
+function BotaoCancelarEstornar({
+  pedido,
+  onCancelado,
+}: {
+  pedido: PedidoComItens
+  onCancelado: (pedidoId: string, motivo: MotivoCancelamento, canceladoEm: string) => void
+}) {
+  const { mostrarToast } = useToast()
+  const souDono = useSouDonoDaLoja()
+  const [aberto, setAberto] = useState(false)
+  const [estornando, setEstornando] = useState(false)
+  const [estornado, setEstornado] = useState(false)
+  const [erro, setErro] = useState<string | null>(null)
+  const acao = acaoDeEstorno(pedido, souDono, estornado)
+  if (!acao) return null
+
+  async function confirmar(motivo: MotivoCancelamento) {
+    setEstornando(true)
+    setErro(null)
+    const { data, error } = await supabase.functions.invoke('estornar-pagamento', { body: { pedido_id: pedido.id } })
+    if (error || !data?.ok) {
+      const corpo = error ? await error.context?.json?.().catch(() => null) : data
+      const mensagem: string = corpo?.erro ?? 'Não foi possível estornar agora. Confira a internet e tente de novo.'
+      setEstornando(false)
+      setAberto(false)
+      setErro(mensagem)
+      mostrarToast(mensagem, { variante: 'erro', duracaoMs: 10000 })
+      return
+    }
+    if (acao === 'estornar') {
+      // Já cancelado: não enfileira outro cancelamento.
+      setEstornando(false)
+      setAberto(false)
+      setEstornado(true)
+      mostrarToast('Pagamento estornado.', { variante: 'sucesso' })
+      return
+    }
+    const agora = new Date().toISOString()
+    await enfileirar('mudar_status', {
+      pedido_id: pedido.id,
+      status: 'cancelado',
+      motivo_cancelamento: motivo,
+      cancelado_em: agora,
+    })
+    setEstornando(false)
+    setAberto(false)
+    setEstornado(true)
+    onCancelado(pedido.id, motivo, agora)
+    mostrarToast('Pagamento estornado e pedido cancelado.', { variante: 'sucesso' })
+  }
+
+  const soEstorno = acao === 'estornar'
+  const rotulo = soEstorno ? 'Estornar pagamento' : 'Cancelar e estornar'
+  const descricao =
+    `O valor total pago (itens, entrega e a taxa de ${formatarPrecoBR(pedido.taxa_plataforma_centavos ?? 0)}) ` +
+    'volta para o cliente. O estorno não pode ser desfeito.'
+
+  return (
+    <div className="mt-3">
+      <Button variant="outline" size="md" onClick={() => setAberto(true)} className="w-full">
+        <Icone nome="cancel" size={18} />
+        {rotulo}
+      </Button>
+      {erro && <p role="alert" className="mt-1.5 text-xs text-mesa-error-500">{erro}</p>}
+      {aberto && (
+        <ModalCancelamento
+          pedido={pedido}
+          cancelando={estornando}
+          onFechar={() => !estornando && setAberto(false)}
+          onConfirmar={confirmar}
+          titulo={soEstorno ? `Estornar o pagamento do pedido #${pedido.senha}?` : `Cancelar e estornar o pedido #${pedido.senha}?`}
+          descricao={descricao}
+          rotuloConfirmar={rotulo}
+          motivoFixo={soEstorno ? ((pedido.motivo_cancelamento as MotivoCancelamento | null) ?? 'outro') : undefined}
+        />
+      )}
+    </div>
+  )
+}
+
 function CardHistorico({
   pedido,
   onRestaurar,
   onMetodoDefinido,
+  onCancelado,
   comanda,
 }: {
   comanda?: ComandaDoPedido
   pedido: PedidoComItens
   onRestaurar: (pedido: PedidoComItens) => void
   onMetodoDefinido: (pedidoId: string, metodo: string) => void
+  onCancelado: (pedidoId: string, motivo: MotivoCancelamento, canceladoEm: string) => void
 }) {
   const barraca = useBarracaAtual()
   const modulos = useModulosDaLoja()
@@ -429,6 +517,8 @@ function CardHistorico({
       {podeMostrarBotaoNota({ temModulo: temModulo(modulos, 'fiscal'), autorizada: pedido.nfce_status === 'autorizado', cancelado }) && (
         <BotaoEmitirNota pedido={pedido} moduloFiscal={temModulo(modulos, 'fiscal')} />
       )}
+
+      <BotaoCancelarEstornar pedido={pedido} onCancelado={onCancelado} />
 
       {pedido.status === 'entregue' && (
         <Button
@@ -595,6 +685,14 @@ export function Historico() {
 
   function metodoDefinido(pedidoId: string, metodo: string) {
     setPedidos((atual) => atual.map((p) => (p.id === pedidoId ? { ...p, metodo_pagamento: metodo } : p)))
+  }
+
+  function pedidoCancelado(pedidoId: string, motivo: MotivoCancelamento, canceladoEm: string) {
+    setPedidos((atual) =>
+      atual.map((p) =>
+        p.id === pedidoId ? { ...p, status: 'cancelado', motivo_cancelamento: motivo, cancelado_em: canceladoEm } : p,
+      ),
+    )
   }
 
   async function restaurarPedido(pedido: PedidoComItens) {
@@ -872,6 +970,7 @@ export function Historico() {
                 comanda={pedido.comanda_id ? comandasPorId.get(pedido.comanda_id) : undefined}
                 onRestaurar={restaurarPedido}
                 onMetodoDefinido={metodoDefinido}
+                onCancelado={pedidoCancelado}
               />
             ))}
           </div>

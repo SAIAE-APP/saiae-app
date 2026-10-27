@@ -23,7 +23,7 @@ import { EVENTO_CLIENTE_NAO_SALVO } from '../lib/fila'
 import { definirBarracaDoErro, registrarVersaoApp } from '../lib/erroApp'
 import { ehAppIOS } from '../lib/plataforma'
 import { AcessoIndisponivelIOS } from '../components/AcessoIndisponivelIOS'
-import { BarracaContext, ModulosContext, SincronizacaoContext } from './contextoBarraca'
+import { BarracaContext, ModulosContext, SincronizacaoContext, SouDonoContext } from './contextoBarraca'
 import { PedidosContext } from './contextoPedidos'
 
 export function LayoutBarraca() {
@@ -162,6 +162,7 @@ export function LayoutBarraca() {
   return (
     <BarracaContext.Provider value={barraca}>
       <ModulosContext.Provider value={modulos}>
+      <SouDonoContext.Provider value={souDonoDestaBarraca}>
       <SincronizacaoContext.Provider value={sincronizacao}>
         <PedidosContext.Provider value={estadoPedidos}>
           {mostraBannerTrial && assinatura && !ehAppIOS() && <BannerTrial assinatura={assinatura} />}
@@ -185,6 +186,7 @@ export function LayoutBarraca() {
           )}
         </PedidosContext.Provider>
       </SincronizacaoContext.Provider>
+      </SouDonoContext.Provider>
       </ModulosContext.Provider>
     </BarracaContext.Provider>
   )

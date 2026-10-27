@@ -54,7 +54,7 @@ describe('I2/I3 — limites atômicos e falha de envio', () => {
 })
 
 describe('I5 — pedido anônimo não sobrescreve perfil confirmado', () => {
-  for (const p of ['supabase/functions/criar-pedido-cardapio/index.ts', 'supabase/functions/webhook-mercadopago/index.ts']) {
+  for (const p of ['supabase/functions/criar-pedido-cardapio/index.ts', 'supabase/functions/_shared/pagamento/pedidoAprovado.ts']) {
     test(p, () => {
       const f = ler(p)
       assert.match(f, /telefone_confirmado_em/)
