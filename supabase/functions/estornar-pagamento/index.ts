@@ -81,6 +81,11 @@ Deno.serve(async (req: Request) => {
         if (error) console.error('estornar-pagamento: falha ao gravar o estorno', error.message)
         return !error
       },
+      // Estorno total reverte o crédito (até o saldo atual) e devolve o saldo usado. Idempotente no banco; erro só em log.
+      aposEstorno: async (id) => {
+        const { error } = await supabase.rpc('cashback_estornar_pedido', { p_pedido_id: id })
+        if (error) console.error('estornar-pagamento: cashback não revertido', error.message)
+      },
     })
     return json(resposta.corpo, resposta.status)
   } catch (e) {
