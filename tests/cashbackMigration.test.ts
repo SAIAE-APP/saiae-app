@@ -42,3 +42,51 @@ describe('M1 cashback_config', () => {
     assert.match(m1, /SUPOSIÇÃO-CASHBACK-3/)
   })
 })
+
+const m2 = ler('20261106110000_cashback_razao.sql')
+
+describe('M2 razão', () => {
+  test('cashback_lancamentos: tipos, sinal e motivo do ajuste', () => {
+    assert.match(m2, /create table if not exists public\.cashback_lancamentos/)
+    assert.match(m2, /tipo in \('credito', 'resgate', 'estorno_credito', 'estorno_resgate', 'expiracao', 'ajuste'\)/)
+    assert.match(m2, /valor_centavos integer not null check \(valor_centavos <> 0\)/)
+    assert.match(m2, /tipo in \('credito', 'estorno_resgate'\) and valor_centavos > 0/)
+    assert.match(m2, /tipo in \('resgate', 'estorno_credito', 'expiracao'\) and valor_centavos < 0/)
+    assert.match(m2, /tipo <> 'ajuste' or motivo is not null/)
+    assert.match(m2, /cliente_id uuid references public\.clientes_finais\(id\) on delete set null/)
+    assert.match(m2, /barraca_id uuid not null references public\.barracas\(id\) on delete cascade/)
+  })
+
+  test('os quatro índices de idempotência e consulta', () => {
+    assert.match(m2, /unique index if not exists \w+\s+on public\.cashback_lancamentos \(pedido_id\) where tipo = 'credito'/)
+    assert.match(m2, /unique index if not exists \w+\s+on public\.cashback_lancamentos \(pagamento_pendente_id\) where tipo = 'resgate'/)
+    assert.match(m2, /\(pedido_id, tipo\) where tipo in \('estorno_credito', 'estorno_resgate'\)/)
+    assert.match(m2, /\(barraca_id, cliente_id, criado_em desc\)/)
+  })
+
+  test('cashback_resgates: estado, valor, excedente e uma linha por cobrança', () => {
+    assert.match(m2, /pagamento_pendente_id uuid not null unique references public\.pagamentos_pendentes\(id\) on delete cascade/)
+    assert.match(m2, /estado in \('reservado', 'confirmado', 'liberado'\)/)
+    assert.match(m2, /valor_centavos integer not null check \(valor_centavos > 0\)/)
+    assert.match(m2, /excedente_centavos integer not null default 0 check \(excedente_centavos >= 0\)/)
+    assert.match(m2, /reservado_ate timestamptz not null/)
+  })
+
+  test('RLS: nenhuma escrita direta para authenticated/anon', () => {
+    for (const t of ['cashback_lancamentos', 'cashback_resgates']) {
+      assert.match(m2, new RegExp(`alter table public\\.${t} enable row level security`), t)
+      assert.match(m2, new RegExp(`revoke all on table public\\.${t} from anon, authenticated`), t)
+    }
+    const policies = m2.match(/create policy/gi) ?? []
+    assert.equal(policies.length, 1)
+    assert.match(m2, /create policy \w+ on public\.cashback_lancamentos for select to authenticated\s+using \(public\.usuario_tem_acesso_barraca\(barraca_id\)\)/)
+    assert.doesNotMatch(m2, /for (insert|update|delete|all)/i)
+    assert.match(m2, /grant select on table public\.cashback_lancamentos to authenticated/)
+    assert.doesNotMatch(m2, /grant (insert|update|delete|all)/i)
+  })
+
+  test('colunas novas em pagamentos_pendentes e pedidos com default 0', () => {
+    assert.match(m2, /alter table public\.pagamentos_pendentes[\s\S]*?cashback_usado_centavos integer not null default 0 check \(cashback_usado_centavos >= 0\)[\s\S]*?cashback_uso_id uuid/)
+    assert.match(m2, /alter table public\.pedidos[\s\S]*?cashback_usado_centavos integer not null default 0[\s\S]*?cashback_gerado_centavos integer not null default 0 check \(cashback_gerado_centavos >= 0\)/)
+  })
+})
