@@ -19,8 +19,8 @@ describe('CSP em vigor (inalterada)', () => {
     assert.match(diretiva(csp, 'style-src') ?? '', /'unsafe-inline'/)
     assert.match(diretiva(csp, 'style-src-elem') ?? '', /'unsafe-inline'/)
   })
-  test("script-src só 'self' e frame-ancestors 'none'", () => {
-    assert.equal(diretiva(csp, 'script-src'), "script-src 'self'")
+  test("script-src só 'self' + medição (Meta/GTM) e frame-ancestors 'none'", () => {
+    assert.equal(diretiva(csp, 'script-src'), "script-src 'self' https://connect.facebook.net https://www.googletagmanager.com")
     assert.equal(diretiva(csp, 'frame-ancestors'), "frame-ancestors 'none'")
   })
 })
@@ -50,7 +50,7 @@ describe('CSP e o cartão do cardápio', () => {
     for (const nome of ['Content-Security-Policy', 'Content-Security-Policy-Report-Only']) {
       const csp = valor(nome)
       assert.ok((diretiva(csp, 'connect-src') ?? '').split(/\s+/).includes('https://api.mercadopago.com'), nome)
-      assert.equal(diretiva(csp, 'script-src'), "script-src 'self'", nome)
+      assert.equal(diretiva(csp, 'script-src'), "script-src 'self' https://connect.facebook.net https://www.googletagmanager.com", nome)
     }
   })
 })

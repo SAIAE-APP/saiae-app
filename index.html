@@ -27,15 +27,7 @@
          src/index.css — não depende mais do Google Fonts. -->
     <link rel="manifest" id="app-manifest" href="/manifest.webmanifest" />
     <link rel="apple-touch-icon" id="app-apple-icon" href="/icons/apple-touch-icon.png" />
-    <!-- Google Analytics 4 (mesma propriedade do site saiae.com.br). Consentimento negado por padrão: sem cookies até haver aviso no app. -->
-    <script async src="https://www.googletagmanager.com/gtag/js?id=G-R72CK0Q5DV"></script>
-    <script>
-      window.dataLayer = window.dataLayer || [];
-      function gtag(){dataLayer.push(arguments);}
-      gtag("consent", "default", { analytics_storage: "denied", ad_storage: "denied", ad_user_data: "denied", ad_personalization: "denied" });
-      gtag("js", new Date());
-      gtag("config", "G-R72CK0Q5DV");
-    </script>
+    <!-- GA4 (G-R72CK0Q5DV) e Pixel do Meta NÃO carregam aqui: só depois do aceite do aviso de cookies (src/lib/medicao.ts). -->
     <title>Sai aê — Comanda digital para feira, food truck e lanchonete</title>
     <meta
       name="description"

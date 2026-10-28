@@ -1178,6 +1178,12 @@ nenhum item daqui sozinho, só quando for pedido explicitamente.
   servidor (22xxx, 23xxx exceto 23505, P0001, 42501) para a fila só até 10 recusas, depois a operação vai para o
   store `falhas` do IndexedDB (`mesaagil-fila` v2, com o payload; nunca é apagada) e um toast tocável avisa o
   motivo ("toque para tentar de novo" = `reenviarFalha`). As seguintes seguem. Novo erro permanente: ajustar `CODIGO_RECUSA`.
+- Medição de anúncios (`lib/medicao.ts`, `AvisoCookies`): Pixel do Meta (442066388679102) e GA4 (G-R72CK0Q5DV) só carregam com
+  `localStorage.sx_consent = 'granted'` (mesma chave do site), só em /cadastro, /login, /assinar, /onboarding — nunca no
+  cardápio público nem na operação. Sem consentimento nenhum script/evento sai. `index.html` não carrega mais o gtag.
+  Eventos no navegador: CompleteRegistration/sign_up no cadastro; Purchase é SÓ do servidor. CSP libera apenas
+  connect.facebook.net, www.googletagmanager.com, www.google-analytics.com e www.facebook.com. Política de privacidade nos links
+  de entrada: https://saiae.com.br/privacidade (a página interna /privacidade segue, usada pelo cardápio e por Excluir conta).
 - Origem do cadastro (UTM, `lib/utm.ts`): `main.tsx` guarda utm_source/medium/campaign/content/term da URL em localStorage
   (90 dias, URL sem UTM nunca apaga, parâmetros fora da lista ignorados); no 1º `SIGNED_IN` o `useAuth` chama a RPC
   `registrar_origem_cadastro` (grava em `assinaturas`, só a primeira vez). Tolerante: sem migration/rede/UTM o cadastro segue igual.
