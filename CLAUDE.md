@@ -1174,6 +1174,10 @@ nenhum item daqui sozinho, só quando for pedido explicitamente.
   rever isso (`tests/carregamentoSobDemanda.test.ts`). O service worker pré-guarda todos os pedaços (`**/*.js`). Pedaço
   sumido após deploy: `vite:preloadError` recarrega UMA vez por minuto (`recargaPorPedacoAusente.ts`); se persistir, a
   `GuardaErroApp` mostra "Recarregar". `AvisoNovaVersao` (service worker) é independente e continua igual.
+- Fila offline (`filaProcessamento.ts`): erro de rede/5xx para a fila (ordem preservada); recusa definitiva do
+  servidor (22xxx, 23xxx exceto 23505, P0001, 42501) para a fila só até 10 recusas, depois a operação vai para o
+  store `falhas` do IndexedDB (`mesaagil-fila` v2, com o payload; nunca é apagada) e um toast tocável avisa o
+  motivo ("toque para tentar de novo" = `reenviarFalha`). As seguintes seguem. Novo erro permanente: ajustar `CODIGO_RECUSA`.
 - Áreas de toque de no mínimo 44px
 
 ## Stack

@@ -18,7 +18,8 @@ import { FaixaSuporteDono, FaixaSuporteVisao } from '../components/FaixaSuporte'
 import { FaixaWhatsappCaiu } from '../components/FaixaWhatsappCaiu'
 import { acessoBloqueadoPorAssinatura, mostraBannerDeTrial } from '../lib/cobranca'
 import { useToast } from '../components/ui/useToast'
-import { EVENTO_CLIENTE_NAO_SALVO } from '../lib/fila'
+import { EVENTO_CLIENTE_NAO_SALVO, EVENTO_OPERACAO_DESCARTADA, reenviarFalha } from '../lib/fila'
+import type { DetalheOperacaoDescartada } from '../lib/fila'
 import { definirBarracaDoErro, registrarVersaoApp } from '../lib/erroApp'
 import { ehAppIOS } from '../lib/plataforma'
 import { AcessoIndisponivelIOS } from '../components/AcessoIndisponivelIOS'
@@ -71,6 +72,20 @@ export function LayoutBarraca() {
       })
     window.addEventListener(EVENTO_CLIENTE_NAO_SALVO, aviso)
     return () => window.removeEventListener(EVENTO_CLIENTE_NAO_SALVO, aviso)
+  }, [mostrarToast])
+  // O servidor recusou uma operação de vez: ela saiu da fila (fica guardada) e o operador NUNCA fica sem saber.
+  useEffect(() => {
+    const aviso = (e: Event) => {
+      const { id, tipo, motivo } = (e as CustomEvent<DetalheOperacaoDescartada>).detail
+      const o = tipo === 'criar_pedido' ? 'Um pedido' : 'Uma alteração'
+      mostrarToast(`${o} não foi enviado: ${motivo}. Toque para tentar de novo.`, {
+        variante: 'erro',
+        duracaoMs: null,
+        aoClicar: () => void reenviarFalha(id),
+      })
+    }
+    window.addEventListener(EVENTO_OPERACAO_DESCARTADA, aviso)
+    return () => window.removeEventListener(EVENTO_OPERACAO_DESCARTADA, aviso)
   }, [mostrarToast])
   const { pedidos, status, pedidosCarregados, aplicarPatchPedido, aplicarPatchItem } =
     useRealtimePedidos(barraca?.id ?? '')
