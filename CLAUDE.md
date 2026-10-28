@@ -1184,6 +1184,9 @@ nenhum item daqui sozinho, só quando for pedido explicitamente.
   Eventos no navegador: CompleteRegistration/sign_up no cadastro; Purchase é SÓ do servidor. CSP libera apenas
   connect.facebook.net, www.googletagmanager.com, www.google-analytics.com e www.facebook.com. Política de privacidade nos links
   de entrada: https://saiae.com.br/privacidade (a página interna /privacidade segue, usada pelo cardápio e por Excluir conta).
+- Origem do cadastro (UTM, `lib/utm.ts`): `main.tsx` guarda utm_source/medium/campaign/content/term da URL em localStorage
+  (90 dias, URL sem UTM nunca apaga, parâmetros fora da lista ignorados); no 1º `SIGNED_IN` o `useAuth` chama a RPC
+  `registrar_origem_cadastro` (grava em `assinaturas`, só a primeira vez). Tolerante: sem migration/rede/UTM o cadastro segue igual.
 - Áreas de toque de no mínimo 44px
 
 ## Stack
