@@ -9,6 +9,7 @@ import { RotaProtegida } from './components/RotaProtegida'
 import { GateFaceId } from './components/GateFaceId'
 import { ToastProvider } from './components/ui/Toast'
 import { AvisoNovaVersao } from './components/AvisoNovaVersao'
+import { AvisoCookies } from './components/AvisoCookies'
 import { Dashboard } from './pages/Dashboard'
 import { LancarPedido } from './pages/LancarPedido'
 import { ConfirmarPedido } from './pages/ConfirmarPedido'
@@ -78,6 +79,7 @@ function App() {
           estado de quem usou o aparelho antes. */}
       <ToastProvider>
         <AvisoNovaVersao />
+        <AvisoCookies />
         <GateFaceId key={usuario?.id ?? 'anon'}>
           <Suspense fallback={<Carregando />}>
             <Routes>
