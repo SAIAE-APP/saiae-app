@@ -1169,6 +1169,11 @@ nenhum item daqui sozinho, só quando for pedido explicitamente.
 - Telas de lançar pedido e cozinha funcionam offline
 - Enviar pedido é idempotente (duplo toque não cria dois pedidos)
 - Nada bloqueia a operação esperando rede
+- Carregamento sob demanda (`App.tsx`): telas fora do balcão são `React.lazy`; ficam FIXAS (offline) Dashboard,
+  LancarPedido, ConfirmarPedido, Cozinha, Mesas, TelaChamada, LayoutBarraca, Login e Dispatcher — não torne lazy sem
+  rever isso (`tests/carregamentoSobDemanda.test.ts`). O service worker pré-guarda todos os pedaços (`**/*.js`). Pedaço
+  sumido após deploy: `vite:preloadError` recarrega UMA vez por minuto (`recargaPorPedacoAusente.ts`); se persistir, a
+  `GuardaErroApp` mostra "Recarregar". `AvisoNovaVersao` (service worker) é independente e continua igual.
 - Áreas de toque de no mínimo 44px
 
 ## Stack
