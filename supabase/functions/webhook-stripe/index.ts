@@ -30,8 +30,8 @@ Deno.serve((req: Request) =>
       testEventCode: Deno.env.get('META_TEST_EVENT_CODE'),
     },
     emSegundoPlano: (tarefa) => {
-      // eslint-disable-next-line @typescript-eslint/no-explicit-any
       // deno-lint-ignore no-explicit-any
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
       ;(globalThis as any).EdgeRuntime?.waitUntil(tarefa)
     },
   }),
