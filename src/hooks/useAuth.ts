@@ -2,6 +2,7 @@ import { useEffect, useState } from 'react'
 import type { Session, User } from '@supabase/supabase-js'
 import { supabase } from '../lib/supabase'
 import { urlPublica } from '../lib/urlPublica'
+import { registrarOrigemCadastro } from '../lib/origemCadastro'
 
 const MENSAGENS_ERRO_LOGIN: Record<string, string> = {
   'Invalid login credentials': 'Email ou senha incorretos',
@@ -33,7 +34,9 @@ export function useAuth() {
       setCarregando(false)
     })
 
-    const { data: assinatura } = supabase.auth.onAuthStateChange((_evento, novaSessao) => {
+    const { data: assinatura } = supabase.auth.onAuthStateChange((evento, novaSessao) => {
+      // Origem do anúncio (UTM) vai para o cadastro no 1º login; em segundo plano, nunca atrasa nem derruba o login.
+      if (evento === 'SIGNED_IN' && novaSessao) void registrarOrigemCadastro(novaSessao.user.id)
       if (cancelado) return
       setSessao(novaSessao)
       setCarregando(false)
