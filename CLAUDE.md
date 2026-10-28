@@ -1178,6 +1178,9 @@ nenhum item daqui sozinho, só quando for pedido explicitamente.
   servidor (22xxx, 23xxx exceto 23505, P0001, 42501) para a fila só até 10 recusas, depois a operação vai para o
   store `falhas` do IndexedDB (`mesaagil-fila` v2, com o payload; nunca é apagada) e um toast tocável avisa o
   motivo ("toque para tentar de novo" = `reenviarFalha`). As seguintes seguem. Novo erro permanente: ajustar `CODIGO_RECUSA`.
+- Origem do cadastro (UTM, `lib/utm.ts`): `main.tsx` guarda utm_source/medium/campaign/content/term da URL em localStorage
+  (90 dias, URL sem UTM nunca apaga, parâmetros fora da lista ignorados); no 1º `SIGNED_IN` o `useAuth` chama a RPC
+  `registrar_origem_cadastro` (grava em `assinaturas`, só a primeira vez). Tolerante: sem migration/rede/UTM o cadastro segue igual.
 - Áreas de toque de no mínimo 44px
 
 ## Stack
