@@ -22,5 +22,17 @@ Deno.serve((req: Request) =>
     fetch,
     segredoWebhook: Deno.env.get('STRIPE_WEBHOOK_SECRET'),
     stripeSecretKey: Deno.env.get('STRIPE_SECRET_KEY') ?? '',
+    // Purchase pelo servidor: só liga com META_CAPI_TOKEN e/ou GA4_API_SECRET (secrets do Supabase).
+    medicao: {
+      fetch,
+      metaToken: Deno.env.get('META_CAPI_TOKEN'),
+      ga4Secret: Deno.env.get('GA4_API_SECRET'),
+      testEventCode: Deno.env.get('META_TEST_EVENT_CODE'),
+    },
+    emSegundoPlano: (tarefa) => {
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      // deno-lint-ignore no-explicit-any
+      ;(globalThis as any).EdgeRuntime?.waitUntil(tarefa)
+    },
   }),
 )

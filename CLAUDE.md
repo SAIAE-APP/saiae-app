@@ -1184,6 +1184,10 @@ nenhum item daqui sozinho, só quando for pedido explicitamente.
   Eventos no navegador: CompleteRegistration/sign_up no cadastro; Purchase é SÓ do servidor. CSP libera apenas
   connect.facebook.net, www.googletagmanager.com, www.google-analytics.com e www.facebook.com. Política de privacidade nos links
   de entrada: https://saiae.com.br/privacidade (a página interna /privacidade segue, usada pelo cardápio e por Excluir conta).
+- Purchase pelo servidor (`_shared/medicaoServidor.ts`, no `invoice.paid` do webhook-stripe): Meta CAPI + GA4 Measurement Protocol, só com
+  `assinaturas.consentimento_marketing = true` (gravado no login por `registrar_consentimento_marketing`), só a 1ª cobrança paga > 0 de
+  assinatura criada há < 45 dias (trava `purchase_enviado_em` antes de enviar), event_id = id da fatura, e-mail em SHA-256, falha
+  nunca atrasa nem derruba o 200. Secrets: META_CAPI_TOKEN, GA4_API_SECRET (opc. META_TEST_EVENT_CODE). Ver docs/roteiro-medicao-anuncios.md.
 - Áreas de toque de no mínimo 44px
 
 ## Stack
