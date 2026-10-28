@@ -3,6 +3,8 @@ import { supabase } from '../lib/supabase'
 import { bancoSemRecurso } from '../lib/semMigration'
 import { registrarErroApp } from '../lib/erroApp'
 import {
+  descartarParaFalhas,
+  incrementarRecusa,
   incrementarTentativa,
   emitirPedidoCriadoLocal,
   listarPendentes,
@@ -12,6 +14,7 @@ import {
 } from '../lib/fila'
 import type { OperacaoPendente } from '../lib/fila'
 import { EVENTO_CLIENTE_NAO_SALVO, enfileirar } from '../lib/fila'
+import { processarOperacoes } from '../lib/filaProcessamento'
 import { salvarClienteComReenvio } from '../lib/salvarClienteComReenvio'
 import { salvarClienteFinal } from '../lib/clientesFinais'
 import type { DadosEntrega } from '../lib/entrega'
@@ -257,28 +260,29 @@ export function useSincronizacao() {
       setSincronizando(true)
 
       const lista = await listarPendentes()
-      let falhou = false
-
-      for (const op of lista) {
-        if (!navigator.onLine) {
-          falhou = true
-          break
-        }
-
-        try {
-          await executarOperacao(op)
-          await marcarConcluida(op.id)
-        } catch (erro) {
-          console.error(`[sincronizacao] falha em ${op.tipo} (tentativa ${op.tentativas + 1})`, erro)
-          await incrementarTentativa(op.id)
-          falhou = true
-          // Sem internet a falha é esperada (a fila segue sozinha): só conta quando estava online.
-          if (navigator.onLine && !(erro instanceof OperacaoAdiadaError)) registrarErroApp('sync', erro)
-          // Operação adiada só espera; as outras seguem. Qualquer outra falha
-          // (rede, erro do banco) continua parando a fila, pra preservar a ordem.
-          if (erro instanceof OperacaoAdiadaError) continue
-          break
-        }
+      let falhou: boolean
+      try {
+        ;({ falhou } = await processarOperacoes(lista, {
+          online: () => navigator.onLine,
+          executar: executarOperacao,
+          concluir: marcarConcluida,
+          contarTentativa: incrementarTentativa,
+          contarRecusa: incrementarRecusa,
+          descartar: async (op, motivo) => {
+            await descartarParaFalhas(op, motivo)
+            registrarErroApp('sync', new Error(`${op.tipo} ${op.id} saiu da fila: ${motivo}`))
+          },
+          adiada: (erro) => erro instanceof OperacaoAdiadaError,
+          aoFalhar: (op, erro) => {
+            console.error(`[sincronizacao] falha em ${op.tipo} (tentativa ${op.tentativas + 1})`, erro)
+            // Sem internet a falha é esperada (a fila segue sozinha): só conta quando estava online.
+            if (navigator.onLine && !(erro instanceof OperacaoAdiadaError)) registrarErroApp('sync', erro)
+          },
+        }))
+      } catch (erro) {
+        // IndexedDB falhou no meio: não deixa a fila "ocupada" para sempre.
+        console.error('[sincronizacao] fila interrompida', erro)
+        falhou = true
       }
 
       // Operação criada DURANTE esta rodada (ex.: cliente que não salvou) não estava na lista lida no começo:

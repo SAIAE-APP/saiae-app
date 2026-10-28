@@ -17,13 +17,22 @@ export type OperacaoPendente = {
   payload: Record<string, unknown>
   criadoEm: string
   tentativas: number
+  /** Recusas definitivas do servidor (ver filaProcessamento.ts); ausente = 0. */
+  recusas?: number
 }
+
+/** Operação que o servidor recusou de vez: sai da fila mas fica guardada, com o payload, para reenviar. */
+export type OperacaoFalha = OperacaoPendente & { motivo: string; descartadaEm: string }
 
 interface FilaDB extends DBSchema {
   operacoes: {
     key: string
     value: OperacaoPendente
     indexes: { criadoEm: string }
+  }
+  falhas: {
+    key: string
+    value: OperacaoFalha
   }
 }
 
@@ -32,14 +41,21 @@ const EVENTO_FILA_MUDOU = 'mesaagil:fila-mudou'
 /** O cadastro do cliente de um pedido de Entrega não foi salvo de primeira (o reenvio já está na fila). */
 export const EVENTO_CLIENTE_NAO_SALVO = 'mesaagil:cliente-nao-salvo'
 
+/** Uma operação saiu da fila porque o servidor a recusou de vez (detail: DetalheOperacaoDescartada). */
+export const EVENTO_OPERACAO_DESCARTADA = 'mesaagil:operacao-descartada'
+export type DetalheOperacaoDescartada = { id: string; tipo: TipoOperacao; motivo: string }
+
 let dbPromise: Promise<IDBPDatabase<FilaDB>> | null = null
 
 function obterDB() {
   if (!dbPromise) {
-    dbPromise = openDB<FilaDB>('mesaagil-fila', 1, {
-      upgrade(db) {
-        const store = db.createObjectStore('operacoes', { keyPath: 'id' })
-        store.createIndex('criadoEm', 'criadoEm')
+    dbPromise = openDB<FilaDB>('mesaagil-fila', 2, {
+      upgrade(db, versaoAntiga) {
+        if (versaoAntiga < 1) {
+          const store = db.createObjectStore('operacoes', { keyPath: 'id' })
+          store.createIndex('criadoEm', 'criadoEm')
+        }
+        if (versaoAntiga < 2) db.createObjectStore('falhas', { keyPath: 'id' })
       },
     })
   }
@@ -81,6 +97,53 @@ export async function incrementarTentativa(id: string): Promise<void> {
   if (!operacao) return
   operacao.tentativas += 1
   await db.put('operacoes', operacao)
+}
+
+/** Soma uma recusa definitiva do servidor e devolve o total. */
+export async function incrementarRecusa(id: string): Promise<number> {
+  const db = await obterDB()
+  const operacao = await db.get('operacoes', id)
+  if (!operacao) return 0
+  operacao.recusas = (operacao.recusas ?? 0) + 1
+  await db.put('operacoes', operacao)
+  return operacao.recusas
+}
+
+/** Tira da fila e guarda em `falhas` na MESMA transação: a operação nunca fica sem casa. Avisa o operador. */
+export async function descartarParaFalhas(op: OperacaoPendente, motivo: string): Promise<void> {
+  const db = await obterDB()
+  const tx = db.transaction(['operacoes', 'falhas'], 'readwrite')
+  await Promise.all([
+    tx.objectStore('falhas').put({ ...op, motivo, descartadaEm: new Date().toISOString() }),
+    tx.objectStore('operacoes').delete(op.id),
+    tx.done,
+  ])
+  window.dispatchEvent(
+    new CustomEvent<DetalheOperacaoDescartada>(EVENTO_OPERACAO_DESCARTADA, { detail: { id: op.id, tipo: op.tipo, motivo } }),
+  )
+}
+
+export async function listarFalhas(): Promise<OperacaoFalha[]> {
+  const db = await obterDB()
+  return db.getAll('falhas')
+}
+
+/** Devolve a operação para a fila (ordem original pelo criadoEm), com as contagens zeradas. */
+export async function reenviarFalha(id: string): Promise<void> {
+  const db = await obterDB()
+  const tx = db.transaction(['operacoes', 'falhas'], 'readwrite')
+  const falha = await tx.objectStore('falhas').get(id)
+  if (falha) {
+    const { motivo: _motivo, descartadaEm: _quando, ...operacao } = falha
+    void _motivo
+    void _quando
+    await Promise.all([
+      tx.objectStore('operacoes').put({ ...operacao, tentativas: 0, recusas: 0 }),
+      tx.objectStore('falhas').delete(id),
+    ])
+  }
+  await tx.done
+  window.dispatchEvent(new Event(EVENTO_FILA_MUDOU))
 }
 
 export function ouvirMudancaFila(ouvinte: () => void): () => void {
