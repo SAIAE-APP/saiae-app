@@ -1,4 +1,4 @@
-import { useEffect, useRef } from 'react'
+import { lazy, Suspense, useEffect, useRef } from 'react'
 import { Outlet, useLocation, useParams } from 'react-router'
 import clsx from 'clsx'
 import { useBarraca } from '../hooks/useBarraca'
@@ -11,7 +11,6 @@ import { useRealtimePedidos } from '../hooks/useRealtimePedidos'
 import { useAssinaturaBarraca } from '../hooks/useAssinaturaBarraca'
 import { useModulosAtivos } from '../hooks/useModulosAtivos'
 import { NaoEncontrado } from '../pages/NaoEncontrado'
-import { Planos } from '../pages/Planos'
 import { BarraNavegacao } from '../components/BarraNavegacao'
 import { SidebarDesktop } from '../components/SidebarDesktop'
 import { BannerTrial } from '../components/BannerTrial'
@@ -26,6 +25,9 @@ import { ehAppIOS } from '../lib/plataforma'
 import { AcessoIndisponivelIOS } from '../components/AcessoIndisponivelIOS'
 import { BarracaContext, ModulosContext, SincronizacaoContext, SouDonoContext } from './contextoBarraca'
 import { PedidosContext } from './contextoPedidos'
+
+// Só aparece com a assinatura bloqueada (precisa de rede de qualquer jeito): não pesa no pacote do balcão.
+const Planos = lazy(() => import('../pages/Planos').then((m) => ({ default: m.Planos })))
 
 export function LayoutBarraca() {
   const { slug } = useParams<{ slug: string }>()
@@ -192,7 +194,9 @@ export function LayoutBarraca() {
               mostrarSidebar && !acessoBloqueado && 'md:pl-64',
             )}
           >
-            {acessoBloqueado ? ehAppIOS() ? <AcessoIndisponivelIOS /> : <Planos /> : <Outlet />}
+            <Suspense fallback={<p className="p-6 text-center text-mesa-text-secondary">Carregando...</p>}>
+              {acessoBloqueado ? ehAppIOS() ? <AcessoIndisponivelIOS /> : <Planos /> : <Outlet />}
+            </Suspense>
           </div>
           {!semBottomNav && !acessoBloqueado && (
             <div className={mostrarSidebar ? 'md:hidden' : undefined}>

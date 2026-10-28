@@ -1169,6 +1169,11 @@ nenhum item daqui sozinho, só quando for pedido explicitamente.
 - Telas de lançar pedido e cozinha funcionam offline
 - Enviar pedido é idempotente (duplo toque não cria dois pedidos)
 - Nada bloqueia a operação esperando rede
+- Carregamento sob demanda (`App.tsx`): telas fora do balcão são `React.lazy`; ficam FIXAS (offline) Dashboard,
+  LancarPedido, ConfirmarPedido, Cozinha, Mesas, TelaChamada, LayoutBarraca, Login e Dispatcher — não torne lazy sem
+  rever isso (`tests/carregamentoSobDemanda.test.ts`). O service worker pré-guarda todos os pedaços (`**/*.js`). Pedaço
+  sumido após deploy: `vite:preloadError` recarrega UMA vez por minuto (`recargaPorPedacoAusente.ts`); se persistir, a
+  `GuardaErroApp` mostra "Recarregar". `AvisoNovaVersao` (service worker) é independente e continua igual.
 - Fila offline (`filaProcessamento.ts`): erro de rede/5xx para a fila (ordem preservada); recusa definitiva do
   servidor (22xxx, 23xxx exceto 23505, P0001, 42501) para a fila só até 10 recusas, depois a operação vai para o
   store `falhas` do IndexedDB (`mesaagil-fila` v2, com o payload; nunca é apagada) e um toast tocável avisa o
