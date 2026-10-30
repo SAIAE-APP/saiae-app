@@ -1,4 +1,5 @@
 import type { ReactNode } from 'react'
+import { ehAppIOS } from '../lib/plataforma'
 
 /**
  * Moldura das telas de entrada (Login/Cadastro). Mobile: foto de fundo com o
@@ -20,11 +21,19 @@ export function LayoutAuth({ children }: { children: ReactNode }) {
 
       <div className="relative flex min-h-dvh flex-1 flex-col md:min-h-[600px] md:w-full md:max-w-5xl md:flex-none md:flex-row md:overflow-hidden md:rounded-mesa-2xl md:border md:border-mesa-border-subtle md:bg-mesa-surface">
         <div className="absolute inset-0 overflow-hidden md:relative md:order-2 md:w-1/2">
-          <img
-            src="/login/feirante.webp"
-            alt="Dona de barraca sorrindo, segurando o celular, com banca de frutas e verduras ao fundo"
-            className="size-full object-cover object-[60%_20%]"
-          />
+          {/* No iOS a foto sai: o celular dela é Android e a Apple recusa imagem de aparelho de outra
+              plataforma (diretriz 2.3.10, revisão de 2026-10-29). Fica o painel mostarda da marca. */}
+          {ehAppIOS() ? (
+            <div className="flex size-full items-start justify-center bg-mesa-orange-500 pt-[calc(env(safe-area-inset-top)+48px)] md:items-center md:pt-0">
+              <img src="/brand/saiae-icone-solido.svg" alt="" className="size-28 md:size-40" />
+            </div>
+          ) : (
+            <img
+              src="/login/feirante.webp"
+              alt="Dona de barraca sorrindo, segurando o celular, com banca de frutas e verduras ao fundo"
+              className="size-full object-cover object-[60%_20%]"
+            />
+          )}
         </div>
 
         <div
