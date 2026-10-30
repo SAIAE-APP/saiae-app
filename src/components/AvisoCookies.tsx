@@ -5,6 +5,7 @@ import { abrirLinkExterno } from '../lib/abrirExternoApp'
 import { lerConsentimento, salvarConsentimento, URL_PRIVACIDADE } from '../lib/consentimento'
 import { carregarMedicao, rotaComMedicao } from '../lib/medicao'
 import type { DocumentoMedicao, JanelaMedicao } from '../lib/medicao'
+import { ehAppIOS } from '../lib/plataforma'
 
 const carregar = () => carregarMedicao(window as unknown as JanelaMedicao, document as unknown as DocumentoMedicao)
 
@@ -12,7 +13,9 @@ const carregar = () => carregarMedicao(window as unknown as JanelaMedicao, docum
 export function AvisoCookies() {
   const { pathname } = useLocation()
   const [escolha, setEscolha] = useState(() => lerConsentimento())
-  const naRota = rotaComMedicao(pathname)
+  // No app iOS não há medição (nem aviso): Pixel/GA4 contam como rastreamento para a Apple e exigiriam o
+  // pedido de permissão do iOS (App Tracking Transparency), que o app não tem.
+  const naRota = !ehAppIOS() && rotaComMedicao(pathname)
   useEffect(() => {
     if (naRota && escolha === 'granted') carregar()
   }, [naRota, escolha])
