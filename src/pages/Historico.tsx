@@ -566,6 +566,10 @@ export function Historico() {
     selecionados.size > 0 || tipoConsumo !== 'todos' || metodoFiltrado || buscaNormalizada,
   )
 
+  const filtrosAtivos = [selecionados.size > 0, tipoConsumo !== 'todos', metodoFiltrado, buscaNormalizada].filter(
+    Boolean,
+  ).length
+
   const intervaloAtual = calcularIntervalosRelatorio({ tipo: periodoEfetivo, dataInicio, dataFim }).atual
 
   function metodoDefinido(pedidoId: string, metodo: string) {
@@ -651,12 +655,10 @@ export function Historico() {
 
   return (
     <GateSenhaAdmin key={barraca.id} barracaId={barraca.id} slug={barraca.slug}>
-    <div className="min-h-dvh pb-[calc(6rem+env(safe-area-inset-bottom))]">
-      <div
-        className={`sticky top-0 z-[var(--mesa-z-sticky)] bg-mesa-surface px-6 pt-[calc(env(safe-area-inset-top)+16px)] pb-4 shadow-mesa-1 transition-transform duration-300 ${
-          filtrosEscondidos ? '-translate-y-full pointer-events-none' : 'translate-y-0'
-        }`}
-      >
+    {/* min-h com folga: recolher os filtros encolhe a página; sem a folga, uma lista curta
+        perderia a rolagem, voltaria ao topo e reabriria os filtros em ciclo. */}
+    <div className="min-h-[calc(100dvh+12rem)] pb-[calc(6rem+env(safe-area-inset-bottom))]">
+      <div className="sticky top-0 z-[var(--mesa-z-sticky)] bg-mesa-surface px-6 pt-[calc(env(safe-area-inset-top)+16px)] pb-3 shadow-mesa-1">
         <CabecalhoPagina
           titulo="Histórico"
           acoes={
@@ -672,7 +674,7 @@ export function Historico() {
               <button
                 type="button"
                 onClick={esconderFiltros}
-                aria-label="Ocultar barra de filtros"
+                aria-label="Recolher filtros"
                 className={classesBotaoIcone()}
               >
                 <Icone nome="expand_less" size={20} />
@@ -693,6 +695,59 @@ export function Historico() {
           }
         />
 
+        {/* Linha fina: aparece só com os filtros recolhidos. */}
+        <div
+          className={`grid transition-[grid-template-rows,opacity] duration-300 ${
+            filtrosEscondidos ? 'grid-rows-[1fr] opacity-100' : 'pointer-events-none grid-rows-[0fr] opacity-0'
+          }`}
+          aria-hidden={!filtrosEscondidos}
+          inert={!filtrosEscondidos}
+        >
+          <div className="overflow-hidden">
+            <div className="mt-3 flex items-center gap-2">
+              <select
+                value={periodoEfetivo}
+                onChange={(e) => setPeriodo(e.target.value as TipoFiltroRelatorio)}
+                aria-label="Período do histórico"
+                className="h-11 shrink-0 rounded-mesa-sm border-[1.5px] border-mesa-border-default bg-mesa-surface px-2 text-sm text-mesa-text-primary outline-none focus:border-mesa-orange-500"
+              >
+                {periodosDisponiveis.map((p) => (
+                  <option key={p.valor} value={p.valor}>
+                    {p.rotulo}
+                  </option>
+                ))}
+              </select>
+              <Input
+                type="search"
+                value={busca}
+                onChange={(e) => setBusca(e.target.value)}
+                onClear={() => setBusca('')}
+                placeholder="Buscar"
+                aria-label="Buscar por senha, mesa ou nome"
+                className="min-w-0 flex-1"
+              />
+              <button
+                type="button"
+                onClick={exibirFiltros}
+                aria-label="Mostrar filtros"
+                className="flex h-11 shrink-0 items-center gap-1.5 rounded-mesa-sm border-[1.5px] border-mesa-border-default px-3 text-sm font-semibold text-mesa-text-primary"
+              >
+                <Icone nome="expand_more" size={16} />
+                Filtros{filtrosAtivos > 0 ? ` (${filtrosAtivos})` : ''}
+              </button>
+            </div>
+          </div>
+        </div>
+
+        {/* Filtros completos: recolhem aos poucos ao rolar. */}
+        <div
+          className={`grid transition-[grid-template-rows,opacity] duration-300 ${
+            filtrosEscondidos ? 'pointer-events-none grid-rows-[0fr] opacity-0' : 'grid-rows-[1fr] opacity-100'
+          }`}
+          aria-hidden={filtrosEscondidos}
+          inert={filtrosEscondidos}
+        >
+          <div className="overflow-hidden">
         <div className="mt-4">
           <SegmentedControl
             aria-label="Período do histórico"
@@ -800,21 +855,9 @@ export function Historico() {
             Apagar período
           </button>
         </div>
+          </div>
+        </div>
       </div>
-
-      <button
-        type="button"
-        onClick={exibirFiltros}
-        aria-label="Exibir barra de filtros"
-        className={`fixed left-1/2 z-[var(--mesa-z-sticky)] flex items-center gap-1.5 rounded-mesa-full bg-mesa-surface px-4 py-2 text-sm font-semibold text-mesa-text-primary shadow-mesa-2 outline-none transition-all duration-300 ${
-          filtrosEscondidos
-            ? 'top-[calc(env(safe-area-inset-top)+12px)] -translate-x-1/2 opacity-100'
-            : 'pointer-events-none -top-16 -translate-x-1/2 opacity-0'
-        }`}
-      >
-        <Icone nome="expand_more" size={16} />
-        Filtros
-      </button>
 
       <div className="px-6 pt-4">
         {carregando && (
