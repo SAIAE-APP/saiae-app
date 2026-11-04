@@ -9,7 +9,12 @@ import { ROTULO_MODO, nomeDoCliente, rotuloAtendimento, tipoDoPedido } from '../
 import { corMetodo, humanizarMetodo, METODOS_DISPONIVEIS } from '../lib/metodoPagamento'
 import { ROTULO_A_RECEBER, pagarDepoisLigado, pedidoAReceber } from '../lib/pagarDepois'
 import { hojeISO } from '../lib/datas'
-import { calcularIntervalosRelatorio, calcularTotalPedido, ehEntregaDireta } from '../lib/relatorio'
+import {
+  calcularIntervalosRelatorio,
+  calcularTotalPedido,
+  ehEntregaDireta,
+  pedidoTemItemSelecionado,
+} from '../lib/relatorio'
 import { useOcultarAoRolar } from '../hooks/useOcultarAoRolar'
 import { useAssinaturaBarraca } from '../hooks/useAssinaturaBarraca'
 import type { TipoFiltroRelatorio } from '../lib/relatorio'
@@ -22,6 +27,8 @@ import { BottomSheet } from '../components/ui/BottomSheet'
 import { Button } from '../components/ui/Button'
 import { Card } from '../components/ui/Card'
 import { Chip } from '../components/ui/Chip'
+import { SeletorProdutos } from '../components/SeletorProdutos'
+import { useCategoriasDaBarraca } from '../hooks/useCategoriasDaBarraca'
 import { Icone } from '../components/ui/Icone'
 import { Input } from '../components/ui/Input'
 import { SegmentedControl } from '../components/ui/SegmentedControl'
@@ -458,7 +465,8 @@ export function Historico() {
   const [metodoFiltrado, setMetodoFiltrado] = useState<string | null>(null)
 
   const [itensCardapio, setItensCardapio] = useState<Item[]>([])
-  const [itemFiltradoId, setItemFiltradoId] = useState<string | null>(null)
+  const [selecionados, setSelecionados] = useState<ReadonlySet<string>>(new Set())
+  const categorias = useCategoriasDaBarraca(barraca.id)
 
   const [mostrarConfirmacaoExclusao, setMostrarConfirmacaoExclusao] = useState(false)
   const [apagando, setApagando] = useState(false)
@@ -526,11 +534,10 @@ export function Historico() {
   }, [barraca.id])
 
   const pedidosDoPeriodo = pedidos
-  const pedidosDoPeriodoComItemFiltrado = itemFiltradoId
-    ? pedidosDoPeriodo.filter((p) =>
-        p.itens_do_pedido.some((item) => !item.removido && item.item_id === itemFiltradoId),
-      )
-    : pedidosDoPeriodo
+  const pedidosDoPeriodoComItemFiltrado =
+    selecionados.size > 0
+      ? pedidosDoPeriodo.filter((p) => pedidoTemItemSelecionado(p, selecionados))
+      : pedidosDoPeriodo
 
   const pedidosPorConsumo =
     tipoConsumo === 'todos'
@@ -556,7 +563,7 @@ export function Historico() {
   // Só filtros ALÉM do período contam aqui — o período em si (Hoje/7
   // dias/Mês/...) já define o que "apagar período" apaga por padrão.
   const temFiltroAtivo = Boolean(
-    itemFiltradoId || tipoConsumo !== 'todos' || metodoFiltrado || buscaNormalizada,
+    selecionados.size > 0 || tipoConsumo !== 'todos' || metodoFiltrado || buscaNormalizada,
   )
 
   const intervaloAtual = calcularIntervalosRelatorio({ tipo: periodoEfetivo, dataInicio, dataFim }).atual
@@ -723,18 +730,13 @@ export function Historico() {
           </div>
         )}
 
-        <select
-          value={itemFiltradoId ?? ''}
-          onChange={(e) => setItemFiltradoId(e.target.value || null)}
-          className="mt-3 h-12 w-full rounded-mesa-sm border-[1.5px] border-mesa-border-default bg-mesa-surface px-4 text-sm text-mesa-text-primary outline-none focus:border-mesa-orange-500"
-        >
-          <option value="">Todos os produtos</option>
-          {itensCardapio.map((item) => (
-            <option key={item.id} value={item.id}>
-              {item.nome}
-            </option>
-          ))}
-        </select>
+        <SeletorProdutos
+          itens={itensCardapio}
+          categorias={categorias}
+          selecionados={selecionados}
+          onChange={setSelecionados}
+          className="mt-3 md:w-full"
+        />
 
         <Input
           type="search"
