@@ -314,7 +314,7 @@ export function calcularSerieItemPorDia(
 
   for (const pedido of naoCancelados(pedidos)) {
     for (const item of pedido.itens_do_pedido) {
-      if (item.removido || !itemIds.has(item.item_id)) continue
+      if (item.removido || !itemIds.has(item.item_id ?? '')) continue
       const atual = porDia.get(pedido.data_operacao) ?? { valor: 0, quantidade: 0 }
       atual.valor += item.preco_centavos_unitario * item.quantidade
       atual.quantidade += item.quantidade
@@ -333,7 +333,7 @@ export function calcularSerieItemPorHora(
 
   for (const pedido of naoCancelados(pedidos)) {
     for (const item of pedido.itens_do_pedido) {
-      if (item.removido || !itemIds.has(item.item_id)) continue
+      if (item.removido || !itemIds.has(item.item_id ?? '')) continue
       const hora = new Date(pedido.criado_em).getHours()
       const atual = porHora.get(hora) ?? { valor: 0, quantidade: 0 }
       atual.valor += item.preco_centavos_unitario * item.quantidade
@@ -360,7 +360,7 @@ export function agregarProdutosIsolados(
 
   for (const pedido of naoCancelados(pedidos)) {
     for (const item of pedido.itens_do_pedido) {
-      if (item.removido || !itemIds.has(item.item_id)) continue
+      if (item.removido || !itemIds.has(item.item_id ?? '')) continue
       totalIsolado += item.preco_centavos_unitario * item.quantidade
       unidadesVendidas += item.quantidade
     }
@@ -382,7 +382,7 @@ export function pedidoTemItemSelecionado(
   pedido: PedidoComItens,
   itemIds: ReadonlySet<string>,
 ): boolean {
-  return pedido.itens_do_pedido.some((item) => !item.removido && itemIds.has(item.item_id))
+  return pedido.itens_do_pedido.some((item) => !item.removido && itemIds.has(item.item_id ?? ''))
 }
 
 export type RitmoDoDia = {
