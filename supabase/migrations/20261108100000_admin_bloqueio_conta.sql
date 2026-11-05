@@ -3,9 +3,12 @@
 --
 -- O bloqueio mora em coluna própria (`bloqueada_admin`) porque webhook do Stripe, cron de
 -- expiração e avisos de trial reescrevem `status` e prazos: nenhum deles toca nesta coluna.
--- `assinatura_tem_acesso` passa a devolver false para conta bloqueada, mesmo com a cobrança
--- desligada, e como `barraca_assinatura_ativa` usa essa função, funcionários do dono bloqueado
--- também perdem acesso.
+-- `assinatura_tem_acesso` passa a devolver false para conta bloqueada, e como
+-- `barraca_assinatura_ativa` usa essa função, funcionários do dono bloqueado também perdem acesso
+-- (inclusive nas policies de RLS que usam `barraca_assinatura_ativa`).
+-- LIMITE: com a cobrança desligada (estado global neutro; em produção está LIGADA),
+-- `barraca_assinatura_ativa` devolve true antes de consultar `assinatura_tem_acesso`, então o
+-- bloqueio só alcança `assinatura_tem_acesso` e o portão do app (`assinatura_da_barraca`), não o RLS.
 
 alter table public.assinaturas
   add column if not exists bloqueada_admin boolean not null default false,

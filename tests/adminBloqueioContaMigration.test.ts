@@ -96,9 +96,15 @@ describe('bloqueio de conta', () => {
     assert.ok(a.bloqueada_em)
   })
 
-  test('com a cobrança desligada, conta bloqueada continua sem acesso', async () => {
+  test('com a cobrança desligada, assinatura_tem_acesso e assinatura_da_barraca ainda refletem o bloqueio (RLS não)', async () => {
     await db.exec(`reset role; insert into public.app_config values ('cobranca_ativa', 'false'::jsonb)`)
     assert.equal(await acesso(), false)
+    await como(FUNC)
+    const r = await um<{ bloqueada: boolean; tem_acesso: boolean }>(`select * from public.assinatura_da_barraca('ativa')`)
+    assert.deepEqual([r.bloqueada, r.tem_acesso], [true, false])
+    await db.exec(`reset role`)
+    // limite conhecido: barraca_assinatura_ativa libera tudo com a cobrança desligada
+    assert.equal((await um<{ v: boolean }>(`select public.barraca_assinatura_ativa('${BARRACA}') as v`)).v, true)
     await db.exec(`delete from public.app_config`)
   })
 
