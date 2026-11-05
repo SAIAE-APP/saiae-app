@@ -50,8 +50,20 @@ before(async () => {
       id uuid primary key default gen_random_uuid(), nome text, slug text, criada_em timestamptz default now(),
       logo_url text, imagem_capa_url text, pagamento_online_habilitado boolean default false,
       modos_atendimento text[], pagar_na_entrega_habilitado boolean default false, whatsapp_pedidos text,
-      opcoes_habilitado boolean default false
+      opcoes_habilitado boolean default false, slug_trocado_em timestamptz, kit_aplicado_em timestamptz,
+      kit_elegivel boolean not null default true, checklist_oculto_ate timestamptz,
+      avaliacao_ativa boolean, avaliacao_texto text
     );
+    create table public.custos_diarios (barraca_id uuid references public.barracas(id) on delete cascade);
+    create table public.barracas_senha_admin (barraca_id uuid references public.barracas(id) on delete cascade);
+    create table public.grupos_opcoes (barraca_id uuid references public.barracas(id) on delete cascade);
+    -- pgcrypto fica em "extensions" no Supabase; o PGlite não a traz (mesmo stub de acessoSuporteMigration).
+    create schema extensions;
+    create function extensions.digest(data text, algo text) returns bytea language sql immutable
+      as $$ select decode(md5(data), 'hex') $$;
+    create function extensions.gen_random_bytes(n integer) returns bytea language sql volatile
+      as $$ select substring(decode(md5(random()::text || clock_timestamp()::text), 'hex') from 1 for n) $$;
+    create function public.modulo_ativo(p_barraca_id uuid, p_modulo text) returns boolean language sql stable as $$ select false $$;
     create table public.usuarios_barracas (
       usuario_id uuid, barraca_id uuid references public.barracas(id) on delete cascade, papel text);
     create table public.assinaturas (
@@ -82,7 +94,8 @@ before(async () => {
       id uuid primary key default gen_random_uuid(), barraca_id uuid references public.barracas(id),
       pedido_id uuid references public.pedidos(id));
     create table public.codigos_suporte (
-      id uuid primary key default gen_random_uuid(), barraca_id uuid references public.barracas(id) on delete cascade);
+      id uuid primary key default gen_random_uuid(), barraca_id uuid references public.barracas(id) on delete cascade,
+      codigo_hash text, expira_em timestamptz, criado_por uuid);
     create table public.acessos_suporte (
       id uuid primary key default gen_random_uuid(), barraca_id uuid references public.barracas(id) on delete cascade,
       codigo_id uuid references public.codigos_suporte(id));
@@ -194,6 +207,70 @@ describe('arquivar barraca', () => {
     assert.equal(r.r.erros[0].codigo, 'barraca_invalida')
     const r2 = await um<{ r: { erros: { codigo: string }[] } }>(`select public.resolver_carrinho('${OUTRA}', ${linhas}) as r`)
     assert.equal(r2.r.erros[0].codigo, 'item_invalido')
+  })
+
+  // RPCs de escrita do dono que não passam por usuario_tem_acesso_barraca: arquivada é recusada com a resposta
+  // de "sem acesso"; na OUTRA (não arquivada) a mesma chamada passa da checagem de acesso.
+  const doDono = async <T>(q: string) => {
+    await como(DONO)
+    try {
+      return (await db.query<{ r: T }>(`select ${q} as r`)).rows[0].r
+    } finally {
+      await db.exec('reset role')
+    }
+  }
+  const recusaDono = async (q: string, msg: RegExp) => {
+    await como(DONO)
+    try {
+      await assert.rejects(db.query(`select ${q}`), msg)
+    } finally {
+      await db.exec('reset role')
+    }
+  }
+
+  test('suporte_gerar_codigo recusa arquivada', async () => {
+    assert.equal((await doDono<{ estado: string }>(`public.suporte_gerar_codigo('${BARRACA}')`)).estado, 'sem_acesso')
+    assert.equal(await conta('codigos_suporte', BARRACA), 0)
+    assert.equal((await doDono<{ estado: string }>(`public.suporte_gerar_codigo('${OUTRA}')`)).estado, 'ok')
+    await db.exec(`delete from public.codigos_suporte where barraca_id = '${OUTRA}'`)
+  })
+
+  test('barraca_trocar_slug recusa arquivada', async () => {
+    assert.equal((await doDono<{ estado: string }>(`public.barraca_trocar_slug('${BARRACA}', 'ze')`)).estado, 'sem_acesso')
+    assert.equal((await doDono<{ estado: string }>(`public.barraca_trocar_slug('${OUTRA}', 'outra')`)).estado, 'ok')
+  })
+
+  test('onboarding_aplicar_kit recusa arquivada', async () => {
+    assert.equal((await doDono<{ estado: string }>(`public.onboarding_aplicar_kit('${BARRACA}', 'feira', '{}')`)).estado, 'sem_acesso')
+    // OUTRA já tem itens: passa do acesso e para na regra seguinte
+    assert.equal((await doDono<{ estado: string }>(`public.onboarding_aplicar_kit('${OUTRA}', 'feira', '{}')`)).estado, 'catalogo_nao_vazio')
+  })
+
+  test('onboarding_salvar_passo recusa arquivada', async () => {
+    await recusaDono(`public.onboarding_salvar_passo('${BARRACA}', 99, '{}')`, /sem acesso a esta barraca/)
+    await recusaDono(`public.onboarding_salvar_passo('${OUTRA}', 99, '{}')`, /etapa_invalida/)
+  })
+
+  test('onboarding_ocultar_checklist recusa arquivada', async () => {
+    await recusaDono(`public.onboarding_ocultar_checklist('${BARRACA}')`, /sem acesso a esta barraca/)
+    await doDono(`public.onboarding_ocultar_checklist('${OUTRA}')`)
+    assert.ok((await um<{ c: string | null }>(`select checklist_oculto_ate as c from public.barracas where id = '${OUTRA}'`)).c)
+  })
+
+  test('whatsapp_avaliacao_salvar recusa arquivada', async () => {
+    assert.equal((await doDono<{ estado: string }>(`public.whatsapp_avaliacao_salvar('${BARRACA}', true, null)`)).estado, 'sem_acesso')
+    // OUTRA passa do acesso e para no módulo (stub desligado)
+    assert.equal((await doDono<{ estado: string }>(`public.whatsapp_avaliacao_salvar('${OUTRA}', true, null)`)).estado, 'modulo_desligado')
+  })
+
+  test('apagar_barraca recusa arquivada', async () => {
+    const DESCARTE = 'b5000000-0000-4000-8000-000000000005'
+    await db.exec(`insert into public.barracas (id, nome, slug) values ('${DESCARTE}', 'Descarte', 'descarte');
+      insert into public.usuarios_barracas values ('${DONO}', '${DESCARTE}', 'dono')`)
+    await recusaDono(`public.apagar_barraca('${BARRACA}')`, /Só o dono da barraca pode apagá-la/)
+    assert.equal((await um<{ n: number }>(`select count(*)::int as n from public.barracas where id = '${BARRACA}'`)).n, 1)
+    await doDono(`public.apagar_barraca('${DESCARTE}')`)
+    assert.equal((await um<{ n: number }>(`select count(*)::int as n from public.barracas where id = '${DESCARTE}'`)).n, 0)
   })
 
   test('restaurar dentro de 30 dias devolve o acesso', async () => {

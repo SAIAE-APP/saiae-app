@@ -3,7 +3,12 @@
 --
 -- Barraca arquivada (`barracas.arquivada_em` preenchida):
 --   * `usuario_tem_acesso_barraca` devolve false para todos (dono e funcionários). É a função usada pelas
---     policies de RLS e pelas RPCs do app, então a regra fica num lugar só.
+--     policies de RLS e pela maioria das RPCs do app. Sete RPCs de escrita do dono conferem
+--     `usuarios_barracas` direto e ganham a mesma recusa no fim deste arquivo (apagar_barraca,
+--     suporte_gerar_codigo, barraca_trocar_slug, onboarding_aplicar_kit, onboarding_salvar_passo,
+--     onboarding_ocultar_checklist, whatsapp_avaliacao_salvar). Ficam de fora de propósito: leituras do
+--     admin (admin_barraca_ajustes, acessos_admin_da_barraca), suporte_encerrar_acesso (encerrar acesso
+--     tem que continuar funcionando) e criar_barraca (não recebe barraca existente).
 --   * `cardapio_publico` não a encontra (mesma resposta de slug inexistente: zero linhas).
 --   * `resolver_carrinho` a recusa ('barraca_invalida'): é por onde passam os pedidos públicos
 --     (criar-pedido-cardapio, criar-pagamento-pix, cupom-validar), então nenhum pedido novo entra.
@@ -489,7 +494,584 @@ $$;
 revoke all on function public.resolver_carrinho(uuid, jsonb) from public, anon, authenticated;
 grant execute on function public.resolver_carrinho(uuid, jsonb) to service_role;
 
+-- RPCs de escrita do dono que conferem usuarios_barracas direto (sem usuario_tem_acesso_barraca).
+-- Corpos de produção (pg_get_functiondef, 2026-11-05; iguais às migrations citadas) mais a recusa de barraca
+-- arquivada, com a mesma resposta que já dão para quem não tem acesso. create or replace mantém os grants.
+
+-- apagar_barraca: base apagar_barraca.sql
+create or replace function public.apagar_barraca(p_barraca_id uuid)
+returns void
+language plpgsql
+security definer
+set search_path = public
+as $$
+begin
+  if auth.uid() is null then
+    raise exception 'Não autenticado';
+  end if;
+
+  if not exists (
+    select 1 from public.usuarios_barracas
+    where barraca_id = p_barraca_id
+      and usuario_id = auth.uid()
+      and papel = 'dono'
+  ) then
+    raise exception 'Só o dono da barraca pode apagá-la';
+  end if;
+  if exists (select 1 from public.barracas where id = p_barraca_id and arquivada_em is not null) then
+    raise exception 'Só o dono da barraca pode apagá-la'; -- barraca arquivada
+  end if;
+
+  delete from public.itens_do_pedido
+  where pedido_id in (select id from public.pedidos where barraca_id = p_barraca_id);
+
+  delete from public.pedidos where barraca_id = p_barraca_id;
+  delete from public.itens where barraca_id = p_barraca_id;
+  delete from public.categorias where barraca_id = p_barraca_id;
+  delete from public.custos_diarios where barraca_id = p_barraca_id;
+  delete from public.barracas_senha_admin where barraca_id = p_barraca_id;
+  delete from public.usuarios_barracas where barraca_id = p_barraca_id;
+  delete from public.barracas where id = p_barraca_id;
+end;
+$$;
+
+-- suporte_gerar_codigo: base 20261023100000_acesso_suporte.sql
+create or replace function public.suporte_gerar_codigo(p_barraca_id uuid)
+returns jsonb
+language plpgsql
+security definer
+set search_path = public, extensions, pg_temp
+as $$
+declare
+  -- Mesmo alfabeto de ia_gerar_codigo (migration 20261019100000_ia_atendente.sql):
+  -- sem 0/O/1/I/L pra não confundir quem digita à mão. 31 caracteres — não
+  -- divide 256 exatamente, por isso a amostragem por rejeição abaixo (não um
+  -- "% length(alfabeto)" direto, que teria viés: os 8 primeiros caracteres
+  -- sairiam com probabilidade 9/256 e o resto com 8/256).
+  alfabeto constant text := 'ABCDEFGHJKMNPQRSTUVWXYZ23456789';
+  v_tam constant integer := length(alfabeto);
+  v_limite constant integer := (256 / v_tam) * v_tam; -- maior múltiplo de v_tam que cabe em 0..255
+  v_codigo text;
+  v_byte integer;
+  v_expira timestamptz := now() + interval '24 hours';
+begin
+  if auth.uid() is null then
+    return jsonb_build_object('estado', 'nao_autenticado');
+  end if;
+
+  if not exists (
+    select 1 from public.usuarios_barracas
+    where barraca_id = p_barraca_id and usuario_id = auth.uid() and papel = 'dono'
+  ) then
+    return jsonb_build_object('estado', 'sem_acesso');
+  end if;
+  if exists (select 1 from public.barracas where id = p_barraca_id and arquivada_em is not null) then
+    return jsonb_build_object('estado', 'sem_acesso'); -- barraca arquivada
+  end if;
+
+  -- Byte aleatório criptográfico (não random(), que não é CSPRNG); descarta
+  -- e sorteia de novo quando o byte cai fora do maior múltiplo de v_tam —
+  -- sem isso, o módulo enviesaria os primeiros caracteres do alfabeto.
+  v_codigo := '';
+  for i in 1..8 loop
+    loop
+      v_byte := get_byte(gen_random_bytes(1), 0);
+      exit when v_byte < v_limite;
+    end loop;
+    v_codigo := v_codigo || substr(alfabeto, 1 + (v_byte % v_tam), 1);
+  end loop;
+
+  insert into public.codigos_suporte (barraca_id, codigo_hash, expira_em, criado_por)
+  values (p_barraca_id, encode(digest(v_codigo, 'sha256'), 'hex'), v_expira, auth.uid());
+
+  return jsonb_build_object('estado', 'ok', 'codigo', v_codigo, 'expira_em', v_expira);
+end;
+$$;
+
+-- barraca_trocar_slug: base 20261020120000_slug_apelidos.sql
+create or replace function public.barraca_trocar_slug(p_barraca_id uuid, p_novo text)
+returns jsonb
+language plpgsql
+security definer
+set search_path = public, pg_temp
+as $$
+declare
+  v_novo text := lower(btrim(coalesce(p_novo, '')));
+  b public.barracas%rowtype;
+  v_proprio boolean;
+begin
+  if auth.uid() is null then
+    return jsonb_build_object('estado', 'nao_autenticado');
+  end if;
+
+  select * into b from public.barracas where id = p_barraca_id for update;
+  -- Mesma resposta para "não existe" e "não é o dono": não revela barraca de outra conta.
+  if not found or b.arquivada_em is not null or not exists (
+    select 1 from public.usuarios_barracas ub
+     where ub.usuario_id = auth.uid() and ub.barraca_id = b.id and ub.papel = 'dono'
+  ) then
+    return jsonb_build_object('estado', 'sem_acesso');
+  end if;
+
+  if v_novo = b.slug then
+    return jsonb_build_object('estado', 'ok', 'slug', b.slug);
+  end if;
+
+  if v_novo !~ '^[a-z0-9]+(-[a-z0-9]+)*$' or char_length(v_novo) < 3 or char_length(v_novo) > 40 then
+    return jsonb_build_object('estado', 'invalido');
+  end if;
+  if public.slug_reservado(v_novo) then
+    return jsonb_build_object('estado', 'reservado');
+  end if;
+
+  select exists (select 1 from public.barracas_slugs_antigos a where a.slug = v_novo and a.barraca_id = b.id) into v_proprio;
+  if exists (select 1 from public.barracas x where x.slug = v_novo and x.id <> b.id)
+     or exists (select 1 from public.barracas_slugs_antigos a where a.slug = v_novo and a.barraca_id <> b.id) then
+    return jsonb_build_object('estado', 'em_uso');
+  end if;
+
+  if b.slug_trocado_em is not null and b.slug_trocado_em > now() - interval '24 hours' then
+    return jsonb_build_object('estado', 'muito_cedo');
+  end if;
+  if not v_proprio and (select count(*) from public.barracas_slugs_antigos a where a.barraca_id = b.id) >= 10 then
+    return jsonb_build_object('estado', 'limite_apelidos');
+  end if;
+
+  -- Voltar a um apelido próprio: ele deixa de ser apelido (passa a ser o atual) e o atual vira apelido.
+  delete from public.barracas_slugs_antigos where slug = v_novo and barraca_id = b.id;
+  insert into public.barracas_slugs_antigos (slug, barraca_id) values (b.slug, b.id) on conflict (slug) do nothing;
+  update public.barracas set slug = v_novo, slug_trocado_em = now() where id = b.id;
+
+  return jsonb_build_object('estado', 'ok', 'slug', v_novo);
+end;
+$$;
+
+-- onboarding_aplicar_kit: base 20261021110000_kits_iniciais.sql
+create or replace function public.onboarding_aplicar_kit(p_barraca_id uuid, p_kit text, p_conteudo jsonb)
+returns jsonb
+language plpgsql
+security definer
+set search_path = public, pg_temp
+as $$
+declare
+  c jsonb := coalesce(p_conteudo, '{}'::jsonb);
+  b public.barracas;
+  e jsonb;
+  o jsonb;
+  g jsonb;
+  i jsonb;
+  v_chaves text[];
+  v_chave text;
+  v_nome text;
+  v_tipo text;
+  v_min integer;
+  v_max integer;
+  v_texto text;
+  v_var integer;
+  v_cat_ids jsonb := '{}'::jsonb;
+  v_grupo_ids jsonb := '{}'::jsonb;
+  v_id uuid;
+  v_ordem integer;
+  v_ordem_o integer;
+  v_item_id uuid;
+  v_n_itens integer := 0;
+  v_n_grupos integer := 0;
+  v_liga boolean;
+begin
+  if auth.uid() is null then
+    return jsonb_build_object('estado', 'nao_autenticado');
+  end if;
+  if not exists (
+    select 1 from public.usuarios_barracas where usuario_id = auth.uid() and barraca_id = p_barraca_id and papel = 'dono'
+  ) then
+    return jsonb_build_object('estado', 'sem_acesso');
+  end if;
+
+  -- Uma aplicação por vez por barraca (duas chamadas simultâneas gravam uma vez só).
+  perform pg_advisory_xact_lock(hashtextextended('kit:' || p_barraca_id::text, 0));
+  select * into b from public.barracas where id = p_barraca_id for update;
+  if not found or b.arquivada_em is not null then
+    return jsonb_build_object('estado', 'sem_acesso');
+  end if;
+
+  if b.kit_aplicado_em is not null then
+    return jsonb_build_object('estado', 'ja_aplicado');
+  end if;
+  if not b.kit_elegivel then
+    return jsonb_build_object('estado', 'nao_elegivel');
+  end if;
+  if exists (select 1 from public.categorias where barraca_id = p_barraca_id)
+     or exists (select 1 from public.itens where barraca_id = p_barraca_id)
+     or exists (select 1 from public.grupos_opcoes where barraca_id = p_barraca_id) then
+    return jsonb_build_object('estado', 'catalogo_nao_vazio');
+  end if;
+
+  -- ---- validação (sem gravar nada)
+  if p_kit is null or p_kit not in ('feira', 'quermesse', 'lanchonete', 'acai', 'hamburgueria', 'pizzaria', 'pastelaria', 'pf')
+     or jsonb_typeof(c) <> 'object'
+     or jsonb_typeof(c -> 'categorias') is distinct from 'array'
+     or jsonb_typeof(c -> 'itens') is distinct from 'array'
+     or jsonb_typeof(c -> 'grupos') is distinct from 'array'
+     or jsonb_array_length(c -> 'categorias') > 8
+     or jsonb_array_length(c -> 'itens') not between 1 and 30
+     or jsonb_array_length(c -> 'grupos') > 6 then
+    return jsonb_build_object('estado', 'dados_invalidos');
+  end if;
+
+  -- categorias
+  v_chaves := '{}';
+  for e in select * from jsonb_array_elements(c -> 'categorias') loop
+    v_chave := e ->> 'chave';
+    v_nome := btrim(coalesce(e ->> 'nome', ''));
+    if jsonb_typeof(e) <> 'object' or v_chave is null or v_chave !~ '^[a-z0-9_]{1,30}$' or v_chave = any (v_chaves)
+       or v_nome = '' or char_length(v_nome) > 60 then
+      return jsonb_build_object('estado', 'dados_invalidos');
+    end if;
+    v_chaves := v_chaves || v_chave;
+  end loop;
+  -- grupos
+  v_chaves := '{}';
+  for g in select * from jsonb_array_elements(c -> 'grupos') loop
+    v_chave := g ->> 'chave';
+    v_nome := btrim(coalesce(g ->> 'nome', ''));
+    v_tipo := g ->> 'tipo';
+    if jsonb_typeof(g) <> 'object' or v_chave is null or v_chave !~ '^[a-z0-9_]{1,30}$' or v_chave = any (v_chaves)
+       or v_nome = '' or char_length(v_nome) > 60 or v_tipo not in ('variacao', 'adicional')
+       or jsonb_typeof(g -> 'opcoes') is distinct from 'array'
+       or jsonb_array_length(g -> 'opcoes') not between 1 and 12 then
+      return jsonb_build_object('estado', 'dados_invalidos');
+    end if;
+    v_chaves := v_chaves || v_chave;
+    v_texto := g ->> 'maximo';
+    if v_texto is not null and (v_texto !~ '^[0-9]{1,2}$' or v_texto::integer not between 1 and 20) then
+      return jsonb_build_object('estado', 'dados_invalidos');
+    end if;
+    if v_tipo = 'adicional' and coalesce(g ->> 'obrigatorio', 'false') not in ('true', 'false') then
+      return jsonb_build_object('estado', 'dados_invalidos');
+    end if;
+    if v_tipo = 'adicional' and v_texto is not null and (case when g ->> 'obrigatorio' = 'true' then 1 else 0 end) > v_texto::integer then
+      return jsonb_build_object('estado', 'dados_invalidos');
+    end if;
+    for o in select * from jsonb_array_elements(g -> 'opcoes') loop
+      v_nome := btrim(coalesce(o ->> 'nome', ''));
+      if jsonb_typeof(o) <> 'object' or v_nome = '' or char_length(v_nome) > 60
+         or coalesce(o ->> 'precisaPreco', 'false') not in ('true', 'false') then
+        return jsonb_build_object('estado', 'dados_invalidos');
+      end if;
+    end loop;
+  end loop;
+
+  -- itens: categoria existente, grupos existentes, no máximo uma variação por item
+  for i in select * from jsonb_array_elements(c -> 'itens') loop
+    v_nome := btrim(coalesce(i ->> 'nome', ''));
+    if jsonb_typeof(i) <> 'object' or v_nome = '' or char_length(v_nome) > 60 then
+      return jsonb_build_object('estado', 'dados_invalidos');
+    end if;
+    if not exists (
+      select 1 from jsonb_array_elements(c -> 'categorias') x where x ->> 'chave' = i ->> 'categoria'
+    ) then
+      return jsonb_build_object('estado', 'dados_invalidos');
+    end if;
+    if i ? 'grupos' then
+      if jsonb_typeof(i -> 'grupos') <> 'array' or jsonb_array_length(i -> 'grupos') > 6 then
+        return jsonb_build_object('estado', 'dados_invalidos');
+      end if;
+      v_var := 0;
+      for v_chave in select jsonb_array_elements_text(i -> 'grupos') loop
+        select x ->> 'tipo' into v_tipo from jsonb_array_elements(c -> 'grupos') x where x ->> 'chave' = v_chave;
+        if v_tipo is null then
+          return jsonb_build_object('estado', 'dados_invalidos');
+        end if;
+        if v_tipo = 'variacao' then
+          v_var := v_var + 1;
+        end if;
+      end loop;
+      if v_var > 1 or (select count(distinct t) from jsonb_array_elements_text(i -> 'grupos') t) <> jsonb_array_length(i -> 'grupos') then
+        return jsonb_build_object('estado', 'dados_invalidos');
+      end if;
+    end if;
+  end loop;
+
+  -- ---- gravação
+  v_ordem := 0;
+  for e in select * from jsonb_array_elements(c -> 'categorias') loop
+    v_ordem := v_ordem + 1;
+    insert into public.categorias (barraca_id, nome, ordem)
+    values (p_barraca_id, btrim(e ->> 'nome'), v_ordem)
+    returning id into v_id;
+    v_cat_ids := v_cat_ids || jsonb_build_object(e ->> 'chave', v_id);
+  end loop;
+
+  v_ordem := 0;
+  for g in select * from jsonb_array_elements(c -> 'grupos') loop
+    v_ordem := v_ordem + 1;
+    v_tipo := g ->> 'tipo';
+    if v_tipo = 'variacao' then
+      v_min := 1;
+      v_max := 1;
+    else
+      v_min := case when g ->> 'obrigatorio' = 'true' then 1 else 0 end;
+      v_max := (g ->> 'maximo')::integer;
+    end if;
+    insert into public.grupos_opcoes (barraca_id, nome, tipo, min_escolhas, max_escolhas, ordem, ativo)
+    values (p_barraca_id, btrim(g ->> 'nome'), v_tipo, v_min, v_max, v_ordem, true)
+    returning id into v_id;
+    v_grupo_ids := v_grupo_ids || jsonb_build_object(g ->> 'chave', v_id);
+    v_n_grupos := v_n_grupos + 1;
+    v_ordem_o := 0;
+    for o in select * from jsonb_array_elements(g -> 'opcoes') loop
+      v_ordem_o := v_ordem_o + 1;
+      -- Nada que custe dinheiro (ou substitua o preço do item) nasce ativo: o dono preenche e ativa.
+      insert into public.opcoes (grupo_id, barraca_id, nome, preco_centavos, ordem, ativo, esgotado)
+      values (
+        v_id, p_barraca_id, btrim(o ->> 'nome'), 0, v_ordem_o,
+        not (v_tipo = 'variacao' or coalesce(o ->> 'precisaPreco', 'false') = 'true'),
+        false
+      );
+    end loop;
+  end loop;
+
+  v_ordem := 0;
+  for i in select * from jsonb_array_elements(c -> 'itens') loop
+    v_ordem := v_ordem + 1;
+    insert into public.itens (barraca_id, nome, preco_centavos, ativo, ordem, categoria_id, kit_exemplo)
+    values (
+      p_barraca_id, btrim(i ->> 'nome'), 0, false, v_ordem,
+      (v_cat_ids ->> (i ->> 'categoria'))::uuid, true
+    )
+    returning id into v_item_id;
+    v_n_itens := v_n_itens + 1;
+    v_ordem_o := 0;
+    if i ? 'grupos' then
+      for v_chave in select jsonb_array_elements_text(i -> 'grupos') loop
+        v_ordem_o := v_ordem_o + 1;
+        insert into public.itens_grupos (item_id, grupo_id, barraca_id, ordem)
+        values (v_item_id, (v_grupo_ids ->> v_chave)::uuid, p_barraca_id, v_ordem_o);
+      end loop;
+    end if;
+  end loop;
+
+  -- Liga "Opções" só se o kit usa grupos (e só se a loja ainda não tinha ligado).
+  v_liga := coalesce(c ->> 'opcoes_habilitado', 'false') = 'true' and v_n_grupos > 0;
+  update public.barracas
+     set kit_aplicado = p_kit,
+         kit_aplicado_em = now(),
+         opcoes_habilitado = opcoes_habilitado or v_liga
+   where id = p_barraca_id;
+
+  return jsonb_build_object('estado', 'ok', 'itens', v_n_itens, 'grupos', v_n_grupos, 'opcoes_habilitado', v_liga);
+end;
+$$;
+
+-- onboarding_salvar_passo: base 20261029120000_onboarding_comanda.sql
+create or replace function public.onboarding_salvar_passo(p_barraca_id uuid, p_etapa integer, p_dados jsonb default '{}'::jsonb)
+returns jsonb
+language plpgsql
+security definer
+set search_path = public, pg_temp
+as $$
+declare
+  d jsonb := coalesce(p_dados, '{}'::jsonb);
+  v_lista text[];
+  v_item jsonb;
+  v_dia integer;
+  v_aberto boolean;
+  v_abre time;
+  v_fecha time;
+  v_algum_aberto boolean := false;
+  v_concluido timestamptz;
+  v_comanda boolean;
+begin
+  if auth.uid() is null then
+    raise exception 'Não autenticado';
+  end if;
+  if not exists (
+    select 1 from public.usuarios_barracas where usuario_id = auth.uid() and barraca_id = p_barraca_id and papel = 'dono'
+  ) then
+    raise exception 'sem acesso a esta barraca';
+  end if;
+  if exists (select 1 from public.barracas where id = p_barraca_id and arquivada_em is not null) then
+    raise exception 'sem acesso a esta barraca'; -- barraca arquivada
+  end if;
+  if p_etapa is null or p_etapa not between 3 and 10 then
+    raise exception 'etapa_invalida';
+  end if;
+  if jsonb_typeof(d) <> 'object' then
+    raise exception 'dados_invalidos';
+  end if;
+
+  if p_etapa = 3 then
+    -- A barraca acabou de nascer: leva a categoria escolhida no passo 2 (que ficou no usuário).
+    update public.barracas b
+       set categoria_negocio = coalesce(b.categoria_negocio, (select p.categoria_negocio from public.perfis_usuario p where p.usuario_id = auth.uid()))
+     where b.id = p_barraca_id;
+
+  elsif p_etapa = 4 then
+    if d ? 'cnpj' and d->>'cnpj' is not null and d->>'cnpj' !~ '^[0-9]{14}$' then
+      raise exception 'cnpj_invalido';
+    end if;
+    update public.barracas set
+      cnpj = case when d ? 'cnpj' then nullif(d->>'cnpj', '') else cnpj end,
+      sem_cnpj = case when d ? 'sem_cnpj' then coalesce((d->>'sem_cnpj')::boolean, false) else sem_cnpj end,
+      emitente_razao_social = case when d ? 'razao_social' then nullif(left(btrim(d->>'razao_social'), 120), '') else emitente_razao_social end
+    where id = p_barraca_id;
+
+  elsif p_etapa = 5 then
+    update public.barracas set
+      endereco_cep = case when d ? 'cep' then nullif(regexp_replace(coalesce(d->>'cep', ''), '\D', '', 'g'), '') else endereco_cep end,
+      endereco_rua = case when d ? 'rua' then nullif(left(btrim(d->>'rua'), 120), '') else endereco_rua end,
+      endereco_numero = case when d ? 'numero' then nullif(left(btrim(d->>'numero'), 20), '') else endereco_numero end,
+      endereco_complemento = case when d ? 'complemento' then nullif(left(btrim(d->>'complemento'), 80), '') else endereco_complemento end,
+      endereco_bairro = case when d ? 'bairro' then nullif(left(btrim(d->>'bairro'), 80), '') else endereco_bairro end,
+      endereco_cidade = case when d ? 'cidade' then nullif(left(btrim(d->>'cidade'), 80), '') else endereco_cidade end,
+      endereco_uf = case when d ? 'uf' then nullif(upper(btrim(d->>'uf')), '') else endereco_uf end
+    where id = p_barraca_id;
+
+  elsif p_etapa = 6 then
+    if coalesce(jsonb_typeof(d->'horarios'), '') <> 'array' or jsonb_array_length(d->'horarios') not between 1 and 7 then
+      raise exception 'horarios_invalidos';
+    end if;
+    for v_item in select * from jsonb_array_elements(d->'horarios') loop
+      v_dia := (v_item->>'dia')::integer;
+      v_aberto := coalesce((v_item->>'aberto')::boolean, false);
+      if v_dia is null or v_dia not between 0 and 6 then
+        raise exception 'horarios_invalidos';
+      end if;
+      if v_aberto then
+        v_abre := (v_item->>'abre')::time;
+        v_fecha := (v_item->>'fecha')::time;
+        if v_abre is null or v_fecha is null then
+          raise exception 'horarios_invalidos';
+        end if;
+        v_algum_aberto := true;
+      else
+        v_abre := null;
+        v_fecha := null;
+      end if;
+      insert into public.horarios_funcionamento (barraca_id, dia_semana, aberto, hora_abertura, hora_fechamento)
+      values (p_barraca_id, v_dia, v_aberto, v_abre, v_fecha)
+      on conflict (barraca_id, dia_semana) do update
+        set aberto = excluded.aberto, hora_abertura = excluded.hora_abertura, hora_fechamento = excluded.hora_fechamento;
+    end loop;
+    -- Obrigatório: ao menos um dia aberto no conjunto final (não só neste envio).
+    if not exists (select 1 from public.horarios_funcionamento where barraca_id = p_barraca_id and aberto) then
+      raise exception 'horario_vazio';
+    end if;
+
+  elsif p_etapa = 7 then
+    if coalesce(jsonb_typeof(d->'metodos'), '') <> 'array' then
+      raise exception 'metodos_invalidos';
+    end if;
+    select coalesce(array_agg(distinct x), '{}') into v_lista from jsonb_array_elements_text(d->'metodos') x;
+    if cardinality(v_lista) < 1 or not (v_lista <@ array['dinheiro', 'debito', 'credito', 'pix']::text[]) then
+      raise exception 'metodos_invalidos';
+    end if;
+    update public.barracas set metodos_pagamento_ativos = to_jsonb(v_lista) where id = p_barraca_id;
+
+  elsif p_etapa = 8 then
+    if coalesce(jsonb_typeof(d->'modos'), '') <> 'array' then
+      raise exception 'modos_invalidos';
+    end if;
+    select coalesce(array_agg(distinct x), '{}') into v_lista from jsonb_array_elements_text(d->'modos') x;
+    if cardinality(v_lista) < 1 or not (v_lista <@ array['mesa', 'balcao', 'retirada', 'entrega']::text[]) then
+      raise exception 'modos_invalidos';
+    end if;
+    update public.barracas set modos_atendimento = v_lista where id = p_barraca_id;
+    -- Comanda aberta: só com a chave presente (sem resposta nada muda). Sem Mesa nunca liga; taxa só com comanda.
+    if d ? 'comanda_aberta_habilitada' then
+      v_comanda := coalesce((d->>'comanda_aberta_habilitada')::boolean, false) and 'mesa' = any(v_lista);
+      update public.barracas set
+        comanda_aberta_habilitada = v_comanda,
+        taxa_servico_habilitada = case when d ? 'taxa_servico_habilitada'
+          then coalesce((d->>'taxa_servico_habilitada')::boolean, false) and v_comanda
+          else taxa_servico_habilitada end
+      where id = p_barraca_id;
+    end if;
+
+  elsif p_etapa = 9 then
+    update public.barracas set
+      taxa_entrega_habilitada = case when d ? 'habilitada' then coalesce((d->>'habilitada')::boolean, false) else taxa_entrega_habilitada end,
+      taxa_entrega_centavos = case when d ? 'centavos' then least(greatest(coalesce((d->>'centavos')::integer, 0), 0), 99999999) else taxa_entrega_centavos end
+    where id = p_barraca_id;
+
+  elsif p_etapa = 10 then
+    -- Conclui só se os 4 obrigatórios estão de fato preenchidos (conferido no banco, não no cliente).
+    if not exists (select 1 from public.horarios_funcionamento where barraca_id = p_barraca_id and aberto)
+       or not exists (select 1 from public.barracas where id = p_barraca_id and jsonb_array_length(coalesce(metodos_pagamento_ativos, '[]'::jsonb)) >= 1 and cardinality(modos_atendimento) >= 1) then
+      raise exception 'obrigatorios_pendentes';
+    end if;
+    update public.barracas set onboarding_concluido_em = coalesce(onboarding_concluido_em, now()) where id = p_barraca_id;
+  end if;
+
+  update public.barracas set onboarding_etapa = greatest(onboarding_etapa, p_etapa::smallint) where id = p_barraca_id;
+  select onboarding_concluido_em into v_concluido from public.barracas where id = p_barraca_id;
+  return jsonb_build_object('etapa', p_etapa, 'concluido', v_concluido is not null);
+end;
+$$;
+
+-- onboarding_ocultar_checklist: base 20261020100000_onboarding_config.sql
+create or replace function public.onboarding_ocultar_checklist(p_barraca_id uuid) returns void
+language plpgsql
+security definer
+set search_path = public, pg_temp
+as $$
+begin
+  if auth.uid() is null then
+    raise exception 'Não autenticado';
+  end if;
+  update public.barracas set checklist_oculto_ate = now() + interval '7 days'
+   where id = p_barraca_id
+     and arquivada_em is null
+     and exists (select 1 from public.usuarios_barracas where usuario_id = auth.uid() and barraca_id = p_barraca_id and papel = 'dono');
+  if not found then
+    raise exception 'sem acesso a esta barraca';
+  end if;
+end;
+$$;
+
+-- whatsapp_avaliacao_salvar: base 20261103120000_modulos_consumidores.sql
+create or replace function public.whatsapp_avaliacao_salvar(p_barraca_id uuid, p_ativa boolean, p_texto text)
+returns jsonb
+language plpgsql
+security definer
+set search_path = public, pg_temp
+as $fn$
+begin
+  if auth.uid() is null then
+    return jsonb_build_object('estado', 'nao_autenticado');
+  end if;
+  -- Só o dono muda a mensagem que vai aos clientes da loja.
+  if not exists (
+    select 1 from public.usuarios_barracas
+     where barraca_id = p_barraca_id and usuario_id = auth.uid() and papel = 'dono'
+  ) then
+    return jsonb_build_object('estado', 'sem_acesso');
+  end if;
+  if exists (select 1 from public.barracas where id = p_barraca_id and arquivada_em is not null) then
+    return jsonb_build_object('estado', 'sem_acesso'); -- barraca arquivada
+  end if;
+  if not public.modulo_ativo(p_barraca_id, 'whatsapp_avisos') then
+    return jsonb_build_object('estado', 'modulo_desligado');
+  end if;
+  if p_ativa is null
+     or (p_texto is not null and (
+       btrim(p_texto) = ''
+       or char_length(p_texto) > 500
+       or exists (
+         select 1 from regexp_matches(p_texto, '\{[^{}]*\}', 'g') m
+          where m[1] not in ('{nome}', '{senha}', '{barraca}')
+       )
+     )) then
+    return jsonb_build_object('estado', 'dados_invalidos');
+  end if;
+  update public.barracas set avaliacao_ativa = p_ativa, avaliacao_texto = p_texto where id = p_barraca_id;
+  return jsonb_build_object('estado', 'ok');
+end;
+$fn$;
+
 -- ROLLBACK (rodar manualmente; só desfaz enquanto nenhuma barraca tiver sido apagada):
+-- Recriar as sete RPCs do dono acima a partir das bases citadas em cada uma (supabase/functions/apagar_barraca.sql,
+-- 20261023100000, 20261020120000, 20261021110000, 20261029120000, 20261020100000, 20261103120000).
 -- do $$ begin perform cron.unschedule('apagar-barracas-arquivadas'); exception when others then null; end $$;
 -- drop function if exists public.disparar_worker_apagar_barracas();
 -- drop function if exists public.apagar_dados_barraca(uuid);
