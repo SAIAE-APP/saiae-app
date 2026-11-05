@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react'
+import { useCallback, useEffect, useState } from 'react'
 import { supabase } from '../lib/supabase'
 import type { AdminAlertas, AdminBarraca, AdminResumo, AdminSaude, FiltroAdminBarracas, OrdemAdmin } from '../lib/adminBarracas'
 
@@ -29,7 +29,8 @@ export function useAdminBarracas(
   busca: string,
   ordem: OrdemAdmin,
 ) {
-  const chave = `${filtro}|${plano}|${pagina}|${busca}|${ordem}`
+  const [versao, setVersao] = useState(0)
+  const chave = `${filtro}|${plano}|${pagina}|${busca}|${ordem}|${versao}`
   // `chave` guarda para quais filtros o resultado vale; diferente da atual = ainda carregando.
   const [resultado, setResultado] = useState<{ chave: string; linhas: AdminBarraca[]; erro: string | null } | null>(null)
 
@@ -57,28 +58,35 @@ export function useAdminBarracas(
     }
   }, [chave, filtro, plano, pagina, busca, ordem])
 
+  const recarregar = useCallback(() => setVersao((v) => v + 1), [])
+
   const atual = resultado?.chave === chave ? resultado : null
   const linhas = atual?.linhas ?? resultado?.linhas ?? []
-  return { linhas, total: Number(linhas[0]?.total ?? 0), carregando: atual === null, erro: atual?.erro ?? null }
+  return { linhas, total: Number(linhas[0]?.total ?? 0), carregando: atual === null, erro: atual?.erro ?? null, recarregar }
 }
 
 /** Contagens por filtro (`admin_contar_filtros`); a chave 'todas' vale para o filtro nulo. */
 export function useAdminContagens(ativo: boolean) {
   const [contagens, setContagens] = useState<Record<string, number>>({})
+  const [erro, setErro] = useState(false)
+  const [versao, setVersao] = useState(0)
 
   useEffect(() => {
     if (!ativo) return
     let cancelado = false
     supabase.rpc('admin_contar_filtros').then(({ data, error }) => {
-      if (cancelado || error) return
+      if (cancelado) return
+      setErro(!!error)
+      if (error) return
       setContagens(Object.fromEntries(((data ?? []) as { filtro: string; total: number }[]).map((l) => [l.filtro, Number(l.total)])))
     })
     return () => {
       cancelado = true
     }
-  }, [ativo])
+  }, [ativo, versao])
 
-  return contagens
+  const recarregar = useCallback(() => setVersao((v) => v + 1), [])
+  return { contagens, erro, recarregar }
 }
 
 export function useAdminResumo(habilitado: boolean) {

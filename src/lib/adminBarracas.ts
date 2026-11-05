@@ -118,3 +118,43 @@ export function versaoMaisUsada(linhas: AdminSaude[]): string | null {
 export function quedaDePedidos(l: AdminSaude): boolean {
   return l.pedidos_semana_anterior >= 5 && l.pedidos_7d * 2 < l.pedidos_semana_anterior
 }
+
+/** Confirmação de arquivar: o nome digitado tem de ser igual ao da barraca (espaços nas pontas não contam). */
+export function nomeConfere(digitado: string, nome: string): boolean {
+  const d = digitado.trim()
+  return d !== '' && d === nome.trim()
+}
+
+export type AcaoAdmin = 'bloquear' | 'arquivar' | 'plano' | 'estender'
+
+/** Efeito da ação em português simples, mostrado no diálogo antes de confirmar. */
+export function textoEfeitoAcao(acao: AcaoAdmin, b: AdminBarraca): string {
+  switch (acao) {
+    case 'bloquear':
+      return `Bloquear a conta de "${b.nome}": o dono e funcionários perdem o acesso na hora. A cobrança do Stripe não é cancelada; se o cliente paga, continua pagando.`
+    case 'arquivar':
+      return `Arquivar "${b.nome}": a barraca some do app e do cardápio público. Dá para restaurar em até 30 dias; depois disso os dados são apagados.`
+    case 'plano':
+      return b.origem_cobranca === 'stripe'
+        ? 'Trocar o plano aqui muda só o acesso no Sai aê. Esta conta tem cobrança ativa no Stripe, que não é alterada: o valor cobrado continua o mesmo.'
+        : 'Trocar o plano muda na hora os recursos liberados para esta conta.'
+    case 'estender':
+      return 'Estender soma dias ao vencimento atual. Não altera a cobrança.'
+  }
+}
+
+/** Traduz erro das RPCs de ação em frase simples (nunca mostra o texto cru do banco). */
+export function mensagemErroAcao(e: { code?: string; message?: string } | null): string {
+  if (e?.code === '42501') return 'Você não tem permissão para esta ação.'
+  if (e?.code === '22023') {
+    const m = e.message ?? ''
+    if (m.includes('conta vencida')) return 'Conta vencida: estender não devolve o acesso. Reative a conta antes.'
+    if (m.includes('sem vencimento')) return 'Esta conta não tem vencimento para estender.'
+    if (m.includes('dias deve')) return 'Informe de 1 a 365 dias.'
+    if (m.includes('não confere')) return 'O nome digitado não confere com o nome da barraca.'
+    if (m.includes('30 dias')) return 'O prazo de 30 dias para restaurar esta barraca já passou.'
+    if (m.includes('sem assinatura')) return 'Esta conta não tem assinatura.'
+    return 'Não foi possível concluir: dados inválidos para esta conta.'
+  }
+  return 'Não foi possível concluir a ação. Tente de novo.'
+}

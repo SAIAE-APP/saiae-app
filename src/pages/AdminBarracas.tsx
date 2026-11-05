@@ -5,7 +5,8 @@ import { Button } from '../components/ui/Button'
 import { Card } from '../components/ui/Card'
 import { CabecalhoPagina } from '../components/ui/CabecalhoPagina'
 import { Chip } from '../components/ui/Chip'
-import { TAMANHO_PAGINA_ADMIN, useAdminAlertas, useAdminBarracas, useAdminResumo, useAdminSaude, useSouSuperadmin } from '../hooks/useAdminBarracas'
+import { AcoesBarraca } from '../components/admin/AcoesBarraca'
+import { TAMANHO_PAGINA_ADMIN, useAdminAlertas, useAdminBarracas, useAdminContagens, useAdminResumo, useAdminSaude, useSouSuperadmin } from '../hooks/useAdminBarracas'
 import {
   FILTROS_ADMIN,
   NOME_ESTADO_ADMIN,
@@ -151,7 +152,8 @@ export function AdminBarracas() {
   const [filtro, setFiltro] = useState<FiltroAdminBarracas | null>(null)
   const [plano, setPlano] = useState<'essencial' | 'pro' | null>(null)
   const [pagina, setPagina] = useState(0)
-  const { linhas, total, carregando, erro } = useAdminBarracas(filtro, plano, pagina, '', 'vencimento')
+  const { linhas, total, carregando, erro, recarregar } = useAdminBarracas(filtro, plano, pagina, '', 'vencimento')
+  const { erro: erroContagens, recarregar: recarregarContagens } = useAdminContagens(ehSuperadmin === true)
   const { resumo, erro: erroResumo } = useAdminResumo(ehSuperadmin === true)
   const { dados: alertas } = useAdminAlertas(ehSuperadmin === true)
   const { dados: saude } = useAdminSaude(ehSuperadmin === true)
@@ -205,6 +207,7 @@ export function AdminBarracas() {
         ))}
       </div>
 
+      {erroContagens && <p role="alert" className="text-mesa-text-secondary">Não foi possível carregar as contagens dos filtros.</p>}
       {erro && <p role="alert" className="text-mesa-text-secondary">{erro}</p>}
       {!erro && !carregando && linhas.length === 0 && (
         <p className="text-mesa-text-secondary">Nenhuma barraca neste filtro.</p>
@@ -221,7 +224,12 @@ export function AdminBarracas() {
                     /{b.slug} · {b.email_dono}
                   </p>
                 </div>
-                <Badge variant={VARIANTE_ESTADO_ADMIN[b.estado]}>{NOME_ESTADO_ADMIN[b.estado]}</Badge>
+                <div className="flex flex-wrap justify-end gap-1">
+                  <Badge variant={VARIANTE_ESTADO_ADMIN[b.estado]}>{NOME_ESTADO_ADMIN[b.estado]}</Badge>
+                  {b.bloqueada && <Badge variant="danger">Bloqueada</Badge>}
+                  {b.origem_plano === 'legado' && <Badge variant="neutral">Legado</Badge>}
+                  {b.arquivada_em && <Badge variant="warning">Arquivada</Badge>}
+                </div>
               </div>
               <dl className="grid grid-cols-2 gap-x-3 gap-y-1 text-sm text-mesa-text-secondary">
                 <dt>Plano</dt>
@@ -239,7 +247,17 @@ export function AdminBarracas() {
                 <dt>Último pagamento</dt>
                 <dd className="text-mesa-text-primary">{formatarData(b.ultimo_pagamento_em)}</dd>
               </dl>
-              <Button variant="outline" onClick={() => navigate(`/admin/barraca/${b.barraca_id}`)}>
+              {b.bloqueada && b.bloqueio_motivo && (
+                <p className="text-sm text-mesa-text-secondary">Motivo do bloqueio: {b.bloqueio_motivo}</p>
+              )}
+              <AcoesBarraca
+                barraca={b}
+                onConcluido={() => {
+                  recarregar()
+                  recarregarContagens()
+                }}
+              />
+              <Button variant="outline" className="min-h-11" onClick={() => navigate(`/admin/barraca/${b.barraca_id}`)}>
                 Abrir (somente leitura)
               </Button>
             </Card>

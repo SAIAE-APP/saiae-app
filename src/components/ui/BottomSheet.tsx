@@ -8,6 +8,9 @@ export interface BottomSheetProps {
   children: ReactNode
   className?: string
   'aria-label'?: string
+  'aria-labelledby'?: string
+  'aria-describedby'?: string
+  role?: 'dialog' | 'alertdialog'
 }
 
 const FOCUSABLE_SELECTOR =
@@ -53,10 +56,12 @@ export function BottomSheet({ open, onClose, children, className, ...rest }: Bot
 
     const previousOverflow = document.body.style.overflow
     document.body.style.overflow = 'hidden'
+    const anterior = document.activeElement as HTMLElement | null
     sheetRef.current?.focus()
 
     return () => {
       document.body.style.overflow = previousOverflow
+      if (anterior?.isConnected) anterior.focus()
     }
   }, [mounted])
 
@@ -115,9 +120,11 @@ export function BottomSheet({ open, onClose, children, className, ...rest }: Bot
       />
       <div
         ref={sheetRef}
-        role="dialog"
+        role={rest.role ?? 'dialog'}
         aria-modal="true"
         aria-label={rest['aria-label']}
+        aria-labelledby={rest['aria-labelledby']}
+        aria-describedby={rest['aria-describedby']}
         tabIndex={-1}
         className={clsx(
           'absolute inset-x-0 bottom-0 max-h-[90vh] overflow-y-auto rounded-t-mesa-2xl bg-mesa-surface px-6 pb-6 pt-3 shadow-mesa-3',
