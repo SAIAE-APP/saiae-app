@@ -29,7 +29,8 @@ Deno.serve(async (req) => {
       listarPasta: async (bucket, pasta, limite) => {
         const { data, error } = await supabase.storage.from(bucket).list(pasta, { limit: limite })
         if (error) throw new Error(error.message)
-        return (data ?? []).map((a) => a.name)
+        // Subpasta (ex.: banners/) vem sem id.
+        return (data ?? []).map((a) => ({ nome: a.name, pasta: a.id === null }))
       },
       removerArquivos: async (bucket, caminhos) => {
         const { error } = await supabase.storage.from(bucket).remove(caminhos)
