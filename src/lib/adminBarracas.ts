@@ -1,7 +1,8 @@
 import type { BadgeVariant } from '../components/ui/Badge'
 
 export type EstadoAdminBarraca = 'trial' | 'ativa' | 'vencida' | 'cancelada'
-export type FiltroAdminBarracas = 'vence_7d' | 'trial_acabando' | 'vencida'
+export type FiltroAdminBarracas = 'vence_7d' | 'trial_acabando' | 'vencida' | 'bloqueada' | 'legado' | 'arquivada'
+export type OrdemAdmin = 'vencimento' | 'nome' | 'atividade' | 'nova'
 
 /** Linha de `admin_listar_barracas` (migration 20261028100000). */
 export type AdminBarraca = {
@@ -18,6 +19,16 @@ export type AdminBarraca = {
   origem_cobranca: 'stripe' | null
   ultimo_pagamento_em: string | null
   total: number
+  usuario_id: string
+  bloqueada: boolean
+  bloqueio_motivo: string | null
+  origem_plano: 'legado' | 'trial' | 'pago' | null
+  arquivada_em: string | null
+  pedidos_7d: number
+  pedidos_semana_anterior: number
+  erros_24h: number
+  versao_app: string | null
+  plataforma: string | null
 }
 
 export const FILTROS_ADMIN: { valor: FiltroAdminBarracas | null; rotulo: string }[] = [
@@ -25,6 +36,9 @@ export const FILTROS_ADMIN: { valor: FiltroAdminBarracas | null; rotulo: string 
   { valor: 'vence_7d', rotulo: 'Vence em 7 dias' },
   { valor: 'trial_acabando', rotulo: 'Trial acabando' },
   { valor: 'vencida', rotulo: 'Vencidas' },
+  { valor: 'bloqueada', rotulo: 'Bloqueadas' },
+  { valor: 'legado', rotulo: 'Legado' },
+  { valor: 'arquivada', rotulo: 'Arquivadas' },
 ]
 
 export const NOME_ESTADO_ADMIN: Record<EstadoAdminBarraca, string> = {

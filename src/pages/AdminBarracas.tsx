@@ -151,7 +151,7 @@ export function AdminBarracas() {
   const [filtro, setFiltro] = useState<FiltroAdminBarracas | null>(null)
   const [plano, setPlano] = useState<'essencial' | 'pro' | null>(null)
   const [pagina, setPagina] = useState(0)
-  const { linhas, total, carregando, erro } = useAdminBarracas(filtro, plano, pagina)
+  const { linhas, total, carregando, erro } = useAdminBarracas(filtro, plano, pagina, '', 'vencimento')
   const { resumo, erro: erroResumo } = useAdminResumo(ehSuperadmin === true)
   const { dados: alertas } = useAdminAlertas(ehSuperadmin === true)
   const { dados: saude } = useAdminSaude(ehSuperadmin === true)
