@@ -1,5 +1,5 @@
 diff --git a/node_modules/@devlas/capacitor-thermal-printer/android/src/main/java/app/devlas/plugins/thermalprinter/BluetoothTransport.kt b/node_modules/@devlas/capacitor-thermal-printer/android/src/main/java/app/devlas/plugins/thermalprinter/BluetoothTransport.kt
-index 14f9f02..6787c24 100644
+index 14f9f02..3ac0006 100644
 --- a/node_modules/@devlas/capacitor-thermal-printer/android/src/main/java/app/devlas/plugins/thermalprinter/BluetoothTransport.kt
 +++ b/node_modules/@devlas/capacitor-thermal-printer/android/src/main/java/app/devlas/plugins/thermalprinter/BluetoothTransport.kt
 @@ -66,7 +66,7 @@ class BluetoothTransport(private val context: Context) {
@@ -11,6 +11,15 @@ index 14f9f02..6787c24 100644
              device.createRfcommSocketToServiceRecord(SPP_UUID).use { socket ->
                  socket.connect()
                  val out = socket.outputStream
+@@ -83,7 +83,7 @@ class BluetoothTransport(private val context: Context) {
+                 }
+             }
+         } catch (e: SecurityException) {
+-            throw PrinterException("permission_denied", "Sin permiso BLUETOOTH_CONNECT")
++            throw PrinterException("permission_denied", "Sin permiso BLUETOOTH_CONNECT (${e.message})")
+         } catch (e: IOException) {
+             throw PrinterException("connect_failed", "No se pudo consultar $address: ${e.message}")
+         }
 @@ -99,7 +99,7 @@ class BluetoothTransport(private val context: Context) {
              throw PrinterException("not_found", "Dirección Bluetooth inválida: $address")
          }
@@ -20,7 +29,14 @@ index 14f9f02..6787c24 100644
              device.createRfcommSocketToServiceRecord(SPP_UUID).use { socket ->
                  socket.connect()
                  val out = socket.outputStream
-@@ -121,3 +121,15 @@ class BluetoothTransport(private val context: Context) {
+@@ -115,9 +115,21 @@ class BluetoothTransport(private val context: Context) {
+                 Thread.sleep(minOf(2000L, bytes.size / 16L))
+             }
+         } catch (e: SecurityException) {
+-            throw PrinterException("permission_denied", "Sin permiso BLUETOOTH_CONNECT")
++            throw PrinterException("permission_denied", "Sin permiso BLUETOOTH_CONNECT (${e.message})")
+         } catch (e: IOException) {
+             throw PrinterException("connect_failed", "No se pudo imprimir en $address: ${e.message}")
          }
      }
  }
