@@ -1,7 +1,8 @@
 import type { BadgeVariant } from '../components/ui/Badge'
 
 export type EstadoAdminBarraca = 'trial' | 'ativa' | 'vencida' | 'cancelada'
-export type FiltroAdminBarracas = 'vence_7d' | 'trial_acabando' | 'vencida'
+export type FiltroAdminBarracas = 'vence_7d' | 'trial_acabando' | 'vencida' | 'bloqueada' | 'legado' | 'arquivada'
+export type OrdemAdmin = 'vencimento' | 'nome' | 'atividade' | 'nova'
 
 /** Linha de `admin_listar_barracas` (migration 20261028100000). */
 export type AdminBarraca = {
@@ -18,6 +19,16 @@ export type AdminBarraca = {
   origem_cobranca: 'stripe' | null
   ultimo_pagamento_em: string | null
   total: number
+  usuario_id: string
+  bloqueada: boolean
+  bloqueio_motivo: string | null
+  origem_plano: 'legado' | 'trial' | 'pago' | null
+  arquivada_em: string | null
+  pedidos_7d: number
+  pedidos_semana_anterior: number
+  erros_24h: number
+  versao_app: string | null
+  plataforma: string | null
 }
 
 export const FILTROS_ADMIN: { valor: FiltroAdminBarracas | null; rotulo: string }[] = [
@@ -25,6 +36,9 @@ export const FILTROS_ADMIN: { valor: FiltroAdminBarracas | null; rotulo: string 
   { valor: 'vence_7d', rotulo: 'Vence em 7 dias' },
   { valor: 'trial_acabando', rotulo: 'Trial acabando' },
   { valor: 'vencida', rotulo: 'Vencidas' },
+  { valor: 'bloqueada', rotulo: 'Bloqueadas' },
+  { valor: 'legado', rotulo: 'Legado' },
+  { valor: 'arquivada', rotulo: 'Arquivadas' },
 ]
 
 export const NOME_ESTADO_ADMIN: Record<EstadoAdminBarraca, string> = {
@@ -91,7 +105,7 @@ export function temAlerta(a: AdminAlertas): boolean {
 }
 
 /** Versão mais usada entre as barracas; quem está em outra está "desatualizada". */
-export function versaoMaisUsada(linhas: AdminSaude[]): string | null {
+export function versaoMaisUsada(linhas: { versao_app: string | null }[]): string | null {
   const contagem = new Map<string, number>()
   for (const l of linhas) if (l.versao_app) contagem.set(l.versao_app, (contagem.get(l.versao_app) ?? 0) + 1)
   let melhor: string | null = null
@@ -101,6 +115,75 @@ export function versaoMaisUsada(linhas: AdminSaude[]): string | null {
 }
 
 /** Semana atual com menos da metade dos pedidos da anterior (e a anterior com pelo menos 5). */
-export function quedaDePedidos(l: AdminSaude): boolean {
+export function quedaDePedidos(l: Pick<AdminSaude, 'pedidos_7d' | 'pedidos_semana_anterior'>): boolean {
   return l.pedidos_semana_anterior >= 5 && l.pedidos_7d * 2 < l.pedidos_semana_anterior
+}
+
+/** Confirmação de arquivar: o nome digitado tem de ser igual ao da barraca (espaços nas pontas não contam). */
+export function nomeConfere(digitado: string, nome: string): boolean {
+  const d = digitado.trim()
+  return d !== '' && d === nome.trim()
+}
+
+export type AcaoAdmin = 'bloquear' | 'arquivar' | 'plano' | 'estender'
+
+/** Efeito da ação em português simples, mostrado no diálogo antes de confirmar. */
+export function textoEfeitoAcao(acao: AcaoAdmin, b: AdminBarraca): string {
+  switch (acao) {
+    case 'bloquear':
+      return (
+        `Bloquear a conta de "${b.nome}": o dono e funcionários perdem o acesso na hora.` +
+        (b.origem_cobranca === 'stripe' ? ' A cobrança do Stripe não é cancelada; se o cliente paga, continua pagando.' : '')
+      )
+    case 'arquivar':
+      return `Arquivar "${b.nome}": a barraca some do app e do cardápio público. Dá para restaurar em até 30 dias; depois disso os dados são apagados.`
+    case 'plano':
+      return b.origem_cobranca === 'stripe'
+        ? 'Trocar o plano aqui muda só o acesso no Sai aê. Esta conta tem cobrança ativa no Stripe, que não é alterada: o valor cobrado continua o mesmo.'
+        : 'Trocar o plano muda na hora os recursos liberados para esta conta.'
+    case 'estender':
+      return 'Estender soma dias ao vencimento atual. Não altera a cobrança.'
+  }
+}
+
+/** Traduz erro das RPCs de ação em frase simples (nunca mostra o texto cru do banco). */
+export function mensagemErroAcao(e: { code?: string; message?: string } | null): string {
+  if (e?.code === '42501') return 'Você não tem permissão para esta ação.'
+  if (e?.code === '22023') {
+    const m = e.message ?? ''
+    if (m.includes('conta vencida')) return 'Conta vencida: estender não devolve o acesso. Reative a conta antes.'
+    if (m.includes('sem vencimento')) return 'Esta conta não tem vencimento para estender.'
+    if (m.includes('dias deve')) return 'Informe de 1 a 365 dias.'
+    if (m.includes('não confere')) return 'O nome digitado não confere com o nome da barraca.'
+    if (m.includes('30 dias')) return 'O prazo de 30 dias para restaurar esta barraca já passou.'
+    if (m.includes('sem assinatura')) return 'Esta conta não tem assinatura.'
+    return 'Não foi possível concluir: dados inválidos para esta conta.'
+  }
+  return 'Não foi possível concluir a ação. Tente de novo.'
+}
+
+/** Linha de `admin_listar_acoes` (migration 20261108100000). */
+export type AdminAcaoLog = {
+  id: string
+  admin_email: string | null
+  acao: string
+  alvo_tipo: string
+  alvo_id: string
+  detalhes: Record<string, unknown> | null
+  criado_em: string
+}
+
+const ROTULO_ACAO: Record<string, string> = {
+  bloquear_conta: 'Conta bloqueada',
+  desbloquear_conta: 'Conta desbloqueada',
+  definir_plano: 'Plano alterado',
+  estender_vencimento: 'Vencimento estendido',
+  arquivar_barraca: 'Barraca arquivada',
+  restaurar_barraca: 'Barraca restaurada',
+  apagar_barraca_definitivo: 'Barraca apagada definitivamente',
+}
+
+/** Rótulo em português da chave gravada no histórico; chave desconhecida volta como veio. */
+export function rotuloAcao(acao: string): string {
+  return Object.hasOwn(ROTULO_ACAO, acao) ? ROTULO_ACAO[acao] : acao
 }

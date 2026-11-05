@@ -400,6 +400,8 @@ export type AssinaturaBarraca = {
   /** `app_config.cobranca_ativa`. false = cobrança desligada (estado neutro active/pro).
    * Ausente em servidor/cache antigo: vale como ativa (`cobrancaAtiva`, src/lib/cobranca.ts). */
   cobranca_ativa?: boolean
+  /** Conta bloqueada pelo admin (tem_acesso=false). Ausente em cache antigo: vale como não bloqueada. */
+  bloqueada?: boolean
 }
 
 export type OfertaPublica = {

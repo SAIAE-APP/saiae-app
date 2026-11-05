@@ -1,6 +1,6 @@
-import { useEffect, useState } from 'react'
+import { useCallback, useEffect, useState } from 'react'
 import { supabase } from '../lib/supabase'
-import type { AdminAlertas, AdminBarraca, AdminResumo, AdminSaude, FiltroAdminBarracas } from '../lib/adminBarracas'
+import type { AdminAlertas, AdminBarraca, AdminResumo, AdminSaude, FiltroAdminBarracas, OrdemAdmin } from '../lib/adminBarracas'
 
 export const TAMANHO_PAGINA_ADMIN = 50
 
@@ -22,8 +22,15 @@ export function useSouSuperadmin() {
   return ehSuperadmin
 }
 
-export function useAdminBarracas(filtro: FiltroAdminBarracas | null, plano: 'essencial' | 'pro' | null, pagina: number) {
-  const chave = `${filtro}|${plano}|${pagina}`
+export function useAdminBarracas(
+  filtro: FiltroAdminBarracas | null,
+  plano: 'essencial' | 'pro' | null,
+  pagina: number,
+  busca: string,
+  ordem: OrdemAdmin,
+) {
+  const [versao, setVersao] = useState(0)
+  const chave = `${filtro}|${plano}|${pagina}|${busca}|${ordem}|${versao}`
   // `chave` guarda para quais filtros o resultado vale; diferente da atual = ainda carregando.
   const [resultado, setResultado] = useState<{ chave: string; linhas: AdminBarraca[]; erro: string | null } | null>(null)
 
@@ -35,6 +42,8 @@ export function useAdminBarracas(filtro: FiltroAdminBarracas | null, plano: 'ess
         p_plano: plano,
         p_limite: TAMANHO_PAGINA_ADMIN,
         p_offset: pagina * TAMANHO_PAGINA_ADMIN,
+        p_busca: busca.trim() || null,
+        p_ordem: ordem,
       })
       .then(({ data, error }) => {
         if (cancelado) return
@@ -47,15 +56,42 @@ export function useAdminBarracas(filtro: FiltroAdminBarracas | null, plano: 'ess
     return () => {
       cancelado = true
     }
-  }, [chave, filtro, plano, pagina])
+  }, [chave, filtro, plano, pagina, busca, ordem])
+
+  const recarregar = useCallback(() => setVersao((v) => v + 1), [])
 
   const atual = resultado?.chave === chave ? resultado : null
   const linhas = atual?.linhas ?? resultado?.linhas ?? []
-  return { linhas, total: Number(linhas[0]?.total ?? 0), carregando: atual === null, erro: atual?.erro ?? null }
+  return { linhas, total: Number(linhas[0]?.total ?? 0), carregando: atual === null, erro: atual?.erro ?? null, recarregar }
+}
+
+/** Contagens por filtro (`admin_contar_filtros`); a chave 'todas' vale para o filtro nulo. */
+export function useAdminContagens(ativo: boolean) {
+  const [contagens, setContagens] = useState<Record<string, number>>({})
+  const [erro, setErro] = useState(false)
+  const [versao, setVersao] = useState(0)
+
+  useEffect(() => {
+    if (!ativo) return
+    let cancelado = false
+    supabase.rpc('admin_contar_filtros').then(({ data, error }) => {
+      if (cancelado) return
+      setErro(!!error)
+      if (error) return
+      setContagens(Object.fromEntries(((data ?? []) as { filtro: string; total: number }[]).map((l) => [l.filtro, Number(l.total)])))
+    })
+    return () => {
+      cancelado = true
+    }
+  }, [ativo, versao])
+
+  const recarregar = useCallback(() => setVersao((v) => v + 1), [])
+  return { contagens, erro, recarregar }
 }
 
 export function useAdminResumo(habilitado: boolean) {
   const [estado, setEstado] = useState<{ resumo: AdminResumo | null; erro: boolean } | null>(null)
+  const [versao, setVersao] = useState(0)
 
   useEffect(() => {
     if (!habilitado) return
@@ -66,9 +102,10 @@ export function useAdminResumo(habilitado: boolean) {
     return () => {
       cancelado = true
     }
-  }, [habilitado])
+  }, [habilitado, versao])
 
-  return { resumo: estado?.resumo ?? null, erro: estado?.erro ?? false, carregando: habilitado && estado === null }
+  const recarregar = useCallback(() => setVersao((v) => v + 1), [])
+  return { resumo: estado?.resumo ?? null, erro: estado?.erro ?? false, carregando: habilitado && estado === null, recarregar }
 }
 
 /** Uma chamada de painel (alertas, saúde): resultado ou erro, sem refazer a cada render. */

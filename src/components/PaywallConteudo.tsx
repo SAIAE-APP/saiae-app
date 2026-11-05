@@ -2,7 +2,7 @@ import { useState } from 'react'
 import clsx from 'clsx'
 import { Button } from './ui/Button'
 import { Icone } from './ui/Icone'
-import { PLANOS, formatarPreco, linkAssinar } from '../lib/planos'
+import { PLANOS, formatarPreco, linkAssinar, textoContaBloqueada } from '../lib/planos'
 import { textoTempoRestante } from '../lib/tempoTrial'
 import type { AssinaturaBarraca } from '../types/database'
 
@@ -25,6 +25,17 @@ export function PaywallConteudo({
   layout?: 'sheet' | 'page'
 }) {
   const [ciclo, setCiclo] = useState<Ciclo>('mensal')
+
+  const textoBloqueio = assinatura ? textoContaBloqueada(assinatura) : null
+  if (textoBloqueio) {
+    // Bloqueada pelo admin: sem planos, sem botão de assinar, sem link de checkout.
+    return (
+      <div role="status" className={clsx('text-center', layout === 'page' && 'md:mx-auto md:max-w-lg')}>
+        <h2 className="text-2xl font-bold leading-[32px] text-mesa-text-primary">Conta bloqueada</h2>
+        <p className="mt-1 text-sm text-mesa-text-secondary">{textoBloqueio}</p>
+      </div>
+    )
+  }
 
   const emTrial = assinatura?.status === 'trialing'
   const tempoRestante = emTrial ? textoTempoRestante(assinatura.trial_ends_at) : null

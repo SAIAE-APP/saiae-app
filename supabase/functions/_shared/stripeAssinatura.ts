@@ -84,12 +84,17 @@ async function criarCheckoutInterno(req: Request, deps: DepsAssinatura): Promise
 
   const { data: assinatura, error: erroAssinatura } = await supabase
     .from('assinaturas')
-    .select('status, stripe_subscription_id, stripe_customer_id, trial_ends_at')
+    .select('status, stripe_subscription_id, stripe_customer_id, trial_ends_at, bloqueada_admin')
     .eq('usuario_id', usuario.id)
     .maybeSingle()
   if (erroAssinatura) {
     console.error('criar-checkout-stripe: leitura da assinatura', erroAssinatura.message)
     return json({ erro: MSG_CHECKOUT_FALHA }, 500)
+  }
+
+  // Conta bloqueada pelo admin não pode abrir cobrança nova.
+  if (assinatura?.bloqueada_admin) {
+    return json({ erro: 'Sua conta está bloqueada. Fale com o suporte do Sai aê.' }, 403)
   }
 
   // Segunda assinatura = cobrança em dobro (e o webhook sobrescreveria o vínculo, deixando a antiga cobrando órfã).
