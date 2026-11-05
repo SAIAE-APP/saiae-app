@@ -95,7 +95,7 @@ const iso = (ms: number) => new Date(ms).toISOString()
 
 beforeEach(() => {
   banco = new Banco()
-  banco.assinaturas = [{ usuario_id: 'u1', status: 'expired', stripe_subscription_id: null, stripe_customer_id: null, trial_ends_at: null, stripe_evento_em: null }]
+  banco.assinaturas = [{ usuario_id: 'u1', status: 'expired', stripe_subscription_id: null, stripe_customer_id: null, trial_ends_at: null, stripe_evento_em: null, bloqueada_admin: false }]
   chamadas = []
   rotas = { 'POST checkout/sessions': { status: 200, corpo: { url: 'https://checkout.stripe.com/c/abc' } } }
 })
@@ -104,6 +104,18 @@ describe('criar-checkout-stripe — não cobra em dobro', () => {
   test('sem JWT válido: 401', async () => {
     const r = await tratarCriarCheckout(requisicao({ plano: 'pro', ciclo: 'mensal' }, undefined, false), deps())
     assert.equal(r.status, 401)
+  })
+
+  test('conta bloqueada pelo admin: 403 e NENHUMA chamada à Stripe; não bloqueada segue o fluxo normal', async () => {
+    banco.assinaturas[0].bloqueada_admin = true
+    const r = await tratarCriarCheckout(requisicao({ plano: 'pro', ciclo: 'mensal' }), deps())
+    assert.equal(r.status, 403)
+    assert.match((await r.json()).erro, /conta está bloqueada/)
+    assert.equal(chamadas.length, 0)
+    banco.assinaturas[0].bloqueada_admin = false
+    const ok = await tratarCriarCheckout(requisicao({ plano: 'pro', ciclo: 'mensal' }), deps())
+    assert.equal(ok.status, 200)
+    assert.ok(sessaoCriada())
   })
 
   test('assinatura ativa ou em atraso: 409 em português e NENHUMA sessão criada', async () => {
