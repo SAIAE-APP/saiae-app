@@ -15,9 +15,10 @@ import { ThermalPrinter, bytesToBase64, type PrinterDevice } from '@devlas/capac
 import ReceiptPrinterEncoder from '@point-of-sale/receipt-printer-encoder'
 import type { Barraca, LarguraPapel, PedidoComItens, TipoAtendimento } from '../types/database'
 import { faixaImpressao, tipoDoPedido } from './atendimento'
+import { textoBarraComanda } from './comandaAberta'
 import { formatarTelefoneBR, type DadosEntrega } from './entrega'
 import { formatarPrecoBR } from './preco'
-import { humanizarMetodo } from './metodoPagamento'
+import { humanizarMetodo, humanizarMetodoDoPedido } from './metodoPagamento'
 import { linhaPagamentoAReceber } from './pagarDepois'
 import { AVISO_HOMOLOGACAO, ambienteDaNota, formatarCpf } from './fiscal'
 import { linhasRodapeProcon } from './rodapeProcon'
@@ -181,10 +182,10 @@ export function montarCupomFiscal({ barraca, pedido }: DadosCupomFiscal, largura
 
   const colunas = COLUNAS_POR_LARGURA[largura]
   const itensValidos = pedido.itens_do_pedido.filter((item) => !item.removido)
-  const totalCentavos = itensValidos.reduce(
-    (soma, item) => soma + item.preco_centavos_unitario * item.quantidade,
-    0,
-  )
+  // Parte da taxa de serviço que foi na nota (interruptor nfce_incluir_taxas); NULL/0 = cupom igual ao de sempre.
+  const taxaServicoCentavos = Math.max(0, pedido.nfce_taxa_servico_centavos ?? 0)
+  const totalCentavos =
+    itensValidos.reduce((soma, item) => soma + item.preco_centavos_unitario * item.quantidade, 0) + taxaServicoCentavos
   const labelRegime = labelRegimeTributario(barraca.fiscal_regime_tributario)
   // Nota de homologação não tem valor fiscal: o aviso sai no topo e antes do corte.
   const homologacao = ambienteDaNota(pedido.nfce_ambiente, barraca.fiscal_ambiente) === 'homologacao'
@@ -226,6 +227,13 @@ export function montarCupomFiscal({ barraca, pedido }: DadosCupomFiscal, largura
           formatarPrecoBR(item.preco_centavos_unitario * item.quantidade),
         ],
       ],
+    )
+  }
+
+  if (taxaServicoCentavos > 0) {
+    encoder = encoder.table(
+      [{ width: colunas - 10 }, { width: 10, align: 'right' }],
+      [['Taxa de servico', formatarPrecoBR(taxaServicoCentavos)]],
     )
   }
 
@@ -317,6 +325,8 @@ export type DadosComanda = {
   senha: number | null
   criadoEm: string
   mesa: string | null
+  /** Rodada de comanda aberta: a barra do topo mostra a mesa ("MESA 2") e a senha vai numa linha pequena. */
+  comandaMesa?: boolean
   /** Nome do cliente (opcional, qualquer modo). Na Entrega já sai em "ENTREGAR PARA". */
   clienteNome?: string | null
   viagem: boolean
@@ -354,7 +364,7 @@ export function montarComanda(dados: DadosComanda, largura: LarguraPapel): Uint8
   // Linhas de espaço acima/abaixo (altura normal) dão corpo à barra.
   const colunasBarra = colunas / 4
   const espacosBarra = ' '.repeat(colunasBarra)
-  const senhaTexto = dados.senha !== null ? String(dados.senha).padStart(3, '0') : '---'
+  const { barra: senhaTexto, senhaNumero, comMesa: barraComMesa } = textoBarraComanda(dados, colunasBarra)
 
   let encoder = novoEncoder(colunas)
     .align('left')
@@ -370,8 +380,10 @@ export function montarComanda(dados: DadosComanda, largura: LarguraPapel): Uint8
     .newline()
     .align('center')
 
-  // Retirada x Entrega em destaque logo abaixo da senha: 2x de largura e
-  // altura, "*** RETIRADA ***" (16 colunas) ainda cabe nas 32 do papel 58mm.
+  if (barraComMesa) encoder = encoder.bold(true).line(`SENHA ${senhaNumero}`).bold(false)
+
+  // Para viagem x Entrega em destaque logo abaixo da senha: 2x de largura e
+  // altura, "*** PARA VIAGEM ***" (19 colunas) perde os asteriscos nas 16 do 58mm.
   const tipo = dados.tipo ?? tipoDoPedido({ tipo_atendimento: null, mesa: dados.mesa, viagem: dados.viagem })
   // Mesa e Balcão também (pedido do cliente): "*** MESA 12 ***" no mesmo 2x. Cabe em colunas/2 (16 ou 24).
   const faixa = faixaImpressao(tipo, { mesa: dados.mesa, colunasFaixa: Math.floor(colunas / 2) })
@@ -437,7 +449,8 @@ export function montarComanda(dados: DadosComanda, largura: LarguraPapel): Uint8
   if (aReceber) {
     encoder = encoder.bold(true).line(aReceber).bold(false)
   } else if (dados.metodoPagamento) {
-    encoder = encoder.line(semAcento(`Pagamento: ${humanizarMetodo(dados.metodoPagamento)}`))
+    // Mesa com 'na_entrega' só existe como rodada de comanda aberta: sai "Comanda aberta".
+    encoder = encoder.line(semAcento(`Pagamento: ${humanizarMetodoDoPedido(dados.metodoPagamento, tipo === 'mesa')}`))
   }
 
   // PROCON: a autuação exige o 151 e a sede em tudo que é entregue ao consumidor.

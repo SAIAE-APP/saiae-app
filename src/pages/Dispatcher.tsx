@@ -4,6 +4,7 @@ import { useAuth } from '../hooks/useAuth'
 import { useBarracasDoUsuario } from '../hooks/useBarracasDoUsuario'
 import { Button } from '../components/ui/Button'
 import { onboardingJaVisto } from '../lib/onboardingStorage'
+import { ehAppIOS } from '../lib/plataforma'
 import { onboardingConfigHabilitado } from '../lib/onboardingConfig'
 import { assistenteSuspenso, registrarSalto } from '../lib/disjuntorAssistente'
 import { useOnboardingPendente } from '../hooks/useOnboardingPendente'
@@ -35,10 +36,13 @@ export function Dispatcher() {
     if (carregandoOnboarding) return
 
     if (onboardingPendente) {
-      registrarSalto()
-      if (!assistenteSuspenso()) {
-        navigate('/configurar', { replace: true })
-        return
+      // iOS: o assistente cria a barraca, e criar conta de empresa no app é vetado pela Apple (3.1.1).
+      if (!ehAppIOS()) {
+        registrarSalto()
+        if (!assistenteSuspenso()) {
+          navigate('/configurar', { replace: true })
+          return
+        }
       }
     }
 

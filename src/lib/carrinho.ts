@@ -46,6 +46,10 @@ export type EstadoParaConfirmar = {
   clienteNome?: string
   /** WhatsApp opcional (só pra avisar "pedido pronto"). */
   clienteTelefone?: string
+  /** O cliente aceitou promoções por WhatsApp (marca do operador em Confirmar Pedido). */
+  aceitaPromocoes?: boolean
+  /** Mesa travada de uma comanda aberta (vem de Mesas > Adicionar item); volta intacta em "Voltar e editar". */
+  comandaMesa?: string
 }
 
 /** ConfirmarPedido → LancarPedido, ao clicar "Voltar e editar". */
@@ -62,6 +66,9 @@ export type EstadoParaEditar = {
   entrega?: DadosEntrega
   clienteNome?: string
   clienteTelefone?: string
+  /** O cliente aceitou promoções por WhatsApp (marca do operador em Confirmar Pedido). */
+  aceitaPromocoes?: boolean
+  comandaMesa?: string
 }
 
 /** ConfirmarPedido → LancarPedido, depois de enviar com sucesso — LancarPedido
@@ -75,6 +82,8 @@ export type EstadoPedidoEnviado = {
     valor: number | null
     idFila: string
     entregaDireta: boolean
+    /** Pedido de Mesa com comanda aberta: a tela de confirmação mostra a mesa e atalhos para a comanda. */
+    comandaMesa?: string
     /** Só em pedido de Entrega: base da mensagem do botão "Chamar entregador" (a senha entra depois). */
     entrega?: Omit<DadosMensagemEntrega, 'senha'>
   }

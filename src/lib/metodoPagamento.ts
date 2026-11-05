@@ -31,6 +31,12 @@ export function humanizarMetodo(chave: string | null): string {
   return METODOS_DISPONIVEIS.find((m) => m.chave === chave)?.label ?? 'Método não informado'
 }
 
+/** Método de UM pedido. Rodada de comanda aberta da Mesa também fica 'na_entrega' até a comanda fechar, mas não é
+ * "a definir na entrega": mostra "Comanda aberta". */
+export function humanizarMetodoDoPedido(chave: string | null, daComanda: boolean): string {
+  return daComanda && chave === METODO_NA_ENTREGA ? 'Comanda aberta' : humanizarMetodo(chave)
+}
+
 // Cores por método vêm de tokens dedicados (mesa-payment-*, ver
 // tokens.css) — categóricas, não confundir com as semânticas
 // (sucesso/erro/aviso) nem com o semáforo operacional do kanban.

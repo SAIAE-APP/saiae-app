@@ -1,7 +1,9 @@
 import { useEffect, useState, type ReactNode } from 'react'
 import { supabase } from '../lib/supabase'
 import { formatarPrecoBR, reaisParaCentavos } from '../lib/preco'
-import { calcularTotalPedido } from '../lib/relatorio'
+import { calcularTotalPedido, pedidosDinheiroDoCaixa, somarTaxasServico } from '../lib/relatorio'
+import { buscarComandasFechadas, buscarPedidosDeComandas } from '../lib/comandasPeriodo'
+import { comandaAbertaLigada } from '../lib/comandaAberta'
 import { hojeISO } from '../lib/datas'
 import { Button } from './ui/Button'
 import { Input } from './ui/Input'
@@ -164,7 +166,7 @@ function SheetValorEMotivo({
   )
 }
 
-function ResumoFechamento({ caixa }: { caixa: Caixa }) {
+function ResumoFechamento({ caixa, taxaServicoCentavos }: { caixa: Caixa; taxaServicoCentavos: number }) {
   if (caixa.diferenca_centavos === null) return null
 
   const sobrou = caixa.diferenca_centavos > 0
@@ -176,6 +178,11 @@ function ResumoFechamento({ caixa }: { caixa: Caixa }) {
         Esperado {formatarPrecoBR(caixa.valor_esperado_centavos ?? 0)} · Contado{' '}
         {formatarPrecoBR(caixa.valor_fechamento_centavos ?? 0)}
       </p>
+      {taxaServicoCentavos > 0 && (
+        <p className="mt-1 text-xs text-mesa-text-tertiary">
+          Esperado inclui taxa de serviço em dinheiro ({formatarPrecoBR(taxaServicoCentavos)}).
+        </p>
+      )}
       <p
         className={
           sobrou
@@ -204,6 +211,8 @@ export function SecaoCaixa({ barraca }: { barraca: Barraca }) {
   const [carregando, setCarregando] = useState(true)
   const [sheetMovimento, setSheetMovimento] = useState<TipoMovimentoCaixa | null>(null)
   const [sheetFechar, setSheetFechar] = useState(false)
+  // Taxa de serviço em dinheiro que entrou no esperado do último fechamento feito nesta tela (não persiste).
+  const [taxaServicoFechada, setTaxaServicoFechada] = useState(0)
 
   useEffect(() => {
     let cancelado = false
@@ -305,10 +314,29 @@ export function SecaoCaixa({ barraca }: { barraca: Barraca }) {
 
     if (erroPedidos) return false
 
-    const totalDinheiro = ((pedidos ?? []) as PedidoComItens[]).reduce(
-      (soma, pedido) => soma + calcularTotalPedido(pedido),
-      0,
-    )
+    const pedidosPorCriacao = (pedidos ?? []) as PedidoComItens[]
+    let totalDinheiro = pedidosPorCriacao.reduce((soma, pedido) => soma + calcularTotalPedido(pedido), 0)
+    // Taxa de serviço de comanda fechada em dinheiro dentro do turno (fechada_em desde a abertura até agora)
+    // entrou na gaveta. Só consulta com o interruptor ligado ou com pedido de comanda no turno; débito, crédito
+    // e Pix nunca entram no dinheiro esperado.
+    let taxaServicoDinheiro = 0
+    if (comandaAbertaLigada(barraca) || ((pedidos ?? []) as PedidoComItens[]).some((p) => p.comanda_id)) {
+      const de = new Date(caixa.aberto_em)
+      const ate = new Date()
+      try {
+        const comandas = await buscarComandasFechadas(barraca.id, de, ate, 'dinheiro')
+        taxaServicoDinheiro = somarTaxasServico(comandas, de, ate).porMetodo.dinheiro ?? 0
+        // Rodadas criadas ANTES da abertura de comanda fechada em dinheiro neste turno: o dinheiro só entrou ao
+        // fechar. Soma junto, sem repetir as já contadas por criado_em (dedupe por id no helper).
+        const dasComandas = await buscarPedidosDeComandas(barraca.id, comandas.map((c) => c.id))
+        totalDinheiro = pedidosDinheiroDoCaixa([...pedidosPorCriacao, ...dasComandas], comandas, de, ate).reduce(
+          (soma, pedido) => soma + calcularTotalPedido(pedido),
+          0,
+        )
+      } catch {
+        return false // sem a taxa o esperado sairia errado: não fecha com número errado
+      }
+    }
     const totalSuprimento = movimentos
       .filter((m) => m.tipo === 'suprimento')
       .reduce((soma, m) => soma + m.valor_centavos, 0)
@@ -316,7 +344,7 @@ export function SecaoCaixa({ barraca }: { barraca: Barraca }) {
       .filter((m) => m.tipo === 'sangria')
       .reduce((soma, m) => soma + m.valor_centavos, 0)
 
-    const valorEsperado = caixa.valor_abertura_centavos + totalDinheiro + totalSuprimento - totalSangria
+    const valorEsperado = caixa.valor_abertura_centavos + totalDinheiro + taxaServicoDinheiro + totalSuprimento - totalSangria
     const diferenca = valorContadoCentavos - valorEsperado
 
     const { data, error } = await supabase
@@ -335,6 +363,7 @@ export function SecaoCaixa({ barraca }: { barraca: Barraca }) {
 
     if (error || !data) return false
     setCaixa(data as Caixa)
+    setTaxaServicoFechada(taxaServicoDinheiro)
     setSheetFechar(false)
     return true
   }
@@ -349,7 +378,7 @@ export function SecaoCaixa({ barraca }: { barraca: Barraca }) {
 
       {caixa && !caixaAberto && (
         <div className="mt-3">
-          <ResumoFechamento caixa={caixa} />
+          <ResumoFechamento caixa={caixa} taxaServicoCentavos={taxaServicoFechada} />
           <div className="mt-3">
             <FormularioAbrirCaixa onAbrir={abrirCaixa} />
           </div>

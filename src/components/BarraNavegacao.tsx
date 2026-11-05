@@ -3,15 +3,17 @@ import clsx from 'clsx'
 import { Icone } from './ui/Icone'
 import { useBarracaAtual } from '../layouts/contextoBarraca'
 import { usePedidosAtual } from '../layouts/contextoPedidos'
+import { comandaAbertaLigada } from '../lib/comandaAberta'
 
 // Ícones da barra inferior: mesmo conjunto que a IDV Sai aê especifica
 // pra navegação principal (receipt_long/skillet/campaign/bar_chart) —
 // ver redesign_ux_ui_app/saiae/DESIGN.md.
-const ITENS: { rotulo: string; rota: string; icone: string; ocultoNoCelular?: boolean }[] = [
+const ITENS: { rotulo: string; rota: string; icone: string; ocultoNoCelular?: boolean; soComComanda?: boolean }[] = [
   { rotulo: 'Lançar', rota: 'lancar', icone: 'receipt_long' },
   { rotulo: 'Cozinha', rota: 'cozinha', icone: 'skillet' },
   // Com 6 itens a barra não cabe em 360px: no celular, Chamada fica só no
   // card do Dashboard (decisão do dono, depois do Sprint 2).
+  { rotulo: 'Mesas', rota: 'mesas', icone: 'table_restaurant', soComComanda: true },
   { rotulo: 'Chamada', rota: 'chamada', icone: 'campaign', ocultoNoCelular: true },
   { rotulo: 'Histórico', rota: 'historico', icone: 'bar_chart' },
   // Faturamento abre no celular também (Sprint 2), atrás do GateSenhaAdmin.
@@ -22,6 +24,7 @@ const ITENS: { rotulo: string; rota: string; icone: string; ocultoNoCelular?: bo
 export function BarraNavegacao() {
   const barraca = useBarracaAtual()
   const { contagemAFazer } = usePedidosAtual()
+  const comanda = comandaAbertaLigada(barraca)
 
   return (
     <nav
@@ -30,7 +33,7 @@ export function BarraNavegacao() {
         'bg-white/85 dark:bg-mesa-neutral-800/85 shadow-mesa-nav-top',
       )}
     >
-      {ITENS.map((item) => {
+      {ITENS.filter((item) => comanda || !item.soComComanda).map((item) => {
         const mostrarBadge = item.rota === 'cozinha' && contagemAFazer > 0
 
         return (
@@ -40,7 +43,9 @@ export function BarraNavegacao() {
             className={({ isActive }) =>
               clsx(
                 'min-h-11 flex-1 flex-col items-center justify-center gap-0.5',
-                item.ocultoNoCelular ? 'hidden sm:flex' : 'flex',
+                // Com a comanda ligada entra "Mesas" e Faturamento sai da barra do celular (continua no Hub e no desktop):
+                // 6 itens não cabem em 360px.
+                item.ocultoNoCelular || (comanda && item.rota === 'desktop') ? 'hidden sm:flex' : 'flex',
                 'transition-colors duration-[var(--mesa-duration-micro)]',
                 // Tinta pro estado ativo, não mostarda — a cor de marca
                 // não pode vazar pra dentro da tela da Cozinha, e essa

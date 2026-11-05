@@ -5,6 +5,7 @@ import { Button } from '../components/ui/Button'
 import { Icone } from '../components/ui/Icone'
 
 import { marcarOnboardingVisto } from '../lib/onboardingStorage'
+import { ehAppIOS } from '../lib/plataforma'
 
 const TOTAL_SLIDES = 4
 const ULTIMO_SLIDE = TOTAL_SLIDES - 1
@@ -25,11 +26,18 @@ function CardMockup({ children, legenda }: { children: React.ReactNode; legenda:
 function SlideBoasVindas() {
   return (
     <div className="relative aspect-[4/5] max-h-full w-full max-w-[320px] overflow-hidden rounded-[28px_28px_28px_8px] bg-mesa-neutral-800">
-      <img
-        src="/onboarding/feirante.webp"
-        alt="Dona de barraca de feira sorrindo com o celular na mão"
-        className="size-full object-cover object-[60%_20%]"
-      />
+      {/* No iOS sem a foto (celular Android, diretriz 2.3.10 da Apple): painel mostarda com o ícone. */}
+      {ehAppIOS() ? (
+        <div className="flex size-full items-center justify-center bg-mesa-orange-500">
+          <img src="/brand/saiae-icone-solido.svg" alt="" className="size-32" />
+        </div>
+      ) : (
+        <img
+          src="/onboarding/feirante.webp"
+          alt="Dona de barraca de feira sorrindo com o celular na mão"
+          className="size-full object-cover object-[60%_20%]"
+        />
+      )}
       <div className="absolute inset-0 bg-gradient-to-b from-transparent via-transparent to-mesa-neutral-900/85" />
       <div className="absolute bottom-3.5 left-3.5 inline-flex items-center gap-2 rounded-mesa-balao bg-white px-3.5 py-2.5 text-[15px] font-bold text-mesa-neutral-900 shadow-mesa-2">
         <Icone nome="check_circle" size={20} preenchido className="text-mesa-success-500" />
@@ -246,7 +254,7 @@ export function Onboarding() {
 
   function aoClicarProximo() {
     if (noUltimo) {
-      navigate('/cadastro')
+      navigate(ehAppIOS() ? '/login' : '/cadastro')
       return
     }
     irPara(atual + 1)
@@ -320,11 +328,11 @@ export function Onboarding() {
         </div>
 
         <Button size="xl" onClick={aoClicarProximo} className="w-full shadow-[0_12px_28px_-8px_rgba(255,194,26,.55)]">
-          {noUltimo ? 'Criar conta grátis' : 'Próximo'}
+          {noUltimo ? (ehAppIOS() ? 'Entrar' : 'Criar conta grátis') : 'Próximo'}
           <Icone nome="arrow_forward" size={20} />
         </Button>
 
-        {noUltimo && (
+        {noUltimo && !ehAppIOS() && (
           <button
             type="button"
             onClick={() => navigate('/login')}

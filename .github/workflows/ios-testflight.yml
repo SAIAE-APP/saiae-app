@@ -65,6 +65,15 @@ jobs:
           # Só o cabeçalho e o nº de linhas, nunca o conteúdo.
           echo "Formato da chave: $(head -1 "$RUNNER_TEMP/asc/AuthKey_$ASC_KEY_ID.p8"), $(wc -l < "$RUNNER_TEMP/asc/AuthKey_$ASC_KEY_ID.p8") linhas"
 
+      # O archive com assinatura automática cria um certificado "Apple Development" novo a cada
+      # build (o Mac do GitHub começa vazio) e a Apple limita a quantidade. Anota os que já
+      # existem para revogar só os criados por este build, no fim (scripts/certificados-asc.mjs).
+      - name: Anotar certificados existentes
+        env:
+          ASC_KEY_ID: ${{ secrets.ASC_KEY_ID }}
+          ASC_ISSUER_ID: ${{ secrets.ASC_ISSUER_ID }}
+        run: ASC_KEY_PATH="$RUNNER_TEMP/asc/AuthKey_$ASC_KEY_ID.p8" node scripts/certificados-asc.mjs listar > "$RUNNER_TEMP/certificados-antes.txt"
+
       - name: Archive
         working-directory: ios/App
         env:
@@ -123,6 +132,16 @@ jobs:
           BUILD=$(/usr/libexec/PlistBuddy -c 'Print :CFBundleVersion' "$PLIST")
           ASC_KEY_PATH="$RUNNER_TEMP/asc/AuthKey_$ASC_KEY_ID.p8" \
             node scripts/enviar-build-asc.mjs "$(ls "$RUNNER_TEMP"/export/*.ipa | head -1)" "$VERSAO" "$BUILD"
+
+      - name: Revogar certificados criados por este build
+        if: always()
+        env:
+          ASC_KEY_ID: ${{ secrets.ASC_KEY_ID }}
+          ASC_ISSUER_ID: ${{ secrets.ASC_ISSUER_ID }}
+        run: |
+          if [ -f "$RUNNER_TEMP/asc/AuthKey_$ASC_KEY_ID.p8" ] && [ -f "$RUNNER_TEMP/certificados-antes.txt" ]; then
+            ASC_KEY_PATH="$RUNNER_TEMP/asc/AuthKey_$ASC_KEY_ID.p8" node scripts/certificados-asc.mjs revogar-novos "$RUNNER_TEMP/certificados-antes.txt"
+          fi
 
       - name: Limpar chave
         if: always()

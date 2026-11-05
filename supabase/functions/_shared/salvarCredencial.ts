@@ -4,9 +4,11 @@
 // passa por RPC/PostgREST nem é devolvido. Fica em _shared, sem imports de jsr:/Deno, para os testes EXECUTAREM o handler
 // (tests/salvarCredencial.test.ts); salvar-credencial/index.ts só liga as dependências reais.
 //
-// Quem pode gravar: só quem tem linha em `usuarios_barracas` da loja (mesmo critério do emitir-nfce). O acesso de
+// Quem pode gravar: só quem tem linha em `usuarios_barracas` da loja (mesmo critério do emitir-nfce); única exceção: o
+// SUPERADMIN (tabela `superadmins`) grava o token `fiscal` de qualquer loja. O acesso de
 // SUPORTE (`acesso_suporte_ativo`, migration 20261023100000) NÃO cria linha ali e esta função não consulta
 // `acessos_suporte`: o suporte nunca grava credencial. Sem chave configurada a função RECUSA (503): nunca grava em texto.
+import { corteTokenAtingido } from './pagamento/cobrancaOnline.ts'
 import { cifrar, configDoEnv, ErroSegredo, type EnvMinimo } from './segredoCifrado.ts'
 
 const CORS_HEADERS = {
@@ -19,6 +21,7 @@ export const AMBIENTES_FISCAIS = ['homologacao', 'producao']
 export const LIMITE_GRAVACOES_HORA = 30
 export const TAMANHO_MAXIMO_CREDENCIAL = 4096
 export const MSG_SALVAR_FALHA = 'Não foi possível salvar agora. Tente novamente em instantes.'
+export const MSG_CORTE_TOKEN_MP = 'Conecte o Mercado Pago em Ajustes > Pagamento online. Colar o token manualmente não é mais aceito.'
 export const MSG_SEM_CHAVE = 'O armazenamento seguro de credenciais ainda não está configurado. Fale com o suporte.'
 
 export type TipoCredencial = 'fiscal' | 'pagamento' | 'segredo_webhook'
@@ -80,7 +83,21 @@ export async function tratarSalvarCredencial(req: Request, deps: DepsSalvarCrede
     console.error('salvar-credencial: acesso', erroAcesso.message)
     return json({ erro: MSG_SALVAR_FALHA }, 500)
   }
-  if (!acesso) return json({ erro: 'Sem acesso a esta barraca' }, 403)
+  if (!acesso) {
+    // Exceção estreita: o superadmin grava SÓ o token fiscal de qualquer loja (conta mestre da Focus). Erro na consulta = não é superadmin.
+    let superadmin = false
+    if (tipo === 'fiscal') {
+      const { data, error } = await supabase.from('superadmins').select('usuario_id').eq('usuario_id', usuario.id).maybeSingle()
+      if (error) console.error('salvar-credencial: superadmin', error.message)
+      else superadmin = !!data
+    }
+    if (!superadmin) return json({ erro: 'Sem acesso a esta barraca' }, 403)
+  }
+
+  // Depois do corte (CORTE_TOKEN_MP_ISO) o Mercado Pago só entra por OAuth: token colado NOVO é recusado (o segredo do webhook segue valendo).
+  if (tipo === 'pagamento' && provedor === 'mercadopago' && corteTokenAtingido(deps.env.get('CORTE_TOKEN_MP_ISO'), new Date((deps.agora ?? Date.now)()))) {
+    return json({ erro: MSG_CORTE_TOKEN_MP, codigo: 'mp_conectar_oauth' }, 409)
+  }
 
   const { data: cabe, error: erroLimite } = await supabase.rpc('consulta_externa_registrar', {
     p_usuario_id: usuario.id,

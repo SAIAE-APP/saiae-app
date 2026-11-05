@@ -7,7 +7,7 @@ const ler = (p: string) => readFileSync(new URL(`../${p}`, import.meta.url), 'ut
 
 describe('status saiu_entrega nas outras telas', () => {
   test('a Chamada lista só Pronto: o pedido que saiu deixa a lista de senhas chamadas', () => {
-    assert.match(ler('src/pages/TelaChamada.tsx'), /\.filter\(\(p\) => p\.status === 'pronto'\)/)
+    assert.match(ler('src/pages/TelaChamada.tsx'), /\.filter\(\(p\) => p\.status === 'pronto'( && !mesaDaRodada\(p\))?\)/)
   })
   test('relatórios e caixa contam tudo que não foi cancelado (o pedido em Saiu entra no faturamento)', () => {
     assert.match(ler('src/lib/relatorio.ts'), /p\.status !== 'cancelado'/)

@@ -1,0 +1,21 @@
+{
+  "pedido_id": "99999999-9999-4999-8999-999999999999",
+  "barraca_nome": "Sabor Kawashima",
+  "senha": 12,
+  "status": "pronto",
+  "tipo_atendimento": "retirada",
+  "itens": [
+    { "nome": "Yakisoba", "quantidade": 1, "preco_centavos": 3500 }
+  ],
+  "taxa_entrega_centavos": 0,
+  "total_centavos": 3500,
+  "metodo_pagamento": "pix",
+  "avisos": {
+    "recebido": { "ativo": true, "texto": null },
+    "pronto": { "ativo": true, "texto": "Oi {nome}! Seu pedido {senha} da {barraca} está pronto." },
+    "saiu_entrega": { "ativo": true, "texto": null },
+    "entregue": { "ativo": false, "texto": null },
+    "cancelado": { "ativo": true, "texto": null }
+  },
+  "cliente": { "nome": "Maria Silva", "telefone": "61999990001" }
+}

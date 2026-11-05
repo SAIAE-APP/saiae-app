@@ -2,9 +2,9 @@
 -- Resultado esperado está em cada bloco. Nada aqui altera dados.
 
 -- 1) O que `anon` ainda executa (SECURITY DEFINER no schema public).
---    Esperado: SOMENTE estas 12 (públicas de propósito):
+--    Esperado: SOMENTE estas 13 (públicas de propósito; cashback_config veio com o cashback):
 --    bairros_entrega_publicos, banners_publicos, barraca_slug_atual, cardapio_publico,
---    consultar_status_pagamento, cupom_config, entregador_confirmar, entregador_pedido,
+--    cashback_config, consultar_status_pagamento, cupom_config, entregador_confirmar, entregador_pedido,
 --    horarios_publicos, ofertas_publicas, opcoes_publicas, perfil_cliente_config
 select p.proname, pg_get_function_identity_arguments(p.oid) as args
   from pg_proc p

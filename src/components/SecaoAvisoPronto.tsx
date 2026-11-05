@@ -83,7 +83,7 @@ export function SecaoAvisoPronto({ barraca }: { barraca: Barraca }) {
             Variáveis: {VARIAVEIS_MSG_PRONTO.join('  ')}. Sem nome informado, o "{'{nome}'}" some da frase.
           </p>
 
-          <p className="mt-3 text-sm font-medium text-mesa-text-primary">Mesa, Balcão e Retirada</p>
+          <p className="mt-3 text-sm font-medium text-mesa-text-primary">Mesa, Balcão e Para viagem</p>
           <Textarea
             value={retiradaR.valor}
             onChange={(e) => retiradaR.definir(e.target.value)}

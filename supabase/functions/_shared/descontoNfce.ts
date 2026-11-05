@@ -33,5 +33,16 @@ export function totalDaNotaCentavos(brutosCentavos: number[], descontoCentavos: 
   return Math.max(0, bruto - Math.max(0, Math.min(Math.floor(descontoCentavos), bruto)))
 }
 
+/**
+ * Desconto total da nota: cupom OU saldo de cashback (SUPOSIÇÃO-CASHBACK-4, um benefício por pedido). O saldo
+ * usado é tratado como o cupom: rateado entre os itens. Lança RangeError se os dois forem maiores que zero.
+ */
+export function descontoTotalNfceCentavos(cupomCentavos: number, cashbackCentavos: number): number {
+  const cupom = Math.max(0, Math.floor(cupomCentavos))
+  const cashback = Math.max(0, Math.floor(cashbackCentavos))
+  if (cupom > 0 && cashback > 0) throw new RangeError('cupom e saldo não somam: um benefício por pedido')
+  return cupom + cashback
+}
+
 export const MENSAGEM_PEDIDO_GRATIS =
   'Este pedido foi grátis (cupom de 100%): o total é R$ 0,00, então não há nota fiscal para emitir.'

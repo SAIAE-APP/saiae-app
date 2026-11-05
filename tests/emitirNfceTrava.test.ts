@@ -9,12 +9,15 @@ import { cifrar as cifrarSegredo, configDoEnv } from '../supabase/functions/_sha
 type Linha = Record<string, unknown>
 
 /** Supabase falso: só o que o handler usa. O UPDATE avalia filtros e aplica no MESMO tick (atômico, como o Postgres). */
-function criarBanco(inicial: Linha = {}, linhaToken: Linha = { token_homologacao: 'tok-h', token_producao: 'tok-p' }) {
+/** Extras da comanda (Task 10): campos a mais da barraca, a comanda e as rodadas dela (consulta por comanda_id). */
+type Extras = { fiscalVigente?: boolean; barraca?: Linha; comanda?: Linha | null; rodadas?: Linha[]; erroLeitura?: (tabela: string, colunas: string) => Linha | null }
+
+function criarBanco(inicial: Linha = {}, linhaToken: Linha = { token_homologacao: 'tok-h', token_producao: 'tok-p' }, extras: Extras = {}) {
   const pedido: Linha = { id: 'p1', barraca_id: 'b1', metodo_pagamento: 'pix', nfce_status: null, nfce_chave: null, nfce_numero: null, nfce_trava_em: null, ...inicial }
   const itensDoPedido = [
     { id: 'ip1', item_id: 'i1', nome_item: 'Yakisoba', quantidade: 2, preco_centavos_unitario: 1500, removido: false, opcoes: [], observacao: null },
   ]
-  const barraca = { id: 'b1', cnpj: '12.345.678/0001-90', fiscal_habilitado: true, fiscal_ambiente: 'homologacao', tributos_aprox_bps: null }
+  const barraca = { id: 'b1', cnpj: '12.345.678/0001-90', fiscal_habilitado: true, fiscal_ambiente: 'homologacao', tributos_aprox_bps: null, ...extras.barraca }
   const itens = [{ id: 'i1', ncm: '21069090', cfop: '5102', unidade_comercial: 'UN', preco_aberto: false }]
   const updates: Linha[] = []
   const estado = { falharUpdateSe: null as null | ((v: Linha) => boolean) }
@@ -39,8 +42,9 @@ function criarBanco(inicial: Linha = {}, linhaToken: Linha = { token_homologacao
     const eqs: Array<[string, unknown]> = []
     const ors: string[] = []
     let listaIn: unknown[] | null = null
+    let colunas = ''
     const q = {
-      select() { if (op === 'update') devolver = true; return q },
+      select(c = '') { if (op === 'update') devolver = true; else colunas = c; return q },
       update(v: Linha) { op = 'update'; valores = v; return q },
       eq(c: string, v: unknown) { eqs.push([c, v]); return q },
       in(_c: string, v: unknown[]) { listaIn = v; return q },
@@ -50,6 +54,10 @@ function criarBanco(inicial: Linha = {}, linhaToken: Linha = { token_homologacao
       then(ok: (v: unknown) => unknown, ko?: (e: unknown) => unknown) { return Promise.resolve(executar(false, false)).then(ok, ko) },
     }
     function executar(unico: boolean, exigir: boolean) {
+      const erroSimulado = op === 'select' ? extras.erroLeitura?.(tabela, colunas) : null
+      if (erroSimulado) return { data: null, error: erroSimulado }
+      if (tabela === 'pedidos' && op === 'select' && eqs.some(([c]) => c === 'comanda_id')) return { data: extras.rodadas ?? [], error: null }
+      if (tabela === 'comandas') return { data: extras.comanda ?? null, error: null }
       if (tabela === 'pedidos') {
         const bate = eqs.every(([c, v]) => pedido[c] === v) && ors.every((e) => casa(pedido, e))
         if (op === 'update') {
@@ -70,14 +78,16 @@ function criarBanco(inicial: Linha = {}, linhaToken: Linha = { token_homologacao
     return q
   }
 
-  const cliente = { auth: { getUser: async () => ({ data: { user: { id: 'u1' } }, error: null }) }, from: consulta }
-  return { pedido, updates, estado, cliente }
+  const rpcs: Array<[string, Linha]> = []
+  const rpc = async (fn: string, args: Linha) => (rpcs.push([fn, args]), { data: extras.fiscalVigente ?? true, error: null })
+  const cliente = { auth: { getUser: async () => ({ data: { user: { id: 'u1' } }, error: null }) }, from: consulta, rpc }
+  return { pedido, updates, estado, cliente, rpcs }
 }
 
 /** FocusNFe falsa: guarda notas por ref; POST com ref repetida é recusado, como a API real. */
 function criarFocus() {
   const notas = new Map<string, Linha>()
-  const log = { posts: [] as string[], gets: [] as string[], auth: [] as string[] }
+  const log = { posts: [] as string[], gets: [] as string[], auth: [] as string[], corpos: [] as Linha[] }
   const cfg = {
     /** POST cria a nota e depois "dá timeout" (a nota existe, a resposta se perdeu). */
     timeoutDepoisDeCriar: false,
@@ -97,6 +107,7 @@ function criarFocus() {
     const ref = u.split('/nfce')[1].replace(/^[/?]ref=|^\//, '')
     if ((init?.method ?? 'GET') === 'POST') {
       log.posts.push(ref)
+      log.corpos.push(JSON.parse(String(init?.body ?? '{}')))
       await new Promise((r) => setTimeout(r, 5))
       postFeito = true
       if (cfg.erroGenerico) return Response.json({ codigo: 'requisicao_invalida', mensagem: 'CNPJ inválido' }, { status: 422 })
@@ -117,14 +128,14 @@ function criarFocus() {
   return { buscar, log, cfg, notas }
 }
 
-function montar(inicial: Linha = {}, linhaToken?: Linha, env: Record<string, string> = {}) {
-  const banco = criarBanco(inicial, linhaToken)
+function montar(inicial: Linha = {}, linhaToken?: Linha, env: Record<string, string> = {}, extras: Extras = {}) {
+  const banco = criarBanco(inicial, linhaToken, extras)
   const focus = criarFocus()
   const relogio = { agora: Date.parse('2026-10-25T12:00:00Z') }
   const handler = criarHandler({
     criarCliente: () => banco.cliente,
     env: { get: (n: string) => env[n] ?? (n.startsWith('TOKENS_') ? undefined : 'x') },
-    buscar: focus.buscar,
+    buscar: (u, i) => focus.buscar(u, i),
     agora: () => relogio.agora,
     esperar: async () => {},
   })
@@ -147,6 +158,24 @@ describe('emitir-nfce: trava e reconciliação (handler executado)', () => {
     assert.equal(banco.pedido.nfce_status, 'autorizado')
     assert.equal(banco.pedido.nfce_chave, 'CHAVE-p1')
     assert.equal(banco.pedido.nfce_trava_em, null)
+  })
+
+  test('módulo fiscal desligado responde 403 {erro:modulo_desligado} e não chama a FocusNFe', async () => {
+    const { banco, focus, chamar } = montar({}, undefined, {}, { fiscalVigente: false })
+    const r = await chamar()
+    assert.equal(r.status, 403)
+    assert.deepEqual(r.corpo, { erro: 'modulo_desligado' })
+    assert.deepEqual(focus.log.posts, [])
+    assert.deepEqual(focus.log.gets, [])
+    assert.equal(banco.updates.length, 0) // nem trava
+    assert.deepEqual(banco.rpcs[0], ['modulo_ativo', { p_barraca_id: 'b1', p_modulo: 'fiscal' }])
+  })
+
+  test('módulo fiscal vigente emite mesmo com fiscal_habilitado=false (a coluna é só espelho)', async () => {
+    const { focus, chamar } = montar({}, undefined, {}, { barraca: { fiscal_habilitado: false } })
+    const r = await chamar()
+    assert.equal(r.status, 200)
+    assert.deepEqual(focus.log.posts, ['p1'])
   })
 
   test('duas chamadas em paralelo = UM POST à FocusNFe e nenhum `erro` gravado', async () => {
@@ -398,5 +427,129 @@ describe('emitir-nfce: token "cifrado, senão texto"', () => {
     const { focus, chamar } = montar({}, { token_homologacao: null, token_homologacao_cifrado: cifradoProducao }, { TOKENS_CHAVE_V1: CHAVE })
     assert.equal((await chamar()).status, 422)
     assert.equal(focus.log.posts.length, 0)
+  })
+})
+
+describe('emitir-nfce: taxa de serviço da comanda na nota (interruptor nfce_incluir_taxas)', () => {
+  beforeEach(() => mock.restoreAll())
+
+  // Pedido p1 (2 x 15,00 = 3000) é uma das 3 rodadas da comanda c1, fechada com taxa de 600: base 1000 + 3000 + 2000 (p3 cancelada e o item removido de p2 não contam) = rateio 100/300/200.
+  const rodadas = [
+    { id: 'p0', status: 'entregue', itens_do_pedido: [{ quantidade: 1, preco_centavos_unitario: 1000, removido: false }] },
+    { id: 'p1', status: 'entregue', itens_do_pedido: [{ quantidade: 2, preco_centavos_unitario: 1500, removido: false }] },
+    { id: 'p2', status: 'entregue', itens_do_pedido: [{ quantidade: 1, preco_centavos_unitario: 2000, removido: false }, { quantidade: 9, preco_centavos_unitario: 100, removido: true }] },
+    { id: 'p3', status: 'cancelado', itens_do_pedido: [{ quantidade: 1, preco_centavos_unitario: 9000, removido: false }] },
+  ]
+  const comandaFechada = { id: 'c1', status: 'fechada', taxa_servico_centavos: 600 }
+  const corpoEnviado = (focus: { log: { corpos: Linha[] } }) => focus.log.corpos[0] as { items: Linha[]; formas_pagamento: Linha[] }
+
+  test('desligado (padrão): payload idêntico ao de hoje, sem outras despesas', async () => {
+    const { banco, focus, chamar } = montar({ comanda_id: 'c1' }, undefined, {}, { comanda: comandaFechada, rodadas })
+    assert.equal((await chamar()).status, 200)
+    const corpo = corpoEnviado(focus)
+    assert.ok(!('valor_outras_despesas' in corpo.items[0]))
+    assert.deepEqual(corpo.formas_pagamento, [{ forma_pagamento: '17', valor_pagamento: 30 }])
+    assert.ok(!banco.updates.some((u) => 'nfce_taxa_servico_centavos' in u))
+  })
+
+  test('ligado e comanda fechada com taxa: nota leva a parte da rodada e o pagamento bate com o total', async () => {
+    const { banco, focus, chamar } = montar({ comanda_id: 'c1' }, undefined, {}, { barraca: { nfce_incluir_taxas: true }, comanda: comandaFechada, rodadas })
+    assert.equal((await chamar()).status, 200)
+    const corpo = corpoEnviado(focus)
+    assert.equal(corpo.items[0].valor_outras_despesas, 3)
+    assert.deepEqual(corpo.formas_pagamento, [{ forma_pagamento: '17', valor_pagamento: 33 }])
+    assert.equal(banco.pedido.nfce_taxa_servico_centavos, 300)
+  })
+
+  test('ligado, mas comanda ainda aberta ou sem taxa: nada muda', async () => {
+    for (const comanda of [{ ...comandaFechada, status: 'aberta' }, { ...comandaFechada, taxa_servico_centavos: 0 }]) {
+      const { focus, chamar } = montar({ comanda_id: 'c1' }, undefined, {}, { barraca: { nfce_incluir_taxas: true }, comanda, rodadas })
+      assert.equal((await chamar()).status, 200)
+      assert.ok(!('valor_outras_despesas' in corpoEnviado(focus).items[0]))
+      assert.equal(corpoEnviado(focus).formas_pagamento[0].valor_pagamento, 30)
+    }
+  })
+
+  test('ligado, pedido fora de comanda: nada muda', async () => {
+    const { focus, chamar } = montar({}, undefined, {}, { barraca: { nfce_incluir_taxas: true } })
+    assert.equal((await chamar()).status, 200)
+    assert.ok(!('valor_outras_despesas' in corpoEnviado(focus).items[0]))
+  })
+
+  test('retry depois de timeout: reenvia e grava a MESMA parte congelada na trava, mesmo com os dados mudados', async () => {
+    const comanda = { ...comandaFechada }
+    const vivas = rodadas.map((r) => ({ ...r }))
+    const { banco, focus, relogio, chamar } = montar({ comanda_id: 'c1' }, undefined, {}, { barraca: { nfce_incluir_taxas: true }, comanda, rodadas: vivas })
+    focus.cfg.timeoutSemCriar = true
+    assert.equal((await chamar()).status, 502)
+    assert.equal(banco.pedido.nfce_taxa_servico_centavos, 300, 'parte congelada na trava, antes do POST')
+    // Depois do POST: a taxa muda e uma rodada é cancelada (a parte "ao vivo" agora seria outra).
+    comanda.taxa_servico_centavos = 1000
+    vivas[0].status = 'cancelado'
+    focus.cfg.timeoutSemCriar = false
+    relogio.agora += TRAVA_NFCE_MS + 1
+    assert.equal((await chamar()).status, 200)
+    assert.equal(focus.log.corpos.length, 2)
+    for (const corpo of focus.log.corpos as Array<{ items: Linha[]; formas_pagamento: Linha[] }>) {
+      assert.equal(corpo.items[0].valor_outras_despesas, 3)
+      assert.equal(corpo.formas_pagamento[0].valor_pagamento, 33)
+    }
+    assert.equal(banco.pedido.nfce_status, 'autorizado')
+    assert.equal(banco.pedido.nfce_taxa_servico_centavos, 300)
+  })
+
+  test('reconciliação em outra chamada (nota criada, resposta perdida): grava a parte enviada, não a recalculada', async () => {
+    const comanda = { ...comandaFechada }
+    const { banco, focus, relogio, chamar } = montar({ comanda_id: 'c1' }, undefined, {}, { barraca: { nfce_incluir_taxas: true }, comanda, rodadas })
+    focus.cfg.timeoutDepoisDeCriar = true
+    const original = focus.buscar
+    let consultaFora = true
+    // Na 1ª chamada a consulta também falha: ela termina sem saber que a nota existe.
+    focus.buscar = (async (u: string | URL | Request, init?: RequestInit) =>
+      consultaFora && (init?.method ?? 'GET') === 'GET' ? Response.json({}, { status: 503 }) : original(u, init)) as typeof fetch
+    assert.equal((await chamar()).status, 502)
+    assert.equal(banco.pedido.nfce_taxa_servico_centavos, 300)
+    comanda.taxa_servico_centavos = 1000 // dados mudam depois do POST
+    consultaFora = false
+    relogio.agora += TRAVA_NFCE_MS + 1
+    assert.equal((await chamar()).status, 200)
+    assert.equal(focus.log.posts.length, 1, 'reconciliou sem reenviar')
+    assert.equal(banco.pedido.nfce_status, 'autorizado')
+    assert.equal(banco.pedido.nfce_taxa_servico_centavos, 300)
+  })
+
+  for (const [nome, tabela, trecho] of [
+    ['vínculo do pedido', 'pedidos', 'nfce_taxa_servico_centavos'],
+    ['interruptor', 'barracas', 'nfce_incluir_taxas'],
+    ['comanda', 'comandas', 'taxa_servico_centavos'],
+    ['rodadas', 'pedidos', 'itens_do_pedido(quantidade'],
+  ] as const) {
+    test(`erro ao ler ${nome}: 500 antes da trava, nada vai para a FocusNFe`, async () => {
+      const erroLeitura = (t: string, c: string) => (t === tabela && c.includes(trecho) ? { code: '08006', message: 'conexão caiu' } : null)
+      const { banco, focus, chamar } = montar({ comanda_id: 'c1' }, undefined, {}, { barraca: { nfce_incluir_taxas: true }, comanda: comandaFechada, rodadas, erroLeitura })
+      const r = await chamar()
+      assert.equal(r.status, 500)
+      assert.equal(focus.log.posts.length + focus.log.gets.length, 0)
+      assert.equal(banco.updates.length, 0)
+    })
+  }
+
+  for (const code of ['42703', 'PGRST204']) {
+    test(`coluna ausente (${code}, migration não aplicada): vale 0 e a nota sai como hoje`, async () => {
+      const erroLeitura = (t: string, c: string) =>
+        (t === 'pedidos' && c.includes('nfce_taxa_servico_centavos')) || (t === 'barracas' && c.includes('nfce_incluir_taxas'))
+          ? { code, message: 'column does not exist' }
+          : null
+      const { focus, chamar } = montar({ comanda_id: 'c1' }, undefined, {}, { comanda: comandaFechada, rodadas, erroLeitura })
+      assert.equal((await chamar()).status, 200)
+      assert.ok(!('valor_outras_despesas' in corpoEnviado(focus).items[0]))
+      assert.equal(corpoEnviado(focus).formas_pagamento[0].valor_pagamento, 30)
+    })
+  }
+
+  test('a parte da rodada não depende da ordem em que as rodadas chegam do banco', async () => {
+    const { focus, chamar } = montar({ comanda_id: 'c1' }, undefined, {}, { barraca: { nfce_incluir_taxas: true }, comanda: comandaFechada, rodadas: [...rodadas].reverse() })
+    assert.equal((await chamar()).status, 200)
+    assert.equal(corpoEnviado(focus).items[0].valor_outras_despesas, 3)
   })
 })

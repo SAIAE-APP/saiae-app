@@ -23,6 +23,7 @@ import {
   type OpcaoLeitura,
 } from '../lib/opcoes'
 import { linkWhatsAppSemNumero, montarMensagemEntregador } from '../lib/entrega'
+import { comandaAbertaLigada, modoUsaComanda, normalizarMesa } from '../lib/comandaAberta'
 import { tocarSomPedidoCriado } from '../lib/sons'
 import { buscarIdsMaisPedidos } from '../lib/popularidade'
 import type {
@@ -50,7 +51,7 @@ import { Input } from '../components/ui/Input'
 import { SegmentedControl } from '../components/ui/SegmentedControl'
 import { Textarea } from '../components/ui/Textarea'
 import { useToast } from '../components/ui/useToast'
-import { ROTULO_MODO, ehViagem, modoInicial, modosAtivos, tipoDoPedido } from '../lib/atendimento'
+import { ROTULO_MODO, ajudaDoModo, avisoCozinha, ehViagem, modoInicial, modosAtivos, tipoDoPedido } from '../lib/atendimento'
 import type { Categoria, Item, TipoAtendimento } from '../types/database'
 
 type ModoVisualizacaoCardapio = 'lista' | 'grade'
@@ -79,6 +80,8 @@ type SenhaConfirmada = {
   pedidoId?: string
   idFila: string
   entregaDireta: boolean
+  /** Mesa da comanda aberta (rodada): a tela mostra a mesa em vez da senha como destaque. */
+  comandaMesa?: string
   entrega?: EstadoPedidoEnviado['senhaEnviada']['entrega']
 }
 
@@ -439,6 +442,11 @@ function ehEstadoPedidoEnviado(estado: unknown): estado is EstadoPedidoEnviado {
   return typeof estado === 'object' && estado !== null && 'senhaEnviada' in estado
 }
 
+function comandaMesaDoState(estado: unknown): string | null {
+  const v = (estado as { comandaMesa?: unknown } | null)?.comandaMesa
+  return typeof v === 'string' && v.trim() !== '' ? v : null
+}
+
 export function LancarPedido() {
   const barraca = useBarracaAtual()
   const { mostrarToast } = useToast()
@@ -518,7 +526,10 @@ export function LancarPedido() {
   const [categorias, setCategorias] = useState<Categoria[]>([])
 
   const [carrinho, setCarrinho] = useState<Carrinho>(() => edicaoRecebida?.carrinho ?? {})
-  const [mesa, setMesa] = useState(() => edicaoRecebida?.mesa ?? '')
+  // Vindo do painel de comandas ("Adicionar itens"): mesa e tipo travados em Mesa. Só vale com a comanda aberta ligada.
+  const comandaMesaRecebida = comandaAbertaLigada(barraca) ? comandaMesaDoState(estadoRecebido) : null
+  const [mesa, setMesa] = useState(() => comandaMesaRecebida ?? edicaoRecebida?.mesa ?? '')
+  const [erroMesaComanda, setErroMesaComanda] = useState(false)
   // Modos que a barraca liga em Ajustes (ordem fixa). Um só = já vem
   // selecionado e o seletor nem aparece.
   const modosDisponiveis = useMemo(() => modosAtivos(barraca), [barraca])
@@ -531,6 +542,7 @@ export function LancarPedido() {
       (edicaoRecebida
         ? tipoDoPedido({ tipo_atendimento: null, mesa: edicaoRecebida.mesa, viagem: edicaoRecebida.viagem })
         : null)
+    if (comandaMesaRecebida && modosDisponiveis.includes('mesa')) return 'mesa'
     return salvo && modosDisponiveis.includes(salvo) ? salvo : modoInicial(modosDisponiveis)
   })
   // Se a barraca desligar o modo escolhido (ex.: Ajustes mudou em outro
@@ -566,6 +578,7 @@ export function LancarPedido() {
   const [entregaHerdada] = useState(() => edicaoRecebida?.entrega)
   const [clienteNomeHerdado] = useState(() => edicaoRecebida?.clienteNome)
   const [clienteTelefoneHerdado] = useState(() => edicaoRecebida?.clienteTelefone)
+  const [aceitaPromocoesHerdado] = useState(() => edicaoRecebida?.aceitaPromocoes)
 
   const [senhaDemorando, setSenhaDemorando] = useState(false)
   const [senha, setSenha] = useState<SenhaConfirmada | null>(
@@ -985,6 +998,11 @@ export function LancarPedido() {
 
   function verNota() {
     if (totalItens === 0) return
+    // Comanda aberta: a mesa identifica a comanda, então não pode ir vazia.
+    if (modoUsaComanda(barraca, tipoEfetivo) && normalizarMesa(mesa) === '') {
+      setErroMesaComanda(true)
+      return
+    }
     // Bloqueio ligado: o carrinho pode ter ficado acima do saldo (saldo atualizado depois
     // de adicionar). Só com o saldo que este aparelho conhece, nunca por rede.
     if (barraca.estoque_bloqueia) {
@@ -1008,6 +1026,8 @@ export function LancarPedido() {
         entrega: tipoEfetivo === 'entrega' ? entregaHerdada : undefined,
         clienteNome: clienteNomeHerdado,
         clienteTelefone: clienteTelefoneHerdado,
+        aceitaPromocoes: aceitaPromocoesHerdado,
+        comandaMesa: comandaMesaRecebida ?? undefined,
       } satisfies EstadoParaConfirmar,
     })
   }
@@ -1046,8 +1066,11 @@ export function LancarPedido() {
           />
         ) : (
           <span className="text-[96px] font-bold leading-[104px] tracking-tight text-mesa-success-700 dark:text-mesa-success-500">
-            {senha.valor}
+            {senha.comandaMesa ? `Mesa ${senha.comandaMesa}` : senha.valor}
           </span>
+        )}
+        {senha.comandaMesa && !aguardandoSenha && senha.valor !== null && (
+          <span className="text-sm font-semibold text-mesa-text-secondary">senha {senha.valor}</span>
         )}
 
         {senha.entregaDireta ? (
@@ -1083,8 +1106,30 @@ export function LancarPedido() {
           />
         )}
 
+        {senha.comandaMesa && (
+          <div className="mt-4 flex w-full max-w-xs flex-col gap-2">
+            <Button
+              size="xl"
+              onClick={() => {
+                limparFormulario()
+                setSenha(null)
+                navigate(`/${barraca.slug}/lancar`, {
+                  replace: true,
+                  state: { tipoAtendimento: 'mesa', comandaMesa: senha.comandaMesa },
+                })
+              }}
+            >
+              Adicionar à Mesa {senha.comandaMesa}
+            </Button>
+            <Button size="xl" variant="outline" onClick={() => navigate(`/${barraca.slug}/mesas`)}>
+              Ver Mesa {senha.comandaMesa}
+            </Button>
+          </div>
+        )}
+
         <Button
           size="xl"
+          variant={senha.comandaMesa ? 'ghost' : 'primary'}
           onClick={() => {
             limparFormulario()
             setSenha(null)
@@ -1143,26 +1188,39 @@ export function LancarPedido() {
           aria-label="Buscar item do cardápio"
         />
 
-        {modosDisponiveis.length > 1 && (
+        {modosDisponiveis.length > 1 && !(comandaMesaRecebida && tipoEfetivo === 'mesa') && (
           <div className="mt-4">
             <SegmentedControl
               aria-label="Tipo de atendimento"
-              items={modosDisponiveis.map((modo) => ({ label: ROTULO_MODO[modo] }))}
+              items={modosDisponiveis.map((modo) => ({ label: ROTULO_MODO[modo], sublabel: ajudaDoModo(modo, barraca) }))}
               activeIndex={modosDisponiveis.indexOf(tipoEfetivo)}
               onChange={(indice) => selecionarModo(modosDisponiveis[indice])}
             />
           </div>
         )}
 
+        {tipoEfetivo && (
+          <p className="mt-2 text-xs text-mesa-text-secondary">{avisoCozinha(tipoEfetivo)}</p>
+        )}
+
         {tipoEfetivo === 'mesa' && (
           <Input
             value={mesa}
-            onChange={(e) => setMesa(e.target.value)}
+            onChange={(e) => {
+              setMesa(e.target.value)
+              setErroMesaComanda(false)
+            }}
             placeholder="Número ou nome da mesa"
             aria-label="Mesa"
             className="mt-3"
-            autoFocus
+            autoFocus={!comandaMesaRecebida}
+            readOnly={Boolean(comandaMesaRecebida)}
           />
+        )}
+        {erroMesaComanda && tipoEfetivo === 'mesa' && (
+          <p role="alert" className="mt-2 text-sm font-semibold text-mesa-error-500">
+            Informe a mesa para abrir ou adicionar à comanda.
+          </p>
         )}
 
         <div className="mt-6">

@@ -19,7 +19,9 @@
 // usada em todo o resto do app).
 import { comCors } from '../_shared/cors.ts'
 import { configDoEnv, lerSegredo } from '../_shared/segredoCifrado.ts'
-import { MENSAGEM_PEDIDO_GRATIS, ratearDesconto, totalDaNotaCentavos } from '../_shared/descontoNfce.ts'
+import { descontoTotalNfceCentavos, MENSAGEM_PEDIDO_GRATIS, ratearDesconto, totalDaNotaCentavos } from '../_shared/descontoNfce.ts'
+import { ratearTaxaServico } from '../_shared/taxaServicoNfce.ts'
+import { moduloAtivo } from '../_shared/modulos.ts'
 
 const FOCUSNFE_URL_HOMOLOGACAO = 'https://homologacao.focusnfe.com.br/v2'
 const FOCUSNFE_URL_PRODUCAO = 'https://api.focusnfe.com.br/v2'
@@ -198,7 +200,7 @@ function criarHandlerInterno(deps: DependenciasNfce) {
 
   const { data: barraca, error: erroBarraca } = await supabase
     .from('barracas')
-    .select('id, cnpj, fiscal_habilitado, fiscal_ambiente, tributos_aprox_bps')
+    .select('id, cnpj, fiscal_ambiente, tributos_aprox_bps')
     .eq('id', pedido.barraca_id)
     .single()
 
@@ -206,8 +208,9 @@ function criarHandlerInterno(deps: DependenciasNfce) {
     return jsonResponse({ erro: 'Barraca não encontrada' }, 404)
   }
 
-  if (!barraca.fiscal_habilitado) {
-    return jsonResponse({ erro: 'Emissão fiscal não habilitada para esta barraca' }, 422)
+  // Permissão = módulo fiscal vigente (fail-closed). `fiscal_habilitado` virou só espelho legado. Vem antes da trava e da FocusNFe.
+  if (!(await moduloAtivo(supabase, barraca.id, 'fiscal'))) {
+    return jsonResponse({ erro: 'modulo_desligado' }, 403)
   }
 
   if (!barraca.cnpj) {
@@ -253,8 +256,20 @@ function criarHandlerInterno(deps: DependenciasNfce) {
   const { data: descontoRow } = await supabase.from('pedidos').select('desconto_cupom_centavos').eq('id', pedidoId).maybeSingle()
   const descontoCupomCentavos = Math.max(0, Math.floor(Number((descontoRow as { desconto_cupom_centavos?: number } | null)?.desconto_cupom_centavos ?? 0)))
 
+  // Cashback: o saldo usado vale como o cupom (um benefício por pedido). Também lido à parte, para não quebrar
+  // antes da migration do cashback (coluna ausente = erro ignorado = 0).
+  const { data: cashbackRow } = await supabase.from('pedidos').select('cashback_usado_centavos').eq('id', pedidoId).maybeSingle()
+  const cashbackUsadoCentavos = Math.max(0, Math.floor(Number((cashbackRow as { cashback_usado_centavos?: number } | null)?.cashback_usado_centavos ?? 0)))
+  let descontoNotaCentavos: number
+  try {
+    descontoNotaCentavos = descontoTotalNfceCentavos(descontoCupomCentavos, cashbackUsadoCentavos)
+  } catch {
+    // Pedido com cupom E saldo contradiz a regra de um benefício: não emitir nota com desconto duvidoso.
+    return jsonResponse({ erro: 'Pedido com cupom e saldo ao mesmo tempo. Fale com o suporte antes de emitir a nota.' }, 422)
+  }
+
   // Pedido grátis (cupom de 100%): total R$ 0,00, nada a faturar. Sem nota e SEM chamar a FocusNFe.
-  if (totalDaNotaCentavos(itensAtivos.map((i) => i.preco_centavos_unitario * i.quantidade), descontoCupomCentavos) === 0) {
+  if (totalDaNotaCentavos(itensAtivos.map((i) => i.preco_centavos_unitario * i.quantidade), descontoNotaCentavos) === 0) {
     return jsonResponse({ erro: MENSAGEM_PEDIDO_GRATIS, codigo: 'pedido_gratis' }, 422)
   }
 
@@ -331,8 +346,76 @@ function criarHandlerInterno(deps: DependenciasNfce) {
   // `resultado` bruto da FocusNFe (valor_total = soma dos brutos − descontos).
   const descontosPorItem = ratearDesconto(
     itensAtivos.map((i) => i.preco_centavos_unitario * i.quantidade),
-    descontoCupomCentavos,
+    descontoNotaCentavos,
   )
+
+  // Taxa de serviço da comanda (interruptor `nfce_incluir_taxas`, padrão desligado = fora da nota, como sempre).
+  // Ligado e o pedido sendo rodada de comanda FECHADA com taxa: a nota leva a parte desta rodada, rateada entre as
+  // rodadas não canceladas e depois entre os itens (`valor_outras_despesas` = vOutro por item, campo da FocusNFe
+  // para NFe/NFC-e). O contador decide ligar; o sistema não dá parecer fiscal. A taxa de entrega continua fora.
+  // Erro de leitura com a taxa possivelmente ligada: 500 ANTES da trava e da FocusNFe. Nota sem a taxa não se corrige.
+  const taxaServicoCentavos = await parteDaTaxaServico()
+  if (taxaServicoCentavos === null) {
+    return jsonResponse({ erro: 'Falha ao carregar a taxa de serviço da comanda. Tente novamente.' }, 500)
+  }
+  const outrasDespesasPorItem = ratearTaxaServico(
+    itensAtivos.map((i) => i.preco_centavos_unitario * i.quantidade),
+    taxaServicoCentavos,
+  )
+
+  // Coluna ausente (migration ainda não aplicada) = recurso inexistente, vale 0 e a nota sai como hoje. Qualquer
+  // outro erro devolve null (quem chama responde 500, nada é emitido).
+  function colunaAusente(erro: { code?: string } | null): boolean {
+    return erro?.code === '42703' || erro?.code === 'PGRST204'
+  }
+
+  async function parteDaTaxaServico(): Promise<number | null> {
+    // A parte gravada na trava (antes do POST) é a que foi para a FocusNFe: retry e reconciliação a reaproveitam,
+    // mesmo que o interruptor, a taxa ou as rodadas tenham mudado depois. O cupom impresso segue a nota.
+    const { data: vinculo, error: erroVinculo } = await supabase
+      .from('pedidos')
+      .select('comanda_id, nfce_taxa_servico_centavos')
+      .eq('id', pedidoId)
+      .maybeSingle()
+    if (erroVinculo) return colunaAusente(erroVinculo) ? 0 : null
+    const v = vinculo as { comanda_id?: string | null; nfce_taxa_servico_centavos?: number | null } | null
+    if (typeof v?.nfce_taxa_servico_centavos === 'number') return v.nfce_taxa_servico_centavos
+    const comandaId = v?.comanda_id
+    if (!comandaId) return 0
+    const { data: flag, error: erroFlag } = await supabase
+      .from('barracas')
+      .select('nfce_incluir_taxas')
+      .eq('id', barraca.id)
+      .maybeSingle()
+    if (erroFlag) return colunaAusente(erroFlag) ? 0 : null
+    if ((flag as { nfce_incluir_taxas?: boolean } | null)?.nfce_incluir_taxas !== true) return 0
+    const { data: comanda, error: erroComanda } = await supabase
+      .from('comandas')
+      .select('status, taxa_servico_centavos')
+      .eq('id', comandaId)
+      .eq('barraca_id', barraca.id)
+      .maybeSingle()
+    if (erroComanda) return null
+    const c = comanda as { status?: string; taxa_servico_centavos?: number } | null
+    if (c?.status !== 'fechada' || !((c.taxa_servico_centavos ?? 0) > 0)) return 0
+    const { data: rodadas, error: erroRodadas } = await supabase
+      .from('pedidos')
+      .select('id, status, itens_do_pedido(quantidade, preco_centavos_unitario, removido)')
+      .eq('comanda_id', comandaId)
+      .eq('barraca_id', barraca.id)
+    if (erroRodadas || !Array.isArray(rodadas)) return null
+    // Mesma base de fechar_comanda (itens não removidos das rodadas não canceladas), ordenada por id: a parte de
+    // cada rodada é a mesma seja qual for a ordem de emissão das notas.
+    const validas = (rodadas as Array<{ id: string; status: string; itens_do_pedido: ItemDoPedidoRow[] | null }>)
+      .filter((r) => r.status !== 'cancelado')
+      .sort((a, b) => (a.id < b.id ? -1 : a.id > b.id ? 1 : 0))
+    const indice = validas.findIndex((r) => r.id === pedidoId)
+    if (indice < 0) return 0
+    const totais = validas.map((r) =>
+      (r.itens_do_pedido ?? []).filter((i) => !i.removido).reduce((s, i) => s + i.preco_centavos_unitario * i.quantidade, 0),
+    )
+    return ratearTaxaServico(totais, c.taxa_servico_centavos as number)[indice]
+  }
 
   const itemsPayload = itensAtivos.map((item, indice) => {
     const cadastro = cadastroPorId.get(item.item_id as string) as ItemCadastroRow
@@ -358,6 +441,7 @@ function criarHandlerInterno(deps: DependenciasNfce) {
       valor_unitario_tributavel: valorUnitario,
       valor_bruto: valorBruto,
       ...(descontosPorItem[indice] > 0 ? { valor_desconto: descontosPorItem[indice] / 100 } : {}),
+      ...(outrasDespesasPorItem[indice] > 0 ? { valor_outras_despesas: outrasDespesasPorItem[indice] / 100 } : {}),
       unidade_comercial: cadastro.unidade_comercial,
       unidade_tributavel: cadastro.unidade_comercial,
       icms_origem: ICMS_ORIGEM,
@@ -370,9 +454,13 @@ function criarHandlerInterno(deps: DependenciasNfce) {
     ? null
     : itemsPayload.reduce((soma, i) => soma + (i.tributosCentavos ?? 0), 0)
 
-  // Em centavos inteiros (sem somar float): soma dos brutos − desconto do cupom.
+  // Em centavos inteiros (sem somar float): soma dos brutos − desconto do cupom + parte da taxa de serviço (0 com o
+  // interruptor desligado). A FocusNFe calcula vNF = produtos − desconto + outras despesas: o pagamento bate.
   const valorTotal =
-    (itensAtivos.reduce((soma, i) => soma + i.preco_centavos_unitario * i.quantidade, 0) - descontosPorItem.reduce((a, b) => a + b, 0)) / 100
+    (itensAtivos.reduce((soma, i) => soma + i.preco_centavos_unitario * i.quantidade, 0) -
+      descontosPorItem.reduce((a, b) => a + b, 0) +
+      taxaServicoCentavos) /
+    100
 
   const payload = {
     cnpj_emitente: barraca.cnpj.replace(/\D/g, ''),
@@ -430,6 +518,8 @@ function criarHandlerInterno(deps: DependenciasNfce) {
         nfce_qrcode_url: resultado?.qrcode_url ?? null,
         ...(status === 'processando_autorizacao' ? {} : { nfce_trava_em: null }),
         ...(autorizado ? { nfce_cpf_consumidor: cpfConsumidor, nfce_tributos_centavos: tributosTotalCentavos } : {}),
+        // Só com taxa na nota (interruptor ligado): desligado, o update é o de sempre.
+        ...(autorizado && taxaServicoCentavos > 0 ? { nfce_taxa_servico_centavos: taxaServicoCentavos } : {}),
       })
       .eq('id', pedidoId)
     if (error) {
@@ -473,7 +563,13 @@ function criarHandlerInterno(deps: DependenciasNfce) {
   const agoraMs = deps.agora()
   const { data: reivindicado, error: erroTrava } = await supabase
     .from('pedidos')
-    .update({ nfce_status: 'processando_autorizacao', nfce_trava_em: new Date(agoraMs).toISOString(), nfce_mensagem: null })
+    .update({
+      nfce_status: 'processando_autorizacao',
+      nfce_trava_em: new Date(agoraMs).toISOString(),
+      nfce_mensagem: null,
+      // Congela a parte da taxa que vai no POST (só quando há taxa: desligado, o update é o de sempre).
+      ...(taxaServicoCentavos > 0 ? { nfce_taxa_servico_centavos: taxaServicoCentavos } : {}),
+    })
     .eq('id', pedidoId)
     .or('nfce_status.is.null,nfce_status.neq.autorizado')
     .or(`nfce_trava_em.is.null,nfce_trava_em.lt.${new Date(agoraMs - TRAVA_NFCE_MS).toISOString()}`)

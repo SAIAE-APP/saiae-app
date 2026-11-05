@@ -1,4 +1,4 @@
-// Comanda impressa: a faixa de tipo (MESA, BALCAO, RETIRADA, ENTREGA) sai no mesmo 2x, sem acento e cabendo no papel
+// Comanda impressa: a faixa de tipo (MESA, BALCAO, PARA VIAGEM, ENTREGA) sai no mesmo 2x, sem acento e cabendo no papel
 // de 58 mm (32 colunas) e de 80 mm (48). Rodar: npm test
 import assert from 'node:assert/strict'
 import { readFileSync } from 'node:fs'
@@ -8,8 +8,8 @@ import { faixaImpressao } from '../src/lib/atendimento.ts'
 const COLUNAS = { '58mm': 32, '80mm': 48 } as const
 
 describe('faixaImpressao', () => {
-  test('Retirada e Entrega seguem como antes', () => {
-    assert.equal(faixaImpressao('retirada'), '*** RETIRADA ***')
+  test('Para viagem e Entrega', () => {
+    assert.equal(faixaImpressao('retirada', { colunasFaixa: 24 }), '*** PARA VIAGEM ***')
     assert.equal(faixaImpressao('entrega'), '*** ENTREGA ***')
   })
 

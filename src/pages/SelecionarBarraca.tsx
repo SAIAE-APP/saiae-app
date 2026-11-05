@@ -3,6 +3,7 @@ import type { FormEvent, MouseEvent } from 'react'
 import { useNavigate } from 'react-router'
 import clsx from 'clsx'
 import { supabase } from '../lib/supabase'
+import { ehAppIOS } from '../lib/plataforma'
 import { useAuth } from '../hooks/useAuth'
 import { useBarracasDoUsuario } from '../hooks/useBarracasDoUsuario'
 import { Badge } from '../components/ui/Badge'
@@ -421,14 +422,21 @@ export function SelecionarBarraca() {
           <Icone nome="storefront" size={28} className="text-mesa-neutral-900 dark:text-mesa-neutral-50" />
         </span>
         <div>
-          <h1 className="text-xl font-bold text-mesa-text-primary">Vamos criar sua barraca</h1>
+          <h1 className="text-xl font-bold text-mesa-text-primary">
+            {ehAppIOS() ? 'Nenhuma barraca nesta conta' : 'Vamos criar sua barraca'}
+          </h1>
           <p className="mt-1 text-sm text-mesa-text-secondary">
-            Sua conta ainda não tem nenhuma barraca vinculada.
+            {ehAppIOS()
+              ? 'Sua conta ainda não tem nenhuma barraca vinculada. Peça acesso ao dono da barraca.'
+              : 'Sua conta ainda não tem nenhuma barraca vinculada.'}
           </p>
         </div>
-        <Button size="xl" onClick={() => setCriandoBarraca(true)} className="w-full max-w-xs">
-          Criar minha primeira barraca
-        </Button>
+        {/* iOS: criar barraca (conta de empresa) no app é vetado pela Apple (3.1.1, ver lib/plataforma). */}
+        {!ehAppIOS() && (
+          <Button size="xl" onClick={() => setCriandoBarraca(true)} className="w-full max-w-xs">
+            Criar minha primeira barraca
+          </Button>
+        )}
         <Button variant="ghost" size="md" onClick={() => setCodigoSuporteAberto(true)}>
           Tenho um código de suporte
         </Button>
@@ -480,6 +488,7 @@ export function SelecionarBarraca() {
             />
           ))}
 
+          {!ehAppIOS() && (
           <button
             type="button"
             onClick={() => setCriandoBarraca(true)}
@@ -495,6 +504,7 @@ export function SelecionarBarraca() {
               </span>
             </span>
           </button>
+          )}
         </div>
 
         <div className="flex items-start gap-2.5 rounded-mesa-lg bg-mesa-neutral-100 p-4 text-sm text-mesa-text-secondary dark:bg-mesa-neutral-800">

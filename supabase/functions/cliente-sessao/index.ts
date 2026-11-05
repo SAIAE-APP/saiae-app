@@ -62,6 +62,32 @@ Deno.serve(async (req: Request) => {
       return json({ pedidos: data ?? [] })
     }
 
+    case 'cashback': {
+      // O cliente vem SEMPRE da sessão (nunca do corpo). Banco sem as funções (migration ausente) = recurso desligado, nunca 500.
+      const desligado = { habilitado: false, saldo_centavos: 0, disponivel_centavos: 0, vence_em: null, percentual_bp: 0, teto_uso_pct: 0, lancamentos: [] }
+      const { data: cfg, error: erroCfg } = await supabase.rpc('cashback_config', { p_slug: slug })
+      const linhaCfg = !erroCfg && Array.isArray(cfg) ? cfg[0] : null
+      const { data: saldo, error: erroSaldo } = await supabase.rpc('cashback_saldo', { p_barraca_id: barraca.id, p_cliente_id: clienteId })
+      const linhaSaldo = !erroSaldo && Array.isArray(saldo) ? saldo[0] : null
+      if (!linhaSaldo) return json(desligado)
+      const { data: lanc } = await supabase
+        .from('cashback_lancamentos')
+        .select('tipo, valor_centavos, criado_em')
+        .eq('barraca_id', barraca.id)
+        .eq('cliente_id', clienteId)
+        .order('criado_em', { ascending: false })
+        .limit(20)
+      return json({
+        habilitado: linhaCfg?.habilitado === true,
+        saldo_centavos: linhaSaldo.saldo_centavos ?? 0,
+        disponivel_centavos: linhaSaldo.disponivel_centavos ?? 0,
+        vence_em: linhaSaldo.vence_em ?? null,
+        percentual_bp: linhaCfg?.percentual_bp ?? 0,
+        teto_uso_pct: linhaCfg?.teto_uso_pct ?? 0,
+        lancamentos: lanc ?? [],
+      })
+    }
+
     case 'pedir_de_novo': {
       const pedidoId = texto(d.pedido_id, 40)
       if (!UUID.test(pedidoId)) return json({ erro: 'Pedido inválido' }, 400)

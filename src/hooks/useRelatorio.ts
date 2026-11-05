@@ -1,5 +1,8 @@
 import { calcularOpcoesVendidas, type OpcaoVendida } from '../lib/opcoesRelatorio'
 import { calcularDescontosCupom, type DescontosCupom } from '../lib/descontosCupom'
+import { calcularCashbackUsado, type CashbackUsado } from '../lib/descontosCashback'
+import type { ResumoCashback } from '../lib/cashbackResumo'
+import { carregarResumoCashback } from '../lib/cashbackResumoDados'
 import { useEffect, useMemo, useState } from 'react'
 import { supabase } from '../lib/supabase'
 import {
@@ -16,7 +19,12 @@ import {
   calcularSeriePorHora,
   calcularTotalBruto,
   calcularTotalItensVendidos,
+  janelaDoIntervalo,
+  somarTaxasServico,
 } from '../lib/relatorio'
+import type { TaxasServico } from '../lib/relatorio'
+import { buscarComandasFechadas } from '../lib/comandasPeriodo'
+import { comandaAbertaLigada } from '../lib/comandaAberta'
 import type {
   DivisaoMetodo,
   DivisaoPorConsumo,
@@ -45,6 +53,12 @@ export type AgregadosRelatorio = {
   maisVendidos: ItemMaisVendido[]
   opcoesVendidas: OpcaoVendida[]
   descontosCupom: DescontosCupom
+  /** Saldo de cashback usado nos pedidos do período (À PARTE dos itens, como o cupom). */
+  cashbackUsado: CashbackUsado
+  /** Resumo do razão (`cashback_resumo`); null = banco sem a função, sem acesso ou falha (nunca derruba o relatório). */
+  cashbackResumo: ResumoCashback | null
+  /** Taxa de serviço das comandas fechadas no período: À PARTE, nunca somada a `totalBruto`. */
+  taxaServico: TaxasServico
   ritmoDoDia: RitmoDoDia
   serieTemporal: { granularidade: 'dia' | 'hora'; pontos: PontoSerie[] }
   itensVendidos: number
@@ -115,6 +129,8 @@ function agregar(
   taxaDebitoBps: number | null,
   taxaCreditoBps: number | null,
   intervalo: IntervaloData,
+  taxaServico: TaxasServico,
+  cashbackResumo: ResumoCashback | null,
 ): AgregadosRelatorio {
   const serieTemporal: AgregadosRelatorio['serieTemporal'] =
     intervalo.inicio === intervalo.fim
@@ -132,6 +148,9 @@ function agregar(
     maisVendidos: calcularMaisVendidos(pedidos),
     opcoesVendidas: calcularOpcoesVendidas(pedidos),
     descontosCupom: calcularDescontosCupom(pedidos),
+    cashbackUsado: calcularCashbackUsado(pedidos),
+    cashbackResumo,
+    taxaServico,
     ritmoDoDia: calcularRitmoDoDia(pedidos),
     serieTemporal,
     itensVendidos: calcularTotalItensVendidos(pedidos),
@@ -154,6 +173,21 @@ export type ResultadoRelatorio =
       erro: string | null
     }
 
+const SEM_TAXA_SERVICO: TaxasServico = { totalCentavos: 0, porMetodo: {} }
+
+/** Consulta as comandas fechadas só quando o interruptor da barraca está ligado ou o período já tem pedido
+ * de comanda (barraca que desligou depois continua vendo a taxa do que já fechou). Fora disso: nenhuma consulta. */
+async function buscarTaxaServico(
+  barracaId: string,
+  ligada: boolean,
+  pedidos: PedidoComItens[],
+  intervalo: IntervaloData,
+): Promise<TaxasServico> {
+  if (!ligada && !pedidos.some((p) => p.comanda_id)) return SEM_TAXA_SERVICO
+  const { de, ate } = janelaDoIntervalo(intervalo)
+  return somarTaxasServico(await buscarComandasFechadas(barracaId, de, ate), de, ate)
+}
+
 export function useRelatorio(
   barraca: Barraca,
   filtro: FiltroRelatorio,
@@ -167,6 +201,8 @@ export function useRelatorio(
 
   const [pedidosAtuais, setPedidosAtuais] = useState<PedidoComItens[] | null>(null)
   const [pedidosComparacao, setPedidosComparacao] = useState<PedidoComItens[] | null>(null)
+  const [taxaServicoAtual, setTaxaServicoAtual] = useState<TaxasServico>(SEM_TAXA_SERVICO)
+  const [resumoCashbackAtual, setResumoCashbackAtual] = useState<ResumoCashback | null>(null)
   const [catalogoPrecos, setCatalogoPrecos] = useState<Map<string, number>>(new Map())
   const [carregando, setCarregando] = useState(true)
   const [erro, setErro] = useState<string | null>(null)
@@ -196,9 +232,22 @@ export function useRelatorio(
       ? Promise.resolve(new Map<string, number>())
       : buscarCatalogoPrecos(barraca.id)
 
-    Promise.all([buscaAtual, buscaComparacao, buscaCatalogo])
-      .then(([atual, comparacao, catalogo]) => {
+    const ligada = comandaAbertaLigada(barraca)
+    const buscaTaxa = filtrandoProdutos
+      ? Promise.resolve(SEM_TAXA_SERVICO)
+      : buscaAtual.then((pedidos) => buscarTaxaServico(barraca.id, ligada, pedidos, intervalos.atual))
+
+    // Cashback é informativo: banco sem a função, sem acesso ou falha de rede viram null e o relatório segue.
+    const janela = janelaDoIntervalo(intervalos.atual)
+    const buscaCashback: Promise<ResumoCashback | null> = filtrandoProdutos
+      ? Promise.resolve(null)
+      : carregarResumoCashback(barraca.id, janela.de, janela.ate).catch(() => null)
+
+    Promise.all([buscaAtual, buscaComparacao, buscaCatalogo, buscaTaxa, buscaCashback])
+      .then(([atual, comparacao, catalogo, taxa, cashback]) => {
         if (cancelado) return
+        setResumoCashbackAtual(cashback)
+        setTaxaServicoAtual(taxa)
         setPedidosAtuais(atual)
         setPedidosComparacao(comparacao)
         setCatalogoPrecos(catalogo)
@@ -217,7 +266,7 @@ export function useRelatorio(
     // passa um literal inline, então uma dependência em `filtro` mudaria de
     // referência a cada render e refaria a busca sem necessidade
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [barraca.id, filtro.tipo, filtro.dataInicio, filtro.dataFim, idsSet, filtrandoProdutos])
+  }, [barraca.id, barraca.comanda_aberta_habilitada, filtro.tipo, filtro.dataInicio, filtro.dataFim, idsSet, filtrandoProdutos])
 
   // mesmo motivo do efeito acima: depende dos campos primitivos de filtro
   // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -237,8 +286,12 @@ export function useRelatorio(
       barraca.taxa_debito_bps,
       barraca.taxa_credito_bps,
       intervalos.atual,
+      taxaServicoAtual,
+      resumoCashbackAtual,
     )
   }, [
+    taxaServicoAtual,
+    resumoCashbackAtual,
     filtrandoProdutos,
     pedidosAtuais,
     catalogoPrecos,
@@ -255,6 +308,8 @@ export function useRelatorio(
       barraca.taxa_debito_bps,
       barraca.taxa_credito_bps,
       intervalos.comparacao,
+      SEM_TAXA_SERVICO,
+      null,
     )
   }, [
     filtrandoProdutos,

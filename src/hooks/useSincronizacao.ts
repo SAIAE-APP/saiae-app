@@ -1,6 +1,10 @@
 import { useEffect, useRef, useState } from 'react'
 import { supabase } from '../lib/supabase'
+import { bancoSemRecurso } from '../lib/semMigration'
+import { registrarErroApp } from '../lib/erroApp'
 import {
+  descartarParaFalhas,
+  incrementarRecusa,
   incrementarTentativa,
   emitirPedidoCriadoLocal,
   listarPendentes,
@@ -10,10 +14,12 @@ import {
 } from '../lib/fila'
 import type { OperacaoPendente } from '../lib/fila'
 import { EVENTO_CLIENTE_NAO_SALVO, enfileirar } from '../lib/fila'
+import { processarOperacoes } from '../lib/filaProcessamento'
 import { salvarClienteComReenvio } from '../lib/salvarClienteComReenvio'
 import { salvarClienteFinal } from '../lib/clientesFinais'
 import type { DadosEntrega } from '../lib/entrega'
 import { desfechoDefinirMetodo } from '../lib/definirMetodoFila'
+import { desfechoFecharComanda } from '../lib/fecharComandaFila'
 
 const ATRASO_INICIAL_MS = 1000
 const ATRASO_MAXIMO_MS = 30000
@@ -128,6 +134,30 @@ async function executarOperacao(op: OperacaoPendente): Promise<void> {
       throw error ?? new Error('definir_metodo_pagamento não confirmou')
     }
 
+    case 'fechar_comanda': {
+      // Comanda aberta da Mesa: forma de pagamento + taxa de serviço (calculada no servidor). Idempotente: reenviar com
+      // o mesmo método devolve ok. Banco sem a RPC: adiada, sem travar a fila. Estado sem solução sai da fila com aviso.
+      const { comanda_id, metodo, cobrar_taxa_servico } = op.payload as {
+        comanda_id: string
+        metodo: string | null // null = comanda vazia (sem rodada ativa), encerrada sem cobrança
+        cobrar_taxa_servico: boolean
+      }
+      const { data, error } = await supabase.rpc('fechar_comanda', {
+        p_comanda_id: comanda_id,
+        p_metodo: metodo,
+        p_cobrar_taxa_servico: cobrar_taxa_servico,
+      })
+      const resposta = data as { estado?: string } | null
+      const desfecho = desfechoFecharComanda(error, resposta)
+      if (desfecho === 'concluida') return
+      if (desfecho === 'adiar') throw new OperacaoAdiadaError('Fechamento da comanda aguardando o servidor (fechar_comanda)')
+      if (desfecho === 'falha') {
+        registrarErroApp('sync', new Error(`fechar_comanda ${comanda_id}: ${resposta?.estado}`))
+        return
+      }
+      throw error ?? new Error('fechar_comanda não confirmou')
+    }
+
     case 'salvar_cliente': {
       const entrega = op.payload.p_entrega as DadosEntrega | null | undefined
       const barracaId = op.payload.p_barraca_id
@@ -145,6 +175,22 @@ async function executarOperacao(op: OperacaoPendente): Promise<void> {
         throw new OperacaoAdiadaError('Cadastro do cliente aguardando para ser salvo')
       }
       return
+    }
+
+    case 'registrar_contato': {
+      // Contato de balcão que aceitou promoções (RPC registrar_contato_marketing). Como o salvar_cliente, nunca trava a fila.
+      if (op.tentativas >= MAX_TENTATIVAS_CLIENTE) {
+        console.warn('[sincronizacao] contato de promoções descartado depois de várias tentativas')
+        return
+      }
+      const { data, error } = await supabase.rpc('registrar_contato_marketing', op.payload)
+      if (error) {
+        if (bancoSemRecurso(error)) return
+        throw new OperacaoAdiadaError('Contato do cliente aguardando para ser salvo')
+      }
+      const estado = (data as { estado?: string } | null)?.estado
+      if (estado === 'ok' || estado === 'modulo_desligado' || estado === 'dados_invalidos' || estado === 'sem_acesso') return
+      throw new OperacaoAdiadaError('Contato do cliente aguardando para ser salvo')
     }
 
     case 'mudar_status': {
@@ -214,26 +260,29 @@ export function useSincronizacao() {
       setSincronizando(true)
 
       const lista = await listarPendentes()
-      let falhou = false
-
-      for (const op of lista) {
-        if (!navigator.onLine) {
-          falhou = true
-          break
-        }
-
-        try {
-          await executarOperacao(op)
-          await marcarConcluida(op.id)
-        } catch (erro) {
-          console.error(`[sincronizacao] falha em ${op.tipo} (tentativa ${op.tentativas + 1})`, erro)
-          await incrementarTentativa(op.id)
-          falhou = true
-          // Operação adiada só espera; as outras seguem. Qualquer outra falha
-          // (rede, erro do banco) continua parando a fila, pra preservar a ordem.
-          if (erro instanceof OperacaoAdiadaError) continue
-          break
-        }
+      let falhou: boolean
+      try {
+        ;({ falhou } = await processarOperacoes(lista, {
+          online: () => navigator.onLine,
+          executar: executarOperacao,
+          concluir: marcarConcluida,
+          contarTentativa: incrementarTentativa,
+          contarRecusa: incrementarRecusa,
+          descartar: async (op, motivo) => {
+            await descartarParaFalhas(op, motivo)
+            registrarErroApp('sync', new Error(`${op.tipo} ${op.id} saiu da fila: ${motivo}`))
+          },
+          adiada: (erro) => erro instanceof OperacaoAdiadaError,
+          aoFalhar: (op, erro) => {
+            console.error(`[sincronizacao] falha em ${op.tipo} (tentativa ${op.tentativas + 1})`, erro)
+            // Sem internet a falha é esperada (a fila segue sozinha): só conta quando estava online.
+            if (navigator.onLine && !(erro instanceof OperacaoAdiadaError)) registrarErroApp('sync', erro)
+          },
+        }))
+      } catch (erro) {
+        // IndexedDB falhou no meio: não deixa a fila "ocupada" para sempre.
+        console.error('[sincronizacao] fila interrompida', erro)
+        falhou = true
       }
 
       // Operação criada DURANTE esta rodada (ex.: cliente que não salvou) não estava na lista lida no começo:

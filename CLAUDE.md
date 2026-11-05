@@ -168,7 +168,7 @@ repetir `versionCode`: subir a cada build. Validar em aparelho Android 7–11 e
   bairro e Entrega no cardápio"): `cardapio_publico` devolve
   `barraca_modos_atendimento` e `modosDoCardapioPublico` trata resposta
   antiga ou barraca só com Entrega como modos padrão.
-  Comanda impressa traz `*** RETIRADA ***`/`*** ENTREGA ***` em 2x logo
+  Comanda impressa traz `*** PARA VIAGEM ***`/`*** ENTREGA ***` em 2x logo
   abaixo da senha. Mesa só pede número no modo Mesa. A migration
   `20261004120000_modos_atendimento.sql` PRECISA estar aplicada antes do
   deploy do app: o front manda `p_tipo_atendimento` no `criar_pedido`.
@@ -296,6 +296,42 @@ repetir `versionCode`: subir a cada build. Validar em aparelho Android 7–11 e
   próximas stories, uma por PR. Testes das funções puras (status, centavos,
   notificação, token):
   `node --experimental-strip-types supabase/functions/_shared/pagamento/pagamento.test.ts`.
+- Pagamento marketplace: Pix e cartão à vista com taxa Sai aê (2026-11-04, branch `feat/pagamento-marketplace`;
+  spec `docs/superpowers/specs/2026-10-26-pagamento-marketplace-design.md`, migration `20261104100000`). A barraca
+  conecta a própria conta do Mercado Pago por OAuth (Ajustes > Pagamento online, funções `mp-oauth-iniciar` e
+  `mp-oauth-callback`; tabelas de tokens e de estados do OAuth sem policy de select, tokens cifrados). A cobrança
+  usa o token OAuth DA BARRACA em `POST /v1/payments` com `application_fee` = R$ 0,99 (constante no servidor,
+  `taxaPlataforma.ts`; copiada para `pagamentos_pendentes.taxa_plataforma_centavos` e para o pedido no momento da
+  cobrança). O webhook confere o valor pago contra o gravado no pendente (itens − cupom + entrega + taxa), nunca
+  contra a constante, e confere também a comissão devolvida pelo Mercado Pago. O dinheiro vai para a barraca e só a
+  taxa fica com o Sai aê. Pedido com total zero por cupom não cobra taxa (decisão deste projeto, a confirmar com o
+  dono) e segue sem passar pelo provedor. Cartão: o número é tokenizado NO NAVEGADOR, direto em
+  `api.mercadopago.com`, com a chave pública do VENDEDOR (devolvida pelo `/oauth/token` e guardada com a conexão), NÃO
+  com a chave da aplicação do Sai aê (a spike mostrou erro 2006 "Card Token not found" com a chave errada). O
+  front busca essa chave pela action `chave_publica` de `criar-pagamento-pix`; por isso `VITE_MP_PUBLIC_KEY` NÃO
+  é usada. O webhook confirma tanto cartão quanto Pix (`pagamentos_pendentes.meio_pagamento`: pix | cartão; cartão
+  grava o método `credito` no pedido, recusa vira pendente rejeitado). Estorno: função `estornar-pagamento` (JWT, só o
+  dono), estorno TOTAL do pagamento (a taxa volta junto), botão em pedidos pagos online com taxa, inclusive os
+  cancelados; saldo insuficiente da barraca mostra erro e o caso vai para o suporte; sem estorno parcial.
+  CORTE: depois de `CORTE_TOKEN_MP_ISO` a barraca sem OAuth deixa de cobrar Pix online com o token colado (cai para
+  "pagar na entrega") e `salvar-credencial` recusa token colado novo (409 `mp_conectar_oauth`). Sem a variável o corte
+  NÃO chegou (barraca sem OAuth segue com o token antigo, sem taxa). A data existe em DOIS lugares que precisam ser
+  iguais: `CORTE_TOKEN_MP_ISO` (secret das functions) e `VITE_CORTE_TOKEN_MP_ISO` (build do front, só para o aviso e
+  o texto da tela). Segredos novos das functions: `MP_CLIENT_ID`, `MP_CLIENT_SECRET`, `MP_OAUTH_REDIRECT_URI`
+  (tem de ser IGUAL à URL cadastrada na aplicação do Mercado Pago, inclusive a barra final), `APP_PUBLIC_URL`
+  (opcional, para o retorno ao app) e `CORTE_TOKEN_MP_ISO`. ORDEM DE DEPLOY: migration `20261104100000` → functions
+  (`mp-oauth-callback` com `--no-verify-jwt`, porque é aberta pelo redirecionamento do navegador; `criar-pagamento-pix`,
+  `webhook-mercadopago`, `mp-oauth-iniciar`, `estornar-pagamento`, `salvar-credencial`) → front. Procedimento de
+  corte: (1) ter barracas conectadas por OAuth; (2) avisar as barracas com antecedência (sugestão: 14 dias, decisão do
+  dono); (3) definir a mesma data em `CORTE_TOKEN_MP_ISO` e `VITE_CORTE_TOKEN_MP_ISO`, publicando o front; (4) depois da data,
+  quem não conectou cai para "pagar na entrega". RISCOS: o Mercado Pago avisou que a API de Payments será
+  descontinuada (o cartão e o Pix usam essa API; acompanhar a migração para a API de Orders, que hoje recusa
+  `notification_url` por pagamento); o número do cartão passa pelo JavaScript da nossa página (escopo PCI SAQ A-EP, e
+  não SAQ A como com MP Secure Fields) e não enviamos `device_id` (mais recusas do antifraude). NÃO VALIDADO: pagamento
+  de cartão com token OAuth devolveu HTTP 500 no sandbox (com e sem taxa); o campo da comissão
+  (`fee_details`, tipo `application_fee`) ainda não foi visto em pagamento aprovado; falta o teste ponta a ponta no
+  staging e o pagamento real de valor mínimo, com aprovação do dono. Sandbox do Mercado Pago: ver `docs/staging.md`.
+- Cashback do cardápio digital (2026-10-27, branch `feat/cashback`, empilhada sobre `feat/cardapio-hierarquia`; spec `docs/superpowers/specs/2026-10-27-cashback-design.md`, plano `docs/superpowers/plans/2026-10-27-cashback.md`, relatório `docs/superpowers/plans/2026-10-27-cashback-relatorio.md`, roteiro `docs/roteiro-cashback.md`). A BARRACA financia (**SUPOSIÇÃO-CASHBACK-1**): o cliente identificado (telefone confirmado) que paga ONLINE (Pix ou cartão, `criar-pagamento-pix`) ganha saldo, usado como desconto nos ITENS do pedido seguinte; `application_fee` e a taxa de R$ 0,99 não mudam. Desligado por padrão e só liga depois de o dono aceitar o aviso fiscal/de passivo (`barracas.cashback_termo_aceito_em`, check no banco); desligar só para novos créditos, saldo já concedido segue valendo até vencer (**SUPOSIÇÃO-CASHBACK-2**). Padrão 5% e 60 dias, faixas 1–15%, 30–90 dias e teto de uso 10–90% dos itens (**SUPOSIÇÃO-CASHBACK-3**). Um benefício por pedido, cupom OU saldo (422 `cashback_e_cupom`), e piso de R$ 1,00 em dinheiro nos itens: resgate = `min(saldo disponível, floor(itens × teto%), itens − 100)` (**SUPOSIÇÃO-CASHBACK-4**); crédito = `floor((itens − cupom − saldo usado) × bp / 10000)`, no máximo R$ 20,00 por pedido. Sem módulo pago na V1 (**SUPOSIÇÃO-CASHBACK-5**). Pedido de total zero por cupom continua sem taxa e o cashback nunca zera o pedido (**SUPOSIÇÃO-CASHBACK-6**). Tudo em centavos inteiros com `floor`; fórmulas em `src/lib/cashbackRegras.ts` e espelho SQL (`cashback_calcular_credito`/`_resgate`), ligados pelos vetores de `tests/fixtures/cashback-vetores.json`; o servidor SEMPRE recalcula (o front só mostra prévia; 409 com o novo total se divergir). Banco: razão só-inserção `cashback_lancamentos` (credito, resgate, estorno_credito, estorno_resgate, expiracao, ajuste) e reservas `cashback_resgates` (mesmo desenho de `cupom_usos`), escritas só por RPC de serviço, com advisory lock por loja+cliente; saldo por loja, calculado na leitura, com validade que não depende de cron (o saldo inteiro vence N dias depois do último crédito; resgatar não renova). A reserva vive até o vencimento do Pix e é liberada por `cupom_liberar` (redefinida para liberar também o saldo); `cashback_liberar_abandonadas` libera só o Pix anterior do MESMO cliente. Pagamento aprovado nunca é recusado: `cashback_confirmar_resgate` confirma mesmo com a reserva vencida (o que o saldo já não cobre vira `excedente_centavos`, absorvido pela barraca) e a falha do crédito só vai ao log, com reprocesso no reenvio do webhook (RPC idempotente). Estorno total (`estornar-pagamento`) reverte o crédito até o saldo atual e devolve o saldo usado com validade renovada; cancelar sem estornar não mexe no saldo; chargeback não tem tratamento automático. NFC-e: o saldo usado é rateado como desconto por item (`descontoTotalNfceCentavos`); a concessão não aparece na nota. LGPD: "Apagar meus dados" apaga o saldo e anonimiza o razão (`cliente_id` nulo). Front: `SecaoCashback` (Ajustes > Cardápio, só com perfil do cliente ligado), `useCashback` + `src/components/cashback/*` no checkout do cardápio (pontos mínimos em `CardapioPublico.tsx`, guardados por `tests/cashbackCardapioContato.test.ts`), saldo no perfil do cliente, texto na Política de Privacidade, histórico/relatório do dono (`cashback_resumo`). ORDEM DE DEPLOY: migrations `20261106100000` a `20261106170000` (M1..M8, nesta ordem) → functions (`criar-pagamento-pix`, `webhook-mercadopago`, `estornar-pagamento`, `cliente-sessao`, `emitir-nfce`) → app. NÃO VALIDADO: pagamento real (Pix e cartão) com saldo, piso de R$ 1,00 com a comissão de R$ 0,99 no Mercado Pago, primeira NFC-e com desconto em homologação, concorrência real de duas reservas, telas com sessão de cliente e Ajustes (exigem login), e a parte fiscal/CDC (parecer do contador e de quem entende de CDC antes de ligar em produção).
 - Avisar cliente "pedido pronto" (2026-10-08, Sprint 3, migration
   `20261008120000`): campo OPCIONAL "WhatsApp do cliente" em Confirmar Pedido
   (Mesa/Balcão/Retirada; na Entrega vale o telefone do formulário) e no
@@ -404,6 +440,33 @@ repetir `versionCode`: subir a cada build. Validar em aparelho Android 7–11 e
   `entregador_confirmar` também só grava quando o método atual é `na_entrega`.
   O Caixa conta pelo método vigente no momento da consulta (igual ao link do
   entregador).
+- Comanda aberta na Mesa e taxa de serviço (2026-10-23, branch `feat/comanda-aberta-mesa`; spec
+  `docs/superpowers/specs/2026-10-23-comanda-aberta-mesa-design.md`). Atrás de `barracas.comanda_aberta_habilitada`
+  (padrão false; Ajustes > Cardápio & Operação, `SecaoComandaAberta`): desligado, nada muda. Ligado, cada pedido de
+  Mesa é uma RODADA (`metodo_pagamento = 'na_entrega'`) presa a uma comanda: tabela `comandas` (uma ABERTA por barraca
+  + mesa normalizada, `normalizar_mesa`; trigger no INSERT de `pedidos` grava `pedidos.comanda_id`). Tela `/:slug/mesas`
+  (`Mesas.tsx`) lista as comandas abertas (Realtime + cache no aparelho) e fecha pela RPC `fechar_comanda(comanda,
+  metodo, cobrar_taxa)` (SECURITY DEFINER, só `authenticated`): grava o método em todas as rodadas, calcula a taxa NO
+  SERVIDOR e fecha; idempotente para o mesmo método, `ja_fechada` com outro. Sem rede vai para a fila (operação
+  `fechar_comanda`); só erro de rede vai para a fila, erro do servidor aparece na tela. Comanda sem rodada ativa (todas
+  canceladas) é "Encerrar comanda vazia": fecha com total 0, taxa 0 e método NULL, sem pedir forma de pagamento
+  (migration `20261029140000`). Rodada ainda aberta aparece como "Comanda aberta" no Histórico e na comanda impressa;
+  no Faturamento entra na linha "A definir (entrega ou comanda aberta)" até a comanda fechar (decisão: faturamento do
+  dia pode mostrar valor ainda não cobrado; João decide se muda).
+  TAXA DE SERVIÇO: `barracas.taxa_servico_habilitada` (padrão false) e `taxa_servico_bps` (bps, 1000 = 10% padrão,
+  0..3000); vem marcada no fechamento e o operador pode desmarcar naquela comanda. Gravada SÓ na comanda
+  (`comandas.taxa_servico_centavos`/`_bps`), nunca nos itens: Relatório/Faturamento mostra a seção "Taxa de serviço" à
+  parte (por `fechada_em`), nunca somada ao faturamento dos itens; o Caixa soma a taxa das comandas fechadas em
+  dinheiro no turno (e os pedidos em dinheiro dessas comandas, mesmo criados antes da abertura do caixa).
+  NFC-e: interruptor `barracas.nfce_incluir_taxas` (padrão DESLIGADO = taxa fora da nota, como sempre). Não é parecer
+  fiscal: o dono confirma com o contador antes de ligar. Ligado, a nota é POR RODADA e leva a sua parte da taxa
+  (rateio entre as rodadas, `valor_outras_despesas` por item na FocusNFe); a parte é congelada na trava da emissão em
+  `pedidos.nfce_taxa_servico_centavos` (o cupom impresso usa esse valor). A taxa de entrega continua fora.
+  Assistente de configuração: o passo dos modos pergunta "Como você cobra a Mesa?" (liga comanda e taxa). Desmarcar
+  Mesa no assistente DESLIGA `comanda_aberta_habilitada` em silêncio, mesmo com comandas abertas (elas continuam
+  listadas e fecháveis em `/:slug/mesas` pela URL).
+  ORDEM DE DEPLOY: migrations `20261029100000`, `…110000`, `…120000`, `…130000`, `…140000` → edge function
+  `emitir-nfce` → app. Ainda não validado com duas sessões concorrentes nem em staging; ligar primeiro numa conta de teste.
 - Estoque por item com baixa automática (2026-10-07, PR #29, migration
   `20261010110000_estoque_por_item.sql`; REVERTE a decisão de 2026-09-26 "só o
   toggle esgotado"). Decisões do dono: controle POR ITEM e opcional
@@ -494,12 +557,7 @@ repetir `versionCode`: subir a cada build. Validar em aparelho Android 7–11 e
   "Novo item" ou tocando na linha) com foto, nome, preço, categoria,
   descrição, Ativo/Esgotado/Popular, dados fiscais e "Apagar item";
   tudo grava de uma vez no botão Salvar/Adicionar.
-- IA e CRM escondidos (decisão do João, 2026-10-09; regra final de 2026-10-10: TODAS as barracas, menos a de slug `qa-teste-varredura`;
-  produto focado em um app redondo, integração app + CRM é fase futura): em Ajustes, "Atendente IA" e "Integração com o CRM" só
-  aparecem para essa barraca (`SLUGS_COM_IA_E_CRM`, `src/lib/visibilidadeIaCrm.ts`) ou com `VITE_MOSTRAR_ATENDENTE_IA=1` /
-  `VITE_MOSTRAR_INTEGRACAO_CRM=1` (só staging/teste). Só a TELA some: backend, eventos SAI-001, RPCs e functions não mudam e as
-  mensagens automáticas de status (aviso de pedido pronto etc., enviadas pelo CRM) continuam. O onboarding e o checklist do Hub
-  não oferecem nem citam IA/CRM.
+- Módulos pagos (2026-10-24; spec `docs/superpowers/specs/2026-10-24-modulos-pagos-design.md`, roteiro `docs/roteiro-modulos.md`). Substitui a antiga regra "IA e CRM escondidos" (lista `SLUGS_COM_IA_E_CRM`, `VITE_MOSTRAR_*` e `mostrarWhatsappAutomacao` por variável de ambiente): o dono NUNCA liga um módulo; só o superadmin (João) ativa, no painel de admin. Quatro módulos por loja: `whatsapp_avisos`, `whatsapp_disparos`, `whatsapp_bot` e `fiscal`. Tabelas `modulos_barraca` (chave `barraca_id`+`modulo`; `estado` teste/ativo/suspenso/cancelado, `origem` cortesia/pago, `teste_ate`, `pago_ate`, termo, `ativacao_cobrada_em`) e `modulos_eventos` (histórico de cada mudança). `modulo_ativo(barraca, modulo)` decide a vigência na hora da consulta, sem cron: teste vale até `teste_ate`; cortesia ativa com `pago_ate` nulo vale indefinidamente, sem carência; pago exige `pago_ate` e vale até `pago_ate` + 7 dias de carência (limite inclusivo); `whatsapp_disparos` só vale com `whatsapp_avisos` vigente. `modulos_ativos(barraca)` devolve a lista para o app (dono da loja ou superadmin). ESPELHO: o trigger `modulos_sincronizar_flags` mantém `fiscal_habilitado` e `whatsapp_disparos_habilitado` espelhados de `modulo_ativo` (para o CRM e as functions em produção não quebrarem); `ia_habilitada` só é forçada a false quando o bot não está vigente, NUNCA ligada pelo espelho (ligar continua pelo dono via `ia_ligar`). O espelho pode ficar velho quando uma data vence; a verdade é `modulo_ativo`. PROTEÇÃO: o dono não consegue mais fazer update direto de `fiscal_habilitado` (erro `fiscal_use_o_modulo`, trigger `barracas_fiscal_proteger`), de `whatsapp_disparos_habilitado` (`disparos_use_a_tela`) nem ligar `ia_habilitada` sozinho. Escrita só por funções `admin_*` (todas atrás de `sou_superadmin()`): `admin_modulos_listar` (não superadmin recebe conjunto vazio), `admin_modulo_definir`, `admin_modulo_ativacao_cobrada` (taxa única de R$ 99 do fiscal) e `admin_pacote_whatsapp` (liga as três de WhatsApp, tudo ou nada); retorno em `jsonb {estado}` (ok, nao_autorizado, invalido, termo_obrigatorio, dependencia). Ativar ou testar fiscal e disparos exige termo (versão aceita agora ou já gravada na linha); suspender avisos nunca é bloqueado. GATES NO SERVIDOR: edge function `emitir-nfce` (403 `modulo_desligado` sem fiscal; nota já autorizada continua visível e reimprimível), `whatsapp-disparos` (todas as ações exigem disparos, exceto `cancelar`, que é livre), `whatsapp-conexao` (só a ação `iniciar` exige algum dos três módulos de WhatsApp; status, histórico e `desconectar` seguem livres). Funções SQL (migration `20261103120000`): `disparos_publico` (e a contagem) e `registrar_contato_marketing` exigem disparos; `whatsapp_avaliacao_salvar` exige avisos; `integracao_avaliacao_config` fica ativo só com avaliação ligada e avisos vigente; `ia_ligar` levanta `modulo_desligado` ao ligar sem o bot (desligar é livre); `integracao_cardapio` só devolve `ia_habilitada` com o bot vigente; `montar_evento_saida`, sem avisos vigente, manda `data.avisos` com os cinco avisos (recebido, pronto, saiu_entrega, entregue, cancelado) com `ativo: false` (ausente significaria ativo no CRM). Módulo suspenso nunca bloqueia lançar, cozinha ou fechar pedido. APP: `useModulosAtivos` (`src/hooks/useModulosAtivos.ts`) lê `modulos_ativos` da loja ativa e alimenta o contexto da barraca (`src/layouts/contextoBarraca.ts`); FECHA POR PADRÃO (sem resposta nem cache, nenhum módulo) e guarda a última lista em localStorage por loja. Helpers puros em `src/lib/modulos.ts` (`temModulo`, `mostrarWhatsappAutomacao(modulos)`, `mostrarCaixaPromocoes`). `SecaoFiscal` (Ajustes > Conta) não pede mais token nem tem interruptor: mostra só dados do emitente, ambiente e o estado ("Pronto para emitir" / "Aguardando cadastro"). Painel `AdminModulos` (`src/components/AdminModulos.tsx`, dentro de `AdminBarracaLeitura`): ativar cortesia/pago (com `pago_ate`)/teste (30 dias sugeridos), suspender, cancelar, termo, "Ativar pacote", taxa de ativação e o bloco "Nota fiscal: conta mestre". O token da FocusNFe de cada loja (homologação e produção, colunas cifradas separadas de `barracas_fiscal_token`) é gravado pelo superadmin via `salvar-credencial`; o app não cita o prestador ao dono, e o certificado A1 vai direto ao painel da Focus, nunca fica no Sai aê. BACKFILL (migration `20261103100000`, cortesia com termo `legado-2026-10-24`): `sai-ae-uma-barraca` ganhou avisos, disparos e bot; `dhelenarestaurante` ganhou avisos e disparos (SEM fiscal, pois nunca teve token); `qa-teste-varredura` ganhou os quatro. Nenhuma outra loja ganhou módulo, e flag antiga ligada sem linha correspondente é sobrescrita (módulo inexistente = desligado). Preços e franquias são só informativos nesta entrega (avisos R$ 39,90; disparos R$ 39,90 com 500 mensagens; bot R$ 69,90 com 300 conversas; fiscal R$ 69,90 com 300 notas + ativação R$ 99; pacote WhatsApp R$ 139,90); a única contagem real é a do bot no CRM (`BOT_FRANQUIA_CONVERSAS`), e a cobrança é manual (o João registra `pago_ate`). ORDEM DE DEPLOY: migrations `20261103100000`, `…110000`, `…120000` → edge functions `emitir-nfce`, `whatsapp-disparos`, `whatsapp-conexao`, `salvar-credencial` → app. Em produção, conferir por SQL antes do app que `sai-ae-uma-barraca` e `dhelenarestaurante` receberam os módulos. Status: implementado, aguardando staging e produção. Integração com o CRM e Atendente IA seguem sem tela própria (removidas do app).
 - Cupons por código (v2, 2026-10-08/09; spec `docs/superpowers/specs/2026-10-08-cupons-design.md`,
   plano `docs/superpowers/plans/2026-10-08-cupons-comanda.md`). Só no CARDÁPIO DIGITAL (operador no balcão
   não digita cupom). Flag por loja `barracas.cupons_habilitado` (nasce desligada; RPC pública
@@ -539,6 +597,7 @@ repetir `versionCode`: subir a cada build. Validar em aparelho Android 7–11 e
   (`pendente_anterior_id`, `cupom_liberar_abandonadas`); retry da mesma cobrança reavalia o desconto; "pagar na
   entrega" cria o pedido e confirma o cupom na MESMA transação (`criar_pedido_com_cupom`). PEDIDO GRÁTIS (total cobrado = itens − desconto + taxa = 0): NÃO chama o provedor Pix. `criar-pagamento-pix` reserva o cupom, cria o pedido na MESMA transação que confirma o uso (`criar_pedido_com_cupom`, método novo `gratis`, migration `20261019140000`; `cupom_regras` sem o piso na `20261019130000`), marca o pendente aprovado e responde `{pedido_gratis:true, senha, pedido_id}`; retry do mesmo `client_uuid` devolve o mesmo pedido. Exige WhatsApp informado (422 `telefone_obrigatorio`; perfil confirmado quando a loja usa perfil, limite por IP e "uma vez por cliente" seguem valendo). Com taxa de entrega > 0 o total não é zero: Pix só da taxa. "Pagar na entrega" com total 0 também vira `gratis`. `emitir-nfce` NÃO emite nota de total R$ 0,00 (422 `pedido_gratis`, sem chamar a FocusNFe). Front: botão "Finalizar pedido grátis", senha sem QR; Relatório/Faturamento mostra o método "Grátis (cupom)" em linha própria e o desconto à parte. Aplicar as migrations `…130000` e `…140000` ANTES do deploy das functions. Testes de banco/functions contra o staging: `tests/cupons*.staging.mjs` (rodar com as
   variáveis do cabeçalho de cada script); o teste real do Pix fica para um Pix de valor baixo na loja de teste.
+- WhatsApp e Automação, fase 1 (2026-10-23, branch `feat/whatsapp-avisos`; plano `docs/superpowers/plans/2026-10-23-whatsapp-avisos-fase1.md`, contrato `docs/contrato/v1/whatsapp-conexao.md`). Aba em Ajustes > Avisos (`SecaoWhatsappAutomacao`): QR Code para conectar o WhatsApp da loja, cinco avisos (recebido, pronto, saiu_entrega, entregue, cancelado) com texto e liga/desliga, e histórico; o ENVIO é do CRM (Baileys). Config em `barracas.whatsapp_avisos` e vai em `data.avisos` dos eventos `order.*` (barraca sem config: evento igual ao de antes). Proxy `whatsapp-conexao` (JWT do dono, HMAC de plataforma; iniciar/desconectar só dono). Queda avisada pelo CRM em `crm-evento-sessao` (`barracas.whatsapp_status`, faixa `FaixaWhatsappCaiu`). Só aparece com algum módulo de WhatsApp ativo para a loja (ver "Módulos pagos"). ORDEM DE DEPLOY: CRM → migrations `20261030100000`, `…110000`, `…120000` → secrets `WHATSAPP_CONEXAO_SEGREDO` e `CRM_WHATSAPP_CONEXAO_URL` → functions `whatsapp-conexao` e `crm-evento-sessao` → app. Roteiro: `docs/roteiro-whatsapp-avisos.md`. Não validado ponta a ponta (depende do CRM).
 - Acesso do suporte (migration `20261023100000_acesso_suporte.sql`): o dono gera um código de 8 caracteres
   (Ajustes > Conta > "Acesso do suporte", `SecaoAcessoSuporte`, válido 24h, uso único) pra alguém da allowlist
   `usuarios_suporte` (começa vazia — o dono do projeto inclui o próprio id por SQL, uma vez) entrar na loja sem
@@ -587,7 +646,15 @@ repetir `versionCode`: subir a cada build. Validar em aparelho Android 7–11 e
   duas cores de marca, teal/esmeralda saiu do app inteiro. Texto
   sobre mostarda é SEMPRE tinta, nunca branco (mostarda não sustenta
   contraste com branco). "Um primário por tela": só a ação principal
-  de cada tela é mostarda, o resto usa tinta/outline/ghost. Cada
+  de cada tela é mostarda, o resto usa tinta/outline/ghost. Leitura A
+  no cardápio público (2026-10-27, decisão do João): o papel principal
+  da tela é "pedir", então todo botão que cumpre esse papel (Adicionar/
+  Escolher em todo card) é mostarda, por ser a mesma ação repetida e
+  não ações concorrentes; Esgotado e Fechado são neutros (contorno
+  desabilitado); o carrinho fixo é tinta com o pill "Ver pedido" claro;
+  o herói do destaque é mostarda com botão tinta. Se ficar "amarelo
+  demais" no celular, o recuo é o herói com borda mostarda, nunca tirar
+  a cor dos botões. Cada
   barraca define apenas logo, nome e modo claro/escuro — cor
   primária por barraca continua eliminada, não sugerir customização
   de cor.
@@ -675,7 +742,7 @@ repetir `versionCode`: subir a cada build. Validar em aparelho Android 7–11 e
   lentidão vira "preencha à mão" e nunca trava o passo). Consultar o CNPJ só preenche, não liga o fiscal.
   Funções puras e testes: `tests/onboarding*.test.ts` (`npm test`); banco contra o staging:
   `tests/onboardingBanco.staging.mjs`. O assistente e o checklist não oferecem nem citam IA/CRM (ver
-  "IA e CRM escondidos"). Política de Privacidade (seções 2, 7, 8, 9) descreve origem/categoria/endereço/CNPJ, a
+  "Módulos pagos"). Política de Privacidade (seções 2, 7, 8, 9) descreve origem/categoria/endereço/CNPJ, a
   consulta por terceiros, as conversas da IA (máx. 30 dias) e os leads do panfleto. Ordem de deploy: migrations →
   edge function → app com a flag DESLIGADA; ligar no staging para testar e só em produção com ordem do João,
   primeiro numa conta de teste. Pendente de validação ponta a ponta: o roteiro E2E ainda não foi executado.
@@ -950,7 +1017,7 @@ nenhum item daqui sozinho, só quando for pedido explicitamente.
   `20260922120000_add_assinaturas_kirvano.sql`; nome histórico, a cobrança hoje é Stripe) — isso é billing SaaS
   Sai aê→cliente, problema completamente diferente do pagamento de
   pedido cliente-final→barraca citado acima, não confundir os dois.
-  Trial de 30 dias (era 7; 2026-10-01) do plano ESSENCIAL (era Pro; decisão do João, 2026-10-11, migration
+  Trial de 3 dias corridos (era 30; decisão do João, 2026-10-24, migration `20261103130000`: conta fim de semana e feriado, só cadastros novos; o aviso `faltam_7` só vale para trial com mais de 7 dias de duração; antes foram 7 até 2026-10-01 e 30 até aqui) do plano ESSENCIAL (era Pro; decisão do João, 2026-10-11, migration
   `20261022130000`: só quem se cadastra depois dela) nasce no cadastro (trigger em `auth.users`, não na
   criação da barraca), 1 trial por e-mail pra sempre (mesmo se a
   conta for excluída e recriada). Fonte da verdade do acesso é
@@ -1060,6 +1127,22 @@ nenhum item daqui sozinho, só quando for pedido explicitamente.
     no WhatsApp"). Método `na_entrega` aparece como "A definir na entrega"
     (Histórico, comanda, Relatório/Faturamento em linha própria); o método
     real é definido depois (frente F, link do entregador).
+  - Hierarquia do cardápio público (2026-10-27, branch `feat/cardapio-hierarquia`; spec
+    `docs/superpowers/specs/2026-10-27-cardapio-hierarquia-design.md`, migration `20261105100000`). Ordem, de cima
+    para baixo: capa/logo/horário, banner, DESTAQUE, Mais pedidos, Populares, busca + categorias com a lista, carrinho
+    fixo. Destaque = `barracas.item_destaque_id` (Ajustes > Cardápio digital > "Item em destaque", uma escolha por
+    barraca) lido pela função `destaque_publico(slug)` (anon; só devolve o item se for da mesma barraca, ativo e de
+    preço fechado); `cardapio_publico` NÃO foi tocada. O bloco some sozinho sem escolha, com item esgotado (inclusive
+    pelas opções) ou durante a busca (`resolverDestaque`, `src/lib/destaque.ts`); o item continua nas outras seções.
+    Todo card usa o mesmo `BotaoPedir` (`src/components/cardapio/`), mostarda de 44px, estado decidido por
+    `estadoBotaoPedir` (`src/lib/estadoBotaoPedir.ts`). Fora do horário (`horarios_publicos` + `statusFuncionamento`,
+    no FUSO DA BARRACA (função uso_publico, migration 20261105110000; sem ela ou com erro vale America/Sao_Paulo), recalculado ao voltar o foco; sem horário cadastrado = sempre aberta) os botões ficam
+    desabilitados com "Fechado"; preço e itens continuam visíveis; o cliente SEMPRE pode remover itens (stepper
+    só diminui, barra do carrinho habilitada abre o "Seu pedido") e só o avanço ao pagamento/envio fica desabilitado,
+    com aviso (`podeFinalizarPedido`). O bloqueio é SÓ NA TELA: o servidor só recusa pedido fechado se a barraca ligou
+    `bloquear_fora_do_horario`. ORDEM DE DEPLOY: migrations 20261105100000 e 20261105110000 → app (app novo sem elas funciona: sem destaque e com fuso de Brasília).
+    Métrica (pedidos do cardápio por semana por barraca, antes e depois): `docs/consulta-pedidos-cardapio-semana.sql`
+    (não há coluna de origem em `pedidos`; a consulta usa rastros e declara os limites).
   - Fase 2 (futura): cliente monta pedido e ele cai direto na
     Cozinha, mas o pagamento continua fora do app (maquininha/Pix na
     mesa, como já funciona hoje) — só tira a fila de atendimento,
@@ -1086,6 +1169,28 @@ nenhum item daqui sozinho, só quando for pedido explicitamente.
 - Telas de lançar pedido e cozinha funcionam offline
 - Enviar pedido é idempotente (duplo toque não cria dois pedidos)
 - Nada bloqueia a operação esperando rede
+- Carregamento sob demanda (`App.tsx`): telas fora do balcão são `React.lazy`; ficam FIXAS (offline) Dashboard,
+  LancarPedido, ConfirmarPedido, Cozinha, Mesas, TelaChamada, LayoutBarraca, Login e Dispatcher — não torne lazy sem
+  rever isso (`tests/carregamentoSobDemanda.test.ts`). O service worker pré-guarda todos os pedaços (`**/*.js`). Pedaço
+  sumido após deploy: `vite:preloadError` recarrega UMA vez por minuto (`recargaPorPedacoAusente.ts`); se persistir, a
+  `GuardaErroApp` mostra "Recarregar". `AvisoNovaVersao` (service worker) é independente e continua igual.
+- Fila offline (`filaProcessamento.ts`): erro de rede/5xx para a fila (ordem preservada); recusa definitiva do
+  servidor (22xxx, 23xxx exceto 23505, P0001, 42501) para a fila só até 10 recusas, depois a operação vai para o
+  store `falhas` do IndexedDB (`mesaagil-fila` v2, com o payload; nunca é apagada) e um toast tocável avisa o
+  motivo ("toque para tentar de novo" = `reenviarFalha`). As seguintes seguem. Novo erro permanente: ajustar `CODIGO_RECUSA`.
+- Medição de anúncios (`lib/medicao.ts`, `AvisoCookies`): Pixel do Meta (442066388679102) e GA4 (G-R72CK0Q5DV) só carregam com
+  `localStorage.sx_consent = 'granted'` (mesma chave do site), só em /cadastro, /login, /assinar, /onboarding — nunca no
+  cardápio público nem na operação. Sem consentimento nenhum script/evento sai. `index.html` não carrega mais o gtag.
+  Eventos no navegador: CompleteRegistration/sign_up no cadastro; Purchase é SÓ do servidor. CSP libera apenas
+  connect.facebook.net, www.googletagmanager.com, www.google-analytics.com e www.facebook.com. Política de privacidade nos links
+  de entrada: https://saiae.com.br/privacidade (a página interna /privacidade segue, usada pelo cardápio e por Excluir conta).
+- Purchase pelo servidor (`_shared/medicaoServidor.ts`, no `invoice.paid` do webhook-stripe): Meta CAPI + GA4 Measurement Protocol, só com
+  `assinaturas.consentimento_marketing = true` (gravado no login por `registrar_consentimento_marketing`), só a 1ª cobrança paga > 0 de
+  assinatura criada há < 45 dias (trava `purchase_enviado_em` antes de enviar), event_id = id da fatura, e-mail em SHA-256, falha
+  nunca atrasa nem derruba o 200. Secrets: META_CAPI_TOKEN, GA4_API_SECRET (opc. META_TEST_EVENT_CODE). Ver docs/roteiro-medicao-anuncios.md.
+- Origem do cadastro (UTM, `lib/utm.ts`): `main.tsx` guarda utm_source/medium/campaign/content/term da URL em localStorage
+  (90 dias, URL sem UTM nunca apaga, parâmetros fora da lista ignorados); no 1º `SIGNED_IN` o `useAuth` chama a RPC
+  `registrar_origem_cadastro` (grava em `assinaturas`, só a primeira vez). Tolerante: sem migration/rede/UTM o cadastro segue igual.
 - Áreas de toque de no mínimo 44px
 
 ## Stack

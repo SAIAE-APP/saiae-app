@@ -1,6 +1,7 @@
 import { useState } from 'react'
 import type { FormEvent } from 'react'
 import { Link, useNavigate, useSearchParams } from 'react-router'
+import { ehAppIOS } from '../lib/plataforma'
 import { useAuth } from '../hooks/useAuth'
 import { LayoutAuth } from '../components/LayoutAuth'
 import { Button } from '../components/ui/Button'
@@ -86,18 +87,23 @@ export function Login() {
         </Button>
       </form>
 
-      <div className="my-6 flex items-center gap-3 text-xs text-mesa-text-tertiary">
-        <span className="h-px flex-1 bg-mesa-border-subtle" />
-        ou
-        <span className="h-px flex-1 bg-mesa-border-subtle" />
-      </div>
+      {/* iOS: a Apple não aceita criar conta de empresa no app (3.1.1, ver lib/plataforma). */}
+      {!ehAppIOS() && (
+        <>
+          <div className="my-6 flex items-center gap-3 text-xs text-mesa-text-tertiary">
+            <span className="h-px flex-1 bg-mesa-border-subtle" />
+            ou
+            <span className="h-px flex-1 bg-mesa-border-subtle" />
+          </div>
 
-      <p className="text-center text-sm text-mesa-text-secondary">
-        Não tem conta?{' '}
-        <Link to={`/cadastro?${params.toString()}`}className="font-medium text-mesa-text-primary underline">
-          Criar conta
-        </Link>
-      </p>
+          <p className="text-center text-sm text-mesa-text-secondary">
+            Não tem conta?{' '}
+            <Link to={`/cadastro?${params.toString()}`}className="font-medium text-mesa-text-primary underline">
+              Criar conta
+            </Link>
+          </p>
+        </>
+      )}
     </LayoutAuth>
   )
 }

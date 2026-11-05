@@ -14,9 +14,11 @@ import {
   type ConsultaPagamento,
   type Notificacao,
   type ParamsCobranca,
+  type ParamsCobrancaCartao,
   type ProvedorPix,
   type QrPix,
   type ResultadoAssinatura,
+  type ResultadoCartao,
   type StatusPagamento,
 } from './tipos.ts'
 
@@ -60,6 +62,13 @@ export function dataExpiracaoMercadoPago(expiraEm: Date): string {
   return brasilia.toISOString().replace('Z', '-03:00')
 }
 
+/** Comissão do marketplace: o MP recebe `application_fee` em REAIS; sai de centavos inteiros só aqui. */
+function campoComissao(taxaPlataformaCentavos?: number): { application_fee?: number } {
+  return taxaPlataformaCentavos && taxaPlataformaCentavos > 0
+    ? { application_fee: centavosParaDecimal(taxaPlataformaCentavos) }
+    : {}
+}
+
 export function montarCorpoCobrancaMercadoPago(p: ParamsCobranca): Record<string, unknown> {
   return {
     transaction_amount: centavosParaDecimal(p.valorCentavos),
@@ -73,7 +82,38 @@ export function montarCorpoCobrancaMercadoPago(p: ParamsCobranca): Record<string
     // O id do pendente vai na URL: o webhook precisa saber de qual barraca é o token
     // pra consultar o pagamento, e só o MP guarda o dono do pagamento.
     notification_url: p.urlNotificacao,
+    ...campoComissao(p.taxaPlataformaCentavos),
   }
+}
+
+/** Cartão à vista: só o token do cartão (gerado no navegador) segue; nenhum outro dado de cartão. */
+export function montarCorpoCobrancaCartaoMercadoPago(p: ParamsCobrancaCartao): Record<string, unknown> {
+  return {
+    transaction_amount: centavosParaDecimal(p.valorCentavos),
+    token: p.cardToken,
+    installments: 1,
+    payment_method_id: p.paymentMethodId,
+    ...(p.issuerId ? { issuer_id: Number(p.issuerId) } : {}),
+    description: p.descricao,
+    external_reference: p.referencia,
+    payer: { email: p.emailPagador },
+    notification_url: p.urlNotificacao,
+    ...campoComissao(p.taxaPlataformaCentavos),
+  }
+}
+
+/** Comissão registrada pelo MP (`fee_details` tipo application_fee), em centavos; null se ausente ou não numérica. */
+export function comissaoDoMercadoPago(pagamento: unknown): number | null {
+  const detalhes = (pagamento as { fee_details?: unknown } | null)?.fee_details
+  if (!Array.isArray(detalhes)) return null
+  const taxa = detalhes.find((d) => (d as { type?: unknown } | null)?.type === 'application_fee') as
+    | { amount?: unknown }
+    | undefined
+  const amount = taxa?.amount
+  // Number(null) e Number('') dão 0: só número ou texto numérico não vazio contam como comissão informada.
+  if (typeof amount !== 'number' && !(typeof amount === 'string' && amount.trim())) return null
+  const centavos = valorDecimalParaCentavos(amount)
+  return Number.isFinite(centavos) ? centavos : null
 }
 
 /**
@@ -209,7 +249,58 @@ export const mercadoPago: ProvedorPix = {
       status: statusDoMercadoPago(pagamento.status),
       valorCentavos: valorDecimalParaCentavos(pagamento.transaction_amount),
       referencia: String(pagamento.external_reference ?? ''),
+      comissaoCentavos: comissaoDoMercadoPago(pagamento),
     }
+  },
+
+  async criarCobrancaCartao(params): Promise<ResultadoCartao> {
+    let resposta: Response
+    try {
+      resposta = await fetch(MERCADOPAGO_API_URL, {
+        method: 'POST',
+        headers: {
+          Authorization: `Bearer ${params.token}`,
+          'Content-Type': 'application/json',
+          // Retry do mesmo pendente devolve o mesmo pagamento em vez de cobrar duas vezes.
+          'X-Idempotency-Key': params.referencia,
+        },
+        body: JSON.stringify(montarCorpoCobrancaCartaoMercadoPago(params)),
+      })
+    } catch (erroRede) {
+      throw new ErroProvedor('Falha ao contatar o Mercado Pago', { rede: true, detalhe: String(erroRede) })
+    }
+    const resultado = await resposta.json().catch(() => null)
+    if (!resposta.ok || !resultado?.id) {
+      // Sem `detalhe` com o corpo da requisição: só a resposta do MP (nunca o token do cartão).
+      throw new ErroProvedor(resultado?.message ?? resultado?.error ?? 'Erro desconhecido no Mercado Pago', {
+        detalhe: resultado,
+      })
+    }
+    return {
+      idExterno: String(resultado.id),
+      status: statusDoMercadoPago(resultado.status),
+      statusDetalhe: resultado.status_detail != null ? String(resultado.status_detail) : null,
+    }
+  },
+
+  async estornar({ token, idExterno, chaveIdempotencia }) {
+    let resposta: Response
+    try {
+      resposta = await fetch(`${MERCADOPAGO_API_URL}/${idExterno}/refunds`, {
+        method: 'POST',
+        // Estorno total (corpo vazio). Com `chaveIdempotencia` (derivada do pendente) o retry depois de um timeout
+        // devolve o mesmo estorno em vez de estornar de novo; sem ela, cada chamada é uma tentativa nova.
+        headers: { Authorization: `Bearer ${token}`, 'X-Idempotency-Key': chaveIdempotencia ?? crypto.randomUUID() },
+      })
+    } catch (erroRede) {
+      throw new ErroProvedor('Falha ao contatar o Mercado Pago', { rede: true, detalhe: String(erroRede) })
+    }
+    if (resposta.ok) return { ok: true }
+    const corpo = await resposta.json().catch(() => null)
+    // 5xx, 408 (timeout) e 429 (limite de taxa) são transitórios: quem chama pode tentar de novo.
+    if (resposta.status >= 500 || resposta.status === 408 || resposta.status === 429) throw new ErroProvedor('Mercado Pago indisponível ao estornar', { detalhe: corpo })
+    const texto = `${corpo?.message ?? ''} ${corpo?.error ?? ''}`
+    return { ok: false, motivo: /balance|saldo|insufficient/i.test(texto) ? 'saldo_insuficiente' : 'outro' }
   },
 
   extrairIdDaNotificacao: extrairNotificacaoMercadoPago,

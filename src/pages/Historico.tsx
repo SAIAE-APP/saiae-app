@@ -1,12 +1,16 @@
-import { useEffect, useState } from 'react'
+import { useEffect, useMemo, useState } from 'react'
 import { supabase } from '../lib/supabase'
 import { classesBotaoIcone } from '../lib/estiloBotaoIcone'
-import { useBarracaAtual } from '../layouts/contextoBarraca'
+import { ehAppIOS } from '../lib/plataforma'
+import { useBarracaAtual, useModulosDaLoja, useSouDonoDaLoja } from '../layouts/contextoBarraca'
+import { acaoDeEstorno } from '../lib/estornoPedido'
 import { useTheme } from '../hooks/useTheme'
-import { MOTIVOS_CANCELAMENTO } from '../lib/cancelamento'
+import { MOTIVOS_CANCELAMENTO, type MotivoCancelamento } from '../lib/cancelamento'
+import { enfileirar } from '../lib/fila'
+import { ModalCancelamento } from '../components/ModalCancelamento'
 import { formatarPrecoBR } from '../lib/preco'
 import { ROTULO_MODO, nomeDoCliente, rotuloAtendimento, tipoDoPedido } from '../lib/atendimento'
-import { corMetodo, humanizarMetodo, METODOS_DISPONIVEIS } from '../lib/metodoPagamento'
+import { corMetodo, humanizarMetodoDoPedido, METODOS_DISPONIVEIS } from '../lib/metodoPagamento'
 import { ROTULO_A_RECEBER, pagarDepoisLigado, pedidoAReceber } from '../lib/pagarDepois'
 import { hojeISO } from '../lib/datas'
 import {
@@ -36,9 +40,12 @@ import { useToast } from '../components/ui/useToast'
 import { BotaoDefinirPagamento } from '../components/BotaoDefinirPagamento'
 import { BotaoCorrigirPagamento } from '../components/BotaoCorrigirPagamento'
 import { podeCorrigirMetodo } from '../lib/corrigirMetodo'
-import { ambienteDaNota, cpfValido, formatarCpf } from '../lib/fiscal'
+import { ambienteDaNota, cpfValido, formatarCpf, mensagemErroEmissao, podeMostrarBotaoNota } from '../lib/fiscal'
+import { temModulo } from '../lib/modulos'
 import { nomeComOpcoes } from '../lib/opcoes'
 import { textoCupomDoPedido } from '../lib/descontosCupom'
+import { textoCashbackGeradoDoPedido, textoCashbackUsadoDoPedido } from '../lib/descontosCashback'
+import { buscarComandasPorIds, textoComandaDoPedido, type ComandaDoPedido } from '../lib/comandasPeriodo'
 import { descreverErroImpressao, imprimirCupomFiscal, impressoraSuportada } from '../lib/impressoraTermica'
 import { ROTULO_SAIU } from '../lib/saiuEntrega'
 import { minutosEntre } from '../lib/tempoPedido'
@@ -48,9 +55,9 @@ function motivoHumanizado(motivo: string | null): string {
   return MOTIVOS_CANCELAMENTO.find((m) => m.valor === motivo)?.rotulo ?? motivo ?? 'não informado'
 }
 
-function RotuloMetodo({ chave }: { chave: string | null }) {
+function RotuloMetodo({ chave, daComanda }: { chave: string | null; daComanda: boolean }) {
   const metodo = METODOS_DISPONIVEIS.find((m) => m.chave === chave)
-  if (!metodo) return <>{humanizarMetodo(chave)}</>
+  if (!metodo) return <>{humanizarMetodoDoPedido(chave, daComanda)}</>
   return (
     <span className="inline-flex items-center gap-1">
       <Icone nome={metodo.icone} size={14} />
@@ -72,7 +79,7 @@ type TipoConsumo = 'todos' | 'mesa' | 'retirada' | 'entrega'
 const ROTULO_FILTRO_CONSUMO: Record<TipoConsumo, string> = {
   todos: 'Todos',
   mesa: 'No local',
-  retirada: 'Retirada',
+  retirada: ROTULO_MODO.retirada,
   entrega: 'Entrega',
 }
 
@@ -109,6 +116,8 @@ async function gerarPlanilha(pedidos: PedidoComItens[]): Promise<ArrayBuffer> {
     { header: 'Taxa de entrega', key: 'taxaEntrega', width: 16 },
     { header: 'Cupom', key: 'cupom', width: 14 },
     { header: 'Desconto do cupom', key: 'descontoCupom', width: 18 },
+    { header: 'Cashback usado', key: 'cashbackUsado', width: 16 },
+    { header: 'Cashback gerado', key: 'cashbackGerado', width: 16 },
   ]
 
   const linhaCabecalho = planilha.getRow(1)
@@ -119,7 +128,7 @@ async function gerarPlanilha(pedidos: PedidoComItens[]): Promise<ArrayBuffer> {
   linhaCabecalho.alignment = { vertical: 'middle' }
   linhaCabecalho.height = 20
   planilha.views = [{ state: 'frozen', ySplit: 1 }]
-  planilha.autoFilter = { from: 'A1', to: 'N1' }
+  planilha.autoFilter = { from: 'A1', to: 'P1' }
 
   for (const pedido of pedidos) {
     const itensTexto = pedido.itens_do_pedido
@@ -144,6 +153,8 @@ async function gerarPlanilha(pedidos: PedidoComItens[]): Promise<ArrayBuffer> {
       taxaEntrega: (pedido.taxa_entrega_centavos ?? 0) > 0 ? formatarPrecoBR(pedido.taxa_entrega_centavos ?? 0) : '',
       cupom: (pedido.desconto_cupom_centavos ?? 0) > 0 ? (pedido.cupom_codigo ?? '') : '',
       descontoCupom: (pedido.desconto_cupom_centavos ?? 0) > 0 ? formatarPrecoBR(pedido.desconto_cupom_centavos ?? 0) : '',
+      cashbackUsado: (pedido.cashback_usado_centavos ?? 0) > 0 ? formatarPrecoBR(pedido.cashback_usado_centavos ?? 0) : '',
+      cashbackGerado: (pedido.cashback_gerado_centavos ?? 0) > 0 ? formatarPrecoBR(pedido.cashback_gerado_centavos ?? 0) : '',
     })
 
     linha.alignment = { vertical: 'middle', wrapText: false }
@@ -177,7 +188,7 @@ function ordenarPorEntregueEmDesc(lista: PedidoComItens[]): PedidoComItens[] {
   })
 }
 
-function BotaoEmitirNota({ pedido }: { pedido: PedidoComItens }) {
+function BotaoEmitirNota({ pedido, moduloFiscal }: { pedido: PedidoComItens; moduloFiscal: boolean }) {
   const [status, setStatus] = useState(pedido.nfce_status)
   const [mensagem, setMensagem] = useState(pedido.nfce_mensagem)
   const [chave, setChave] = useState(pedido.nfce_chave)
@@ -236,7 +247,7 @@ function BotaoEmitirNota({ pedido }: { pedido: PedidoComItens }) {
 
     if (error) {
       const corpo = await error.context?.json?.().catch(() => null)
-      const erroMsg = corpo?.erro ?? 'Não foi possível emitir. Tente novamente.'
+      const erroMsg = mensagemErroEmissao(corpo?.erro)
       setStatus('erro')
       setMensagem(erroMsg)
       mostrarToast(erroMsg, { variante: 'erro' })
@@ -245,14 +256,14 @@ function BotaoEmitirNota({ pedido }: { pedido: PedidoComItens }) {
 
     const statusRecebido = data?.status ?? 'erro'
     setStatus(statusRecebido)
-    setMensagem(data?.mensagem ?? data?.erro ?? null)
+    setMensagem(data?.mensagem ? mensagemErroEmissao(data.mensagem) : data?.erro ? mensagemErroEmissao(data.erro) : null)
     setChave(data?.chave ?? null)
     if (statusRecebido === 'autorizado') setAmbienteEmitidoAgora(barraca.fiscal_ambiente)
 
     if (statusRecebido === 'autorizado') {
       mostrarToast('Nota fiscal emitida.', { variante: 'sucesso' })
     } else {
-      mostrarToast(data?.mensagem ?? data?.erro ?? 'Não foi possível emitir a nota.', { variante: 'erro' })
+      mostrarToast(mensagemErroEmissao(data?.mensagem ?? data?.erro), { variante: 'erro' })
     }
   }
 
@@ -278,6 +289,8 @@ function BotaoEmitirNota({ pedido }: { pedido: PedidoComItens }) {
     )
   }
 
+  if (!moduloFiscal) return null
+
   return (
     <div className="mt-3">
       <Input
@@ -302,16 +315,104 @@ function BotaoEmitirNota({ pedido }: { pedido: PedidoComItens }) {
   )
 }
 
+// Pedido pago online (só o dono): estorna TOTAL (itens + entrega + taxa Sai aê) e só então cancela, pelo caminho de
+// sempre (fila 'mudar_status', como a Cozinha). Pedido já cancelado (a Cozinha não estorna) ganha só o estorno.
+// Recusa do provedor (ex.: sem saldo) mostra o motivo e NÃO cancela.
+function BotaoCancelarEstornar({
+  pedido,
+  onCancelado,
+}: {
+  pedido: PedidoComItens
+  onCancelado: (pedidoId: string, motivo: MotivoCancelamento, canceladoEm: string) => void
+}) {
+  const { mostrarToast } = useToast()
+  const souDono = useSouDonoDaLoja()
+  const [aberto, setAberto] = useState(false)
+  const [estornando, setEstornando] = useState(false)
+  const [estornado, setEstornado] = useState(false)
+  const [erro, setErro] = useState<string | null>(null)
+  const acao = acaoDeEstorno(pedido, souDono, estornado)
+  if (!acao) return null
+
+  async function confirmar(motivo: MotivoCancelamento) {
+    setEstornando(true)
+    setErro(null)
+    const { data, error } = await supabase.functions.invoke('estornar-pagamento', { body: { pedido_id: pedido.id } })
+    if (error || !data?.ok) {
+      const corpo = error ? await error.context?.json?.().catch(() => null) : data
+      const mensagem: string = corpo?.erro ?? 'Não foi possível estornar agora. Confira a internet e tente de novo.'
+      setEstornando(false)
+      setAberto(false)
+      setErro(mensagem)
+      mostrarToast(mensagem, { variante: 'erro', duracaoMs: 10000 })
+      return
+    }
+    if (acao === 'estornar') {
+      // Já cancelado: não enfileira outro cancelamento.
+      setEstornando(false)
+      setAberto(false)
+      setEstornado(true)
+      mostrarToast('Pagamento estornado.', { variante: 'sucesso' })
+      return
+    }
+    const agora = new Date().toISOString()
+    await enfileirar('mudar_status', {
+      pedido_id: pedido.id,
+      status: 'cancelado',
+      motivo_cancelamento: motivo,
+      cancelado_em: agora,
+    })
+    setEstornando(false)
+    setAberto(false)
+    setEstornado(true)
+    onCancelado(pedido.id, motivo, agora)
+    mostrarToast('Pagamento estornado e pedido cancelado.', { variante: 'sucesso' })
+  }
+
+  const soEstorno = acao === 'estornar'
+  const rotulo = soEstorno ? 'Estornar pagamento' : 'Cancelar e estornar'
+  const descricao =
+    `O valor total pago (itens, entrega e a taxa de ${formatarPrecoBR(pedido.taxa_plataforma_centavos ?? 0)}) ` +
+    'volta para o cliente. O estorno não pode ser desfeito.'
+
+  return (
+    <div className="mt-3">
+      <Button variant="outline" size="md" onClick={() => setAberto(true)} className="w-full">
+        <Icone nome="cancel" size={18} />
+        {rotulo}
+      </Button>
+      {erro && <p role="alert" className="mt-1.5 text-xs text-mesa-error-500">{erro}</p>}
+      {aberto && (
+        <ModalCancelamento
+          pedido={pedido}
+          cancelando={estornando}
+          onFechar={() => !estornando && setAberto(false)}
+          onConfirmar={confirmar}
+          titulo={soEstorno ? `Estornar o pagamento do pedido #${pedido.senha}?` : `Cancelar e estornar o pedido #${pedido.senha}?`}
+          descricao={descricao}
+          rotuloConfirmar={rotulo}
+          motivoFixo={soEstorno ? ((pedido.motivo_cancelamento as MotivoCancelamento | null) ?? 'outro') : undefined}
+        />
+      )}
+    </div>
+  )
+}
+
 function CardHistorico({
   pedido,
   onRestaurar,
   onMetodoDefinido,
+  onCancelado,
+  comanda,
 }: {
+  comanda?: ComandaDoPedido
   pedido: PedidoComItens
   onRestaurar: (pedido: PedidoComItens) => void
   onMetodoDefinido: (pedidoId: string, metodo: string) => void
+  onCancelado: (pedidoId: string, motivo: MotivoCancelamento, canceladoEm: string) => void
 }) {
   const barraca = useBarracaAtual()
+  const modulos = useModulosDaLoja()
   const tempoTotal = pedido.entregue_em ? minutosEntre(pedido.criado_em, pedido.entregue_em) : null
   const cancelado = pedido.status === 'cancelado'
   const itensAtivos = pedido.itens_do_pedido.filter((item) => !item.removido)
@@ -346,6 +447,11 @@ function CardHistorico({
             </p>
           )}
           {textoCupomDoPedido(pedido) && <p className="text-xs text-mesa-text-tertiary">{textoCupomDoPedido(pedido)}</p>}
+          {textoCashbackUsadoDoPedido(pedido) && <p className="text-xs text-mesa-text-tertiary">{textoCashbackUsadoDoPedido(pedido)}</p>}
+          {textoCashbackGeradoDoPedido(pedido) && <p className="text-xs text-mesa-text-tertiary">{textoCashbackGeradoDoPedido(pedido)}</p>}
+          {textoComandaDoPedido(comanda, formatarPrecoBR) && (
+            <p className="text-xs text-mesa-text-tertiary">{textoComandaDoPedido(comanda, formatarPrecoBR)}</p>
+          )}
         </div>
         <div className="text-right text-sm text-mesa-text-secondary">
           <p>Entrada {formatarHora(pedido.criado_em)}</p>
@@ -369,7 +475,7 @@ function CardHistorico({
         <span
           className={`inline-flex items-center rounded-mesa-balao px-3 py-1 text-xs font-medium ${corMetodo(pedido.metodo_pagamento)}`}
         >
-          <RotuloMetodo chave={pedido.metodo_pagamento} />
+          <RotuloMetodo chave={pedido.metodo_pagamento} daComanda={!!pedido.comanda_id} />
         </span>
         {pedidoAReceber(pedido, pagarDepoisLigado(barraca)) && <Badge variant="warning">{ROTULO_A_RECEBER}</Badge>}
       </div>
@@ -422,7 +528,11 @@ function CardHistorico({
         />
       )}
 
-      {!cancelado && <BotaoEmitirNota pedido={pedido} />}
+      {podeMostrarBotaoNota({ temModulo: temModulo(modulos, 'fiscal'), autorizada: pedido.nfce_status === 'autorizado', cancelado }) && (
+        <BotaoEmitirNota pedido={pedido} moduloFiscal={temModulo(modulos, 'fiscal')} />
+      )}
+
+      <BotaoCancelarEstornar pedido={pedido} onCancelado={onCancelado} />
 
       {pedido.status === 'entregue' && (
         <Button
@@ -463,6 +573,25 @@ export function Historico() {
   const [busca, setBusca] = useState('')
   const [tipoConsumo, setTipoConsumo] = useState<TipoConsumo>('todos')
   const [metodoFiltrado, setMetodoFiltrado] = useState<string | null>(null)
+
+  // Comandas dos pedidos listados (uma consulta por lote); sem pedido de comanda no período = nenhuma consulta.
+  const [comandasPorId, setComandasPorId] = useState<Map<string, ComandaDoPedido>>(new Map())
+  const idsComandas = useMemo(
+    () => [...new Set(pedidos.map((p) => p.comanda_id).filter((id): id is string => !!id))].sort().join(','),
+    [pedidos],
+  )
+  useEffect(() => {
+    if (!idsComandas) return
+    let cancelado = false
+    buscarComandasPorIds(barraca.id, idsComandas.split(','))
+      .then((mapa) => {
+        if (!cancelado) setComandasPorId(mapa)
+      })
+      .catch(() => {}) // etiqueta é informativa: sem ela o card segue como antes
+    return () => {
+      cancelado = true
+    }
+  }, [barraca.id, idsComandas])
 
   const [itensCardapio, setItensCardapio] = useState<Item[]>([])
   const [selecionados, setSelecionados] = useState<ReadonlySet<string>>(new Set())
@@ -574,6 +703,14 @@ export function Historico() {
 
   function metodoDefinido(pedidoId: string, metodo: string) {
     setPedidos((atual) => atual.map((p) => (p.id === pedidoId ? { ...p, metodo_pagamento: metodo } : p)))
+  }
+
+  function pedidoCancelado(pedidoId: string, motivo: MotivoCancelamento, canceladoEm: string) {
+    setPedidos((atual) =>
+      atual.map((p) =>
+        p.id === pedidoId ? { ...p, status: 'cancelado', motivo_cancelamento: motivo, cancelado_em: canceladoEm } : p,
+      ),
+    )
   }
 
   async function restaurarPedido(pedido: PedidoComItens) {
@@ -755,7 +892,7 @@ export function Historico() {
             activeIndex={periodosDisponiveis.findIndex((p) => p.valor === periodo)}
             onChange={(indice) => setPeriodo(periodosDisponiveis[indice].valor)}
           />
-          {planoEssencial && (
+          {planoEssencial && !ehAppIOS() && (
             <p className="mt-1.5 text-xs text-mesa-text-tertiary">
               Plano Essencial mostra até 7 dias — o Pro libera o histórico completo.
             </p>
@@ -882,8 +1019,10 @@ export function Historico() {
               <CardHistorico
                 key={pedido.id}
                 pedido={pedido}
+                comanda={pedido.comanda_id ? comandasPorId.get(pedido.comanda_id) : undefined}
                 onRestaurar={restaurarPedido}
                 onMetodoDefinido={metodoDefinido}
+                onCancelado={pedidoCancelado}
               />
             ))}
           </div>

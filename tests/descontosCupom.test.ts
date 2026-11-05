@@ -64,7 +64,8 @@ describe('NFC-e', () => {
   test('desconto rateado por item (valor_desconto) e total da forma de pagamento já descontado; taxa fora', () => {
     assert.match(nfce, /ratearDesconto\(/)
     assert.match(nfce, /valor_desconto: descontosPorItem\[indice\] \/ 100/)
-    assert.match(nfce, /descontosPorItem\.reduce\(\(a, b\) => a \+ b, 0\)\) \/ 100/)
+    // Total = brutos − descontos + parte da taxa de serviço (0 com nfce_incluir_taxas desligado).
+    assert.match(nfce, /descontosPorItem\.reduce\(\(a, b\) => a \+ b, 0\) \+\s*taxaServicoCentavos\) \/\s*100/)
     assert.doesNotMatch(nfce, /taxa_entrega_centavos[^\n]*valorTotal/)
   })
   test('lê o desconto à parte (não quebra antes da migration dos cupons)', () => {

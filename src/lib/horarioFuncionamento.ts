@@ -30,17 +30,34 @@ function cruzaMeiaNoite(abertura: string, fechamento: string): boolean {
   return paraMinutos(fechamento) <= paraMinutos(abertura)
 }
 
-/** "Aberto agora"/"Fechado — abre às Xh" a partir da data/hora do visitante.
+const DIA_POR_ABREV: Record<string, number> = { Sun: 0, Mon: 1, Tue: 2, Wed: 3, Thu: 4, Fri: 5, Sat: 6 }
+
+/** Dia da semana (0 = domingo) e minuto do dia no fuso dado; sem fuso, no relógio local. */
+function diaEMinutoNoFusoLocal(agora: Date, fuso?: string): { dia: number; minutos: number } {
+  if (!fuso) return { dia: agora.getDay(), minutos: agora.getHours() * 60 + agora.getMinutes() }
+  const partes = new Intl.DateTimeFormat('en-US', {
+    timeZone: fuso,
+    weekday: 'short',
+    hour: '2-digit',
+    minute: '2-digit',
+    hourCycle: 'h23',
+  }).formatToParts(agora)
+  const valor = (tipo: string) => partes.find((p) => p.type === tipo)?.value ?? ''
+  return { dia: DIA_POR_ABREV[valor('weekday')] ?? 0, minutos: Number(valor('hour')) * 60 + Number(valor('minute')) }
+}
+
+/** "Aberto agora"/"Fechado — abre às Xh" a partir da data/hora (do visitante ou, com `fuso`, da barraca).
  * Suporta janela que cruza a meia-noite: de madrugada olha a janela do dia
  * anterior. Função pura (recebe `agora`) pra poder testar. */
 export function statusFuncionamento(
   horarios: HorarioPublico[],
   agora: Date = new Date(),
+  /** Fuso da barraca (ex.: America/Manaus). Sem ele vale o relógio local do visitante, como sempre foi. */
+  fuso?: string,
 ): { aberto: boolean; texto: string } | null {
   if (horarios.length === 0 || horarios.every((h) => !h.aberto)) return null
 
-  const diaAtual = agora.getDay()
-  const minutosAgora = agora.getHours() * 60 + agora.getMinutes()
+  const { dia: diaAtual, minutos: minutosAgora } = diaEMinutoNoFusoLocal(agora, fuso)
 
   // Janela de ontem que invade o dia de hoje (ex.: sexta 18h–02h, agora sáb 01h).
   const ontem = horarios.find((h) => h.dia_semana === (diaAtual + 6) % 7)

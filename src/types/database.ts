@@ -33,6 +33,12 @@ export type Barraca = {
   pagar_na_entrega_habilitado?: boolean
   /** "Pagar depois" em Retirada e Entrega (padrão false). Ausente em banco/cache de antes da migration. */
   pagamento_depois_habilitado?: boolean
+  /** Comanda aberta na Mesa e taxa de serviço (padrão false/false/1000 = 10%). Ausentes em banco/cache de antes da migration. */
+  comanda_aberta_habilitada?: boolean
+  taxa_servico_habilitada?: boolean
+  taxa_servico_bps?: number
+  /** Incluir a taxa de serviço da comanda na NFC-e (padrão false = fora da nota). Ausente antes da migration. */
+  nfce_incluir_taxas?: boolean
   /** Estoque: true = bloqueia a venda acima do saldo; false/ausente = só avisa (padrão). */
   estoque_bloqueia?: boolean
   /** Coluna "Saiu para entrega" no kanban (só com Entrega ligada; padrão false). Ausente em banco/cache de antes da migration. */
@@ -56,6 +62,13 @@ export type Barraca = {
   checklist_oculto_ate?: string | null
   /** Cupons por código no cardápio digital (padrão false). Ausente em banco/cache de antes da migration. */
   cupons_habilitado?: boolean
+  /** Cashback do cardápio digital (padrão false; a barraca financia). Ausentes em banco/cache de antes da migration. */
+  cashback_habilitado?: boolean
+  cashback_percentual_bp?: number
+  cashback_validade_dias?: number
+  cashback_teto_uso_pct?: number
+  /** Quando o dono viu o aviso de passivo e do contador; obrigatório para ligar. */
+  cashback_termo_aceito_em?: string | null
   /** Atendente IA do WhatsApp (padrão false). Ausentes em banco/cache de antes da migration. */
   ia_habilitada?: boolean
   ia_texto_livre?: string | null
@@ -72,6 +85,8 @@ export type Barraca = {
   fuso?: string
   bloquear_fora_do_horario?: boolean
   imagem_capa_url: string | null
+  /** Item em destaque no topo do cardápio público; NULL = sem destaque. */
+  item_destaque_id?: string | null
   mostrar_horario_pedido: boolean
   /** Emitente fiscal e PROCON (cupom da NFC-e). Opcionais: cache local anterior à migration não tem. */
   emitente_razao_social?: string | null
@@ -91,6 +106,14 @@ export type Barraca = {
   aviso_pronto_habilitado?: boolean
   msg_pedido_pronto?: string | null
   msg_pedido_pronto_entrega?: string | null
+  /** Avisos de status por WhatsApp (config por aviso) e estado da conexão avisado pelo CRM. */
+  whatsapp_avisos?: Record<string, { ativo: boolean; texto: string | null }> | null
+  whatsapp_status?: 'conectado' | 'desconectado' | 'caiu' | null
+  whatsapp_status_em?: string | null
+  /** Disparos (fase 3): módulo pago (só a plataforma liga) e avaliação pós-entrega; texto null = padrão. */
+  whatsapp_disparos_habilitado?: boolean
+  avaliacao_ativa?: boolean
+  avaliacao_texto?: string | null
   /** Bairro fora da lista: cobra a taxa padrão ou bloqueia (cache antigo sem o campo = taxa padrão). */
   entrega_bairro_nao_listado?: PoliticaBairroNaoListado
 }
@@ -256,12 +279,17 @@ export type Pedido = {
   entrega_bairro?: string | null
   entrega_referencia?: string | null
   taxa_entrega_centavos?: number
+  /** Taxa Sai aê (marketplace): > 0 só em pedido pago online pelo OAuth do Mercado Pago. Ausente em banco de antes. */
+  taxa_plataforma_centavos?: number
   /** Link do entregador (/e/:token): só pedido de Entrega novo; NULL nos antigos. */
   entrega_token?: string | null
   /** Cupom (v2): cópia do código e do desconto na hora da venda; o desconto fica À PARTE dos itens. */
   cupom_id?: string | null
   cupom_codigo?: string | null
   desconto_cupom_centavos?: number
+  /** Cashback (cópia na hora da venda): saldo usado como desconto nos itens e saldo gerado pelo pedido. À PARTE dos itens. */
+  cashback_usado_centavos?: number
+  cashback_gerado_centavos?: number
   entrega_confirmada_em?: string | null
   cliente_final_id?: string | null
   observacao: string | null
@@ -288,6 +316,29 @@ export type Pedido = {
   nfce_ambiente?: AmbienteFiscal | null
   nfce_cpf_consumidor?: string | null
   nfce_tributos_centavos?: number | null
+  /** Parte da taxa de serviço da comanda que foi na nota autorizada (NULL = nenhuma). */
+  nfce_taxa_servico_centavos?: number | null
+  /** Comanda aberta da Mesa (preenchida pelo trigger no banco). Ausente em banco/cache de antes da migration. */
+  comanda_id?: string | null
+}
+
+export type StatusComanda = 'aberta' | 'fechada'
+
+/** Comanda aberta na Mesa: agrupa as rodadas (pedidos) até o fechamento. */
+export type Comanda = {
+  id: string
+  barraca_id: string
+  /** Como foi digitada no primeiro lançamento. */
+  mesa: string
+  /** `normalizar_mesa`: "Mesa 05" -> "5". */
+  mesa_normalizada: string
+  status: StatusComanda
+  aberta_em: string
+  fechada_em: string | null
+  fechada_por: string | null
+  metodo_pagamento: string | null
+  taxa_servico_bps: number | null
+  taxa_servico_centavos: number
 }
 
 export type ItemDoPedido = {

@@ -7,6 +7,10 @@ import { LayoutAuth } from '../components/LayoutAuth'
 import { Button } from '../components/ui/Button'
 import { Icone } from '../components/ui/Icone'
 import { Input } from '../components/ui/Input'
+import { abrirLinkExterno } from '../lib/abrirExternoApp'
+import { URL_PRIVACIDADE } from '../lib/consentimento'
+import { registrarCadastroCompleto } from '../lib/medicao'
+import type { JanelaMedicao } from '../lib/medicao'
 
 export function Cadastro() {
   const navigate = useNavigate()
@@ -38,6 +42,9 @@ export function Cadastro() {
       setCadastrando(false)
       return
     }
+
+    // Conta do teste grátis criada: CompleteRegistration/sign_up (só com consentimento; no-op sem ele).
+    registrarCadastroCompleto(window as unknown as JanelaMedicao, crypto.randomUUID())
 
     if (resultado.precisaConfirmarEmail) {
       setPrecisaConfirmarEmail(true)
@@ -146,6 +153,21 @@ export function Cadastro() {
           Criar conta
         </Button>
       </form>
+
+      <p className="mt-6 text-center text-xs text-mesa-text-tertiary">
+        Leia a{' '}
+        <a
+          href={URL_PRIVACIDADE}
+          className="underline"
+          onClick={(e) => {
+            e.preventDefault()
+            abrirLinkExterno(URL_PRIVACIDADE)
+          }}
+        >
+          Política de Privacidade
+        </a>
+        .
+      </p>
 
       <p className="mt-6 text-center text-sm text-mesa-text-secondary">
         Já tem conta?{' '}

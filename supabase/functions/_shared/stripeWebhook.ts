@@ -12,6 +12,9 @@
 //  - Comparação de assinatura em tempo constante e aceitando vários v1 (rotação de segredo).
 import { iguaisConstante } from './clienteCodigo.ts'
 
+import { enviarPurchase } from './medicaoServidor.ts'
+import type { DepsMedicao } from './medicaoServidor.ts'
+
 export const STRIPE_API = 'https://api.stripe.com/v1'
 export const TOLERANCIA_TIMESTAMP_SEGUNDOS = 300 // 5min, proteção contra replay
 
@@ -27,6 +30,61 @@ export type DepsWebhookStripe = {
   segredoWebhook: string | undefined
   stripeSecretKey: string
   agoraMs?: () => number
+  /** Purchase pelo servidor (Meta CAPI + GA4). Ausente = desligado (sem as variáveis de ambiente). */
+  medicao?: DepsMedicao
+  /** Roda o envio DEPOIS de responder (Edge Runtime: waitUntil). Sem isto, roda solto; nunca é aguardado pelo webhook. */
+  emSegundoPlano?: (tarefa: Promise<unknown>) => void
+}
+
+/** Só assinaturas criadas há pouco: renovação de cliente antigo nunca vira "primeira compra". */
+const JANELA_PRIMEIRA_COMPRA_S = 45 * 24 * 60 * 60
+
+/**
+ * Purchase da PRIMEIRA cobrança paga (> 0): só com consentimento gravado no cadastro, uma vez (trava purchase_enviado_em,
+ * preenchida ANTES de enviar: reentrega do webhook e renovações mensais não repetem). Roda em segundo plano e NUNCA
+ * lança: a resposta do webhook não depende da Meta/GA4.
+ */
+async function purchaseDaPrimeiraCobranca(
+  fatura: Record<string, unknown>,
+  assinaturaStripe: Record<string, unknown>,
+  subscriptionId: string,
+  deps: DepsWebhookStripe,
+  agoraMs: number,
+): Promise<void> {
+  try {
+    const valor = typeof fatura.amount_paid === 'number' ? fatura.amount_paid : 0
+    const criada = typeof assinaturaStripe.created === 'number' ? assinaturaStripe.created : 0
+    if (!deps.medicao || valor <= 0 || String(fatura.currency).toLowerCase() !== 'brl') return
+    if (agoraMs / 1000 - criada > JANELA_PRIMEIRA_COMPRA_S) return
+    const { data: conta } = await deps.supabase
+      .from('assinaturas')
+      .select('usuario_id, consentimento_marketing, fbp, fbc, ga_client_id, purchase_enviado_em')
+      .eq('stripe_subscription_id', subscriptionId)
+      .maybeSingle()
+    if (!conta || conta.consentimento_marketing !== true || conta.purchase_enviado_em) return
+    const { data: travada } = await deps.supabase
+      .from('assinaturas')
+      .update({ purchase_enviado_em: new Date(agoraMs).toISOString() })
+      .eq('stripe_subscription_id', subscriptionId)
+      .is('purchase_enviado_em', null)
+      .select('usuario_id')
+    if (!travada || travada.length === 0) return
+    await enviarPurchase(
+      {
+        eventId: String(fatura.id),
+        valorCentavos: valor,
+        email: typeof fatura.customer_email === 'string' ? fatura.customer_email : null,
+        fbp: conta.fbp ?? null,
+        fbc: conta.fbc ?? null,
+        gaClientId: conta.ga_client_id ?? null,
+        usuarioId: conta.usuario_id,
+        eventoEmSegundos: Math.floor(agoraMs / 1000),
+      },
+      deps.medicao,
+    )
+  } catch (erro) {
+    console.warn('webhook-stripe: purchase não enviado', erro instanceof Error ? erro.name : 'erro')
+  }
 }
 
 function jsonResponse(body: unknown, status = 200) {
@@ -209,6 +267,9 @@ async function processarEvento(evento: EventoStripe, deps: DepsWebhookStripe): P
         // invoice.paid pode chegar ANTES do checkout.session.completed: sem vínculo ainda, 500 pra reenviar.
         { contexto: 'invoice.paid', exigirLinha: true },
       )
+      // Fire-and-forget: a resposta 200 do webhook nunca espera nem depende da Meta/GA4.
+      const tarefa = purchaseDaPrimeiraCobranca(obj, assinaturaStripe, subscriptionId, deps, agora)
+      if (deps.emSegundoPlano) deps.emSegundoPlano(tarefa)
       break
     }
 

@@ -5,12 +5,16 @@ import { useResolverApelido } from '../hooks/useResolverApelido'
 import clsx from 'clsx'
 import { supabase } from '../lib/supabase'
 import { formatarPrecoBR } from '../lib/preco'
-import { DESCRICAO_CARDAPIO_MODO, ICONE_MODO, ROTULO_MODO, modosDoCardapioPublico } from '../lib/atendimento'
+import { DESCRICAO_CARDAPIO_MODO, ICONE_MODO, ROTULO_MODO_CARDAPIO, modosDoCardapioPublico } from '../lib/atendimento'
 import type { TipoAtendimento } from '../types/database'
 import { Button } from '../components/ui/Button'
 import { BottomSheet } from '../components/ui/BottomSheet'
 import { Checkbox } from '../components/ui/Checkbox'
 import { Chip } from '../components/ui/Chip'
+import { BotaoPedir } from '../components/cardapio/BotaoPedir'
+import { CardDestaque } from '../components/cardapio/CardDestaque'
+import { resolverDestaque } from '../lib/destaque'
+import { lojaAberta, podeFinalizarPedido } from '../lib/estadoBotaoPedir'
 import { Icone } from '../components/ui/Icone'
 import { Input } from '../components/ui/Input'
 import { Textarea } from '../components/ui/Textarea'
@@ -20,6 +24,10 @@ import { useClienteSessao } from '../hooks/useClienteSessao'
 import { usePerfilConfig } from '../hooks/usePerfilConfig'
 import { useCupom } from '../hooks/useCupom'
 import { CampoCupom } from '../components/CampoCupom'
+import { useCashback } from '../hooks/useCashback'
+import { BlocoCashbackCheckout } from '../components/cashback/BlocoCashbackCheckout'
+import { LinhaCashbackGanho } from '../components/cashback/LinhaCashbackGanho'
+import { AvisoCashbackGanho } from '../components/cashback/AvisoCashbackGanho'
 import { textoDesconto } from '../lib/cupomApi'
 import { lerSessao, limparSessao } from '../lib/clienteApi'
 import { lerPedirDeNovo } from '../lib/clientePerfil'
@@ -34,12 +42,14 @@ import {
   type GrupoItem,
   type LinhaOpcaoPublica,
 } from '../lib/opcoes'
-import { statusFuncionamento, type HorarioPublico } from '../lib/horarioFuncionamento'
+import { fusoDaBarraca, statusFuncionamento, type HorarioPublico } from '../lib/horarioFuncionamento'
 import { montarMensagemPagarNaEntrega, urlWhatsappDono } from '../lib/pagarNaEntrega'
 import { formatarTelefoneBR } from '../lib/entrega'
 import { bairroCanonico, buscarBairrosPublicos, taxaDoBairro, type BairrosPublicos } from '../lib/bairros'
+import { TAXA_PLATAFORMA_CENTAVOS, totalComTaxaPlataforma } from '../lib/taxaPlataforma'
+import { CartaoMercadoPago, type TokenCartaoGerado } from '../components/CartaoMercadoPago'
 
-type LinhaCardapioPublico = {
+export type LinhaCardapioPublico = {
   barraca_id: string
   barraca_nome: string
   barraca_logo_url: string | null
@@ -89,26 +99,43 @@ type ModoConsumo = 'retirada' | 'entrega'
 // fica nesses estados intermediários.
 type EstadoPagamento =
   | { fase: 'formulario' }
-  | { fase: 'processando' }
+  | { fase: 'processando'; cartao?: boolean }
   | {
       fase: 'aguardando'
       pendenteId: string
       qrCode: string | null
       qrCodeBase64: string | null
-      /** Pix com Entrega: total cobrado e taxa, como o SERVIDOR calculou. */
+      /** Total cobrado, taxa de entrega e taxa Sai aê, como o SERVIDOR calculou. */
       totalCentavos?: number
       taxaCentavos?: number
+      taxaPlataformaCentavos?: number
+      /** Cartão: sem QR; espera o webhook confirmar (em análise = o provedor ainda decide). */
+      cartao?: boolean
+      emAnalise?: boolean
+      /** Cartão sem confirmação dentro do prazo: continua esperando o emissor, sem oferecer nova cobrança. */
+      semConfirmacao?: boolean
     }
-  | { fase: 'aprovado'; senha: number | null; gratis?: boolean }
+  | { fase: 'aprovado'; senha: number | null; gratis?: boolean; pendenteId?: string; cashback?: { cashback_gerado_centavos?: unknown; cashback_vence_em?: unknown } }
   // "Pagar na entrega": dados do cliente -> envio -> pedido já na cozinha + wa.me do dono.
   | { fase: 'dados_entrega'; erro?: string }
   | { fase: 'enviando_entrega' }
   | { fase: 'entrega_enviada'; senha: number | null; urlWhatsapp: string; abriu: boolean }
-  | { fase: 'recusado' }
-  | { fase: 'erro'; mensagem: string }
+  | { fase: 'recusado'; cartao?: boolean }
+  // manterUuid: falha sem resposta clara do servidor; "Tentar de novo" reaproveita a cobrança (nunca cobra duas vezes).
+  | { fase: 'erro'; mensagem: string; manterUuid?: boolean }
+
+type MeioOnline = 'pix' | 'cartao'
+
+/** Total pago online (Pix ou cartão): soma a taxa Sai aê quando a barraca cobra pelo OAuth, como o servidor. */
+function totalOnline(cobraTaxa: boolean, semTaxaCentavos: number): number {
+  return cobraTaxa ? totalComTaxaPlataforma(Math.max(0, semTaxaCentavos)) : semTaxaCentavos
+}
 
 const MAXIMO_MAIS_PEDIDOS = 8
 const INTERVALO_POLLING_MS = 3000
+// Cartão: o pendente não expira no servidor, então a espera tem prazo aqui. Passou dele, a tela vira "em análise"
+// (sem spinner) e o polling continua: se o emissor aprovar depois, a senha ainda aparece.
+const PRAZO_CONFIRMACAO_CARTAO_MS = 2 * 60 * 1000
 
 function BottomSheetFinalizarBalcao({
   open,
@@ -134,98 +161,12 @@ function BottomSheetFinalizarBalcao({
   )
 }
 
-/** Mesmo padrão de stepper de Lançar Pedido (BotaoStepper): vira +/- assim
- * que tem quantidade no carrinho, em vez de só "N no carrinho" sem jeito de
- * tirar item — precisava dar pra ajustar direto no card, não só dentro do
- * checkout. */
-function BotaoAdicionar({
-  variant,
-  podeAdicionar,
-  esgotado,
-  comOpcoes = false,
-  quantidadeNoCarrinho,
-  onAdicionar,
-  onRemover,
-}: {
-  variant: 'sm' | 'md'
-  podeAdicionar: boolean
-  esgotado: boolean
-  /** Item com variação/adicionais: o botão abre o seletor; os ajustes de quantidade ficam no pedido. */
-  comOpcoes?: boolean
-  quantidadeNoCarrinho: number
-  onAdicionar: () => void
-  onRemover: () => void
-}) {
-  if (esgotado) {
-    return (
-      <Button variant="outline" size={variant} disabled>
-        Esgotado
-      </Button>
-    )
-  }
-
-  if (comOpcoes) {
-    return (
-      <Button
-        variant="outline"
-        size={variant}
-        icon={<Icone nome="add" size={16} />}
-        disabled={!podeAdicionar}
-        onClick={onAdicionar}
-      >
-        {quantidadeNoCarrinho > 0 ? `Escolher (${quantidadeNoCarrinho})` : 'Escolher'}
-      </Button>
-    )
-  }
-
-  if (quantidadeNoCarrinho > 0) {
-    return (
-      <div className="flex items-center gap-1 rounded-mesa-full bg-mesa-neutral-100 p-1 dark:bg-mesa-neutral-800">
-        <button
-          type="button"
-          onClick={onRemover}
-          aria-label="Diminuir quantidade"
-          className="flex size-11 -m-2 items-center justify-center"
-        >
-          <span className="flex size-7 items-center justify-center rounded-mesa-full bg-mesa-neutral-900 text-white transition-transform active:scale-90 dark:bg-mesa-neutral-50 dark:text-mesa-neutral-900">
-            <Icone nome="remove" size={14} />
-          </span>
-        </button>
-        <span className="min-w-[1.5ch] text-center font-mesa-display text-sm font-bold text-mesa-text-primary">
-          {quantidadeNoCarrinho}
-        </span>
-        <button
-          type="button"
-          onClick={onAdicionar}
-          disabled={!podeAdicionar}
-          aria-label="Aumentar quantidade"
-          className="flex size-11 -m-2 items-center justify-center disabled:opacity-40"
-        >
-          <span className="flex size-7 items-center justify-center rounded-mesa-full bg-mesa-neutral-900 text-white transition-transform active:scale-90 dark:bg-mesa-neutral-50 dark:text-mesa-neutral-900">
-            <Icone nome="add" size={14} />
-          </span>
-        </button>
-      </div>
-    )
-  }
-
-  return (
-    <Button
-      variant="outline"
-      size={variant}
-      icon={<Icone nome="add" size={16} />}
-      disabled={!podeAdicionar}
-      onClick={onAdicionar}
-    >
-      Adicionar
-    </Button>
-  )
-}
-
 function CardItemPublico({
   item,
   posicaoPopular,
   podeComprar,
+  aberta,
+  textoFechado,
   quantidadeNoCarrinho,
   onAdicionar,
   onRemover,
@@ -233,12 +174,14 @@ function CardItemPublico({
   item: LinhaCardapioPublico
   posicaoPopular: number | null
   podeComprar: boolean
+  aberta: boolean
+  textoFechado?: string
   quantidadeNoCarrinho: number
   onAdicionar: () => void
   onRemover: () => void
 }) {
   return (
-    <div className="relative flex gap-3 rounded-mesa-xl border border-mesa-border-subtle bg-mesa-surface p-3 shadow-mesa-1">
+    <div className="relative flex min-w-0 gap-3 rounded-mesa-xl border border-mesa-border-subtle bg-mesa-surface p-3 shadow-mesa-1">
       <span className="relative flex size-16 shrink-0 items-center justify-center overflow-hidden rounded-mesa-md bg-mesa-neutral-100 text-mesa-text-tertiary dark:bg-mesa-neutral-700">
         {item.item_foto_url ? (
           <img src={item.item_foto_url} alt="" className="size-full object-cover" />
@@ -262,7 +205,7 @@ function CardItemPublico({
         {item.item_descricao && (
           <p className="mt-0.5 line-clamp-2 text-xs text-mesa-text-secondary">{item.item_descricao}</p>
         )}
-        <div className="mt-2 flex items-center justify-between gap-2">
+        <div className="mt-2 flex flex-wrap items-center justify-between gap-2">
           <span className="flex flex-col font-mesa-display text-sm font-semibold text-mesa-text-primary">
             {item.a_partir_de && item.item_preco_centavos > 0 && (
               <span className="text-xs font-normal text-mesa-text-secondary">a partir de</span>
@@ -271,10 +214,11 @@ function CardItemPublico({
               {item.item_preco_centavos > 0 ? formatarPrecoBR(item.item_preco_centavos) : 'Sob consulta'}
             </span>
           </span>
-          <BotaoAdicionar
-            variant="sm"
+          <BotaoPedir
             podeAdicionar={!podeComprar || item.item_preco_centavos > 0}
             esgotado={item.item_esgotado}
+            lojaAberta={aberta}
+            textoFechado={textoFechado}
             comOpcoes={item.com_opcoes === true}
             quantidadeNoCarrinho={quantidadeNoCarrinho}
             onAdicionar={onAdicionar}
@@ -412,63 +356,6 @@ function CarrosselBanners({ banners }: { banners: BannerPublico[] }) {
   )
 }
 
-/** Versão compacta do stepper — a versão com texto de BotaoAdicionar não
- * cabe no card estreito das seções horizontais (Populares/Mais pedido). O
- * aviso de "sem pagamento online" aparece só na hora de finalizar
- * (BottomSheetFinalizarBalcao), não mais no clique de cada item. */
-function BotaoAdicionarCompacto({
-  podeAdicionar,
-  esgotado,
-  comOpcoes = false,
-  quantidadeNoCarrinho,
-  onAdicionar,
-  onRemover,
-}: {
-  podeAdicionar: boolean
-  esgotado: boolean
-  comOpcoes?: boolean
-  quantidadeNoCarrinho: number
-  onAdicionar: () => void
-  onRemover: () => void
-}) {
-  if (quantidadeNoCarrinho > 0 && !comOpcoes) {
-    return (
-      <div className="flex items-center gap-0.5 rounded-mesa-full bg-mesa-neutral-900 px-1 py-1 text-white dark:bg-mesa-neutral-50 dark:text-mesa-neutral-900">
-        <button
-          type="button"
-          onClick={onRemover}
-          aria-label="Diminuir quantidade"
-          className="flex size-5 items-center justify-center"
-        >
-          <Icone nome="remove" size={12} />
-        </button>
-        <span className="min-w-[1ch] text-center font-mesa-display text-xs font-bold">{quantidadeNoCarrinho}</span>
-        <button
-          type="button"
-          onClick={onAdicionar}
-          disabled={!podeAdicionar}
-          aria-label="Aumentar quantidade"
-          className="flex size-5 items-center justify-center disabled:opacity-40"
-        >
-          <Icone nome="add" size={12} />
-        </button>
-      </div>
-    )
-  }
-
-  return (
-    <button
-      type="button"
-      disabled={esgotado || !podeAdicionar}
-      onClick={onAdicionar}
-      aria-label={comOpcoes ? 'Escolher opções' : 'Adicionar ao carrinho'}
-      className="flex size-8 shrink-0 items-center justify-center rounded-mesa-full border border-mesa-border-strong text-mesa-text-primary disabled:opacity-40"
-    >
-      <Icone nome="add" size={16} />
-    </button>
-  )
-}
-
 /** Card compacto usado nas seções horizontais Populares/Mais pedido —
  * mais estreito que CardItemPublico (que é a linha da lista completa
  * abaixo). `destaque` reaproveita o mesmo selo Top1/Popular do card do
@@ -477,6 +364,8 @@ function CardItemHorizontal({
   item,
   destaque,
   podeComprar,
+  aberta,
+  textoFechado,
   quantidadeNoCarrinho,
   onAdicionar,
   onRemover,
@@ -484,12 +373,14 @@ function CardItemHorizontal({
   item: LinhaCardapioPublico
   destaque: 'top1' | 'popular' | null
   podeComprar: boolean
+  aberta: boolean
+  textoFechado?: string
   quantidadeNoCarrinho: number
   onAdicionar: () => void
   onRemover: () => void
 }) {
   return (
-    <div className="w-36 shrink-0 overflow-hidden rounded-mesa-xl border border-mesa-border-subtle bg-mesa-surface shadow-mesa-1">
+    <div className="flex w-36 shrink-0 flex-col overflow-hidden rounded-mesa-xl border border-mesa-border-subtle bg-mesa-surface shadow-mesa-1">
       <div className="relative aspect-square w-full bg-mesa-neutral-100 dark:bg-mesa-neutral-700">
         {item.item_foto_url ? (
           <img src={item.item_foto_url} alt="" className="size-full object-cover" />
@@ -510,20 +401,23 @@ function CardItemHorizontal({
           </span>
         )}
       </div>
-      <div className="p-2.5">
+      <div className="flex flex-1 flex-col p-2.5">
         <p className="line-clamp-1 text-sm font-semibold text-mesa-text-primary">{item.item_nome}</p>
-        <div className="mt-1.5 flex items-center justify-between gap-1">
-          <span className="flex flex-col font-mesa-display text-xs font-semibold text-mesa-text-primary">
-            {item.a_partir_de && item.item_preco_centavos > 0 && (
-              <span className="text-[10px] font-normal text-mesa-text-secondary">a partir de</span>
-            )}
-            <span className="whitespace-nowrap">
-              {item.item_preco_centavos > 0 ? formatarPrecoBR(item.item_preco_centavos) : 'Consulta'}
-            </span>
+        <span className="mt-1.5 flex flex-col font-mesa-display text-xs font-semibold text-mesa-text-primary">
+          {item.a_partir_de && item.item_preco_centavos > 0 && (
+            <span className="text-[10px] font-normal text-mesa-text-secondary">a partir de</span>
+          )}
+          <span className="whitespace-nowrap">
+            {item.item_preco_centavos > 0 ? formatarPrecoBR(item.item_preco_centavos) : 'Consulta'}
           </span>
-          <BotaoAdicionarCompacto
+        </span>
+        <div className="mt-auto pt-2">
+          <BotaoPedir
+            larguraTotal
             podeAdicionar={!podeComprar || item.item_preco_centavos > 0}
             esgotado={item.item_esgotado}
+            lojaAberta={aberta}
+            textoFechado={textoFechado}
             comOpcoes={item.com_opcoes === true}
             quantidadeNoCarrinho={quantidadeNoCarrinho}
             onAdicionar={onAdicionar}
@@ -568,7 +462,7 @@ function EscolhaModo({
             >
               <span className="flex items-center gap-2 text-base font-bold">
                 <Icone nome={ICONE_MODO[modo]} size={24} preenchido={ativo} />
-                {ROTULO_MODO[modo]}
+                {ROTULO_MODO_CARDAPIO[modo]}
                 {ativo && <Icone nome="check_circle" size={18} preenchido className="ml-auto" />}
               </span>
               <span className={`text-xs ${ativo ? 'text-mesa-neutral-900/80' : 'text-mesa-text-secondary'}`}>
@@ -591,6 +485,10 @@ export function CardapioPublico() {
   const apelido = useResolverApelido(slug, estado.status === 'erro')
   const [banners, setBanners] = useState<BannerPublico[]>([])
   const [horarios, setHorarios] = useState<HorarioPublico[]>([])
+  const [itemDestaqueId, setItemDestaqueId] = useState<string | null>(null)
+  const [fusoBarraca, setFusoBarraca] = useState('America/Sao_Paulo')
+  // Relógio do visitante: recalcula ao abrir e quando a aba volta ao foco (sem timer).
+  const [agora, setAgora] = useState(() => new Date())
   const [busca, setBusca] = useState('')
   const [filtroAtivo, setFiltroAtivo] = useState<string | null>(null)
 
@@ -622,7 +520,13 @@ export function CardapioPublico() {
   const [referenciaCliente, setReferenciaCliente] = useState('')
   const [consentimento, setConsentimento] = useState(false)
   // Entrega: "Pagar na entrega" (padrão) ou "Pix" (cobra itens + taxa agora).
-  const [formaEntrega, setFormaEntrega] = useState<'na_entrega' | 'pix'>('na_entrega')
+  const [formaEntrega, setFormaEntrega] = useState<'na_entrega' | MeioOnline>('na_entrega')
+  // Pagamento online fora da Entrega: Pix ou cartão (cartão só com a chave pública do vendedor).
+  const [meioOnline, setMeioOnline] = useState<MeioOnline>('pix')
+  // Chave pública do Mercado Pago DO VENDEDOR (barraca conectada por OAuth). Sem ela não há cartão.
+  const [chaveMp, setChaveMp] = useState<string | null>(null)
+  // Taxa Sai aê só no OAuth (mesma regra do servidor); o 409 do servidor corrige se a tela divergir.
+  const [cobraTaxaPlataforma, setCobraTaxaPlataforma] = useState(false)
   // Taxa que o servidor disse valer pra um bairro (quando difere do preview local).
   const [taxaServidor, setTaxaServidor] = useState<{ bairro: string; centavos: number } | null>(null)
   const [aceitaOfertas, setAceitaOfertas] = useState(false)
@@ -645,6 +549,8 @@ export function CardapioPublico() {
   const modoEfetivo: ModoConsumo = modosPublicos.includes(modoConsumo) ? modoConsumo : modosPublicos[0]
   const [mostrarAvisoBalcao, setMostrarAvisoBalcao] = useState(false)
   const clientUuidRef = useRef(crypto.randomUUID())
+  // Forma de pagamento da última cobrança feita com o client_uuid atual.
+  const meioDoUuidRef = useRef<'pix' | 'cartao' | 'na_entrega' | null>(null)
   const pendenteAnteriorRef = useRef<string | null>(null)
 
   useEffect(() => {
@@ -666,6 +572,26 @@ export function CardapioPublico() {
       cancelado = true
     }
   }, [slug])
+
+  // Barraca conectada ao Mercado Pago por OAuth: a chave pública do vendedor libera o cartão e a taxa Sai aê.
+  // Sem ela (404, rede, barraca antiga com token colado) fica como sempre: só Pix, sem taxa.
+  const barracaComPagamentoOnline =
+    estado.status === 'pronto' && estado.linhas[0]?.pagamento_online_habilitado ? estado.linhas[0].barraca_id : null
+  useEffect(() => {
+    if (!barracaComPagamentoOnline) return
+    let cancelado = false
+    supabase.functions
+      .invoke('criar-pagamento-pix', { body: { acao: 'chave_publica', barraca_id: barracaComPagamentoOnline } })
+      .then(({ data }) => {
+        if (cancelado) return
+        const chave = typeof data?.public_key === 'string' && data.public_key ? data.public_key : null
+        setChaveMp(chave)
+        setCobraTaxaPlataforma(chave !== null)
+      })
+    return () => {
+      cancelado = true
+    }
+  }, [barracaComPagamentoOnline])
 
   // Variações e adicionais (SAI-010a). Falha ou banco sem a RPC = item simples; o servidor revalida tudo.
   useEffect(() => {
@@ -762,6 +688,77 @@ export function CardapioPublico() {
     }
   }, [slug])
 
+  // Item em destaque (migration 20261105100000). Falha ou banco sem a RPC = sem destaque, em silêncio.
+  useEffect(() => {
+    if (!slug) return
+
+    let cancelado = false
+    // Slug novo ou recarga: nunca deixa o destaque da carga anterior na tela.
+    // eslint-disable-next-line react-hooks/set-state-in-effect -- zera o estado da busca anterior antes da nova resposta
+    setItemDestaqueId(null)
+    supabase.rpc('destaque_publico', { p_slug: slug }).then(({ data, error }) => {
+      if (cancelado) return
+      if (error) {
+        console.warn('Cardápio: não consegui carregar o item em destaque', error.message)
+        setItemDestaqueId(null)
+        return
+      }
+      setItemDestaqueId((data as { item_id: string }[] | null)?.[0]?.item_id ?? null)
+    })
+
+    return () => {
+      cancelado = true
+    }
+  }, [slug])
+
+  // Fuso da barraca (migration 20261105110000). Sem a função ou com erro: America/Sao_Paulo (documentado no relatório).
+  useEffect(() => {
+    if (!slug) return
+    let cancelado = false
+    supabase.rpc('fuso_publico', { p_slug: slug }).then(({ data, error }) => {
+      if (cancelado) return
+      setFusoBarraca(error ? 'America/Sao_Paulo' : fusoDaBarraca(typeof data === 'string' ? data : null))
+    })
+    return () => {
+      cancelado = true
+    }
+  }, [slug])
+
+  useEffect(() => {
+    function aoVoltarAoFoco() {
+      if (document.visibilityState === 'visible') setAgora(new Date())
+    }
+    document.addEventListener('visibilitychange', aoVoltarAoFoco)
+    window.addEventListener('focus', aoVoltarAoFoco)
+    return () => {
+      document.removeEventListener('visibilitychange', aoVoltarAoFoco)
+      window.removeEventListener('focus', aoVoltarAoFoco)
+    }
+  }, [])
+
+  // O crédito do cashback é gravado logo DEPOIS de o pagamento ser marcado aprovado (best-effort no servidor):
+  // se o primeiro retorno veio sem ele, relê uma vez para mostrar "Você ganhou R$ X".
+  const pendenteDoAviso = pagamento.fase === 'aprovado' && !pagamento.gratis ? pagamento.pendenteId : undefined
+  const avisoCashbackPendente = pagamento.fase === 'aprovado' && !(Number(pagamento.cashback?.cashback_gerado_centavos) > 0)
+  useEffect(() => {
+    if (!pendenteDoAviso || !avisoCashbackPendente) return
+    let cancelado = false
+    const espera = window.setTimeout(async () => {
+      const { data: linha } = await supabase.rpc('consultar_status_pagamento', { p_id: pendenteDoAviso }).maybeSingle()
+      const data = linha as { cashback_gerado_centavos?: unknown; cashback_vence_em?: unknown } | null
+      if (cancelado || !(Number(data?.cashback_gerado_centavos) > 0)) return
+      setPagamento((atual) =>
+        atual.fase === 'aprovado' && atual.pendenteId === pendenteDoAviso
+          ? { ...atual, cashback: { cashback_gerado_centavos: data?.cashback_gerado_centavos, cashback_vence_em: data?.cashback_vence_em } }
+          : atual,
+      )
+    }, 3000)
+    return () => {
+      cancelado = true
+      window.clearTimeout(espera)
+    }
+  }, [pendenteDoAviso, avisoCashbackPendente])
+
   // Polling do status do pagamento — mesmo espírito do polling de
   // fallback que useRealtimePedidos usa quando o Realtime cai, só que
   // aqui é sempre polling (o cliente é anônimo, sem sessão pra abrir uma
@@ -769,25 +766,47 @@ export function CardapioPublico() {
   useEffect(() => {
     if (pagamento.fase !== 'aguardando') return
     const pendenteId = pagamento.pendenteId
+    const cartao = pagamento.cartao
     let cancelado = false
 
     const intervalo = window.setInterval(async () => {
       const { data: linha } = await supabase
         .rpc('consultar_status_pagamento', { p_id: pendenteId })
         .maybeSingle()
-      const data = linha as { status: string; senha: number | null } | null
+      const data = linha as { status: string; senha: number | null; cashback_gerado_centavos?: unknown; cashback_vence_em?: unknown } | null
       if (cancelado || !data) return
 
       if (data.status === 'aprovado') {
-        setPagamento({ fase: 'aprovado', senha: data.senha })
-      } else if (data.status === 'rejeitado' || data.status === 'expirado') {
-        setPagamento({ fase: 'recusado' })
+        setPagamento({
+          fase: 'aprovado',
+          senha: data.senha,
+          pendenteId,
+          cashback: { cashback_gerado_centavos: data.cashback_gerado_centavos, cashback_vence_em: data.cashback_vence_em },
+        })
+      } else if (cartao && data.status === 'expirado') {
+        // Cartão: só `rejeitado` é final. O emissor ainda pode aprovar e o webhook confirmar, então segue
+        // esperando, sem client_uuid novo e sem oferecer uma segunda cobrança.
+        setPagamento((atual) => (atual.fase === 'aguardando' && !atual.semConfirmacao ? { ...atual, emAnalise: true, semConfirmacao: true } : atual))
+      } else if (data.status === 'rejeitado' || (!cartao && data.status === 'expirado')) {
+        // Cobrança recusada não se reaproveita: a próxima tentativa é outra.
+        clientUuidRef.current = crypto.randomUUID()
+        setPagamento({ fase: 'recusado', cartao })
       }
     }, INTERVALO_POLLING_MS)
+
+    const prazo =
+      cartao && !pagamento.semConfirmacao
+        ? window.setTimeout(() => {
+            setPagamento((atual) =>
+              atual.fase === 'aguardando' && atual.pendenteId === pendenteId ? { ...atual, emAnalise: true, semConfirmacao: true } : atual,
+            )
+          }, PRAZO_CONFIRMACAO_CARTAO_MS)
+        : undefined
 
     return () => {
       cancelado = true
       window.clearInterval(intervalo)
+      window.clearTimeout(prazo)
     }
   }, [pagamento])
 
@@ -809,7 +828,10 @@ export function CardapioPublico() {
     })
   }, [estado, gruposPorItem])
 
-  const status = useMemo(() => statusFuncionamento(horarios), [horarios])
+  const status = useMemo(() => statusFuncionamento(horarios, agora, fusoBarraca), [horarios, agora, fusoBarraca])
+  const aberta = lojaAberta(status)
+  const textoFechado = !aberta ? status?.texto : undefined
+  const podeFinalizar = podeFinalizarPedido(aberta)
 
   const itemPorId = useMemo(() => new Map(linhas.map((l) => [l.item_id, l])), [linhas])
 
@@ -847,6 +869,7 @@ export function CardapioPublico() {
       : (categorias.find((c) => c.nome === filtroEfetivo)?.itens ?? [])
 
   const buscaNormalizada = busca.trim().toLowerCase()
+  const destaque = resolverDestaque(itemDestaqueId, linhas, buscaNormalizada !== '')
   const itensExibidos = buscaNormalizada
     ? itensDoFiltro.filter(
         (i) =>
@@ -959,7 +982,16 @@ export function CardapioPublico() {
     [itensCarrinho],
   )
   const cupom = useCupom(slug, itensDoCarrinhoParaCupom, slug ? (lerSessao(slug)?.token ?? null) : null)
-  const descontoCupom = cupom.aplicado?.descontoCentavos ?? 0
+  // Cashback (prévia; o servidor recalcula). Só vale em pagamento online: no "Pagar na entrega" usadoCentavos é 0.
+  const cashback = useCashback({
+    slug,
+    token: slug ? (lerSessao(slug)?.token ?? null) : null,
+    itensCentavos: totalCentavosCarrinho,
+    cupomAplicado: Boolean(cupom.aplicado),
+    pagamentoOnline: Boolean(linhas[0]?.pagamento_online_habilitado) && !(formularioEntregaAberto && formaEntrega === 'na_entrega'),
+  })
+  // Desconto de benefício: cupom OU saldo de cashback (um por pedido). Todas as contas de total seguem usando este valor.
+  const descontoCupom = (cupom.aplicado?.descontoCentavos ?? 0) + cashback.usadoCentavos
   /** Só o código vai ao servidor: ele recalcula o desconto e recusa (409) se o total que o cliente viu divergir. */
   function corpoCupom(): { cupom_codigo?: string } {
     return cupom.aplicado ? { cupom_codigo: cupom.aplicado.codigo } : {}
@@ -968,6 +1000,102 @@ export function CardapioPublico() {
    * próprio cliente recebeu; o servidor só libera reserva aberta da mesma loja). */
   function corpoPixAnterior(): { pendente_anterior_id?: string } {
     return pendenteAnteriorRef.current ? { pendente_anterior_id: pendenteAnteriorRef.current } : {}
+  }
+
+  /** Só o token do cartão (gerado no navegador direto no Mercado Pago) e o e-mail; nunca os dados do cartão. */
+  function corpoCartao(cartao?: TokenCartaoGerado) {
+    if (!cartao) return {}
+    return {
+      meio: 'cartao',
+      card_token: cartao.cardToken,
+      payment_method_id: cartao.paymentMethodId,
+      ...(cartao.issuerId ? { issuer_id: cartao.issuerId } : {}),
+      email_pagador: cartao.email,
+    }
+  }
+
+  type CorpoFalha = { erro?: string; codigo?: string; detalhe?: unknown; total_centavos?: number; taxa_entrega_centavos?: number; taxa_plataforma_centavos?: number }
+
+  /** Com status não-2xx o supabase-js devolve `data` nulo e o corpo fica em error.context. status 0 = sem resposta. */
+  async function lerFalha(error: unknown, data: unknown): Promise<{ status: number; corpo: CorpoFalha | null }> {
+    let corpo = (data ?? null) as CorpoFalha | null
+    const contexto = (error as { context?: unknown } | null)?.context
+    if (!(contexto instanceof Response)) return { status: 0, corpo }
+    if (!corpo) corpo = await contexto.json().catch(() => null)
+    return { status: contexto.status, corpo }
+  }
+
+  /** Recusa do servidor no pagamento online: acerta taxa/cartão com o que ele disse e escolhe o client_uuid da próxima. */
+  function tratarFalhaOnline(status: number, corpo: CorpoFalha | null, cartao: boolean) {
+    sessaoRecusada(corpo)
+    if (typeof corpo?.taxa_plataforma_centavos === 'number') setCobraTaxaPlataforma(corpo.taxa_plataforma_centavos > 0)
+    if (corpo?.codigo === 'mp_nao_conectado') {
+      setChaveMp(null)
+      setCobraTaxaPlataforma(false)
+    }
+    // 409 = nada cobrado; cartão com resposta do servidor = tentativa encerrada (recusa reaproveitada viria igual).
+    if (status === 409 || (cartao && status > 0 && status < 500) || corpo?.codigo === 'cartao_falhou') {
+      clientUuidRef.current = crypto.randomUUID()
+    }
+  }
+
+  /** Mensagem da falha: 4xx (e a recusa do cartão) são textos nossos; o resto é erro cru que não vai pra tela. */
+  function mensagemFalhaOnline(status: number, corpo: CorpoFalha | null, cartao: boolean): string {
+    if (corpo?.erro && ((status > 0 && status < 500) || corpo.codigo === 'cartao_falhou')) return corpo.erro
+    return cartao
+      ? 'Não foi possível processar o cartão agora. Tente de novo ou pague com Pix.'
+      : 'Não foi possível gerar o Pix agora. Tente novamente em instantes ou chame o atendente.'
+  }
+
+  /**
+   * Cartão enviado: recusado volta para tentar de novo; aprovado com o pedido já criado pelo servidor mostra a senha;
+   * aprovado sem pedido ainda ou em análise espera o webhook criar o pedido.
+   */
+  function seguirCartao(data: {
+    pendente_id?: unknown
+    status?: unknown
+    total_centavos?: unknown
+    taxa_plataforma_centavos?: unknown
+    senha?: unknown
+    cashback_gerado_centavos?: unknown
+    cashback_vence_em?: unknown
+  }) {
+    pendenteAnteriorRef.current = typeof data.pendente_id === 'string' ? data.pendente_id : null
+    if (data.status === 'rejeitado' || typeof data.pendente_id !== 'string') {
+      clientUuidRef.current = crypto.randomUUID()
+      setPagamento({ fase: 'recusado', cartao: true })
+      return
+    }
+    if (data.status === 'aprovado' && typeof data.senha === 'number') {
+      setPagamento({
+        fase: 'aprovado',
+        senha: data.senha,
+        pendenteId: data.pendente_id,
+        cashback: { cashback_gerado_centavos: data.cashback_gerado_centavos, cashback_vence_em: data.cashback_vence_em },
+      })
+      return
+    }
+    setPagamento({
+      fase: 'aguardando',
+      pendenteId: data.pendente_id,
+      qrCode: null,
+      qrCodeBase64: null,
+      totalCentavos: typeof data.total_centavos === 'number' ? data.total_centavos : undefined,
+      taxaPlataformaCentavos: typeof data.taxa_plataforma_centavos === 'number' ? data.taxa_plataforma_centavos : undefined,
+      cartao: true,
+      emAnalise: data.status === 'pendente',
+    })
+  }
+
+  /** Volta para escolher de novo depois de recusa/erro (na Entrega, para o formulário dela). */
+  function voltarAoPagamento(meio: MeioOnline) {
+    if (modoEfetivo === 'entrega') {
+      setFormaEntrega(meio)
+      setPagamento({ fase: 'dados_entrega' })
+    } else {
+      setMeioOnline(meio)
+      setPagamento({ fase: 'formulario' })
+    }
   }
 
   function quantidadeDoItem(itemId: string): number {
@@ -1005,11 +1133,19 @@ export function CardapioPublico() {
     })
   }
 
+  /** client_uuid do envio: repetir a MESMA forma reaproveita a cobrança; trocar de forma é outra cobrança. */
+  function uuidDoEnvio(meio: 'pix' | 'cartao' | 'na_entrega'): string {
+    if (meioDoUuidRef.current !== null && meioDoUuidRef.current !== meio) clientUuidRef.current = crypto.randomUUID()
+    meioDoUuidRef.current = meio
+    return clientUuidRef.current
+  }
+
   function fecharCheckout() {
     setMostrarCheckout(false)
     // Saiu do QR sem pagar: um próximo Pix é OUTRA cobrança (client_uuid novo),
     // senão o servidor devolveria o QR antigo, com o endereço/taxa antigos.
-    if (pagamento.fase === 'aguardando') clientUuidRef.current = crypto.randomUUID()
+    // Cartão em espera: mantém o client_uuid, e repetir o cartão consulta a MESMA cobrança (nunca cobra de novo).
+    if (pagamento.fase === 'aguardando' && !pagamento.cartao) clientUuidRef.current = crypto.randomUUID()
     if (pagamento.fase === 'aprovado' || pagamento.fase === 'entrega_enviada') {
       setTelefoneAviso('')
       setCarrinho({})
@@ -1020,7 +1156,7 @@ export function CardapioPublico() {
     setPagamento({ fase: 'formulario' })
   }
 
-  async function pagar() {
+  async function pagar(cartao?: TokenCartaoGerado) {
     if (!slug || itensCarrinho.length === 0) return
     // Pedido grátis (cupom cobre tudo): o servidor exige telefone; avisa antes de gastar a chamada.
     if (ehPedidoGratis(totalCentavosCarrinho - descontoCupom) && !telefoneServePedidoGratis(telefoneAviso)) {
@@ -1030,44 +1166,41 @@ export function CardapioPublico() {
     if (!(await garantirPerfil())) return
     const barracaId = itensCarrinho[0].item.barraca_id
 
-    setPagamento({ fase: 'processando' })
+    setPagamento({ fase: 'processando', cartao: Boolean(cartao) })
 
     const { data, error } = await supabase.functions.invoke('criar-pagamento-pix', {
       body: {
         ...tokenCliente(),
         ...corpoCupom(),
         ...corpoPixAnterior(),
+        ...corpoCartao(cartao),
+        ...cashback.corpoCashback(),
         barraca_id: barracaId,
         viagem: modoEfetivo === 'retirada',
         observacao: observacao.trim() || null,
-        client_uuid: clientUuidRef.current,
+        client_uuid: uuidDoEnvio(cartao ? 'cartao' : 'pix'),
         website: honeypot,
         // Só quando preenchido; o servidor ignora número inválido.
         ...(telefoneAviso.trim() ? { cliente_telefone: telefoneAviso.trim() } : {}),
         itens: itensParaEnvio(),
+        // Total que o cliente viu (com a taxa Sai aê). Se o servidor chegar a outro, não cobra (409).
+        total_esperado_centavos: totalOnline(cobraTaxaPlataforma, totalCentavosCarrinho - descontoCupom),
       },
     })
 
     if (error || !data || data.erro) {
-      // Com status não-2xx o supabase-js devolve `data` nulo e o corpo da
-      // resposta fica em error.context — é de lá que sai o erro real.
-      let corpo: { erro?: string; detalhe?: unknown } | null = data ?? null
-      const contexto = (error as { context?: unknown } | null)?.context
-      if (!corpo && contexto instanceof Response) {
-        corpo = await contexto.json().catch(() => null)
-      }
-      console.error('Falha ao gerar pagamento Pix:', error, corpo?.erro, corpo?.detalhe)
-      sessaoRecusada(corpo as { codigo?: string } | null)
-      // 4xx são recusas nossas com texto pensado pro cliente (ex.: item
-      // esgotado); 5xx/502 carregam erro cru do Mercado Pago — esse não vai
-      // pra tela.
-      const recusaNossa = contexto instanceof Response && contexto.status < 500
+      const { status, corpo } = await lerFalha(error, data)
+      // Só o erro, nunca o corpo enviado (o token do cartão não vai para o console).
+      console.error('Falha ao gerar pagamento online:', status, corpo?.erro, corpo?.codigo)
+      tratarFalhaOnline(status, corpo, Boolean(cartao))
+      const mensagem = mensagemFalhaOnline(status, corpo, Boolean(cartao))
       setPagamento({
         fase: 'erro',
         mensagem:
-          recusaNossa && corpo?.erro
-            ? corpo.erro
-            : 'Não foi possível gerar o Pix agora. Tente novamente em instantes ou chame o atendente.',
+          status === 409 && typeof corpo?.total_centavos === 'number'
+            ? `${mensagem} O novo total é ${formatarPrecoBR(corpo.total_centavos)}.`
+            : mensagem,
+        manterUuid: Boolean(cartao) && (status === 0 || status >= 500) && corpo?.codigo !== 'cartao_falhou',
       })
       return
     }
@@ -1079,12 +1212,18 @@ export function CardapioPublico() {
       setPagamento({ fase: 'aprovado', senha: gratis.senha, gratis: true })
       return
     }
+    if (cartao) {
+      seguirCartao(data)
+      return
+    }
     pendenteAnteriorRef.current = typeof data.pendente_id === "string" ? data.pendente_id : null
     setPagamento({
       fase: 'aguardando',
       pendenteId: data.pendente_id,
       qrCode: data.qr_code,
       qrCodeBase64: data.qr_code_base64,
+      totalCentavos: data.total_centavos,
+      taxaPlataformaCentavos: data.taxa_plataforma_centavos,
     })
   }
 
@@ -1123,6 +1262,7 @@ export function CardapioPublico() {
 
     // Envio humano leva mais que 2s depois de abrir o formulário; mais rápido é
     // script (o servidor confere o mesmo tempo).
+    // eslint-disable-next-line react-hooks/purity -- roda no toque do cliente (handler), nunca no render; falso positivo do compilador
     const msNoCheckout = Date.now() - aberturaCheckoutRef.current
     if (msNoCheckout < 2000) {
       setPagamento({ fase: 'dados_entrega', erro: 'Confira seus dados e toque em Enviar pedido.' })
@@ -1137,7 +1277,7 @@ export function CardapioPublico() {
         ...tokenCliente(),
         ...corpoCupom(),
         barraca_id: itensCarrinho[0].item.barraca_id,
-        client_uuid: clientUuidRef.current,
+        client_uuid: uuidDoEnvio('na_entrega'),
         website: honeypot,
         ms_no_checkout: msNoCheckout,
         nome,
@@ -1273,8 +1413,14 @@ export function CardapioPublico() {
     previaTaxaLocal?.permitido && taxaServidor && taxaServidor.bairro === bairroCliente.trim()
       ? { ...previaTaxaLocal, taxaCentavos: taxaServidor.centavos }
       : previaTaxaLocal
-  // Total do Pix com entrega: só existe com bairro escolhido e aceito.
-  const totalPixEntregaCentavos = previaTaxa?.permitido ? totalCentavosCarrinho - descontoCupom + previaTaxa.taxaCentavos : null
+  // Total do Pix/cartão com entrega (com a taxa Sai aê): só existe com bairro escolhido e aceito.
+  const totalPixEntregaCentavos = previaTaxa?.permitido ? totalOnline(cobraTaxaPlataforma, totalCentavosCarrinho - descontoCupom + previaTaxa.taxaCentavos) : null
+  const subtotalCentavos = totalCentavosCarrinho - descontoCupom
+  // Cartão só com a chave do vendedor; sem ela, o meio escolhido volta a ser Pix.
+  const meioEfetivo: MeioOnline = chaveMp ? meioOnline : 'pix'
+  // Linha "Taxa de serviço Sai aê": só no pagamento online com valor a pagar (nunca na entrega nem no grátis).
+  const mostrarTaxaFormulario = podeComprar && !entregaNoCardapio && cobraTaxaPlataforma && subtotalCentavos > 0
+  const mostrarTaxaEntrega = formaEntrega !== 'na_entrega' && cobraTaxaPlataforma && (totalPixEntregaCentavos ?? 0) > 0
 
   /** Valida o formulário de Entrega; devolve a mensagem de erro ou null. */
   function erroDoFormularioEntrega(): string | null {
@@ -1287,9 +1433,9 @@ export function CardapioPublico() {
     return null
   }
 
-  /** Pix com Entrega: a taxa é recalculada no servidor e o cliente só paga o
+  /** Pix (ou cartão) com Entrega: a taxa é recalculada no servidor e o cliente só paga o
    * total que viu. Se o servidor chegar a outro total, NÃO cobra: mostra o novo. */
-  async function pagarPixEntrega() {
+  async function pagarPixEntrega(cartao?: TokenCartaoGerado) {
     if (itensCarrinho.length === 0 || totalPixEntregaCentavos === null) return
     const erroForm = erroDoFormularioEntrega()
     if (erroForm) {
@@ -1301,20 +1447,23 @@ export function CardapioPublico() {
       setPagamento({ fase: 'dados_entrega' })
       return
     }
-    setPagamento({ fase: 'processando' })
+    setPagamento({ fase: 'processando', cartao: Boolean(cartao) })
 
     const { data, error } = await supabase.functions.invoke('criar-pagamento-pix', {
       body: {
         ...tokenCliente(),
         ...corpoCupom(),
         ...corpoPixAnterior(),
+        ...corpoCartao(cartao),
+        ...cashback.corpoCashback(),
         barraca_id: itensCarrinho[0].item.barraca_id,
         tipo_atendimento: 'entrega',
         observacao: observacao.trim() || null,
-        client_uuid: clientUuidRef.current,
+        client_uuid: uuidDoEnvio(cartao ? 'cartao' : 'pix'),
         itens: itensParaEnvio(),
         total_esperado_centavos: totalPixEntregaCentavos,
         website: honeypot,
+        // eslint-disable-next-line react-hooks/purity -- roda no toque do cliente (handler), nunca no render; falso positivo do compilador
         ms_no_checkout: Date.now() - aberturaCheckoutRef.current,
         entrega: {
           nome: nomeCliente.trim(),
@@ -1330,47 +1479,27 @@ export function CardapioPublico() {
     })
 
     if (error || !data || data.erro) {
-      let corpo: {
-        erro?: string
-        detalhe?: unknown
-        total_centavos?: number
-        taxa_entrega_centavos?: number
-      } | null = data ?? null
-      const contexto = (error as { context?: unknown } | null)?.context
-      let status = 0
-      if (contexto instanceof Response) {
-        status = contexto.status
-        if (!corpo) corpo = await contexto.json().catch(() => null)
-      }
-      console.error('Falha ao gerar Pix com entrega:', error, corpo?.erro, corpo?.detalhe)
-      sessaoRecusada(corpo as { codigo?: string } | null)
-
+      const { status, corpo } = await lerFalha(error, data)
+      // Só o erro, nunca o corpo enviado (o token do cartão não vai para o console).
+      console.error('Falha ao gerar pagamento online com entrega:', status, corpo?.erro, corpo?.codigo)
       // 409 = o servidor não cobrou (valor mudou ou cobrança antiga com outros dados):
-      // a próxima tentativa é uma cobrança nova.
-      if (status === 409) clientUuidRef.current = crypto.randomUUID()
+      // a próxima tentativa é uma cobrança nova. Cartão recusado/errado também.
+      tratarFalhaOnline(status, corpo, Boolean(cartao))
 
       // Valor mudou (dono alterou taxa/preço): mostra o novo total e deixa o
       // cliente decidir. Nada foi cobrado.
       if (status === 409 && typeof corpo?.taxa_entrega_centavos === 'number') {
         setTaxaServidor({ bairro: bairroCliente.trim(), centavos: corpo.taxa_entrega_centavos })
-        clientUuidRef.current = crypto.randomUUID()
         setPagamento({
           fase: 'dados_entrega',
-          erro: `O valor do pedido mudou. O novo total é ${formatarPrecoBR(corpo.total_centavos ?? 0)}. Confira e toque em "Gerar Pix" de novo.`,
+          erro: `O valor do pedido mudou. O novo total é ${formatarPrecoBR(corpo.total_centavos ?? 0)}. Confira e ${cartao ? 'pague' : 'toque em "Gerar Pix"'} de novo.`,
         })
         return
       }
 
       // 4xx são recusas nossas (bairro bloqueado, item esgotado...) com texto
       // pro cliente; 5xx/502 carregam erro cru que não vai pra tela.
-      const recusaNossa = status > 0 && status < 500
-      setPagamento({
-        fase: 'dados_entrega',
-        erro:
-          recusaNossa && corpo?.erro
-            ? corpo.erro
-            : 'Não foi possível gerar o Pix agora. Tente novamente em instantes ou chame o atendente.',
-      })
+      setPagamento({ fase: 'dados_entrega', erro: mensagemFalhaOnline(status, corpo, Boolean(cartao)) })
       return
     }
 
@@ -1378,6 +1507,10 @@ export function CardapioPublico() {
     if (gratisEntrega) {
       pendenteAnteriorRef.current = null
       setPagamento({ fase: 'aprovado', senha: gratisEntrega.senha, gratis: true })
+      return
+    }
+    if (cartao) {
+      seguirCartao(data)
       return
     }
     pendenteAnteriorRef.current = typeof data.pendente_id === "string" ? data.pendente_id : null
@@ -1388,6 +1521,7 @@ export function CardapioPublico() {
       qrCodeBase64: data.qr_code_base64,
       totalCentavos: data.total_centavos,
       taxaCentavos: data.taxa_entrega_centavos,
+      taxaPlataformaCentavos: data.taxa_plataforma_centavos,
     })
   }
 
@@ -1450,6 +1584,49 @@ export function CardapioPublico() {
 
       {!busca.trim() && <CarrosselBanners banners={banners} />}
 
+      {destaque && (
+        <CardDestaque
+          item={destaque}
+          formatarPreco={formatarPrecoBR}
+          textoFechado={textoFechado}
+          botao={
+            <BotaoPedir
+              variante="tinta"
+              larguraTotal
+              podeAdicionar={!podeComprar || destaque.item_preco_centavos > 0}
+              esgotado={destaque.item_esgotado}
+              lojaAberta={aberta}
+              textoFechado={textoFechado}
+              comOpcoes={destaque.com_opcoes === true}
+              quantidadeNoCarrinho={quantidadeDoItem(destaque.item_id)}
+              onAdicionar={() => (destaque.com_opcoes ? setItemSeletor(destaque) : adicionarAoCarrinho(destaque.item_id))}
+              onRemover={() => alterarQuantidade(destaque.item_id, -1)}
+            />
+          }
+        />
+      )}
+
+      {!busca.trim() && itensMaisPedidos.length > 0 && (
+        <div className="mb-5">
+          <h2 className="mb-2 px-6 text-base font-bold text-mesa-text-primary">Mais pedidos</h2>
+          <div className="flex gap-3 overflow-x-auto px-6 pb-1">
+            {itensMaisPedidos.map((item, indice) => (
+              <CardItemHorizontal
+                key={item.item_id}
+                item={item}
+                destaque={indice === 0 ? 'top1' : 'popular'}
+                podeComprar={podeComprar}
+                aberta={aberta}
+                textoFechado={textoFechado}
+                quantidadeNoCarrinho={quantidadeDoItem(item.item_id)}
+                onAdicionar={() => (item.com_opcoes ? setItemSeletor(item) : adicionarAoCarrinho(item.item_id))}
+                onRemover={() => alterarQuantidade(item.item_id, -1)}
+              />
+            ))}
+          </div>
+        </div>
+      )}
+
       {!busca.trim() && itensPopulares.length > 0 && (
         <div className="mb-5">
           <h2 className="mb-2 px-6 text-base font-bold text-mesa-text-primary">Populares</h2>
@@ -1460,25 +1637,8 @@ export function CardapioPublico() {
                 item={item}
                 destaque={null}
                 podeComprar={podeComprar}
-                quantidadeNoCarrinho={quantidadeDoItem(item.item_id)}
-                onAdicionar={() => (item.com_opcoes ? setItemSeletor(item) : adicionarAoCarrinho(item.item_id))}
-                onRemover={() => alterarQuantidade(item.item_id, -1)}
-              />
-            ))}
-          </div>
-        </div>
-      )}
-
-      {!busca.trim() && itensMaisPedidos.length > 0 && (
-        <div className="mb-5">
-          <h2 className="mb-2 px-6 text-base font-bold text-mesa-text-primary">Mais pedido</h2>
-          <div className="flex gap-3 overflow-x-auto px-6 pb-1">
-            {itensMaisPedidos.map((item, indice) => (
-              <CardItemHorizontal
-                key={item.item_id}
-                item={item}
-                destaque={indice === 0 ? 'top1' : 'popular'}
-                podeComprar={podeComprar}
+                aberta={aberta}
+                textoFechado={textoFechado}
                 quantidadeNoCarrinho={quantidadeDoItem(item.item_id)}
                 onAdicionar={() => (item.com_opcoes ? setItemSeletor(item) : adicionarAoCarrinho(item.item_id))}
                 onRemover={() => alterarQuantidade(item.item_id, -1)}
@@ -1537,6 +1697,8 @@ export function CardapioPublico() {
                 item={item}
                 posicaoPopular={indicePopular === -1 ? null : indicePopular}
                 podeComprar={podeComprar}
+                aberta={aberta}
+                textoFechado={textoFechado}
                 quantidadeNoCarrinho={quantidadeDoItem(item.item_id)}
                 onAdicionar={() => (item.com_opcoes ? setItemSeletor(item) : adicionarAoCarrinho(item.item_id))}
                 onRemover={() => alterarQuantidade(item.item_id, -1)}
@@ -1558,17 +1720,17 @@ export function CardapioPublico() {
           <button
             type="button"
             onClick={() => setMostrarCheckout(true)}
-            className="flex w-full items-center justify-between gap-3 rounded-mesa-lg bg-mesa-neutral-900 py-4 pl-5 pr-4 text-left text-white shadow-mesa-3 outline-none transition-transform active:scale-[0.99] dark:bg-mesa-neutral-50 dark:text-mesa-neutral-900"
+            className="flex w-full items-center justify-between gap-3 rounded-mesa-lg bg-mesa-neutral-900 py-4 pl-5 pr-4 text-left text-white shadow-mesa-3 outline-none transition-transform active:scale-[0.99] disabled:active:scale-100 dark:bg-mesa-neutral-50 dark:text-mesa-neutral-900"
           >
             <span>
               <span className="block text-sm text-white/80 dark:text-mesa-neutral-900/70">
-                {totalItensCarrinho} {totalItensCarrinho === 1 ? 'item' : 'itens'}
+                {totalItensCarrinho} {totalItensCarrinho === 1 ? 'item' : 'itens'}{aberta ? '' : ' · Fechado'}
               </span>
               <span className="block font-mesa-display text-xl font-bold leading-tight">
                 {formatarPrecoBR(totalCentavosCarrinho)}
               </span>
             </span>
-            <span className="flex items-center gap-1 rounded-mesa-full bg-mesa-orange-500 px-4 py-2.5 text-sm font-bold text-mesa-neutral-900">
+            <span className="flex items-center gap-1 rounded-mesa-full bg-mesa-neutral-50 px-4 py-2.5 text-sm font-bold text-mesa-neutral-900 dark:bg-mesa-neutral-900 dark:text-mesa-neutral-50">
               Ver pedido
               <Icone nome="arrow_forward" size={16} />
             </span>
@@ -1638,7 +1800,8 @@ export function CardapioPublico() {
                       type="button"
                       aria-label={`Aumentar ${item.item_nome}`}
                       onClick={() => alterarQuantidade(chave, 1)}
-                      className="flex size-11 -m-1.5 items-center justify-center"
+                      disabled={!aberta}
+                      className="flex size-11 -m-1.5 items-center justify-center disabled:opacity-40"
                     >
                       <span className="flex size-8 items-center justify-center rounded-mesa-full bg-mesa-neutral-900 text-white dark:bg-mesa-neutral-50 dark:text-mesa-neutral-900">
                         <Icone nome="add" size={14} />
@@ -1650,10 +1813,10 @@ export function CardapioPublico() {
             </div>
 
             <p className="text-sm text-mesa-text-secondary">
-              {modosPublicos.length > 1 ? 'Como receber' : 'Só ' + ROTULO_MODO[modoEfetivo].toLowerCase()}
+              {modosPublicos.length > 1 ? 'Como receber' : 'Só ' + ROTULO_MODO_CARDAPIO[modoEfetivo].toLowerCase()}
               {modosPublicos.length > 1 && ': '}
               {modosPublicos.length > 1 && (
-                <span className="font-semibold text-mesa-text-primary">{ROTULO_MODO[modoEfetivo]}</span>
+                <span className="font-semibold text-mesa-text-primary">{ROTULO_MODO_CARDAPIO[modoEfetivo]}</span>
               )}
             </p>
 
@@ -1689,20 +1852,75 @@ export function CardapioPublico() {
               />
             )}
 
+            <BlocoCashbackCheckout cashback={cashback} />
+
             <div className="flex flex-col gap-1 border-t border-mesa-border-subtle pt-3">
-              {descontoCupom > 0 && (
+              {cupom.aplicado && descontoCupom > 0 && (
                 <div className="flex items-center justify-between text-sm text-mesa-text-secondary">
-                  <span>Cupom {cupom.aplicado?.codigo}</span>
+                  <span>Cupom {cupom.aplicado.codigo}</span>
                   <span>{textoDesconto(descontoCupom)}</span>
+                </div>
+              )}
+              {cashback.usadoCentavos > 0 && (
+                <div className="flex items-center justify-between text-sm text-mesa-text-secondary">
+                  <span>Saldo de cashback</span>
+                  <span>{textoDesconto(cashback.usadoCentavos)}</span>
+                </div>
+              )}
+              {mostrarTaxaFormulario && (
+                <div className="flex items-center justify-between text-sm text-mesa-text-secondary">
+                  <span>Taxa de serviço Sai aê</span>
+                  <span>{formatarPrecoBR(TAXA_PLATAFORMA_CENTAVOS)}</span>
                 </div>
               )}
               <div className="flex items-center justify-between">
                 <span className="text-sm text-mesa-text-secondary">Total</span>
                 <span className="font-mesa-display text-lg font-bold text-mesa-text-primary">
-                  {formatarPrecoBR(totalCentavosCarrinho - descontoCupom)}
+                  {formatarPrecoBR(mostrarTaxaFormulario ? totalOnline(cobraTaxaPlataforma, subtotalCentavos) : subtotalCentavos)}
                 </span>
               </div>
+              <LinhaCashbackGanho cashback={cashback} />
+              {mostrarTaxaFormulario && mostrarPagarNaEntrega && (
+                <p className="text-xs text-mesa-text-tertiary">
+                  Pagando na entrega não há taxa de serviço: {formatarPrecoBR(subtotalCentavos)}.
+                </p>
+              )}
             </div>
+
+            {podeComprar && !entregaNoCardapio && chaveMp && !ehPedidoGratis(subtotalCentavos) && (
+              <fieldset className="grid grid-cols-2 gap-3">
+                <legend className="sr-only">Forma de pagamento online</legend>
+                {(['pix', 'cartao'] as const).map((meio) => (
+                  // Rádio nativo: setas e Tab funcionam como em qualquer grupo de opções.
+                  <label
+                    key={meio}
+                    className={clsx(
+                      'flex min-h-14 cursor-pointer items-center gap-3 rounded-mesa-lg border-2 p-3 transition-colors has-[:focus-visible]:[box-shadow:var(--mesa-focus-ring-primary)]',
+                      meioEfetivo === meio
+                        ? 'border-mesa-neutral-900 bg-mesa-neutral-100 dark:border-mesa-neutral-50 dark:bg-mesa-neutral-800'
+                        : 'border-mesa-border-subtle bg-mesa-surface',
+                    )}
+                  >
+                    <input
+                      type="radio"
+                      name="meio-pagamento-online"
+                      value={meio}
+                      checked={meioEfetivo === meio}
+                      onChange={() => setMeioOnline(meio)}
+                      className="sr-only"
+                    />
+                    <Icone nome={meio === 'pix' ? 'qr_code' : 'credit_card'} size={20} />
+                    <span className="text-sm font-semibold text-mesa-text-primary">{meio === 'pix' ? 'Pix' : 'Cartão de crédito'}</span>
+                  </label>
+                ))}
+              </fieldset>
+            )}
+
+            {!podeFinalizar && (
+              <p role="status" className="rounded-mesa-lg bg-mesa-neutral-100 p-3 text-sm font-medium text-mesa-text-primary dark:bg-mesa-neutral-800">
+                {textoFechado ? `${textoFechado}. Você ainda pode revisar e tirar itens do pedido.` : 'Estamos fechados. Você ainda pode revisar e tirar itens do pedido.'}
+              </p>
+            )}
 
             {mostrarPagarNaEntrega && (
               <Button
@@ -1710,7 +1928,7 @@ export function CardapioPublico() {
                 size="xl"
                 icon={<Icone nome="two_wheeler" size={20} />}
                 className="w-full"
-                disabled={itensCarrinho.length === 0}
+                disabled={itensCarrinho.length === 0 || !podeFinalizar}
                 onClick={() => {
                   aberturaCheckoutRef.current = Date.now()
                   setFormaEntrega('na_entrega')
@@ -1725,27 +1943,53 @@ export function CardapioPublico() {
               // Pix com Entrega: o QR só sai depois de escolher o bairro e ver
               // itens + taxa = total (tela de dados da entrega); nunca daqui direto.
               podeComprar && (
-                <Button
-                  size="xl"
-                  icon={<Icone nome="qr_code" size={20} />}
-                  className="w-full"
-                  disabled={itensCarrinho.length === 0}
-                  onClick={() => {
-                    aberturaCheckoutRef.current = Date.now()
-                    setFormaEntrega('pix')
-                    setPagamento({ fase: 'dados_entrega' })
-                  }}
-                >
-                  Pagar com Pix
-                </Button>
+                <>
+                  <Button
+                    size="xl"
+                    icon={<Icone nome="qr_code" size={20} />}
+                    className="w-full"
+                    disabled={itensCarrinho.length === 0 || !podeFinalizar}
+                    onClick={() => {
+                      aberturaCheckoutRef.current = Date.now()
+                      setFormaEntrega('pix')
+                      setPagamento({ fase: 'dados_entrega' })
+                    }}
+                  >
+                    Pagar com Pix
+                  </Button>
+                  {chaveMp && (
+                    <Button
+                      variant="outline"
+                      size="xl"
+                      icon={<Icone nome="credit_card" size={20} />}
+                      className="w-full"
+                      disabled={itensCarrinho.length === 0 || !podeFinalizar}
+                      onClick={() => {
+                        aberturaCheckoutRef.current = Date.now()
+                        setFormaEntrega('cartao')
+                        setPagamento({ fase: 'dados_entrega' })
+                      }}
+                    >
+                      Pagar com cartão
+                    </Button>
+                  )}
+                </>
               )
+            ) : podeComprar && meioEfetivo === 'cartao' && chaveMp && !ehPedidoGratis(subtotalCentavos) ? (
+              <CartaoMercadoPago
+                publicKey={chaveMp}
+                desabilitado={itensCarrinho.length === 0 || !podeFinalizar}
+                textoBotao={`Pagar ${formatarPrecoBR(totalOnline(cobraTaxaPlataforma, subtotalCentavos))}`}
+                onAntesDeGerar={garantirPerfil}
+                onGerarToken={(t) => void pagar(t)}
+              />
             ) : podeComprar ? (
               <Button
                 size="xl"
                 icon={<Icone nome={ehPedidoGratis(totalCentavosCarrinho - descontoCupom) ? 'check_circle' : 'qr_code'} size={20} />}
                 className="w-full"
-                disabled={itensCarrinho.length === 0}
-                onClick={pagar}
+                disabled={itensCarrinho.length === 0 || !podeFinalizar}
+                onClick={() => void pagar()}
               >
                 {ehPedidoGratis(totalCentavosCarrinho - descontoCupom) ? TEXTO_BOTAO_PEDIDO_GRATIS : 'Pagar com Pix'}
               </Button>
@@ -1754,7 +1998,7 @@ export function CardapioPublico() {
                 size="xl"
                 icon={<Icone nome="point_of_sale" size={20} />}
                 className="w-full"
-                disabled={itensCarrinho.length === 0}
+                disabled={itensCarrinho.length === 0 || !podeFinalizar}
                 onClick={() => setMostrarAvisoBalcao(true)}
               >
                 Finalizar no caixa
@@ -1766,12 +2010,14 @@ export function CardapioPublico() {
         {(pagamento.fase === 'dados_entrega' || pagamento.fase === 'enviando_entrega') && (
           <div className="flex flex-col gap-3">
             <h2 className="text-lg font-semibold text-mesa-text-primary">
-              {formaEntrega === 'pix' ? 'Entrega com Pix' : 'Pagar na entrega'}
+              {formaEntrega === 'pix' ? 'Entrega com Pix' : formaEntrega === 'cartao' ? 'Entrega com cartão' : 'Pagar na entrega'}
             </h2>
             <p className="text-sm text-mesa-text-secondary">
               {formaEntrega === 'pix'
                 ? 'Você paga agora pelo Pix o valor dos itens mais a taxa de entrega. Assim que o pagamento cair, o pedido vai direto pra cozinha.'
-                : 'Seu pedido vai direto pra cozinha e você avisa a barraca pelo WhatsApp. O pagamento é combinado na entrega.'}
+                : formaEntrega === 'cartao'
+                  ? 'Você paga agora no cartão de crédito, à vista, o valor dos itens mais a taxa de entrega. Aprovado o pagamento, o pedido vai direto pra cozinha.'
+                  : 'Seu pedido vai direto pra cozinha e você avisa a barraca pelo WhatsApp. O pagamento é combinado na entrega.'}
             </p>
             {/* Honeypot: fora da tela e fora da tabulação; só robô preenche. */}
             <input
@@ -1931,6 +2177,7 @@ export function CardapioPublico() {
                 onEditar={cupom.limparErro}
               />
             )}
+            <BlocoCashbackCheckout cashback={cashback} />
             <div className="flex flex-col gap-1 border-t border-mesa-border-subtle pt-3">
               {entregaNoCardapio && (
                 <>
@@ -1938,10 +2185,16 @@ export function CardapioPublico() {
                     <span>Itens</span>
                     <span>{formatarPrecoBR(totalCentavosCarrinho)}</span>
                   </div>
-                  {descontoCupom > 0 && (
+                  {cupom.aplicado && descontoCupom > 0 && (
                     <div className="flex items-center justify-between text-sm text-mesa-text-secondary">
-                      <span>Cupom {cupom.aplicado?.codigo}</span>
+                      <span>Cupom {cupom.aplicado.codigo}</span>
                       <span>{textoDesconto(descontoCupom)}</span>
+                    </div>
+                  )}
+                  {cashback.usadoCentavos > 0 && (
+                    <div className="flex items-center justify-between text-sm text-mesa-text-secondary">
+                      <span>Saldo de cashback</span>
+                      <span>{textoDesconto(cashback.usadoCentavos)}</span>
                     </div>
                   )}
                   <div className="flex items-center justify-between text-sm text-mesa-text-secondary">
@@ -1956,27 +2209,52 @@ export function CardapioPublico() {
                   </div>
                 </>
               )}
+              {mostrarTaxaEntrega && (
+                <div className="flex items-center justify-between text-sm text-mesa-text-secondary">
+                  <span>Taxa de serviço Sai aê</span>
+                  <span>{formatarPrecoBR(TAXA_PLATAFORMA_CENTAVOS)}</span>
+                </div>
+              )}
               <div className="flex items-center justify-between">
                 <span className="text-sm text-mesa-text-secondary">Total</span>
                 <span className="font-mesa-display text-lg font-bold text-mesa-text-primary">
-                  {formatarPrecoBR(totalCentavosCarrinho - descontoCupom + (previaTaxa?.permitido ? previaTaxa.taxaCentavos : 0))}
+                  {formatarPrecoBR(
+                    formaEntrega !== 'na_entrega' && totalPixEntregaCentavos !== null
+                      ? totalPixEntregaCentavos
+                      : totalCentavosCarrinho - descontoCupom + (previaTaxa?.permitido ? previaTaxa.taxaCentavos : 0),
+                  )}
                 </span>
               </div>
               {entregaNoCardapio && (
                 <p className="text-xs text-mesa-text-tertiary">
-                  {formaEntrega === 'pix'
-                    ? 'O Pix é gerado com o total acima. Se a barraca tiver mudado o valor, mostramos o novo total antes de cobrar.'
+                  {formaEntrega !== 'na_entrega'
+                    ? 'A cobrança é feita com o total acima. Se a barraca tiver mudado o valor, mostramos o novo total antes de cobrar.'
                     : 'O valor final da taxa é confirmado pela barraca ao enviar o pedido.'}
                 </p>
               )}
             </div>
-            {formaEntrega === 'pix' ? (
+            {formaEntrega === 'cartao' && chaveMp && totalPixEntregaCentavos !== null && !ehPedidoGratis(totalPixEntregaCentavos) ? (
+              <CartaoMercadoPago
+                publicKey={chaveMp}
+                desabilitado={false}
+                textoBotao={`Pagar ${formatarPrecoBR(totalPixEntregaCentavos)}`}
+                onAntesDeGerar={async () => {
+                  const erroForm = erroDoFormularioEntrega()
+                  if (erroForm) {
+                    setPagamento({ fase: 'dados_entrega', erro: erroForm })
+                    return false
+                  }
+                  return garantirPerfil()
+                }}
+                onGerarToken={(t) => void pagarPixEntrega(t)}
+              />
+            ) : formaEntrega !== 'na_entrega' ? (
               <Button
                 size="xl"
                 icon={<Icone nome={ehPedidoGratis(totalPixEntregaCentavos) ? 'check_circle' : 'qr_code'} size={20} />}
                 disabled={totalPixEntregaCentavos === null}
                 className="w-full"
-                onClick={pagarPixEntrega}
+                onClick={() => void pagarPixEntrega()}
               >
                 {totalPixEntregaCentavos === null
                   ? 'Escolha o bairro pra ver o total'
@@ -2041,20 +2319,46 @@ export function CardapioPublico() {
         {pagamento.fase === 'processando' && (
           <div className="flex flex-col items-center gap-3 py-8 text-center">
             <Icone nome="progress_activity" size={32} className="animate-spin text-mesa-text-tertiary" />
-            <p className="text-sm text-mesa-text-secondary">Gerando o Pix...</p>
+            <p role="status" className="text-sm text-mesa-text-secondary">
+              {pagamento.cartao ? 'Processando o cartão...' : 'Gerando o Pix...'}
+            </p>
           </div>
         )}
 
-        {pagamento.fase === 'aguardando' && (
+        {pagamento.fase === 'aguardando' && pagamento.cartao && (
+          <div className="flex flex-col items-center gap-3 py-6 text-center">
+            <Icone
+              nome={pagamento.semConfirmacao ? 'schedule' : 'progress_activity'}
+              size={32}
+              className={`${pagamento.semConfirmacao ? '' : 'animate-spin '}text-mesa-text-tertiary`}
+            />
+            <h2 className="text-lg font-semibold text-mesa-text-primary">
+              {pagamento.emAnalise ? 'Pagamento em análise' : 'Confirmando o pagamento'}
+            </h2>
+            <p role="status" className="text-sm text-mesa-text-secondary">
+              {pagamento.semConfirmacao
+                ? 'Não conseguimos confirmar ainda; se o emissor aprovar, o pedido segue para a cozinha. Nada será cobrado de novo.'
+                : pagamento.emAnalise
+                ? 'O emissor do cartão está analisando o pagamento. Pode levar alguns minutos; deixe esta tela aberta. Aprovado, o pedido vai direto pra cozinha.'
+                : 'Falta pouco: assim que a confirmação chegar, seu pedido vai direto pra cozinha.'}
+            </p>
+            {pagamento.totalCentavos !== undefined && (
+              <p className="font-mesa-display text-2xl font-black text-mesa-text-primary">{formatarPrecoBR(pagamento.totalCentavos)}</p>
+            )}
+          </div>
+        )}
+
+        {pagamento.fase === 'aguardando' && !pagamento.cartao && (
           <div className="flex flex-col items-center gap-3 py-2 text-center">
             <h2 className="text-lg font-semibold text-mesa-text-primary">Pague com Pix pra confirmar</h2>
             <p className="text-sm text-mesa-text-secondary">
               Assim que o pagamento cair, seu pedido já vai direto pra cozinha.
             </p>
-            {pagamento.totalCentavos !== undefined && (pagamento.taxaCentavos ?? 0) > 0 && (
+            {pagamento.totalCentavos !== undefined && ((pagamento.taxaCentavos ?? 0) > 0 || (pagamento.taxaPlataformaCentavos ?? 0) > 0) && (
               <p className="text-sm text-mesa-text-secondary">
-                Itens {formatarPrecoBR(pagamento.totalCentavos - (pagamento.taxaCentavos ?? 0))} + taxa de entrega{' '}
-                {formatarPrecoBR(pagamento.taxaCentavos ?? 0)}
+                Itens {formatarPrecoBR(pagamento.totalCentavos - (pagamento.taxaCentavos ?? 0) - (pagamento.taxaPlataformaCentavos ?? 0))}
+                {(pagamento.taxaCentavos ?? 0) > 0 && ` + taxa de entrega ${formatarPrecoBR(pagamento.taxaCentavos ?? 0)}`}
+                {(pagamento.taxaPlataformaCentavos ?? 0) > 0 && ` + taxa de serviço Sai aê ${formatarPrecoBR(pagamento.taxaPlataformaCentavos ?? 0)}`}
               </p>
             )}
             {pagamento.totalCentavos !== undefined && (
@@ -2091,6 +2395,7 @@ export function CardapioPublico() {
                 Senha {String(pagamento.senha).padStart(3, '0')}
               </p>
             )}
+            <AvisoCashbackGanho resposta={pagamento.cashback} />
             <Button variant="ghost" size="md" onClick={fecharCheckout} className="mt-2 w-full">
               Fechar
             </Button>
@@ -2101,21 +2406,32 @@ export function CardapioPublico() {
           <div className="flex flex-col items-center gap-3 py-6 text-center">
             <Icone nome="error" size={32} className="text-mesa-error-500" />
             <h2 className="text-lg font-semibold text-mesa-text-primary">
-              {pagamento.fase === 'recusado' ? 'Pagamento não confirmado' : 'Não deu certo'}
+              {pagamento.fase === 'recusado' ? (pagamento.cartao ? 'Cartão não aprovado' : 'Pagamento não confirmado') : 'Não deu certo'}
             </h2>
-            <p className="text-sm text-mesa-text-secondary">
-              {pagamento.fase === 'erro' ? pagamento.mensagem : 'O Pix expirou ou foi recusado. Tente de novo.'}
+            <p role="alert" className="text-sm text-mesa-text-secondary">
+              {pagamento.fase === 'erro'
+                ? pagamento.mensagem
+                : pagamento.cartao
+                  ? 'O pagamento não foi aprovado e nada foi cobrado. Tente outro cartão ou pague com Pix.'
+                  : 'O Pix expirou ou foi recusado. Tente de novo.'}
             </p>
             <Button
               size="md"
               className="mt-2 w-full"
               onClick={() => {
-                clientUuidRef.current = crypto.randomUUID()
-                setPagamento({ fase: 'formulario' })
+                // Falha sem resposta clara no cartão: mesmo client_uuid, o servidor devolve a cobrança já feita.
+                if (!(pagamento.fase === 'erro' && pagamento.manterUuid)) clientUuidRef.current = crypto.randomUUID()
+                if (pagamento.fase === 'recusado' && pagamento.cartao) voltarAoPagamento('cartao')
+                else setPagamento({ fase: 'formulario' })
               }}
             >
               Tentar de novo
             </Button>
+            {pagamento.fase === 'recusado' && pagamento.cartao && (
+              <Button variant="outline" size="md" icon={<Icone nome="qr_code" size={16} />} className="w-full" onClick={() => voltarAoPagamento('pix')}>
+                Pagar com Pix
+              </Button>
+            )}
           </div>
         )}
       </BottomSheet>

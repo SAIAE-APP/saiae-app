@@ -1,4 +1,4 @@
-import { useEffect, useRef } from 'react'
+import { lazy, Suspense, useEffect, useRef } from 'react'
 import { Outlet, useLocation, useParams } from 'react-router'
 import clsx from 'clsx'
 import { useBarraca } from '../hooks/useBarraca'
@@ -9,17 +9,25 @@ import { useSincronizacao } from '../hooks/useSincronizacao'
 import { useImpressaoAutomatica } from '../hooks/useImpressaoAutomatica'
 import { useRealtimePedidos } from '../hooks/useRealtimePedidos'
 import { useAssinaturaBarraca } from '../hooks/useAssinaturaBarraca'
+import { useModulosAtivos } from '../hooks/useModulosAtivos'
 import { NaoEncontrado } from '../pages/NaoEncontrado'
-import { Planos } from '../pages/Planos'
 import { BarraNavegacao } from '../components/BarraNavegacao'
 import { SidebarDesktop } from '../components/SidebarDesktop'
 import { BannerTrial } from '../components/BannerTrial'
 import { FaixaSuporteDono, FaixaSuporteVisao } from '../components/FaixaSuporte'
+import { FaixaWhatsappCaiu } from '../components/FaixaWhatsappCaiu'
 import { acessoBloqueadoPorAssinatura, mostraBannerDeTrial } from '../lib/cobranca'
 import { useToast } from '../components/ui/useToast'
-import { EVENTO_CLIENTE_NAO_SALVO } from '../lib/fila'
-import { BarracaContext, SincronizacaoContext } from './contextoBarraca'
+import { EVENTO_CLIENTE_NAO_SALVO, EVENTO_OPERACAO_DESCARTADA, reenviarFalha } from '../lib/fila'
+import type { DetalheOperacaoDescartada } from '../lib/fila'
+import { definirBarracaDoErro, registrarVersaoApp } from '../lib/erroApp'
+import { ehAppIOS } from '../lib/plataforma'
+import { AcessoIndisponivelIOS } from '../components/AcessoIndisponivelIOS'
+import { BarracaContext, ModulosContext, SincronizacaoContext, SouDonoContext } from './contextoBarraca'
 import { PedidosContext } from './contextoPedidos'
+
+// Só aparece com a assinatura bloqueada (precisa de rede de qualquer jeito): não pesa no pacote do balcão.
+const Planos = lazy(() => import('../pages/Planos').then((m) => ({ default: m.Planos })))
 
 export function LayoutBarraca() {
   const { slug } = useParams<{ slug: string }>()
@@ -65,9 +73,24 @@ export function LayoutBarraca() {
     window.addEventListener(EVENTO_CLIENTE_NAO_SALVO, aviso)
     return () => window.removeEventListener(EVENTO_CLIENTE_NAO_SALVO, aviso)
   }, [mostrarToast])
+  // O servidor recusou uma operação de vez: ela saiu da fila (fica guardada) e o operador NUNCA fica sem saber.
+  useEffect(() => {
+    const aviso = (e: Event) => {
+      const { id, tipo, motivo } = (e as CustomEvent<DetalheOperacaoDescartada>).detail
+      const o = tipo === 'criar_pedido' ? 'Um pedido' : 'Uma alteração'
+      mostrarToast(`${o} não foi enviado: ${motivo}. Toque para tentar de novo.`, {
+        variante: 'erro',
+        duracaoMs: null,
+        aoClicar: () => void reenviarFalha(id),
+      })
+    }
+    window.addEventListener(EVENTO_OPERACAO_DESCARTADA, aviso)
+    return () => window.removeEventListener(EVENTO_OPERACAO_DESCARTADA, aviso)
+  }, [mostrarToast])
   const { pedidos, status, pedidosCarregados, aplicarPatchPedido, aplicarPatchItem } =
     useRealtimePedidos(barraca?.id ?? '')
   const { assinatura } = useAssinaturaBarraca(slug ?? '')
+  const { modulos } = useModulosAtivos(barraca?.id)
   const location = useLocation()
   const emTelaDeChamada = location.pathname.endsWith('/chamada')
   const emCozinha = location.pathname.endsWith('/cozinha')
@@ -95,6 +118,15 @@ export function LayoutBarraca() {
   // pedido e 02-caixa. Dashboard mantém o gradiente (regra acima é só
   // sobre Cozinha/Chamada).
   const semBottomNav = emTelaDeChamada || emConfirmarPedido || emDashboard
+
+  // Observabilidade do painel do superadmin: erros passam a valer para esta barraca e a versão em uso é registrada.
+  const barracaId = barraca?.id
+  useEffect(() => {
+    if (!barracaId) return
+    definirBarracaDoErro(barracaId)
+    registrarVersaoApp(barracaId)
+    return () => definirBarracaDoErro(null)
+  }, [barracaId])
 
   useEffect(() => {
     if (!barraca) return
@@ -146,11 +178,14 @@ export function LayoutBarraca() {
 
   return (
     <BarracaContext.Provider value={barraca}>
+      <ModulosContext.Provider value={modulos}>
+      <SouDonoContext.Provider value={souDonoDestaBarraca}>
       <SincronizacaoContext.Provider value={sincronizacao}>
         <PedidosContext.Provider value={estadoPedidos}>
-          {mostraBannerTrial && assinatura && <BannerTrial assinatura={assinatura} />}
+          {mostraBannerTrial && assinatura && !ehAppIOS() && <BannerTrial assinatura={assinatura} />}
           <FaixaSuporteVisao barracaId={barraca.id} barracas={barracasDoUsuario} />
           {souDonoDestaBarraca && <FaixaSuporteDono barracaId={barraca.id} />}
+          <FaixaWhatsappCaiu barraca={barraca} />
           {mostrarSidebar && !acessoBloqueado && <SidebarDesktop />}
           <div
             className={clsx(
@@ -159,7 +194,9 @@ export function LayoutBarraca() {
               mostrarSidebar && !acessoBloqueado && 'md:pl-64',
             )}
           >
-            {acessoBloqueado ? <Planos /> : <Outlet />}
+            <Suspense fallback={<p className="p-6 text-center text-mesa-text-secondary">Carregando...</p>}>
+              {acessoBloqueado ? ehAppIOS() ? <AcessoIndisponivelIOS /> : <Planos /> : <Outlet />}
+            </Suspense>
           </div>
           {!semBottomNav && !acessoBloqueado && (
             <div className={mostrarSidebar ? 'md:hidden' : undefined}>
@@ -168,6 +205,8 @@ export function LayoutBarraca() {
           )}
         </PedidosContext.Provider>
       </SincronizacaoContext.Provider>
+      </SouDonoContext.Provider>
+      </ModulosContext.Provider>
     </BarracaContext.Provider>
   )
 }

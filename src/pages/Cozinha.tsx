@@ -1,3 +1,4 @@
+import { mesaDaRodada } from '../lib/comandaAberta'
 import { useEffect, useMemo, useRef, useState } from 'react'
 import { Link } from 'react-router'
 import clsx from 'clsx'
@@ -238,8 +239,9 @@ function CardPedido({
       <div className="bg-mesa-neutral-900 p-4">
         <div className="flex items-center gap-2">
           <span className="font-mesa-display text-2xl font-black leading-none text-white">
-            #{pedido.senha}
+            {mesaDaRodada(pedido) ? `Mesa ${mesaDaRodada(pedido)}` : `#${pedido.senha}`}
           </span>
+          {mesaDaRodada(pedido) && <span className="text-xs font-semibold text-mesa-neutral-400">senha {pedido.senha}</span>}
           <Badge variant="neutral" className="gap-1">
             <Icone nome={iconeTipo} size={14} />
             {rotuloTipo}
@@ -476,7 +478,7 @@ function SecaoDespachados({ pedidos }: { pedidos: PedidoComItens[] }) {
             <li key={pedido.id} className="flex items-center justify-between gap-2 text-sm">
               <span className="min-w-0 flex-1 truncate text-mesa-text-secondary">
                 <span className="font-mesa-display font-bold text-mesa-text-primary">
-                  #{pedido.senha}
+                  {mesaDaRodada(pedido) ? `Mesa ${mesaDaRodada(pedido)}` : `#${pedido.senha}`}
                 </span>{' '}
                 {rotuloAtendimento(pedido)}
                 {resumoItens && ` · ${resumoItens}`}

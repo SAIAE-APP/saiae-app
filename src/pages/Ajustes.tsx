@@ -10,7 +10,8 @@ import { supabase } from '../lib/supabase'
 import { mensagemDoErroFuncao } from '../lib/erroFuncao'
 import { salvarCredencial } from '../lib/salvarCredencial'
 import { classesBotaoIcone } from '../lib/estiloBotaoIcone'
-import { useBarracaAtual } from '../layouts/contextoBarraca'
+import { ehAppIOS } from '../lib/plataforma'
+import { useBarracaAtual, useModulosDaLoja, useSouDonoDaLoja } from '../layouts/contextoBarraca'
 import { useAuth } from '../hooks/useAuth'
 import { useTheme } from '../hooks/useTheme'
 import { useAssinaturaBarraca } from '../hooks/useAssinaturaBarraca'
@@ -22,6 +23,7 @@ import { apagarLogoBarraca, enviarLogoBarraca } from '../lib/logoBarraca'
 import { apagarCapaBarraca, enviarCapaBarraca } from '../lib/capaBarraca'
 import { ativarFaceId, desativarFaceId, faceIdAtivado, faceIdSuportado } from '../lib/faceId'
 import { urlPublica } from '../lib/urlPublica'
+import { itensElegiveisParaDestaque } from '../lib/itensParaDestaque'
 import { BPS_MAX, bpsParaPercentual, percentualParaBps } from '../lib/taxas'
 import { ModalTrocarSenha } from '../components/ModalTrocarSenha'
 import { SeletorMetodos } from '../components/SeletorMetodos'
@@ -31,28 +33,33 @@ import { SecaoBanners } from '../components/SecaoBanners'
 import { SecaoHorarioFuncionamento } from '../components/SecaoHorarioFuncionamento'
 import { SecaoAjudaSuporte } from '../components/SecaoAjudaSuporte'
 import { SecaoAcessoSuporte } from '../components/SecaoAcessoSuporte'
+import { SecaoAcessosAdmin } from '../components/SecaoAcessosAdmin'
 import { BotaoSalvarCampo, ErroSalvar } from '../components/BotaoSalvarCampo'
 import { SecaoModosAtendimento } from '../components/SecaoModosAtendimento'
 import { SecaoTaxaEntrega } from '../components/SecaoTaxaEntrega'
 import { SecaoBairrosEntrega } from '../components/SecaoBairrosEntrega'
-import { SecaoIntegracaoCrm } from '../components/SecaoIntegracaoCrm'
 import { SecaoOpcoes } from '../components/SecaoOpcoes'
 import { SecaoClientesEntrega } from '../components/SecaoClientesEntrega'
 import { ImportarCardapioSheet } from '../components/ImportarCardapioSheet'
 import { SecaoPagarNaEntrega } from '../components/SecaoPagarNaEntrega'
 import { EnderecoCardapio } from '../components/EnderecoCardapio'
 import { SecaoPagamentoDepois } from '../components/SecaoPagamentoDepois'
+import { SecaoComandaAberta } from '../components/SecaoComandaAberta'
 import { SecaoSaiuEntrega } from '../components/SecaoSaiuEntrega'
 import { SecaoEstoque } from '../components/SecaoEstoque'
 import { SecaoCupons } from '../components/SecaoCupons'
-import { SecaoAtendenteIa } from '../components/SecaoAtendenteIa'
-import { mostrarAtendenteIa } from '../lib/visibilidadeIaCrm'
+import { SecaoCashback } from '../components/SecaoCashback'
+import { mostrarWhatsappAutomacao, temModulo } from '../lib/modulos'
+import { fiscalProntoParaEmitir } from '../lib/fiscal'
+import { SecaoWhatsappAutomacao } from '../components/SecaoWhatsappAutomacao'
+import { SecaoDisparos } from '../components/SecaoDisparos'
 import {
   PROVEDORES_PIX_DISPONIVEIS,
   provedorPixDaBarraca,
   type ChaveProvedorPix,
   type ProvedorPixInfo,
 } from '../lib/provedoresPix'
+import { CHAVE_SLUG_MP, dataDoCorte, estadoMercadoPago, lerCorte, retornoOauthMp } from '../lib/estadoMercadoPago'
 import { PIX_EXPIRACAO_OPCOES_MINUTOS, minutosExpiracaoPix } from '../lib/pixExpiracao'
 import { SecaoAvisoPronto } from '../components/SecaoAvisoPronto'
 import { EmitenteFiscal } from '../components/EmitenteFiscal'
@@ -1399,6 +1406,65 @@ function SecaoIdentidade({ barraca }: { barraca: Barraca }) {
   )
 }
 
+function SeletorItemDestaque({ barraca }: { barraca: Barraca }) {
+  const [itens, setItens] = useState<Item[]>([])
+  const destaqueR = useRascunho(barraca.item_destaque_id ?? '')
+  const salvarDestaque = useSalvarBarraca(barraca)
+
+  useEffect(() => {
+    let cancelado = false
+    supabase
+      .from('itens')
+      .select('*')
+      .eq('barraca_id', barraca.id)
+      .then(({ data }) => {
+        if (!cancelado) setItens((data ?? []) as Item[])
+      })
+    return () => {
+      cancelado = true
+    }
+  }, [barraca.id])
+
+  const elegiveis = itensElegiveisParaDestaque(itens)
+  const atual = destaqueR.valor
+  // O destaque atual pode ter esgotado ou sido desativado: continua na lista para o dono trocar.
+  const atualIndisponivel = atual && !elegiveis.some((i) => i.id === atual) ? itens.find((i) => i.id === atual) : undefined
+
+  async function escolher(id: string) {
+    destaqueR.definir(id)
+    await salvarDestaque.salvar({ item_destaque_id: id || null })
+    // sucesso: o cache já traz o valor novo; falha: volta pro que está no banco
+    destaqueR.descartar()
+  }
+
+  return (
+    <div className="mt-4">
+      <label htmlFor="item-destaque" className="text-sm font-medium text-mesa-text-primary">
+        Item em destaque
+      </label>
+      <p className="mb-2 text-xs text-mesa-text-secondary">
+        Mostra este item no topo do cardápio, com o preço normal dele. Se ele esgotar, o destaque some sozinho.
+      </p>
+      <select
+        id="item-destaque"
+        value={atual}
+        onChange={(e) => void escolher(e.target.value)}
+        disabled={salvarDestaque.salvando}
+        className="h-11 w-full rounded-mesa-sm border-[1.5px] border-mesa-border-default bg-mesa-surface px-3 text-sm text-mesa-text-primary outline-none focus:border-mesa-orange-500"
+      >
+        <option value="">Nenhum</option>
+        {atualIndisponivel && <option value={atualIndisponivel.id}>{atualIndisponivel.nome} (indisponível)</option>}
+        {elegiveis.map((i) => (
+          <option key={i.id} value={i.id}>
+            {i.nome}
+          </option>
+        ))}
+      </select>
+      <ErroSalvar erro={salvarDestaque.erro} className="mt-2" />
+    </div>
+  )
+}
+
 /** Extraída de dentro de SecaoIdentidade em 2026-09-27 (pedido do dono do
  * produto): é sobre o cardápio digital, não sobre identidade/conta da
  * barraca — precisava cair na categoria "Cardápio & Operação" do desktop,
@@ -1444,6 +1510,7 @@ function SecaoCardapioDigital({ barraca }: { barraca: Barraca }) {
         >
           {linkCopiado ? 'Link copiado!' : 'Compartilhar cardápio'}
         </Button>
+        <SeletorItemDestaque barraca={barraca} />
         <EnderecoCardapio barraca={barraca} />
       </Card>
     </section>
@@ -1723,103 +1790,8 @@ const AMBIENTES_FISCAIS: { valor: AmbienteFiscal; rotulo: string }[] = [
   { valor: 'producao', rotulo: 'Produção' },
 ]
 
-/** A FocusNFe emite um token DIFERENTE por ambiente (token_homologacao e
- * token_producao são credenciais distintas de verdade, não o mesmo valor
- * com URL diferente) — confirmado na doc deles e na UI de um concorrente
- * que já implementou (dois campos de token separados). Por isso esse
- * sheet é parametrizado por ambiente em vez de ter um campo só. */
-function BottomSheetTokenFiscal({
-  barracaId,
-  ambiente,
-  open,
-  onClose,
-  onSucesso,
-}: {
-  barracaId: string
-  ambiente: AmbienteFiscal
-  open: boolean
-  onClose: () => void
-  onSucesso: () => void
-}) {
-  const [token, setToken] = useState('')
-  const [processando, setProcessando] = useState(false)
-  const [erro, setErro] = useState<string | null>(null)
-  const rotuloAmbiente = ambiente === 'producao' ? 'Produção' : 'Homologação'
-
-  function fechar() {
-    setToken('')
-    setErro(null)
-    onClose()
-  }
-
-  async function salvar(e: FormEvent) {
-    e.preventDefault()
-    if (processando) return
-
-    if (!token.trim()) {
-      setErro('Cole o token gerado no painel da FocusNFe')
-      return
-    }
-
-    if (navigator.onLine === false) {
-      setErro(MSG_SEM_INTERNET)
-      return
-    }
-
-    setProcessando(true)
-    setErro(null)
-
-    const mensagem = await salvarCredencial({ tipo: 'fiscal', barracaId, ambiente, valor: token.trim() })
-
-    setProcessando(false)
-
-    if (mensagem) {
-      setErro(mensagem)
-      return
-    }
-
-    fechar()
-    onSucesso()
-  }
-
-  return (
-    <BottomSheet open={open} onClose={fechar} aria-label={`Token da FocusNFe — ${rotuloAmbiente}`}>
-      <h2 className="text-lg font-semibold text-mesa-text-primary">Token da FocusNFe — {rotuloAmbiente}</h2>
-      <p className="mt-1 text-sm text-mesa-text-secondary">
-        Gerado no painel da FocusNFe depois de cadastrar sua empresa lá — a FocusNFe emite um token
-        diferente pra cada ambiente. Fica guardado só pra uso do sistema, não é mostrado de novo
-        depois de salvo.
-      </p>
-
-      <form onSubmit={salvar} className="mt-4 flex flex-col gap-4">
-        <Input
-          label={`Token (${rotuloAmbiente})`}
-          type="password"
-          autoComplete="off"
-          autoFocus
-          value={token}
-          onChange={(e) => setToken(e.target.value)}
-        />
-        {erro && <p className="text-sm font-medium text-mesa-error-500">{erro}</p>}
-        <Button
-          type="submit"
-          size="xl"
-          icon={<Icone nome="check" size={20} />}
-          loading={processando}
-          className="w-full"
-        >
-          Salvar
-        </Button>
-      </form>
-    </BottomSheet>
-  )
-}
-
-/** Configuração fiscal (CLAUDE.md, roadmap 2026-09-26): FocusNFe como
- * provedor fiscal-as-a-service. Certificado digital e CSC são
- * cadastrados pelo dono direto no site da FocusNFe — o Sai aê nunca
- * guarda o certificado, só o token da empresa. Emissão de verdade é
- * rodada futura; aqui só a configuração. */
+/** Configuração fiscal: módulo pago gerenciado. O token do provedor é cadastrado pelo Sai aê, nunca pelo dono;
+ * aqui ficam só os dados da empresa e o estado "pronto para emitir". */
 function apenasDigitos(valor: string): string {
   return valor.replace(/\D/g, '')
 }
@@ -1834,28 +1806,26 @@ function formatarCnpj(valor: string): string {
 }
 
 function SecaoFiscal({ barraca }: { barraca: Barraca }) {
-  const habilitadoR = useRascunho(barraca.fiscal_habilitado)
   const regimeR = useRascunho(barraca.fiscal_regime_tributario)
   const ambienteR = useRascunho(barraca.fiscal_ambiente)
   const cnpjR = useRascunho(formatarCnpj(barraca.cnpj ?? ''), (a, b) => apenasDigitos(a) === apenasDigitos(b))
-  const habilitado = habilitadoR.valor
   const regime = regimeR.valor
   const ambiente = ambienteR.valor
   const salvarCnpjEstado = useSalvarBarraca(barraca)
-  const salvarHabilitado = useSalvarBarraca(barraca)
   const salvarRegime = useSalvarBarraca(barraca)
   const salvarAmbiente = useSalvarBarraca(barraca)
+  const incluirTaxasR = useRascunho(barraca.nfce_incluir_taxas === true)
+  const incluirTaxas = incluirTaxasR.valor
+  const salvarIncluirTaxas = useSalvarBarraca(barraca)
   const [erroCnpj, setErroCnpj] = useState<string | null>(null)
   const [tokensConfigurados, setTokensConfigurados] = useState<{
     homologacao: boolean
     producao: boolean
   } | null>(null)
   const [erroTokens, setErroTokens] = useState<string | null>(null)
-  const [recargaTokens, setRecargaTokens] = useState(0)
-  const [sheetTokenAmbiente, setSheetTokenAmbiente] = useState<AmbienteFiscal | null>(null)
+  const modulos = useModulosDaLoja()
 
-  // O estado "configurado" vem SEMPRE do banco (RPC), nunca de suposição: depois
-  // de salvar um token o sheet pede uma nova consulta em vez de marcar true.
+  // O estado "configurado" vem SEMPRE do banco (RPC); o dono só vê se está pronto, nunca o token.
   useEffect(() => {
     let cancelado = false
 
@@ -1878,12 +1848,12 @@ function SecaoFiscal({ barraca }: { barraca: Barraca }) {
     return () => {
       cancelado = true
     }
-  }, [barraca.id, recargaTokens])
+  }, [barraca.id])
 
-  async function alternarHabilitado(valor: boolean) {
-    habilitadoR.definir(valor)
-    await salvarHabilitado.salvar({ fiscal_habilitado: valor })
-    habilitadoR.descartar()
+  async function alternarIncluirTaxas(valor: boolean) {
+    incluirTaxasR.definir(valor)
+    await salvarIncluirTaxas.salvar({ nfce_incluir_taxas: valor })
+    incluirTaxasR.descartar()
   }
 
   async function salvarCnpj() {
@@ -1909,19 +1879,29 @@ function SecaoFiscal({ barraca }: { barraca: Barraca }) {
     ambienteR.descartar()
   }
 
-  function textoToken(configurado: boolean | undefined): string {
-    if (tokensConfigurados === null) return erroTokens ? 'Não verificado' : 'Verificando...'
-    return configurado ? 'Configurado' : 'Não configurado'
-  }
+  const estado = fiscalProntoParaEmitir(
+    modulos,
+    tokensConfigurados !== null && (ambiente === 'producao' ? tokensConfigurados.producao : tokensConfigurados.homologacao),
+  )
+
+  if (!temModulo(modulos, 'fiscal')) return null
 
   return (
     <section>
       <RotuloSecao icone="receipt_long">Fiscal</RotuloSecao>
       <Card>
         <p className="text-sm text-mesa-text-secondary">
-          Crie sua conta em focusnfe.com.br, faça o upload do certificado digital A1 diretamente no
-          painel deles e cole os tokens abaixo. O certificado fica sob custódia do provedor — o Sai
-          aê apenas orquestra a emissão.
+          A emissão da nota fiscal é gerenciada pelo Sai aê: o certificado e o acesso do emissor ficam com a nossa equipe.
+          Preencha os dados da sua empresa abaixo.
+        </p>
+        <p className="mt-2 text-sm font-medium text-mesa-text-primary">
+          {estado === 'ok'
+            ? 'Pronto para emitir'
+            : erroTokens
+              ? 'Não foi possível verificar agora.'
+              : tokensConfigurados === null
+                ? 'Verificando...'
+                : 'Aguardando cadastro'}
         </p>
 
         <div className="mt-4">
@@ -1949,12 +1929,6 @@ function SecaoFiscal({ barraca }: { barraca: Barraca }) {
         </div>
 
         <EmitenteFiscal barraca={barraca} />
-
-        <div className="mt-4 flex items-center justify-between gap-3">
-          <span className="text-base text-mesa-text-primary">Fiscal habilitado</span>
-          <Toggle checked={habilitado} onChange={alternarHabilitado} aria-label="Fiscal habilitado" />
-        </div>
-        <ErroSalvar erro={salvarHabilitado.erro} className="mt-2" />
 
         <div className="mt-4">
           <p className="mb-2 text-sm font-medium text-mesa-text-primary">Regime tributário</p>
@@ -1985,50 +1959,30 @@ function SecaoFiscal({ barraca }: { barraca: Barraca }) {
           )}
         </div>
 
-        <div className="mt-4">
-          <p className="mb-2 text-sm font-medium text-mesa-text-primary">Token da FocusNFe</p>
-          <div className="flex flex-wrap gap-3">
-            <div className="flex min-w-[220px] flex-1 items-center justify-between gap-3 rounded-mesa-md border border-mesa-border-subtle p-3">
-              <div>
-                <p className="text-sm text-mesa-text-primary">Homologação</p>
-                <p className="text-xs text-mesa-text-secondary">
-                  {textoToken(tokensConfigurados?.homologacao)}
-                </p>
-              </div>
-              <Button variant="outline" size="sm" onClick={() => setSheetTokenAmbiente('homologacao')}>
-                {tokensConfigurados?.homologacao ? 'Trocar' : 'Definir'}
-              </Button>
+        {/* Só aparece com a coluna no banco (migration 20261029130000): antes dela, salvar daria erro. */}
+        {barraca.nfce_incluir_taxas !== undefined && (
+          <div className="mt-4">
+            <div className="flex items-center justify-between gap-3">
+              <span className="text-base text-mesa-text-primary">Incluir a taxa de serviço na NFC-e</span>
+              <Toggle
+                checked={incluirTaxas}
+                onChange={alternarIncluirTaxas}
+                aria-label="Incluir a taxa de serviço na NFC-e"
+              />
             </div>
-            <div className="flex min-w-[220px] flex-1 items-center justify-between gap-3 rounded-mesa-md border border-mesa-border-subtle p-3">
-              <div>
-                <p className="text-sm text-mesa-text-primary">Produção</p>
-                <p className="text-xs text-mesa-text-secondary">
-                  {textoToken(tokensConfigurados?.producao)}
-                </p>
-              </div>
-              <Button variant="outline" size="sm" onClick={() => setSheetTokenAmbiente('producao')}>
-                {tokensConfigurados?.producao ? 'Trocar' : 'Definir'}
-              </Button>
+            <p className="mt-1 text-sm text-mesa-text-secondary">
+              Desligado, a taxa de serviço da comanda fica fora da nota. Ligado, a nota de cada rodada inclui a sua
+              parte da taxa. A taxa de entrega continua fora.
+            </p>
+            <div className="mt-2">
+              <AvisoInline>Confirme com seu contador antes de ligar. O sistema não dá parecer fiscal.</AvisoInline>
             </div>
+            <ErroSalvar erro={salvarIncluirTaxas.erro} className="mt-2" />
           </div>
-          {erroTokens && (
-            <div className="mt-2 flex flex-wrap items-center gap-2">
-              <ErroSalvar erro={erroTokens} />
-              <Button variant="ghost" size="sm" onClick={() => setRecargaTokens((n) => n + 1)}>
-                Tentar de novo
-              </Button>
-            </div>
-          )}
-        </div>
+        )}
+
       </Card>
 
-      <BottomSheetTokenFiscal
-        barracaId={barraca.id}
-        ambiente={sheetTokenAmbiente ?? 'homologacao'}
-        open={sheetTokenAmbiente !== null}
-        onClose={() => setSheetTokenAmbiente(null)}
-        onSucesso={() => setRecargaTokens((n) => n + 1)}
-      />
     </section>
   )
 }
@@ -2232,6 +2186,69 @@ function SecaoPagamentoOnline({ barraca }: { barraca: Barraca }) {
   const [recargaSegredo, setRecargaSegredo] = useState(0)
   const [mostrarSheetSegredo, setMostrarSheetSegredo] = useState(false)
 
+  // Conexão OAuth com o Mercado Pago (o servidor nunca devolve token, só o estado).
+  const souDono = useSouDonoDaLoja()
+  const [paramsMp, setParamsMp] = useSearchParams()
+  const [statusMp, setStatusMp] = useState<{ conectada: boolean; jaConectou: boolean } | null>(null)
+  const [erroStatusMp, setErroStatusMp] = useState(false)
+  const [recargaStatusMp, setRecargaStatusMp] = useState(0)
+  const [conectandoMp, setConectandoMp] = useState(false)
+  const [erroConectarMp, setErroConectarMp] = useState<string | null>(null)
+  // Resultado do retorno do OAuth, lido uma vez ao montar (a seção monta de novo ao voltar da página do Mercado Pago).
+  const [retornoMp] = useState(() => retornoOauthMp(`?${paramsMp.toString()}`))
+  const corteIso = import.meta.env.VITE_CORTE_TOKEN_MP_ISO as string | undefined
+
+  // Volta do OAuth: guarda o resultado para o aviso e limpa o parâmetro da URL.
+  useEffect(() => {
+    if (!retornoOauthMp(`?${paramsMp.toString()}`)) return
+    const proximos = new URLSearchParams(paramsMp)
+    proximos.delete('mp')
+    setParamsMp(proximos, { replace: true })
+    try {
+      sessionStorage.removeItem(CHAVE_SLUG_MP)
+    } catch {
+      // sem sessionStorage: nada a limpar
+    }
+  }, [paramsMp, setParamsMp])
+
+  useEffect(() => {
+    let cancelado = false
+    supabase.rpc('mp_oauth_status', { p_barraca_id: barraca.id }).then(({ data, error }) => {
+      if (cancelado) return
+      if (error) {
+        setErroStatusMp(true)
+        return
+      }
+      const linha = (Array.isArray(data) ? data[0] : data) as { conectada?: boolean; atualizado_em?: string | null } | undefined
+      setErroStatusMp(false)
+      setStatusMp({ conectada: Boolean(linha?.conectada), jaConectou: Boolean(linha?.atualizado_em) })
+    })
+    return () => {
+      cancelado = true
+    }
+  }, [barraca.id, recargaStatusMp])
+
+  async function conectarMp() {
+    if (conectandoMp) return
+    setConectandoMp(true)
+    setErroConectarMp(null)
+    const { data, error } = await supabase.functions.invoke('mp-oauth-iniciar', {
+      body: { barraca_id: barraca.id },
+    })
+    const url = typeof data?.url === 'string' ? data.url : null
+    if (error || !url) {
+      setErroConectarMp(await mensagemDoErroFuncao(error, 'Não foi possível iniciar a conexão. Tente novamente.'))
+      setConectandoMp(false)
+      return
+    }
+    try {
+      sessionStorage.setItem(CHAVE_SLUG_MP, barraca.slug)
+    } catch {
+      // sem sessionStorage: o retorno cai na regra de uma loja só
+    }
+    window.location.assign(url)
+  }
+
   useEffect(() => {
     let cancelado = false
     supabase
@@ -2279,6 +2296,21 @@ function SecaoPagamentoOnline({ barraca }: { barraca: Barraca }) {
     expiracaoR.descartar()
   }
 
+  const corte = lerCorte(corteIso)
+  const estadoMp = estadoMercadoPago({
+    conectada: statusMp?.conectada ?? false,
+    tokenAntigoConfigurado: tokenConfigurado === true,
+    jaConectou: statusMp?.jaConectou ?? false,
+    agora: new Date(),
+    corte,
+  })
+  const statusMpPronto = statusMp !== null && tokenConfigurado !== null
+  const dataCorte = dataDoCorte(corteIso)
+  // Token colado só até o corte; depois dele a conexão OAuth é o único caminho.
+  const mostrarTokenAntigo = estadoMp === 'aviso_corte' || (estadoMp === 'nao_configurada' && !(corte && new Date() >= corte))
+  // Só liga com conexão ativa (ou com o token antigo, ainda válido até o corte). Desligar é sempre livre.
+  const podeLigar = estadoMp === 'conectada' || estadoMp === 'aviso_corte'
+
   async function alternarHabilitado(valor: boolean) {
     habilitadoR.definir(valor)
     await salvarHabilitado.salvar({ pagamento_online_habilitado: valor })
@@ -2290,10 +2322,69 @@ function SecaoPagamentoOnline({ barraca }: { barraca: Barraca }) {
       <RotuloSecao icone="payments">Pagamento online</RotuloSecao>
       <Card>
         <p className="text-sm text-mesa-text-secondary">
-          {provedor.descricaoConta} — o dinheiro do Pix cai direto na sua conta, o Sai aê nunca guarda
-          nem repassa esse valor. Só depois do pagamento confirmado o pedido feito no cardápio digital
-          cai na Cozinha.
+          Conecte a conta do Mercado Pago da sua barraca. Depois de conectar, os pagamentos online (Pix e
+          cartão) caem direto na sua conta do Mercado Pago, o Sai aê nunca guarda nem repassa esse valor.
+          Só depois do pagamento confirmado o pedido feito no cardápio digital cai na Cozinha.
         </p>
+        <p className="mt-2 text-xs text-mesa-text-secondary">
+          Cada pedido online tem uma taxa de serviço de R$ 0,99, cobrada do cliente. As tarifas do
+          próprio Mercado Pago ficam por sua conta.
+        </p>
+
+        {provedor.chave === 'mercadopago' && (
+          <div className="mt-4 rounded-mesa-md border border-mesa-border-subtle p-3">
+            <div role="status" aria-live="polite">
+              {retornoMp === 'ok' && (
+                <p className="mb-2 text-sm font-medium text-mesa-success-700 dark:text-mesa-success-500">Mercado Pago conectado com sucesso.</p>
+              )}
+              {retornoMp === 'erro' && (
+                <p className="mb-2 text-sm font-medium text-mesa-error-500">
+                  Não foi possível conectar o Mercado Pago. Tente de novo.
+                </p>
+              )}
+            </div>
+            <p className="text-sm font-medium text-mesa-text-primary">Conexão com o Mercado Pago</p>
+            <p className="mt-1 text-sm text-mesa-text-secondary" aria-live="polite">
+              {!statusMpPronto
+                ? erroStatusMp
+                  ? 'Não foi possível verificar a conexão.'
+                  : 'Verificando...'
+                : estadoMp === 'conectada'
+                  ? 'Conectado'
+                  : estadoMp === 'desconectada'
+                    ? 'Desconectado. Reconecte para voltar a receber pagamentos online.'
+                    : estadoMp === 'aviso_corte'
+                      ? 'Você usa o token colado (método antigo).'
+                      : estadoMp === 'bloqueada'
+                        ? 'O token colado não vale mais. Conecte sua conta para receber pagamentos online.'
+                        : 'Não conectado'}
+            </p>
+            {statusMpPronto && estadoMp === 'aviso_corte' && dataCorte && (
+              <p className="mt-1 text-sm font-medium text-mesa-text-primary">Conecte até {dataCorte}.</p>
+            )}
+            {erroStatusMp && (
+              <Button variant="ghost" size="sm" className="mt-2" onClick={() => setRecargaStatusMp((n) => n + 1)}>
+                Tentar de novo
+              </Button>
+            )}
+            {statusMpPronto && estadoMp !== 'conectada' && (
+              <div className="mt-3">
+                {souDono ? (
+                  <Button size="md" loading={conectandoMp} onClick={() => void conectarMp()}>
+                    {estadoMp === 'desconectada' ? 'Reconectar' : 'Conectar Mercado Pago'}
+                  </Button>
+                ) : (
+                  <p className="text-xs text-mesa-text-secondary">Só o dono da barraca pode conectar o Mercado Pago.</p>
+                )}
+                {erroConectarMp && (
+                  <p role="alert" className="mt-2 text-sm font-medium text-mesa-error-500">
+                    {erroConectarMp}
+                  </p>
+                )}
+              </div>
+            )}
+          </div>
+        )}
 
         {PROVEDORES_PIX_DISPONIVEIS.length > 1 && (
           <div className="mt-4">
@@ -2318,9 +2409,13 @@ function SecaoPagamentoOnline({ barraca }: { barraca: Barraca }) {
           <Toggle
             checked={habilitado}
             onChange={alternarHabilitado}
+            disabled={!habilitado && statusMpPronto && !podeLigar}
             aria-label="Pagamento online habilitado"
           />
         </div>
+        {!habilitado && statusMpPronto && !podeLigar && (
+          <p className="mt-1 text-xs text-mesa-text-secondary">Conecte o Mercado Pago para ligar o pagamento online.</p>
+        )}
         <ErroSalvar erro={salvarHabilitado.erro} className="mt-2" />
 
         <div className="mt-4">
@@ -2342,6 +2437,14 @@ function SecaoPagamentoOnline({ barraca }: { barraca: Barraca }) {
           <ErroSalvar erro={salvarExpiracao.erro} className="mt-2" />
         </div>
 
+        {mostrarTokenAntigo && (
+          <details className="mt-4 rounded-mesa-md border border-mesa-border-subtle p-3">
+            <summary className="min-h-11 cursor-pointer py-3 text-sm text-mesa-text-secondary">
+              Usar token colado (método antigo)
+            </summary>
+            <p className="mt-1 text-xs text-mesa-text-secondary">
+              Funciona só até o corte{dataCorte ? ` (${dataCorte})` : ''}. Prefira conectar a conta acima.
+            </p>
         <div className="mt-4">
           <p className="mb-2 text-sm font-medium text-mesa-text-primary">
             {provedor.rotuloToken} do {provedor.nome}
@@ -2389,6 +2492,8 @@ function SecaoPagamentoOnline({ barraca }: { barraca: Barraca }) {
             <p className="mt-1 text-xs text-mesa-text-secondary">Defina o token antes.</p>
           )}
         </div>
+          </details>
+        )}
       </Card>
 
       <BottomSheetSegredoWebhook
@@ -2764,7 +2869,8 @@ function SecaoAssinatura({ slug }: { slug: string }) {
   const navigate = useNavigate()
   const { assinatura } = useAssinaturaBarraca(slug)
 
-  if (!assinatura?.eh_dono) return null
+  // iOS: plano e assinatura ficam fora do app (Apple, 3.1.1 — ver lib/plataforma).
+  if (!assinatura?.eh_dono || ehAppIOS()) return null
 
   const rotuloStatus = !cobrancaAtiva(assinatura)
     ? 'Cobrança desativada por enquanto'
@@ -2835,6 +2941,7 @@ function SecaoDaCategoria({
 
 export function Ajustes({ categoria = 'conta' }: { categoria?: CategoriaAjustes }) {
   const barraca = useBarracaAtual()
+  const modulos = useModulosDaLoja()
   const [params, setParams] = useSearchParams()
   const grupoAtual = grupoAtivo(categoria, params.get('secao'))
 
@@ -2936,24 +3043,31 @@ export function Ajustes({ categoria = 'conta' }: { categoria?: CategoriaAjustes 
           <SecaoDaCategoria categoria="cardapio" grupo="recebimento" atual={categoria}>
             <SecaoPagamentoDepois barraca={barraca} />
           </SecaoDaCategoria>
+          <SecaoDaCategoria categoria="cardapio" grupo="recebimento" atual={categoria}>
+            <SecaoComandaAberta barraca={barraca} />
+          </SecaoDaCategoria>
           <SecaoDaCategoria categoria="cardapio" grupo="atendimento" atual={categoria}>
             <SecaoSaiuEntrega barraca={barraca} />
           </SecaoDaCategoria>
           <SecaoDaCategoria categoria="cardapio" grupo="cardapio" atual={categoria}>
             <SecaoCupons barraca={barraca} />
           </SecaoDaCategoria>
-          {/* Escondida para cliente novo (decisão 2026-10-09); quem já tem a IA ligada vê, e VITE_MOSTRAR_ATENDENTE_IA=1 reabre. */}
-          {mostrarAtendenteIa(barraca, import.meta.env.VITE_MOSTRAR_ATENDENTE_IA) && (
-            <SecaoDaCategoria categoria="cardapio" grupo="avisos" atual={categoria}>
-              <SecaoAtendenteIa barraca={barraca} />
-            </SecaoDaCategoria>
-          )}
+          <SecaoDaCategoria categoria="cardapio" grupo="cardapio" atual={categoria}>
+            <SecaoCashback barraca={barraca} />
+          </SecaoDaCategoria>
           <SecaoDaCategoria categoria="cardapio" grupo="avisos" atual={categoria}>
             <SecaoAvisoPronto barraca={barraca} />
           </SecaoDaCategoria>
-          <SecaoDaCategoria categoria="cardapio" grupo="avisos" atual={categoria}>
-            <SecaoIntegracaoCrm barraca={barraca} />
-          </SecaoDaCategoria>
+          {mostrarWhatsappAutomacao(modulos) && (
+            <SecaoDaCategoria categoria="cardapio" grupo="avisos" atual={categoria}>
+              <SecaoWhatsappAutomacao barraca={barraca} />
+              {(temModulo(modulos, 'whatsapp_avisos') || temModulo(modulos, 'whatsapp_disparos')) && (
+                <div className="mt-6">
+                  <SecaoDisparos barraca={barraca} />
+                </div>
+              )}
+            </SecaoDaCategoria>
+          )}
           <SecaoDaCategoria categoria="cardapio" grupo="cozinha" atual={categoria}>
             <SecaoFaixas barraca={barraca} />
           </SecaoDaCategoria>
@@ -2974,6 +3088,9 @@ export function Ajustes({ categoria = 'conta' }: { categoria?: CategoriaAjustes 
           </SecaoDaCategoria>
           <SecaoDaCategoria categoria="conta" grupo="ajuda" atual={categoria}>
             <SecaoAcessoSuporte barraca={barraca} />
+          </SecaoDaCategoria>
+          <SecaoDaCategoria categoria="conta" grupo="ajuda" atual={categoria}>
+            <SecaoAcessosAdmin barraca={barraca} />
           </SecaoDaCategoria>
           <SecaoDaCategoria categoria="conta" grupo="ajuda" atual={categoria}>
             <SecaoAjudaSuporte barracaNome={barraca.nome} barracaSlug={barraca.slug} />

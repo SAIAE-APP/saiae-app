@@ -1,6 +1,8 @@
+import { ROTULO_MODO } from '../lib/atendimento'
 import { useEffect, useState } from 'react'
 import { supabase } from '../lib/supabase'
 import { classesBotaoIcone } from '../lib/estiloBotaoIcone'
+import { ehAppIOS } from '../lib/plataforma'
 import { useBarracaAtual } from '../layouts/contextoBarraca'
 import { useTheme } from '../hooks/useTheme'
 import { useAssinaturaBarraca } from '../hooks/useAssinaturaBarraca'
@@ -26,7 +28,7 @@ const COR_CABECALHO = 'FFFFC21A' // mesa-orange-500 (Sai aê / mostarda), mesmo 
 
 function labelMetodoExportar(chave: string): string {
   if (chave === 'nao_informado') return 'Não informado'
-  if (chave === 'na_entrega') return 'A definir na entrega'
+  if (chave === 'na_entrega') return 'A definir (entrega ou comanda aberta)'
   if (chave === 'gratis') return 'Grátis (cupom)'
   return METODOS_DISPONIVEIS.find((m) => m.chave === chave)?.label ?? chave
 }
@@ -139,6 +141,10 @@ export function Desktop() {
         resumo.addRow({ metrica: 'Descontos de cupom (à parte)', valor: formatarPrecoBR(atual.descontosCupom.valor) })
         resumo.addRow({ metrica: 'Recebido nos itens (faturamento − descontos)', valor: formatarPrecoBR(atual.totalBruto - atual.descontosCupom.valor) })
       }
+      if (atual.taxaServico.totalCentavos > 0) {
+        // À parte, fora do faturamento e do "Recebido nos itens".
+        resumo.addRow({ metrica: 'Taxa de serviço (à parte)', valor: formatarPrecoBR(atual.taxaServico.totalCentavos) })
+      }
       if (atual.estimativaLiquida) {
         resumo.addRow({
           metrica: 'Estimativa líquida recebida',
@@ -175,7 +181,7 @@ export function Desktop() {
       const { retirada, entrega, mesaComNumero, mesaSemNumero, taxaEntrega } = atual.divisaoPorConsumo
       consumo.addRow({ modo: 'No local (com mesa)', valor: formatarPrecoBR(mesaComNumero.valor), quantidade: mesaComNumero.quantidade })
       consumo.addRow({ modo: 'No local (sem mesa)', valor: formatarPrecoBR(mesaSemNumero.valor), quantidade: mesaSemNumero.quantidade })
-      consumo.addRow({ modo: 'Retirada', valor: formatarPrecoBR(retirada.valor), quantidade: retirada.quantidade })
+      consumo.addRow({ modo: ROTULO_MODO.retirada, valor: formatarPrecoBR(retirada.valor), quantidade: retirada.quantidade })
       consumo.addRow({ modo: 'Entrega', valor: formatarPrecoBR(entrega.valor), quantidade: entrega.quantidade })
       // Taxa de entrega fica à parte, fora dos valores acima e do faturamento dos itens.
       consumo.addRow({ modo: 'Taxas de entrega (à parte)', valor: formatarPrecoBR(taxaEntrega.valor), quantidade: taxaEntrega.quantidade })
@@ -301,7 +307,7 @@ export function Desktop() {
               Exportar
             </Button>
           </div>
-          {planoEssencial && (
+          {planoEssencial && !ehAppIOS() && (
             <p className="mt-1.5 text-xs text-mesa-text-tertiary">
               Exportar é exclusivo do plano Pro — fale com o suporte pra fazer upgrade.
             </p>

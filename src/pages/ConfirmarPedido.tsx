@@ -1,10 +1,13 @@
 import { useEffect, useRef, useState } from 'react'
 import { useLocation, useNavigate } from 'react-router'
 import clsx from 'clsx'
-import { useBarracaAtual } from '../layouts/contextoBarraca'
+import { useBarracaAtual, useModulosDaLoja } from '../layouts/contextoBarraca'
+import { mostrarCaixaPromocoes } from '../lib/modulos'
 import { classesBotaoIcone } from '../lib/estiloBotaoIcone'
 import { useTheme } from '../hooks/useTheme'
 import { enfileirar } from '../lib/fila'
+import { contatoMarketingDoPedido } from '../lib/contatoMarketing'
+import { Checkbox } from '../components/ui/Checkbox'
 import { filtrarEntradaPreco, formatarPrecoBR, reaisParaCentavos } from '../lib/preco'
 import { configTaxaEntrega, normalizarTelefone, validarDadosEntrega, type DadosEntrega } from '../lib/entrega'
 import { ICONE_MODO, ROTULO_MODO } from '../lib/atendimento'
@@ -18,12 +21,13 @@ import type {
 } from '../lib/carrinho'
 import { METODOS_DISPONIVEIS, METODO_NA_ENTREGA, OPCAO_PAGAR_NA_ENTREGA, humanizarMetodo } from '../lib/metodoPagamento'
 import { opcaoPagarDepois, podeEnviarAReceber } from '../lib/pagarDepois'
+import { modoUsaComanda, normalizarMesa, textoBotaoEnviar } from '../lib/comandaAberta'
+import { useComandasAbertas } from '../hooks/useComandas'
 import type { MetodoPagamento } from '../lib/metodoPagamento'
 import { BotaoHome } from '../components/ui/BotaoHome'
 import { BottomSheet } from '../components/ui/BottomSheet'
 import { Button } from '../components/ui/Button'
 import { Card } from '../components/ui/Card'
-import { Checkbox } from '../components/ui/Checkbox'
 import { FormularioEntrega } from '../components/FormularioEntrega'
 import { Icone } from '../components/ui/Icone'
 import { Input } from '../components/ui/Input'
@@ -119,6 +123,7 @@ function LinhaMeta({
 
 export function ConfirmarPedido() {
   const barraca = useBarracaAtual()
+  const modulos = useModulosDaLoja()
   const navigate = useNavigate()
   const location = useLocation()
   const { tema, alternarTema } = useTheme()
@@ -136,6 +141,18 @@ export function ConfirmarPedido() {
   }, [estado, barraca.slug, navigate])
 
   const ehEntrega = estado?.tipoAtendimento === 'entrega'
+  // Mesa com comanda aberta: não cobra na hora, o pedido vai à cozinha como `na_entrega` e o trigger o liga à comanda.
+  const modoComanda = modoUsaComanda(barraca, estado?.tipoAtendimento)
+  // A mesa digitada já tem comanda aberta? undefined = ainda não se sabe (carregando, sem cache): botão neutro.
+  const comandasAbertas = useComandasAbertas(barraca.id, modoComanda)
+  const mesaDigitada = normalizarMesa(estado?.mesa ?? '')
+  const mesaTemComanda: boolean | undefined = !modoComanda || mesaDigitada === ''
+    ? undefined
+    : comandasAbertas.comandas.some((c) => normalizarMesa(c.mesa) === mesaDigitada)
+      ? true
+      : comandasAbertas.carregando || comandasAbertas.erro
+        ? undefined
+        : false
   const metodosAtivos = barraca.metodos_pagamento_ativos ?? METODOS_PADRAO
   // "Pagar na entrega" (o entregador define a forma real pelo link) só existe no
   // modo Entrega e vale mesmo que a barraca não tenha método nenhum ativo.
@@ -155,7 +172,7 @@ export function ConfirmarPedido() {
   // dar pra editar nessa tela.
   const [observacao, setObservacao] = useState(() => estado?.observacao ?? '')
   const [metodoSelecionado, setMetodoSelecionado] = useState<MetodoPagamento | typeof METODO_NA_ENTREGA | null>(() =>
-    opcoesPagamento.length === 1 ? opcoesPagamento[0].chave : null,
+    modoComanda ? METODO_NA_ENTREGA : opcoesPagamento.length === 1 ? opcoesPagamento[0].chave : null,
   )
   const configTaxa = configTaxaEntrega(barraca)
   const bairrosTaxa = useBairrosEntrega(barraca.id)
@@ -169,6 +186,7 @@ export function ConfirmarPedido() {
   // formulário (obrigatório lá), então este campo não aparece.
   const [clienteNome, setClienteNome] = useState(() => estado?.clienteNome ?? '')
   const [clienteTelefone, setClienteTelefone] = useState(() => estado?.clienteTelefone ?? '')
+  const [aceitaPromocoes, setAceitaPromocoes] = useState(() => estado?.aceitaPromocoes ?? false)
   // Valor digitado à mão (taxa editável); null = segue a taxa do bairro.
   const [taxaEditada, setTaxaEditada] = useState<string | null>(null)
   const [mostrarErrosEntrega, setMostrarErrosEntrega] = useState(false)
@@ -248,6 +266,8 @@ export function ConfirmarPedido() {
         entrega: ehEntrega ? entrega : undefined,
         clienteNome,
         clienteTelefone,
+        aceitaPromocoes,
+        comandaMesa: estado?.comandaMesa,
       } satisfies EstadoParaEditar,
     })
   }
@@ -322,6 +342,17 @@ export function ConfirmarPedido() {
         : {}),
     })
 
+    // Cliente que aceitou promoções vira contato da loja (só com o módulo ligado); depois do pedido na fila, sem travar o envio.
+    const contato = contatoMarketingDoPedido({
+      barracaId: barraca.id,
+      disparosHabilitado: mostrarCaixaPromocoes(modulos),
+      ehEntrega,
+      telefone: clienteTelefone,
+      nome: clienteNome,
+      aceitaPromocoes,
+    })
+    if (contato) await enfileirar('registrar_contato', contato)
+
     navigate(`/${barraca.slug}/lancar`, {
       replace: true,
       state: {
@@ -329,6 +360,7 @@ export function ConfirmarPedido() {
           valor: null,
           idFila: operacao.id,
           entregaDireta: todosEntregaDireta,
+          comandaMesa: modoComanda && mesaDigitada ? mesaDigitada : undefined,
           entrega: ehEntrega
             ? {
                 itens: linhas.map(({ item, quantidade, itemId, resumoOpcoes }) => ({
@@ -433,6 +465,15 @@ export function ConfirmarPedido() {
           />
         )}
 
+        {!ehEntrega && telefoneAvisoValido && mostrarCaixaPromocoes(modulos) && (
+          <Checkbox
+            checked={aceitaPromocoes}
+            onChange={setAceitaPromocoes}
+            label="Cliente aceitou receber promoções desta loja por WhatsApp"
+            className="mt-3"
+          />
+        )}
+
         <Textarea
           value={observacao}
           onChange={(e) => setObservacao(e.target.value)}
@@ -522,6 +563,12 @@ export function ConfirmarPedido() {
         </div>
 
         <div>
+        {modoComanda ? (
+          <p className="mb-3 mt-6 rounded-mesa-md border-l-[3px] border-mesa-orange-500 bg-mesa-orange-50 p-3 text-sm font-medium text-mesa-orange-700 dark:bg-mesa-orange-500/15 dark:text-mesa-orange-400 md:mt-0">
+            O pagamento é feito no fechamento da comanda da mesa.
+          </p>
+        ) : (
+          <>
         <h2 className="mb-3 mt-6 flex items-center gap-1.5 font-mesa-sans text-xs font-semibold uppercase tracking-wider text-mesa-text-secondary md:mt-0">
           <Icone nome="credit_card" size={14} />
           Forma de pagamento
@@ -573,6 +620,8 @@ export function ConfirmarPedido() {
             })}
           </div>
         )}
+          </>
+        )}
 
         <div className="mt-8 flex flex-col gap-3">
           <Button
@@ -584,7 +633,7 @@ export function ConfirmarPedido() {
             onClick={() => enviarPedido(false)}
             className="w-full"
           >
-            Confirmar e enviar
+            {textoBotaoEnviar(modoComanda, mesa, mesaTemComanda)}
           </Button>
           <button
             type="button"
@@ -594,7 +643,7 @@ export function ConfirmarPedido() {
             Voltar e editar
           </button>
 
-          {!ehEntrega && (
+          {!ehEntrega && !modoComanda && (
           <button
             type="button"
             onClick={() => setConfirmandoEntregaDireta(true)}

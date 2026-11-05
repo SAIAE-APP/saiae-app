@@ -1,4 +1,6 @@
-import { useRef } from 'react'
+import { useEffect, useRef, useState } from 'react'
+import { mesaDaRodada } from '../lib/comandaAberta'
+import { formatarPrecoBR } from '../lib/preco'
 import type { MouseEvent, PointerEvent } from 'react'
 import clsx from 'clsx'
 import { BottomSheet } from './ui/BottomSheet'
@@ -6,6 +8,8 @@ import { Button } from './ui/Button'
 import { Icone } from './ui/Icone'
 import { textoOpcoes } from '../lib/opcoes'
 import { textoCupomDoPedido } from '../lib/descontosCupom'
+import { textoCashbackGeradoDoPedido, textoCashbackUsadoDoPedido } from '../lib/descontosCashback'
+import { buscarComandasPorIds, textoComandaDoPedido, type ComandaDoPedido } from '../lib/comandasPeriodo'
 import { iconeAtendimento, nomeDoCliente, rotuloAtendimento } from '../lib/atendimento'
 import { ROTULO_A_RECEBER, pagarDepoisLigado, pedidoAReceber } from '../lib/pagarDepois'
 import { cronometroCongelado } from '../lib/saiuEntrega'
@@ -232,6 +236,23 @@ export function DetalheComanda({
   const entreguesCount = itensParaCozinha.filter((i) => i.entregue).length
   const progresso = totalAtivos > 0 ? (entreguesCount / totalAtivos) * 100 : 0
 
+  // Uma consulta só quando o pedido aberto pertence a uma comanda (nunca por card da lista).
+  const comandaId = pedido?.comanda_id ?? null
+  const [carregada, setCarregada] = useState<ComandaDoPedido | undefined>()
+  const comanda = carregada?.id === comandaId ? carregada : undefined
+  useEffect(() => {
+    if (!comandaId) return
+    let cancelado = false
+    buscarComandasPorIds(barraca.id, [comandaId])
+      .then((mapa) => {
+        if (!cancelado) setCarregada(mapa.get(comandaId))
+      })
+      .catch(() => {})
+    return () => {
+      cancelado = true
+    }
+  }, [barraca.id, comandaId])
+
   const segundos = pedido ? segundosDecorridos(pedido) : 0
   const cor = pedido ? corSemaforo(Math.floor(segundos / 60), barraca) : 'verde'
 
@@ -257,8 +278,9 @@ export function DetalheComanda({
 
           <div className="mt-4 flex items-center gap-2">
             <span className="font-mesa-display text-2xl font-black leading-none text-white">
-              #{pedido.senha}
+              {mesaDaRodada(pedido) ? `Mesa ${mesaDaRodada(pedido)}` : `#${pedido.senha}`}
             </span>
+            {mesaDaRodada(pedido) && <span className="text-xs font-semibold text-mesa-neutral-400">senha {pedido.senha}</span>}
             <button
               type="button"
               onClick={onFechar}
@@ -283,6 +305,11 @@ export function DetalheComanda({
             </p>
           )}
           {textoCupomDoPedido(pedido) && <p className="mt-1 truncate text-xs text-mesa-neutral-400">{textoCupomDoPedido(pedido)}</p>}
+        {textoCashbackUsadoDoPedido(pedido) && <p className="mt-1 truncate text-xs text-mesa-neutral-400">{textoCashbackUsadoDoPedido(pedido)}</p>}
+        {textoCashbackGeradoDoPedido(pedido) && <p className="mt-1 truncate text-xs text-mesa-neutral-400">{textoCashbackGeradoDoPedido(pedido)}</p>}
+          {textoComandaDoPedido(comanda, formatarPrecoBR) && (
+            <p className="mt-1 truncate text-xs text-mesa-neutral-400">{textoComandaDoPedido(comanda, formatarPrecoBR)}</p>
+          )}
 
           <p className="mt-4 text-sm text-mesa-neutral-400">Marque os itens conforme forem saindo</p>
 

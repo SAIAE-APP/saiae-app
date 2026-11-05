@@ -13,7 +13,7 @@ Decisão do dono (2026-10-07): ninguém paga ainda. A cobrança e o trial ficam 
 | Sem contagem de trial: o app recebe `status = 'active'`, `plano = 'pro'`, sem `trial_ends_at` e sem `dias_restantes_trial` | `assinatura_da_barraca()` |
 | Sem banner de trial, sem bloqueio, tela "Minha assinatura" e Ajustes mostram "cobrança desativada" | `src/lib/cobranca.ts`, `LayoutBarraca`, `Assinatura`, `Ajustes` |
 
-**Não muda:** `criar_assinatura_trial` e o trigger em `auth.users` (continuam criando o trial de 30 dias e a regra de 1 trial por e-mail), as tabelas, as ofertas Kirvano, Stripe, os webhooks e o cron `expirar_assinaturas_job`. Eles seguem gravando o status real em `assinaturas`; a chave só decide se ele é aplicado. A tela **Planos / Assinar** continua acessível.
+**Não muda:** `criar_assinatura_trial` e o trigger em `auth.users` (continuam criando o trial (3 dias corridos desde 2026-10-24; eram 30) e a regra de 1 trial por e-mail), as tabelas, as ofertas Kirvano, Stripe, os webhooks e o cron `expirar_assinaturas_job`. Eles seguem gravando o status real em `assinaturas`; a chave só decide se ele é aplicado. A tela **Planos / Assinar** continua acessível.
 
 ## Religar a cobrança
 
@@ -27,7 +27,7 @@ Vale na hora, sem deploy. Para desligar de novo: `valor = 'false'::jsonb`. Confe
 
 ### Antes de religar: decida o que fazer com os trials
 
-Durante o período desligado o trial **continua correndo** desde o cadastro (30 dias) e o cron continua marcando `expired`. Ao religar:
+Durante o período desligado o trial **continua correndo** desde o cadastro (3 dias corridos; antes 30) e o cron continua marcando `expired`. Ao religar:
 
 - contas criadas há mais de 30 dias estarão `expired` e **serão bloqueadas na hora**;
 - quem não pagou volta a ser limitado conforme o plano gravado (`essencial` = 1 barraca, 7 dias de histórico, sem exportar).
