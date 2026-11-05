@@ -2,14 +2,9 @@ import { useEffect, useState } from 'react'
 import type { User } from '@supabase/supabase-js'
 import { supabase } from '../lib/supabase'
 import type { Barraca } from '../types/database'
+import { montarBarracasDoUsuario, type BarracaComPapel } from '../lib/barracasDoUsuario'
 
-export type BarracaComPapel = {
-  barraca_id: string
-  papel: string
-  barraca: Barraca
-  /** Só presente quando `papel === 'suporte'` — até quando o acesso vale. */
-  expiraEmSuporte?: string
-}
+export type { BarracaComPapel }
 
 // Cache em memória do módulo — sobrevive a remounts (Dispatcher, RotaProtegida
 // e SelecionarBarraca todos chamam esse hook) sem precisar refetch, e é
@@ -46,11 +41,7 @@ async function buscarBarracasDoUsuario(usuarioId: string): Promise<{
 
   if (normal.error) return { barracas: [], erro: normal.error.message }
 
-  const resultado: BarracaComPapel[] = (normal.data ?? []).map((linha) => ({
-    barraca_id: linha.barraca_id as string,
-    papel: linha.papel as string,
-    barraca: linha.barracas as unknown as Barraca,
-  }))
+  const resultado = montarBarracasDoUsuario(normal.data ?? [])
 
   const idsNormais = new Set(resultado.map((r) => r.barraca_id))
   type LinhaSuporte = { barraca_id: string; nome: string; slug: string; logo_url: string | null; expira_em: string }
