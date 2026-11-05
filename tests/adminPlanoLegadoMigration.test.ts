@@ -14,7 +14,9 @@ const PAGO = 'a3000000-0000-4000-8000-000000000003' // pro, antigo, com stripe
 const TRIAL = 'a4000000-0000-4000-8000-000000000004' // essencial trialing, novo
 const ATIVO = 'a6000000-0000-4000-8000-000000000006' // essencial active, novo
 const SEM_ASSINATURA = 'a5000000-0000-4000-8000-000000000005'
-const NOVO = 'a7000000-0000-4000-8000-000000000007'
+const EXPIRADO = 'a8000000-0000-4000-8000-000000000008'
+const PASTDUE = 'a9100000-0000-4000-8000-000000000091'
+const NOVO ='a7000000-0000-4000-8000-000000000007'
 
 let db: PGlite
 
@@ -66,12 +68,15 @@ before(async () => {
       ('${ADMIN}', 'admin@x.com', '2026-09-01'), ('${COMUM}', 'comum@x.com', '2026-09-01'),
       ('${LEGADO}', 'leg@x.com', '2026-10-01'), ('${PAGO}', 'pago@x.com', '2026-10-05'),
       ('${TRIAL}', 'trial@x.com', '2026-11-04'), ('${ATIVO}', 'ativo@x.com', '2026-11-03'),
+      ('${EXPIRADO}', 'exp@x.com', '2026-10-05'), ('${PASTDUE}', 'pd@x.com', '2026-10-05'),
       ('${SEM_ASSINATURA}', 'sem@x.com', '2026-11-03'), ('${NOVO}', 'novo@x.com', '2026-11-05');
     insert into public.assinaturas (usuario_id, status, plan, trial_ends_at, current_period_end, stripe_subscription_id) values
       ('${LEGADO}', 'active', 'pro', null, null, null),
       ('${PAGO}', 'active', 'pro', null, now() + interval '10 days', 'sub_1'),
       ('${TRIAL}', 'trialing', 'essencial', now() + interval '2 days', null, null),
-      ('${ATIVO}', 'active', 'essencial', null, now() + interval '20 days', null);
+      ('${ATIVO}', 'active', 'essencial', null, now() + interval '20 days', null),
+      ('${EXPIRADO}', 'expired', 'essencial', null, now() - interval '4 days', 'sub_2'),
+      ('${PASTDUE}', 'past_due', 'pro', null, now() + interval '5 days', 'sub_3');
   `)
   await db.exec(sql('20261028100000_admin_planos_prazos.sql'))
   await db.exec(sql('20261108100000_admin_bloqueio_conta.sql'))
@@ -171,6 +176,20 @@ describe('admin_estender_vencimento', () => {
     }
     await db.exec('reset role')
     assert.equal(await logs('estender_vencimento'), 2)
+  })
+
+  test('estender recusa conta expired e past_due (22023, sem log, datas intactas)', async () => {
+    await db.exec('reset role')
+    const antes = [await ass(EXPIRADO), await ass(PASTDUE)]
+    const n = await logs('estender_vencimento')
+    await como(ADMIN)
+    for (const id of [EXPIRADO, PASTDUE]) {
+      await assert.rejects(db.query(`select public.admin_estender_vencimento('${id}', 30)`),
+        (e: unknown) => (e as { code?: string }).code === '22023' && /conta vencida/.test((e as Error).message))
+    }
+    await db.exec('reset role')
+    assert.deepEqual([await ass(EXPIRADO), await ass(PASTDUE)], antes)
+    assert.equal(await logs('estender_vencimento'), n)
   })
 
   test('estender sem vencimento a somar erra claramente; sem assinatura também', async () => {

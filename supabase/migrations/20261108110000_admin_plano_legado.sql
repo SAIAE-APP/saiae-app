@@ -108,6 +108,11 @@ begin
     raise exception 'conta sem assinatura' using errcode = '22023';
   end if;
 
+  -- expired/past_due: o acesso não depende das datas que esta função altera, então estender seria um falso sucesso.
+  if v_status not in ('trialing', 'active', 'canceled') then
+    raise exception 'conta vencida: estender não devolve o acesso; reative a conta antes' using errcode = '22023';
+  end if;
+
   v_campo := case when v_status = 'trialing' then 'trial_ends_at' else 'current_period_end' end;
   v_antes := case when v_status = 'trialing' then v_trial else v_periodo end;
   if v_antes is null then
