@@ -91,6 +91,7 @@ export function useAdminContagens(ativo: boolean) {
 
 export function useAdminResumo(habilitado: boolean) {
   const [estado, setEstado] = useState<{ resumo: AdminResumo | null; erro: boolean } | null>(null)
+  const [versao, setVersao] = useState(0)
 
   useEffect(() => {
     if (!habilitado) return
@@ -101,9 +102,10 @@ export function useAdminResumo(habilitado: boolean) {
     return () => {
       cancelado = true
     }
-  }, [habilitado])
+  }, [habilitado, versao])
 
-  return { resumo: estado?.resumo ?? null, erro: estado?.erro ?? false, carregando: habilitado && estado === null }
+  const recarregar = useCallback(() => setVersao((v) => v + 1), [])
+  return { resumo: estado?.resumo ?? null, erro: estado?.erro ?? false, carregando: habilitado && estado === null, recarregar }
 }
 
 /** Uma chamada de painel (alertas, saúde): resultado ou erro, sem refazer a cada render. */

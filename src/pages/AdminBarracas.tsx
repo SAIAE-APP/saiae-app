@@ -1,4 +1,4 @@
-import { useState } from 'react'
+import { useCallback, useState } from 'react'
 import { useNavigate } from 'react-router'
 import { Badge } from '../components/ui/Badge'
 import { Button } from '../components/ui/Button'
@@ -6,7 +6,10 @@ import { Card } from '../components/ui/Card'
 import { CabecalhoPagina } from '../components/ui/CabecalhoPagina'
 import { Chip } from '../components/ui/Chip'
 import { AcoesBarraca } from '../components/admin/AcoesBarraca'
-import { TAMANHO_PAGINA_ADMIN, useAdminAlertas, useAdminBarracas, useAdminContagens, useAdminResumo, useAdminSaude, useSouSuperadmin } from '../hooks/useAdminBarracas'
+import { BarraBuscaAdmin } from '../components/admin/BarraBuscaAdmin'
+import { HistoricoAcoesAdmin } from '../components/admin/HistoricoAcoesAdmin'
+import { useAdminHistorico } from '../hooks/useAdminHistorico'
+import { TAMANHO_PAGINA_ADMIN, useAdminAlertas, useAdminBarracas, useAdminContagens, useAdminResumo, useSouSuperadmin } from '../hooks/useAdminBarracas'
 import {
   FILTROS_ADMIN,
   NOME_ESTADO_ADMIN,
@@ -18,8 +21,8 @@ import {
   textoDiasRestantes,
   type AdminAlertas,
   type AdminResumo,
-  type AdminSaude,
   type FiltroAdminBarracas,
+  type OrdemAdmin,
 } from '../lib/adminBarracas'
 import { NaoEncontrado } from './NaoEncontrado'
 
@@ -120,43 +123,58 @@ function PainelAlertas({ alertas }: { alertas: AdminAlertas }) {
   )
 }
 
-function SaudeBarracas({ linhas }: { linhas: AdminSaude[] }) {
-  const atual = versaoMaisUsada(linhas)
+function ErroComRetry({ texto, aoTentar }: { texto: string; aoTentar: () => void }) {
   return (
-    <Card>
-      <h2 className="mb-2 text-sm font-semibold text-mesa-text-primary">Saúde por barraca</h2>
-      <ul className="flex flex-col gap-2 text-sm">
-        {linhas.map((l) => (
-          <li key={l.barraca_id} className="flex flex-wrap items-center justify-between gap-2">
-            <span className="min-w-0 truncate text-mesa-text-primary">{l.nome}</span>
-            <span className="flex flex-wrap items-center gap-2 text-mesa-text-secondary">
-              <span>{l.pedidos_7d} pedidos (antes: {l.pedidos_semana_anterior})</span>
-              {quedaDePedidos(l) && <Badge variant="warning">queda</Badge>}
-              {l.erros_24h > 0 && <Badge variant="danger">{l.erros_24h} erros</Badge>}
-              <span>
-                {l.versao_app ? `${l.plataforma} ${l.versao_app}` : 'versão desconhecida'}
-              </span>
-              {l.versao_app && atual && l.versao_app !== atual && <Badge variant="neutral">desatualizada</Badge>}
-            </span>
-          </li>
-        ))}
-      </ul>
-    </Card>
+    <div role="alert" className="flex flex-col items-start gap-2">
+      <p className="text-mesa-text-secondary">{texto}</p>
+      <Button variant="outline" className="min-h-11" onClick={aoTentar}>
+        Tentar de novo
+      </Button>
+    </div>
   )
 }
 
-/** Painel do dono do sistema: planos e prazos de todas as barracas (somente leitura). */
+const CHAVE_VISAO_GERAL = 'admin-visao-geral-vista'
+
+/** Aberto só na primeira visita; depois lembra no localStorage (que pode falhar: privado, bloqueado). */
+function useVisaoGeralAberta() {
+  const [aberta, setAberta] = useState(() => {
+    try {
+      return localStorage.getItem(CHAVE_VISAO_GERAL) === null
+    } catch {
+      return true
+    }
+  })
+  const alternar = () => {
+    setAberta((v) => !v)
+    try {
+      localStorage.setItem(CHAVE_VISAO_GERAL, '1')
+    } catch {
+      /* sem armazenamento: o bloco só não lembra */
+    }
+  }
+  return [aberta, alternar] as const
+}
+
+/** Painel do dono do sistema: barracas, visão geral e histórico de ações. */
 export function AdminBarracas() {
   const navigate = useNavigate()
   const ehSuperadmin = useSouSuperadmin()
   const [filtro, setFiltro] = useState<FiltroAdminBarracas | null>(null)
   const [plano, setPlano] = useState<'essencial' | 'pro' | null>(null)
   const [pagina, setPagina] = useState(0)
-  const { linhas, total, carregando, erro, recarregar } = useAdminBarracas(filtro, plano, pagina, '', 'vencimento')
-  const { erro: erroContagens, recarregar: recarregarContagens } = useAdminContagens(ehSuperadmin === true)
-  const { resumo, erro: erroResumo } = useAdminResumo(ehSuperadmin === true)
+  const [busca, setBusca] = useState('')
+  const [ordem, setOrdem] = useState<OrdemAdmin>('vencimento')
+  const [visaoAberta, alternarVisao] = useVisaoGeralAberta()
+  const { linhas, total, carregando, erro, recarregar } = useAdminBarracas(filtro, plano, pagina, busca, ordem)
+  const { contagens, erro: erroContagens, recarregar: recarregarContagens } = useAdminContagens(ehSuperadmin === true)
+  const { resumo, erro: erroResumo, recarregar: recarregarResumo } = useAdminResumo(ehSuperadmin === true)
   const { dados: alertas } = useAdminAlertas(ehSuperadmin === true)
-  const { dados: saude } = useAdminSaude(ehSuperadmin === true)
+  const { linhas: acoesLog, erro: erroHistorico, recarregar: recarregarHistorico } = useAdminHistorico(ehSuperadmin === true)
+  const aoBuscar = useCallback((texto: string) => {
+    setBusca(texto)
+    setPagina(0)
+  }, [])
 
   if (ehSuperadmin === null) {
     return (
@@ -168,34 +186,45 @@ export function AdminBarracas() {
   if (!ehSuperadmin) return <NaoEncontrado />
 
   const ultimaPagina = Math.max(0, Math.ceil(total / TAMANHO_PAGINA_ADMIN) - 1)
+  // A versão "atual" vale para a página carregada (até 50 barracas).
+  const versaoAtual = versaoMaisUsada(linhas)
 
   return (
-    <div className="mx-auto flex min-h-dvh max-w-3xl flex-col gap-4 bg-mesa-bg-base p-4">
+    <div className="mx-auto flex min-h-dvh max-w-5xl flex-col gap-4 bg-mesa-bg-base p-4">
       <CabecalhoPagina titulo="Barracas" aoClicarHome={() => navigate('/')} />
 
-      {erroResumo && <p role="alert" className="text-mesa-text-secondary">Não foi possível carregar o resumo.</p>}
-      {alertas && temAlerta(alertas) && <PainelAlertas alertas={alertas} />}
-      {resumo && <ResumoAtivas resumo={resumo} />}
-      {saude && <SaudeBarracas linhas={saude} />}
+      <BarraBuscaAdmin
+        aoBuscar={aoBuscar}
+        ordem={ordem}
+        aoOrdenar={(o) => {
+          setOrdem(o)
+          setPagina(0)
+        }}
+      />
 
       <div className="flex flex-wrap gap-2" role="group" aria-label="Filtros">
-        {FILTROS_ADMIN.map((f) => (
-          <Chip
-            key={f.rotulo}
-            checked={filtro === f.valor}
-            onClick={() => {
-              setFiltro(f.valor)
-              setPagina(0)
-            }}
-          >
-            {f.rotulo}
-          </Chip>
-        ))}
+        {FILTROS_ADMIN.map((f) => {
+          const n = contagens[f.valor ?? 'todas']
+          return (
+            <Chip
+              key={f.rotulo}
+              className="min-h-11"
+              checked={filtro === f.valor}
+              onClick={() => {
+                setFiltro(f.valor)
+                setPagina(0)
+              }}
+            >
+              {n === undefined ? f.rotulo : `${f.rotulo} (${n})`}
+            </Chip>
+          )
+        })}
       </div>
       <div className="flex flex-wrap gap-2" role="group" aria-label="Plano">
         {([null, 'essencial', 'pro'] as const).map((p) => (
           <Chip
             key={p ?? 'todos'}
+            className="min-h-11"
             checked={plano === p}
             onClick={() => {
               setPlano(p)
@@ -207,16 +236,16 @@ export function AdminBarracas() {
         ))}
       </div>
 
-      {erroContagens && <p role="alert" className="text-mesa-text-secondary">Não foi possível carregar as contagens dos filtros.</p>}
-      {erro && <p role="alert" className="text-mesa-text-secondary">{erro}</p>}
+      {erroContagens && <ErroComRetry texto="Não foi possível carregar as contagens dos filtros." aoTentar={recarregarContagens} />}
+      {erro && <ErroComRetry texto={erro} aoTentar={recarregar} />}
       {!erro && !carregando && linhas.length === 0 && (
         <p className="text-mesa-text-secondary">Nenhuma barraca neste filtro.</p>
       )}
 
-      <ul className="flex flex-col gap-3">
+      <ul className="grid grid-cols-1 gap-3 lg:grid-cols-2">
         {linhas.map((b) => (
-          <li key={b.barraca_id}>
-            <Card className="flex flex-col gap-2">
+          <li key={b.barraca_id} className="min-w-0">
+            <Card className="flex h-full flex-col gap-2">
               <div className="flex items-start justify-between gap-2">
                 <div className="min-w-0">
                   <p className="truncate font-semibold text-mesa-text-primary">{b.nome}</p>
@@ -247,6 +276,15 @@ export function AdminBarracas() {
                 <dt>Último pagamento</dt>
                 <dd className="text-mesa-text-primary">{formatarData(b.ultimo_pagamento_em)}</dd>
               </dl>
+              <div className="flex flex-wrap items-center gap-2 text-sm text-mesa-text-secondary">
+                <span>
+                  {b.pedidos_7d} pedidos em 7 dias (antes: {b.pedidos_semana_anterior})
+                </span>
+                {quedaDePedidos(b) && <Badge variant="warning">queda</Badge>}
+                {b.erros_24h > 0 && <Badge variant="danger">{b.erros_24h} erros</Badge>}
+                <span>{b.versao_app ? `${b.plataforma} ${b.versao_app}` : 'versão desconhecida'}</span>
+                {b.versao_app && versaoAtual && b.versao_app !== versaoAtual && <Badge variant="neutral">desatualizada</Badge>}
+              </div>
               {b.bloqueada && b.bloqueio_motivo && (
                 <p className="text-sm text-mesa-text-secondary">Motivo do bloqueio: {b.bloqueio_motivo}</p>
               )}
@@ -255,6 +293,7 @@ export function AdminBarracas() {
                 onConcluido={() => {
                   recarregar()
                   recarregarContagens()
+                  recarregarHistorico()
                 }}
               />
               <Button variant="outline" className="min-h-11" onClick={() => navigate(`/admin/barraca/${b.barraca_id}`)}>
@@ -266,18 +305,38 @@ export function AdminBarracas() {
       </ul>
 
       {total > TAMANHO_PAGINA_ADMIN && (
-        <div className="flex items-center justify-between">
-          <Button variant="outline" disabled={pagina === 0 || carregando} onClick={() => setPagina(pagina - 1)}>
+        <div className="flex items-center justify-between gap-2">
+          <Button variant="outline" className="min-h-11" disabled={pagina === 0 || carregando} onClick={() => setPagina(pagina - 1)}>
             Anterior
           </Button>
           <span className="text-sm text-mesa-text-secondary">
             {pagina + 1} / {ultimaPagina + 1} · {total} barracas
           </span>
-          <Button variant="outline" disabled={pagina >= ultimaPagina || carregando} onClick={() => setPagina(pagina + 1)}>
+          <Button variant="outline" className="min-h-11" disabled={pagina >= ultimaPagina || carregando} onClick={() => setPagina(pagina + 1)}>
             Próxima
           </Button>
         </div>
       )}
+
+      <section className="flex flex-col gap-3" aria-label="Visão geral">
+        <button
+          type="button"
+          aria-expanded={visaoAberta}
+          aria-controls="visao-geral-conteudo"
+          onClick={alternarVisao}
+          className="flex min-h-11 items-center justify-between gap-2 text-left text-lg font-semibold text-mesa-text-primary"
+        >
+          Visão geral
+          <span aria-hidden="true">{visaoAberta ? '−' : '+'}</span>
+        </button>
+        <div id="visao-geral-conteudo" hidden={!visaoAberta} className="flex flex-col gap-3">
+          {erroResumo && <ErroComRetry texto="Não foi possível carregar o resumo." aoTentar={recarregarResumo} />}
+          {alertas && temAlerta(alertas) && <PainelAlertas alertas={alertas} />}
+          {resumo && <ResumoAtivas resumo={resumo} />}
+        </div>
+      </section>
+
+      <HistoricoAcoesAdmin linhas={acoesLog} erro={erroHistorico} aoTentarDeNovo={recarregarHistorico} />
     </div>
   )
 }

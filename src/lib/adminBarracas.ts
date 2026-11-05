@@ -105,7 +105,7 @@ export function temAlerta(a: AdminAlertas): boolean {
 }
 
 /** Versão mais usada entre as barracas; quem está em outra está "desatualizada". */
-export function versaoMaisUsada(linhas: AdminSaude[]): string | null {
+export function versaoMaisUsada(linhas: { versao_app: string | null }[]): string | null {
   const contagem = new Map<string, number>()
   for (const l of linhas) if (l.versao_app) contagem.set(l.versao_app, (contagem.get(l.versao_app) ?? 0) + 1)
   let melhor: string | null = null
@@ -115,7 +115,7 @@ export function versaoMaisUsada(linhas: AdminSaude[]): string | null {
 }
 
 /** Semana atual com menos da metade dos pedidos da anterior (e a anterior com pelo menos 5). */
-export function quedaDePedidos(l: AdminSaude): boolean {
+export function quedaDePedidos(l: Pick<AdminSaude, 'pedidos_7d' | 'pedidos_semana_anterior'>): boolean {
   return l.pedidos_semana_anterior >= 5 && l.pedidos_7d * 2 < l.pedidos_semana_anterior
 }
 
@@ -131,7 +131,10 @@ export type AcaoAdmin = 'bloquear' | 'arquivar' | 'plano' | 'estender'
 export function textoEfeitoAcao(acao: AcaoAdmin, b: AdminBarraca): string {
   switch (acao) {
     case 'bloquear':
-      return `Bloquear a conta de "${b.nome}": o dono e funcionários perdem o acesso na hora. A cobrança do Stripe não é cancelada; se o cliente paga, continua pagando.`
+      return (
+        `Bloquear a conta de "${b.nome}": o dono e funcionários perdem o acesso na hora.` +
+        (b.origem_cobranca === 'stripe' ? ' A cobrança do Stripe não é cancelada; se o cliente paga, continua pagando.' : '')
+      )
     case 'arquivar':
       return `Arquivar "${b.nome}": a barraca some do app e do cardápio público. Dá para restaurar em até 30 dias; depois disso os dados são apagados.`
     case 'plano':
@@ -157,4 +160,29 @@ export function mensagemErroAcao(e: { code?: string; message?: string } | null):
     return 'Não foi possível concluir: dados inválidos para esta conta.'
   }
   return 'Não foi possível concluir a ação. Tente de novo.'
+}
+
+/** Linha de `admin_listar_acoes` (migration 20261108100000). */
+export type AdminAcaoLog = {
+  id: string
+  admin_email: string | null
+  acao: string
+  alvo_tipo: string
+  alvo_id: string
+  detalhes: Record<string, unknown> | null
+  criado_em: string
+}
+
+const ROTULO_ACAO: Record<string, string> = {
+  bloquear_conta: 'Conta bloqueada',
+  desbloquear_conta: 'Conta desbloqueada',
+  definir_plano: 'Plano alterado',
+  estender_vencimento: 'Vencimento estendido',
+  arquivar_barraca: 'Barraca arquivada',
+  restaurar_barraca: 'Barraca restaurada',
+}
+
+/** Rótulo em português da chave gravada no histórico; chave desconhecida volta como veio. */
+export function rotuloAcao(acao: string): string {
+  return Object.hasOwn(ROTULO_ACAO, acao) ? ROTULO_ACAO[acao] : acao
 }
