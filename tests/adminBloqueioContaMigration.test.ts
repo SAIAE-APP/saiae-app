@@ -146,7 +146,7 @@ describe('bloqueio de conta', () => {
       await como(uid)
       await assert.rejects(
         db.query(`select public.admin_bloquear_conta('${DONO}')`),
-        (e: any) => e.code === '42501' && /acesso negado/.test(e.message),
+        (e: unknown) => (e as { code?: string; message: string }).code === '42501' && /acesso negado/.test((e as Error).message),
       )
       await assert.rejects(db.query(`select public.admin_desbloquear_conta('${DONO}')`), /acesso negado/)
     }
