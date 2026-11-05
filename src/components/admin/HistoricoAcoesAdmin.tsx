@@ -37,7 +37,7 @@ export function HistoricoAcoesAdmin({
               <li key={l.id} className="flex flex-wrap items-center justify-between gap-x-3 gap-y-1 py-2 first:pt-0 last:pb-0">
                 <span className="font-medium text-mesa-text-primary">{rotuloAcao(l.acao)}</span>
                 <span className="text-mesa-text-secondary">
-                  {l.admin_email ?? 'admin removido'} · {formatarDataHora(l.criado_em)}
+                  {l.admin_email ?? (l.acao === 'apagar_barraca_definitivo' ? 'sistema' : 'admin removido')} · {formatarDataHora(l.criado_em)}
                 </span>
               </li>
             ))}

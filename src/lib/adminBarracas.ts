@@ -180,6 +180,7 @@ const ROTULO_ACAO: Record<string, string> = {
   estender_vencimento: 'Vencimento estendido',
   arquivar_barraca: 'Barraca arquivada',
   restaurar_barraca: 'Barraca restaurada',
+  apagar_barraca_definitivo: 'Barraca apagada definitivamente',
 }
 
 /** Rótulo em português da chave gravada no histórico; chave desconhecida volta como veio. */

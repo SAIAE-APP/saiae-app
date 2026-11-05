@@ -337,6 +337,21 @@ describe('apagar barraca arquivada', () => {
     assert.equal(await acesso(DONO, OUTRA), true)
   })
 
+  test('apagar_dados_barraca grava o log do sistema e admin_listar_acoes o lista com admin nulo', async () => {
+    assert.equal(await logs('apagar_barraca_definitivo'), 1)
+    const l = await um<{ admin_id: string | null; alvo_id: string; nome: string }>(
+      `select admin_id, alvo_id, detalhes->>'nome' as nome from public.admin_acoes_log where acao = 'apagar_barraca_definitivo'`)
+    assert.equal(l.admin_id, null)
+    assert.equal(l.alvo_id, VELHA)
+    assert.ok(l.nome)
+    await como(ADMIN)
+    const r = (await db.query<{ admin_email: string | null; acao: string }>(
+      `select admin_email, acao from public.admin_listar_acoes(200, 0) where acao = 'apagar_barraca_definitivo'`)).rows
+    await db.exec('reset role')
+    assert.equal(r.length, 1)
+    assert.equal(r[0].admin_email, null)
+  })
+
   test('disparar_worker_apagar_barracas sem app_config não faz nada', async () => {
     await db.exec('reset role')
     await db.query('select public.disparar_worker_apagar_barracas()')

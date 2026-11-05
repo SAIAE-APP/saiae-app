@@ -61,7 +61,7 @@ export function BottomSheet({ open, onClose, children, className, ...rest }: Bot
 
     return () => {
       document.body.style.overflow = previousOverflow
-      if (anterior?.isConnected) anterior.focus()
+      if (anterior?.isConnected) anterior.focus({ preventScroll: true })
     }
   }, [mounted])
 

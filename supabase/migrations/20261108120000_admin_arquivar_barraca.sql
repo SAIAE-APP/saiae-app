@@ -22,6 +22,7 @@
 -- `apagar-barracas-arquivadas` (tarefa 4), que também limpa o Storage. Quase tudo sai por
 -- `on delete cascade` a partir de `barracas`; os deletes explícitos abaixo cobrem só o que o cascade
 -- não alcança (FK sem cascade ou tabela sem FK).
+-- A função grava em `admin_acoes_log` a ação `apagar_barraca_definitivo` (admin_id nulo = sistema) na mesma transação.
 
 alter table public.barracas add column if not exists arquivada_em timestamptz;
 create index if not exists barracas_arquivada_em_idx on public.barracas (arquivada_em) where arquivada_em is not null;
@@ -133,8 +134,9 @@ set search_path = public, pg_temp
 as $$
 declare
   v_arquivada timestamptz;
+  v_nome text;
 begin
-  select b.arquivada_em into v_arquivada from public.barracas b where b.id = p_barraca_id for update;
+  select b.arquivada_em, b.nome into v_arquivada, v_nome from public.barracas b where b.id = p_barraca_id for update;
   if not found then
     raise exception 'barraca não encontrada' using errcode = '22023';
   end if;
@@ -151,6 +153,10 @@ begin
   delete from public.modulos_barraca where barraca_id = p_barraca_id;
   delete from public.modulos_eventos where barraca_id = p_barraca_id;
   delete from public.cupom_tentativas_log where barraca_id = p_barraca_id;
+  -- Única ação irreversível: o registro entra na mesma transação do delete. admin_id nulo = ação do sistema.
+  insert into public.admin_acoes_log (admin_id, acao, alvo_tipo, alvo_id, detalhes)
+  values (null, 'apagar_barraca_definitivo', 'barraca', p_barraca_id,
+          jsonb_build_object('nome', v_nome, 'arquivada_em', v_arquivada));
   delete from public.barracas where id = p_barraca_id; -- o resto sai por on delete cascade
 end;
 $$;

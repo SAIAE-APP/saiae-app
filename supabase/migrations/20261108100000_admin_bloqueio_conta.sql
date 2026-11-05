@@ -18,7 +18,7 @@ alter table public.assinaturas
 -- Log: RLS ligada e sem policy; só as funções SECURITY DEFINER leem e escrevem.
 create table if not exists public.admin_acoes_log (
   id uuid primary key default gen_random_uuid(),
-  admin_id uuid not null,
+  admin_id uuid, -- nulo = ação do sistema (ex.: apagamento definitivo pelo job diário)
   acao text not null,
   alvo_tipo text not null,
   alvo_id uuid,

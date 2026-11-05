@@ -4,14 +4,14 @@ import { describe, test } from 'node:test'
 import { mensagemErroAcao, rotuloAcao } from '../src/lib/adminBarracas.ts'
 
 describe('rotuloAcao', () => {
-  test('traduz as seis ações e devolve a própria chave para desconhecida', () => {
+  test('traduz as sete ações e devolve a própria chave para desconhecida', () => {
     assert.equal(rotuloAcao('bloquear_conta'), 'Conta bloqueada')
     assert.equal(rotuloAcao('desbloquear_conta'), 'Conta desbloqueada')
     assert.equal(rotuloAcao('definir_plano'), 'Plano alterado')
     assert.equal(rotuloAcao('estender_vencimento'), 'Vencimento estendido')
     assert.equal(rotuloAcao('arquivar_barraca'), 'Barraca arquivada')
     assert.equal(rotuloAcao('restaurar_barraca'), 'Barraca restaurada')
-    assert.equal(rotuloAcao('apagar_barraca_definitivo'), 'apagar_barraca_definitivo')
+    assert.equal(rotuloAcao('apagar_barraca_definitivo'), 'Barraca apagada definitivamente')
     assert.equal(rotuloAcao('toString'), 'toString')
   })
 })
