@@ -10,7 +10,7 @@ Objetivo: publicar o arquivo `saiae-2.5-vc19.aab` (versionName 2.5, versionCode 
 Passos:
 1. Play Console > app "Sai aê" > Testes > **Teste fechado**. Abra a faixa que já está em uso (a do teste fechado atual). Se houver mais de uma, use a que tem testadores ativos.
 2. Clique em "Criar nova versão".
-3. Em "Pacotes de apps", envie `saiae-2.5-vc19.aab` (pasta `D:\Projetos\release`). Se pedir, mantenha a assinatura do app pelo Google Play.
+3. Em "Pacotes de apps", envie `saiae-2.5-vc19.aab` (pasta `D:\Projetos\mesaagil\android\app\release`). Se pedir, mantenha a assinatura do app pelo Google Play.
 4. Nome da versão: `2.5 (19)`.
 5. Notas da versão (pt-BR), em `<pt-BR>`:
    Novo filtro por vários produtos e categorias no faturamento e no histórico, cabeçalho do histórico que encolhe ao rolar e melhorias de estabilidade.
