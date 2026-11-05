@@ -14,8 +14,7 @@ import {
   
   calcularPontosAtencao,
   calcularRitmoDoDia,
-  calcularSerieItemPorDia,
-  calcularSerieItemPorHora,
+  agregarProdutosIsolados,
   calcularSeriePorDia,
   calcularSeriePorHora,
   calcularTotalBruto,
@@ -94,9 +93,9 @@ export async function buscarPedidosDoPeriodo(
  * agregarProdutoIsolado continua conferindo isso, sem depender só desse
  * comportamento do embed.
  */
-async function buscarPedidosComItem(
+async function buscarPedidosComItens(
   barracaId: string,
-  itemId: string,
+  itemIds: readonly string[],
   inicio: string,
   fim: string,
 ): Promise<PedidoComItens[]> {
@@ -104,7 +103,7 @@ async function buscarPedidosComItem(
     .from('pedidos')
     .select('*, itens_do_pedido!inner(*)')
     .eq('barraca_id', barracaId)
-    .eq('itens_do_pedido.item_id', itemId)
+    .in('itens_do_pedido.item_id', itemIds as string[])
     .gte('data_operacao', inicio)
     .lte('data_operacao', fim)
 
@@ -158,34 +157,6 @@ function agregar(
   }
 }
 
-function agregarProdutoIsolado(
-  pedidos: PedidoComItens[],
-  itemId: string,
-  intervalo: IntervaloData,
-): AgregadoProdutoIsolado {
-  let totalIsolado = 0
-  let unidadesVendidas = 0
-
-  for (const pedido of pedidos) {
-    if (pedido.status === 'cancelado') continue
-    for (const item of pedido.itens_do_pedido) {
-      if (item.removido || item.item_id !== itemId) continue
-      totalIsolado += item.preco_centavos_unitario * item.quantidade
-      unidadesVendidas += item.quantidade
-    }
-  }
-
-  const serieTemporal: AgregadoProdutoIsolado['serieTemporal'] =
-    intervalo.inicio === intervalo.fim
-      ? { granularidade: 'hora', pontos: calcularSerieItemPorHora(pedidos, itemId) }
-      : {
-          granularidade: 'dia',
-          pontos: calcularSerieItemPorDia(pedidos, itemId, intervalo.inicio, intervalo.fim),
-        }
-
-  return { totalIsolado, unidadesVendidas, serieTemporal }
-}
-
 export type ResultadoRelatorio =
   | {
       modo: 'completo'
@@ -220,8 +191,14 @@ async function buscarTaxaServico(
 export function useRelatorio(
   barraca: Barraca,
   filtro: FiltroRelatorio,
-  itemFiltradoId?: string | null,
+  itensFiltradosIds?: readonly string[],
 ): ResultadoRelatorio {
+  // chave estável: o chamador pode passar um array novo a cada render
+  const idsChave = itensFiltradosIds?.join(',') ?? ''
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  const idsSet = useMemo<ReadonlySet<string>>(() => new Set(itensFiltradosIds ?? []), [idsChave])
+  const filtrandoProdutos = idsSet.size > 0
+
   const [pedidosAtuais, setPedidosAtuais] = useState<PedidoComItens[] | null>(null)
   const [pedidosComparacao, setPedidosComparacao] = useState<PedidoComItens[] | null>(null)
   const [taxaServicoAtual, setTaxaServicoAtual] = useState<TaxasServico>(SEM_TAXA_SERVICO)
@@ -237,32 +214,32 @@ export function useRelatorio(
 
     const intervalos = calcularIntervalosRelatorio(filtro)
 
-    const buscaAtual = itemFiltradoId
-      ? buscarPedidosComItem(barraca.id, itemFiltradoId, intervalos.atual.inicio, intervalos.atual.fim)
+    const buscaAtual = filtrandoProdutos
+      ? buscarPedidosComItens(barraca.id, Array.from(idsSet), intervalos.atual.inicio, intervalos.atual.fim)
       : buscarPedidosDoPeriodo(barraca.id, intervalos.atual.inicio, intervalos.atual.fim)
 
-    const buscaComparacao = itemFiltradoId
-      ? buscarPedidosComItem(
+    const buscaComparacao = filtrandoProdutos
+      ? buscarPedidosComItens(
           barraca.id,
-          itemFiltradoId,
+          Array.from(idsSet),
           intervalos.comparacao.inicio,
           intervalos.comparacao.fim,
         )
       : buscarPedidosDoPeriodo(barraca.id, intervalos.comparacao.inicio, intervalos.comparacao.fim)
 
     // catalogo de precos so importa pro modo completo (pontosAtencao.itensSemPreco)
-    const buscaCatalogo = itemFiltradoId
+    const buscaCatalogo = filtrandoProdutos
       ? Promise.resolve(new Map<string, number>())
       : buscarCatalogoPrecos(barraca.id)
 
     const ligada = comandaAbertaLigada(barraca)
-    const buscaTaxa = itemFiltradoId
+    const buscaTaxa = filtrandoProdutos
       ? Promise.resolve(SEM_TAXA_SERVICO)
       : buscaAtual.then((pedidos) => buscarTaxaServico(barraca.id, ligada, pedidos, intervalos.atual))
 
     // Cashback é informativo: banco sem a função, sem acesso ou falha de rede viram null e o relatório segue.
     const janela = janelaDoIntervalo(intervalos.atual)
-    const buscaCashback: Promise<ResumoCashback | null> = itemFiltradoId
+    const buscaCashback: Promise<ResumoCashback | null> = filtrandoProdutos
       ? Promise.resolve(null)
       : carregarResumoCashback(barraca.id, janela.de, janela.ate).catch(() => null)
 
@@ -289,7 +266,7 @@ export function useRelatorio(
     // passa um literal inline, então uma dependência em `filtro` mudaria de
     // referência a cada render e refaria a busca sem necessidade
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [barraca.id, barraca.comanda_aberta_habilitada, filtro.tipo, filtro.dataInicio, filtro.dataFim, itemFiltradoId])
+  }, [barraca.id, barraca.comanda_aberta_habilitada, filtro.tipo, filtro.dataInicio, filtro.dataFim, idsSet, filtrandoProdutos])
 
   // mesmo motivo do efeito acima: depende dos campos primitivos de filtro
   // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -302,7 +279,7 @@ export function useRelatorio(
   // taxa mudarem — sem precisar do guard de "debounce em voo" usado em
   // Ajustes.
   const atualCompleto = useMemo(() => {
-    if (itemFiltradoId || !pedidosAtuais) return null
+    if (filtrandoProdutos || !pedidosAtuais) return null
     return agregar(
       pedidosAtuais,
       catalogoPrecos,
@@ -312,9 +289,10 @@ export function useRelatorio(
       taxaServicoAtual,
       resumoCashbackAtual,
     )
-  }, [taxaServicoAtual,
+  }, [
+    taxaServicoAtual,
     resumoCashbackAtual,
-    itemFiltradoId,
+    filtrandoProdutos,
     pedidosAtuais,
     catalogoPrecos,
     barraca.taxa_debito_bps,
@@ -323,7 +301,7 @@ export function useRelatorio(
   ])
 
   const comparacaoCompleto = useMemo(() => {
-    if (itemFiltradoId || !pedidosComparacao) return null
+    if (filtrandoProdutos || !pedidosComparacao) return null
     return agregar(
       pedidosComparacao,
       catalogoPrecos,
@@ -334,7 +312,7 @@ export function useRelatorio(
       null,
     )
   }, [
-    itemFiltradoId,
+    filtrandoProdutos,
     pedidosComparacao,
     catalogoPrecos,
     barraca.taxa_debito_bps,
@@ -343,16 +321,16 @@ export function useRelatorio(
   ])
 
   const atualIsolado = useMemo(() => {
-    if (!itemFiltradoId || !pedidosAtuais) return null
-    return agregarProdutoIsolado(pedidosAtuais, itemFiltradoId, intervalos.atual)
-  }, [itemFiltradoId, pedidosAtuais, intervalos.atual])
+    if (!filtrandoProdutos || !pedidosAtuais) return null
+    return agregarProdutosIsolados(pedidosAtuais, idsSet, intervalos.atual)
+  }, [filtrandoProdutos, idsSet, pedidosAtuais, intervalos.atual])
 
   const comparacaoIsolado = useMemo(() => {
-    if (!itemFiltradoId || !pedidosComparacao) return null
-    return agregarProdutoIsolado(pedidosComparacao, itemFiltradoId, intervalos.comparacao)
-  }, [itemFiltradoId, pedidosComparacao, intervalos.comparacao])
+    if (!filtrandoProdutos || !pedidosComparacao) return null
+    return agregarProdutosIsolados(pedidosComparacao, idsSet, intervalos.comparacao)
+  }, [filtrandoProdutos, idsSet, pedidosComparacao, intervalos.comparacao])
 
-  if (itemFiltradoId) {
+  if (filtrandoProdutos) {
     return {
       modo: 'produto_isolado',
       atual: atualIsolado,

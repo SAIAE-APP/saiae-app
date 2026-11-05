@@ -14,6 +14,9 @@ import { METODOS_DISPONIVEIS } from '../lib/metodoPagamento'
 import { MOTIVOS_CANCELAMENTO } from '../lib/cancelamento'
 import { formatarPrecoBR } from '../lib/preco'
 import { PainelRelatorio } from '../components/PainelRelatorio'
+import { SeletorProdutos } from '../components/SeletorProdutos'
+import { useCategoriasDaBarraca } from '../hooks/useCategoriasDaBarraca'
+import { rotuloDaSelecao } from '../lib/selecaoProdutos'
 import { GateSenhaAdmin } from '../components/GateSenhaAdmin'
 import { CabecalhoPagina } from '../components/ui/CabecalhoPagina'
 import { Button } from '../components/ui/Button'
@@ -64,7 +67,8 @@ export function Desktop() {
   const [exportando, setExportando] = useState(false)
 
   const [itensCardapio, setItensCardapio] = useState<Item[]>([])
-  const [itemFiltradoId, setItemFiltradoId] = useState<string | null>(null)
+  const [selecionados, setSelecionados] = useState<ReadonlySet<string>>(new Set())
+  const categorias = useCategoriasDaBarraca(barraca.id)
 
   useEffect(() => {
     let cancelado = false
@@ -86,11 +90,12 @@ export function Desktop() {
   }, [barraca.id])
 
   const filtroRelatorio = { tipo: periodo, dataInicio, dataFim }
-  const nomeItemFiltrado = itemFiltradoId
-    ? (itensCardapio.find((item) => item.id === itemFiltradoId)?.nome ?? null)
-    : null
+  const nomeItemFiltrado = rotuloDaSelecao(
+    selecionados,
+    new Map(itensCardapio.map((item) => [item.id, item.nome])),
+  )
 
-  const resultado = useRelatorio(barraca, filtroRelatorio, itemFiltradoId)
+  const resultado = useRelatorio(barraca, filtroRelatorio, Array.from(selecionados))
 
   // Exporta o relatório atual (mesmo período/produto já filtrado na tela) —
   // reaproveita os dados já calculados por useRelatorio, sem nova busca.
@@ -309,18 +314,12 @@ export function Desktop() {
           )}
 
           <div className="mt-3">
-            <select
-              value={itemFiltradoId ?? ''}
-              onChange={(e) => setItemFiltradoId(e.target.value || null)}
-              className="h-11 w-full rounded-mesa-sm border-[1.5px] border-mesa-border-default bg-mesa-surface px-3 text-sm text-mesa-text-primary outline-none focus:border-mesa-orange-500 md:h-10 md:w-auto"
-            >
-              <option value="">Todos os produtos</option>
-              {itensCardapio.map((item) => (
-                <option key={item.id} value={item.id}>
-                  {item.nome}
-                </option>
-              ))}
-            </select>
+            <SeletorProdutos
+              itens={itensCardapio}
+              categorias={categorias}
+              selecionados={selecionados}
+              onChange={setSelecionados}
+            />
           </div>
 
           {periodo === 'intervalo' && (

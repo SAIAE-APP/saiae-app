@@ -301,12 +301,12 @@ export function calcularSeriePorHora(pedidos: PedidoComItens[]): PontoSerie[] {
   return pontosDeMapaPorHora(porHora)
 }
 
-/** Mesma lógica de calcularSeriePorDia/Hora, mas isolando um item — usada
- * pelo painel "Desempenho de um item" (produto isolado). `quantidade` aqui
- * é unidades vendidas do item, não número de pedidos. */
+/** Mesma lógica de calcularSeriePorDia/Hora, mas isolando um ou mais itens —
+ * usada pelo painel de produto(s) isolado(s). `quantidade` aqui é unidades
+ * vendidas dos itens, não número de pedidos. */
 export function calcularSerieItemPorDia(
   pedidos: PedidoComItens[],
-  itemId: string,
+  itemIds: ReadonlySet<string>,
   inicio: string,
   fim: string,
 ): PontoSerie[] {
@@ -314,7 +314,7 @@ export function calcularSerieItemPorDia(
 
   for (const pedido of naoCancelados(pedidos)) {
     for (const item of pedido.itens_do_pedido) {
-      if (item.removido || item.item_id !== itemId) continue
+      if (item.removido || !itemIds.has(item.item_id ?? '')) continue
       const atual = porDia.get(pedido.data_operacao) ?? { valor: 0, quantidade: 0 }
       atual.valor += item.preco_centavos_unitario * item.quantidade
       atual.quantidade += item.quantidade
@@ -325,12 +325,15 @@ export function calcularSerieItemPorDia(
   return pontosDeMapaPorDia(porDia, inicio, fim)
 }
 
-export function calcularSerieItemPorHora(pedidos: PedidoComItens[], itemId: string): PontoSerie[] {
+export function calcularSerieItemPorHora(
+  pedidos: PedidoComItens[],
+  itemIds: ReadonlySet<string>,
+): PontoSerie[] {
   const porHora = new Map<number, AcumuladorSerie>()
 
   for (const pedido of naoCancelados(pedidos)) {
     for (const item of pedido.itens_do_pedido) {
-      if (item.removido || item.item_id !== itemId) continue
+      if (item.removido || !itemIds.has(item.item_id ?? '')) continue
       const hora = new Date(pedido.criado_em).getHours()
       const atual = porHora.get(hora) ?? { valor: 0, quantidade: 0 }
       atual.valor += item.preco_centavos_unitario * item.quantidade
@@ -340,6 +343,46 @@ export function calcularSerieItemPorHora(pedidos: PedidoComItens[], itemId: stri
   }
 
   return pontosDeMapaPorHora(porHora)
+}
+
+/** Soma valor e unidades dos itens marcados (cancelados e itens removidos ficam de fora). */
+export function agregarProdutosIsolados(
+  pedidos: PedidoComItens[],
+  itemIds: ReadonlySet<string>,
+  intervalo: IntervaloData,
+): {
+  totalIsolado: number
+  unidadesVendidas: number
+  serieTemporal: { granularidade: 'dia' | 'hora'; pontos: PontoSerie[] }
+} {
+  let totalIsolado = 0
+  let unidadesVendidas = 0
+
+  for (const pedido of naoCancelados(pedidos)) {
+    for (const item of pedido.itens_do_pedido) {
+      if (item.removido || !itemIds.has(item.item_id ?? '')) continue
+      totalIsolado += item.preco_centavos_unitario * item.quantidade
+      unidadesVendidas += item.quantidade
+    }
+  }
+
+  const serieTemporal =
+    intervalo.inicio === intervalo.fim
+      ? { granularidade: 'hora' as const, pontos: calcularSerieItemPorHora(pedidos, itemIds) }
+      : {
+          granularidade: 'dia' as const,
+          pontos: calcularSerieItemPorDia(pedidos, itemIds, intervalo.inicio, intervalo.fim),
+        }
+
+  return { totalIsolado, unidadesVendidas, serieTemporal }
+}
+
+/** Histórico: a comanda aparece se algum item não removido dela está marcado. */
+export function pedidoTemItemSelecionado(
+  pedido: PedidoComItens,
+  itemIds: ReadonlySet<string>,
+): boolean {
+  return pedido.itens_do_pedido.some((item) => !item.removido && itemIds.has(item.item_id ?? ''))
 }
 
 export type RitmoDoDia = {
