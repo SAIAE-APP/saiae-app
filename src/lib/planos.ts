@@ -2,7 +2,7 @@
 // (MA_PLANS em D:\mesaagil-landing-kit\mesaagil-landing-kit\src\plans.js),
 // fixada aqui de propósito: o app não faz chamada cross-origin pra LP em
 // runtime. Se o preço/copy mudar lá, replica aqui também.
-import type { CicloAssinatura, PlanoAssinatura } from '../types/database'
+import type { AssinaturaBarraca, CicloAssinatura, PlanoAssinatura } from '../types/database'
 
 export type InfoPlano = {
   plano: PlanoAssinatura
@@ -61,4 +61,10 @@ export function formatarPreco(valor: number): string {
 
 export function linkAssinar(plano: PlanoAssinatura, ciclo: CicloAssinatura): string {
   return `/assinar?plano=${plano}&ciclo=${ciclo}`
+}
+
+/** Mensagem da conta bloqueada pelo admin; null se não bloqueada. Só `true`
+ * conta: cache antigo sem o campo vale como não bloqueada. */
+export function textoContaBloqueada(a: AssinaturaBarraca): string | null {
+  return a.bloqueada === true ? 'Sua conta está bloqueada. Fale com o suporte do Sai aê.' : null
 }
