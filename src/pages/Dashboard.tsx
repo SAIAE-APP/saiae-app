@@ -1,3 +1,4 @@
+import { AtalhoPainelAdmin } from '../components/AtalhoPainelAdmin'
 import { useEffect, useMemo, useRef, useState } from 'react'
 import { Link, useNavigate } from 'react-router'
 import { useBarracaAtual, useSincronizacaoAtual } from '../layouts/contextoBarraca'
@@ -96,6 +97,7 @@ export function Dashboard() {
   const ajustesRef = useRef<HTMLAnchorElement>(null)
   const caixaRef = useRef<HTMLDivElement>(null)
   const cozinhaRef = useRef<HTMLDivElement>(null)
+  const usaCozinha = barraca.usa_cozinha !== false
   const cardapioRef = useRef<HTMLDivElement>(null)
   // Alvos da SidebarDesktop (componente irmão, não filho, daqui) — achados
   // por id via document.getElementById em vez de ref={} direto.
@@ -146,11 +148,15 @@ export function Dashboard() {
       titulo: 'Depois, lance os pedidos aqui',
       texto: 'Escolha os itens do cardápio, escolha o tipo de atendimento e envie pra cozinha.',
     },
-    {
-      alvo: cozinhaRef,
-      titulo: 'Acompanhe o preparo',
-      texto: 'Os pedidos aparecem aqui em tempo real, organizados por tempo de espera — o cronômetro avisa quando algo está atrasando.',
-    },
+    ...(usaCozinha
+      ? [
+          {
+            alvo: cozinhaRef,
+            titulo: 'Acompanhe o preparo',
+            texto: 'Os pedidos aparecem aqui em tempo real, organizados por tempo de espera — o cronômetro avisa quando algo está atrasando.',
+          },
+        ]
+      : []),
   ]
 
   const passosTourDesktop: PassoTour[] = [
@@ -222,6 +228,7 @@ export function Dashboard() {
           <p className="mt-1 text-sm text-mesa-text-secondary">
             {dataFormatada} <span aria-hidden>·</span> {turno}
           </p>
+          <AtalhoPainelAdmin className="mt-2" />
         </div>
         <div className="flex shrink-0 items-center gap-2 pt-1">
           <Badge variant={online ? 'success' : 'warning'} dot>
@@ -276,15 +283,17 @@ export function Dashboard() {
             onClick={() => navigate(`/${barraca.slug}/lancar`)}
           />
         </div>
-        <div ref={cozinhaRef}>
-          <CardDashboard
-            icone="skillet"
-            titulo="Cozinha"
-            subtitulo={`${contagemAFazer} pedido${contagemAFazer === 1 ? '' : 's'} em preparo`}
-            badge={contagemAFazer}
-            onClick={() => navigate(`/${barraca.slug}/cozinha`)}
-          />
-        </div>
+        {usaCozinha && (
+          <div ref={cozinhaRef}>
+            <CardDashboard
+              icone="skillet"
+              titulo="Cozinha"
+              subtitulo={`${contagemAFazer} pedido${contagemAFazer === 1 ? '' : 's'} em preparo`}
+              badge={contagemAFazer}
+              onClick={() => navigate(`/${barraca.slug}/cozinha`)}
+            />
+          </div>
+        )}
         {mostrarMesas && (
           <CardDashboard
             icone="table_restaurant"
@@ -293,14 +302,16 @@ export function Dashboard() {
             onClick={() => navigate(`/${barraca.slug}/mesas`)}
           />
         )}
-        <CardDashboard
-          icone="campaign"
-          titulo="Chamada"
-          subtitulo={
-            ultimaChamada ? `Última: senha ${formatarSenha(ultimaChamada.senha)}` : 'Nenhuma senha ainda'
-          }
-          onClick={() => navigate(`/${barraca.slug}/chamada`)}
-        />
+        {usaCozinha && (
+          <CardDashboard
+            icone="campaign"
+            titulo="Chamada"
+            subtitulo={
+              ultimaChamada ? `Última: senha ${formatarSenha(ultimaChamada.senha)}` : 'Nenhuma senha ainda'
+            }
+            onClick={() => navigate(`/${barraca.slug}/chamada`)}
+          />
+          )}
         {/* Sem valores em reais: o Dashboard não tem senha administrativa,
             e funcionário sem a senha não pode ver quanto a loja vendeu. */}
         <CardDashboard

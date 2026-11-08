@@ -25,6 +25,7 @@ export function BarraNavegacao() {
   const barraca = useBarracaAtual()
   const { contagemAFazer } = usePedidosAtual()
   const comanda = comandaAbertaLigada(barraca)
+  const usaCozinha = barraca.usa_cozinha !== false
 
   return (
     <nav
@@ -33,7 +34,7 @@ export function BarraNavegacao() {
         'bg-white/85 dark:bg-mesa-neutral-800/85 shadow-mesa-nav-top',
       )}
     >
-      {ITENS.filter((item) => comanda || !item.soComComanda).map((item) => {
+      {ITENS.filter((item) => (comanda || !item.soComComanda) && (usaCozinha || !['cozinha', 'chamada'].includes(item.rota))).map((item) => {
         const mostrarBadge = item.rota === 'cozinha' && contagemAFazer > 0
 
         return (

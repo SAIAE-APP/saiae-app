@@ -43,6 +43,8 @@ export type Barraca = {
   estoque_bloqueia?: boolean
   /** Coluna "Saiu para entrega" no kanban (só com Entrega ligada; padrão false). Ausente em banco/cache de antes da migration. */
   saiu_entrega_habilitado?: boolean
+  /** false = barraca sem cozinha: pedido nasce entregue e Cozinha/Chamada somem (migration 20261108100000). Ausente = usa cozinha. */
+  usa_cozinha?: boolean
   /** Assistente de configuração inicial (migration 20261020100000). Opcionais: banco/cache de antes não têm. */
   categoria_negocio?: string | null
   /** Kit inicial aplicado (migration 20261021110000). Opcional: banco/cache de antes não têm. */
