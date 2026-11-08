@@ -53,6 +53,6 @@ describe('guardas das telas', () => {
 
   test('barra de navegação só mostra Mesas com a comanda ligada', () => {
     const b = ler('components/BarraNavegacao.tsx')
-    assert.match(b, /ITENS\.filter\(\(item\) => comanda \|\| !item\.soComComanda\)/)
+    assert.match(b, /ITENS\.filter\(\(item\) => \(comanda \|\| !item\.soComComanda\)/)
   })
 })

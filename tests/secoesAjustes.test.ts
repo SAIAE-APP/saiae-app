@@ -21,15 +21,15 @@ describe('grupos de Ajustes', () => {
 })
 
 describe('ligação em Ajustes', () => {
-  test('toda seção pertence a um grupo que existe (30 seções, nenhuma órfã)', () => {
+  test('toda seção pertence a um grupo que existe (31 seções, nenhuma órfã)', () => {
     const grupos = [...ajustes.matchAll(/<SecaoDaCategoria categoria="(conta|cardapio)" grupo="([\w-]+)"/g)]
-    assert.equal(grupos.length, 30)
+    assert.equal(grupos.length, 31)
     const ids = new Set(GRUPOS_AJUSTES.map((g) => `${g.categoria}:${g.id}`))
     for (const [, cat, grupo] of grupos) assert.ok(ids.has(`${cat}:${grupo}`), `${cat}:${grupo}`)
   })
-  test('a categoria esconde em qualquer largura; o grupo só do desktop (celular mostra a categoria inteira)', () => {
+  test('a categoria esconde em qualquer largura; o grupo também (celular usa o menu hambúrguer)', () => {
     assert.match(ajustes, /if \(categoria !== atual\) return <div className="hidden">\{children\}<\/div>/)
-    assert.match(ajustes, /clsx\('contents', grupo !== grupoAtual && 'md:hidden'\)/)
+    assert.match(ajustes, /clsx\('contents', grupo !== grupoAtual && 'hidden'\)/)
   })
   test('as abas Conta / Cardápio & Operação aparecem também no celular', () => {
     assert.match(ajustes, /<div className="mt-3 flex gap-1\.5">\s+\{ABAS_CATEGORIA\.map/)

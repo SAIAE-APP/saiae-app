@@ -46,6 +46,7 @@ import { EnderecoCardapio } from '../components/EnderecoCardapio'
 import { SecaoPagamentoDepois } from '../components/SecaoPagamentoDepois'
 import { SecaoComandaAberta } from '../components/SecaoComandaAberta'
 import { SecaoSaiuEntrega } from '../components/SecaoSaiuEntrega'
+import { SecaoSemCozinha } from '../components/SecaoSemCozinha'
 import { SecaoEstoque } from '../components/SecaoEstoque'
 import { SecaoCupons } from '../components/SecaoCupons'
 import { SecaoCashback } from '../components/SecaoCashback'
@@ -1709,8 +1710,8 @@ function SecaoPagamento({ barraca }: { barraca: Barraca }) {
           relatório.
         </p>
 
-        <div className="mt-3 flex flex-wrap gap-4">
-          <div className="min-w-[140px] flex-1">
+        <div className="mt-3 grid grid-cols-2 gap-4">
+          <div className="min-w-0">
             <span className="text-sm text-mesa-text-secondary">Débito</span>
             <Input
               type="percentage"
@@ -1725,7 +1726,7 @@ function SecaoPagamento({ barraca }: { barraca: Barraca }) {
             />
           </div>
 
-          <div className="min-w-[140px] flex-1">
+          <div className="min-w-0">
             <span className="text-sm text-mesa-text-secondary">Crédito</span>
             <Input
               type="percentage"
@@ -2936,7 +2937,60 @@ function SecaoDaCategoria({
 }) {
   const grupoAtual = useContext(GrupoAtualContext)
   if (categoria !== atual) return <div className="hidden">{children}</div>
-  return <div className={clsx('contents', grupo !== grupoAtual && 'md:hidden')}>{children}</div>
+  return <div className={clsx('contents', grupo !== grupoAtual && 'hidden')}>{children}</div>
+}
+
+/** Menu de Ajustes no celular: mostra o grupo atual e abre a lista dos outros grupos. */
+function MenuGruposCelular({
+  grupos,
+  atual,
+  aoEscolher,
+}: {
+  grupos: readonly { id: string; rotulo: string; icone: string }[]
+  atual: string
+  aoEscolher: (id: string) => void
+}) {
+  const [aberto, setAberto] = useState(false)
+  const grupo = grupos.find((g) => g.id === atual) ?? grupos[0]
+
+  return (
+    <div className="mb-4 md:hidden">
+      <button
+        type="button"
+        aria-expanded={aberto}
+        onClick={() => setAberto((v) => !v)}
+        className="flex min-h-11 w-full items-center gap-3 rounded-mesa-md bg-mesa-neutral-100 px-3 text-left text-sm font-semibold text-mesa-text-primary dark:bg-mesa-neutral-800"
+      >
+        <Icone nome={aberto ? 'close' : 'list'} size={22} />
+        <span className="min-w-0 flex-1 truncate">{grupo.rotulo}</span>
+        <Icone nome={grupo.icone} size={18} />
+      </button>
+      {aberto && (
+        <div className="mt-2 flex flex-col gap-1">
+          {grupos.map((g) => (
+            <button
+              key={g.id}
+              type="button"
+              aria-current={g.id === atual ? 'page' : undefined}
+              onClick={() => {
+                aoEscolher(g.id)
+                setAberto(false)
+              }}
+              className={clsx(
+                'flex min-h-11 items-center gap-2.5 rounded-mesa-md px-3 text-left text-sm font-semibold',
+                g.id === atual
+                  ? 'bg-mesa-neutral-900 text-white dark:bg-mesa-neutral-50 dark:text-mesa-neutral-900'
+                  : 'text-mesa-text-secondary',
+              )}
+            >
+              <Icone nome={g.icone} size={18} />
+              {g.rotulo}
+            </button>
+          ))}
+        </div>
+      )}
+    </div>
+  )
 }
 
 export function Ajustes({ categoria = 'conta' }: { categoria?: CategoriaAjustes }) {
@@ -2980,6 +3034,11 @@ export function Ajustes({ categoria = 'conta' }: { categoria?: CategoriaAjustes 
         </div>
 
         <div className="px-6 pb-[calc(7rem+env(safe-area-inset-bottom))] pt-2 md:mx-auto md:grid md:max-w-5xl md:grid-cols-[14rem_minmax(0,1fr)] md:items-start md:gap-8">
+          <MenuGruposCelular
+            grupos={gruposDaCategoria(categoria)}
+            atual={grupoAtual}
+            aoEscolher={(id) => setParams({ secao: id }, { replace: true })}
+          />
           <nav aria-label="Seções de Ajustes" className="sticky top-32 hidden flex-col gap-1 md:flex">
             {gruposDaCategoria(categoria).map((g) => (
               <button
@@ -3069,8 +3128,13 @@ export function Ajustes({ categoria = 'conta' }: { categoria?: CategoriaAjustes 
             </SecaoDaCategoria>
           )}
           <SecaoDaCategoria categoria="cardapio" grupo="cozinha" atual={categoria}>
-            <SecaoFaixas barraca={barraca} />
+            <SecaoSemCozinha barraca={barraca} />
           </SecaoDaCategoria>
+          {barraca.usa_cozinha !== false && (
+            <SecaoDaCategoria categoria="cardapio" grupo="cozinha" atual={categoria}>
+              <SecaoFaixas barraca={barraca} />
+            </SecaoDaCategoria>
+          )}
           <SecaoDaCategoria categoria="conta" grupo="financeiro" atual={categoria}>
             <SecaoPagamento barraca={barraca} />
           </SecaoDaCategoria>

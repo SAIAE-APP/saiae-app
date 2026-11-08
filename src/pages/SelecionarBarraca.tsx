@@ -12,6 +12,7 @@ import { Card } from '../components/ui/Card'
 import { Icone } from '../components/ui/Icone'
 import { Input } from '../components/ui/Input'
 import { BottomSheet } from '../components/ui/BottomSheet'
+import { AtalhoPainelAdmin } from '../components/AtalhoPainelAdmin'
 import { normalizarCodigoSuporte, formatoCodigoSuporteValido } from '../lib/acessoSuporte'
 
 function gerarSlug(nome: string): string {
@@ -437,6 +438,7 @@ export function SelecionarBarraca() {
             Criar minha primeira barraca
           </Button>
         )}
+        <AtalhoPainelAdmin />
         <Button variant="ghost" size="md" onClick={() => setCodigoSuporteAberto(true)}>
           Tenho um código de suporte
         </Button>
@@ -471,6 +473,7 @@ export function SelecionarBarraca() {
       <div>
         <h1 className="text-2xl font-bold text-mesa-text-primary">Qual barraca?</h1>
         <p className="mt-1 text-sm text-mesa-text-secondary">Escolha a barraca que você vai operar agora.</p>
+        <AtalhoPainelAdmin className="mt-3" />
       </div>
 
       <div className="mt-6 flex flex-col gap-3">
