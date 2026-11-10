@@ -67,7 +67,7 @@ Deno.serve(async (req: Request) => {
         (exigir(
           await supabase
             .from('pagamentos_pendentes')
-            .select('id, status, mercadopago_order_id, provedor, taxa_plataforma_centavos, estornado_em')
+            .select('id, status, mercadopago_order_id, provedor, taxa_plataforma_centavos, via_oauth, estornado_em')
             .eq('pedido_id', id)
             .eq('barraca_id', barracaId),
         ) ?? []) as Record<string, unknown>[],

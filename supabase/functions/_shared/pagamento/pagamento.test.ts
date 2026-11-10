@@ -29,6 +29,7 @@ import {
   lerMeioPagamento,
   statusCartaoParaCliente,
   totalDaCobranca,
+  aceitouTaxaPlataforma,
 } from './cobrancaOnline.ts'
 import { centavosParaDecimal, ehProvedorValido, ErroProvedor, valorDecimalParaCentavos } from './tipos.ts'
 import { estornarPedido } from './estorno.ts'
@@ -540,6 +541,18 @@ for (const f of ['oauthMercadoPago.ts', '../../mp-oauth-iniciar/index.ts', '../.
   assert.equal(emitidoViaOauth({ taxa_plataforma_centavos: 0 }), false)
   assert.equal(emitidoViaOauth({}), false)
 
+  // taxa opcional: cliente recusa => total sem taxa, mas a cobrança continua sendo do OAuth (via_oauth)
+  const recusou = { subtotalItensCentavos: 1500, descontoCentavos: 200, taxaEntregaCentavos: 300, modo: 'oauth' as const, aceitaTaxaPlataforma: false }
+  assert.deepEqual(totalDaCobranca(recusou), { taxaPlataformaCentavos: 0, totalCentavos: 1600 })
+  assert.deepEqual(totalDaCobranca({ ...recusou, aceitaTaxaPlataforma: true }), { taxaPlataformaCentavos: 99, totalCentavos: 1699 })
+  assert.deepEqual(totalDaCobranca({ ...recusou, aceitaTaxaPlataforma: undefined }), { taxaPlataformaCentavos: 99, totalCentavos: 1699 })
+  assert.equal(aceitouTaxaPlataforma(undefined), true)
+  assert.equal(aceitouTaxaPlataforma(true), true)
+  assert.equal(aceitouTaxaPlataforma('false'), true)
+  assert.equal(aceitouTaxaPlataforma(false), false)
+  assert.equal(emitidoViaOauth({ taxa_plataforma_centavos: 0, via_oauth: true }), true)
+  assert.equal(emitidoViaOauth({ taxa_plataforma_centavos: 0, via_oauth: false }), false)
+
   assert.equal(statusCartaoParaCliente('aprovado'), 'aprovado')
   assert.equal(statusCartaoParaCliente('pendente'), 'pendente')
   assert.equal(statusCartaoParaCliente('rejeitado'), 'rejeitado')
@@ -723,7 +736,7 @@ for (const f of ['oauthMercadoPago.ts', '../../mp-oauth-iniciar/index.ts', '../.
     'upsert:pagamentos_conciliacao',
   ])
   assert.equal((feliz.ops[0].valor as Record<string, unknown>).p_metodo_pagamento, 'credito')
-  assert.deepEqual(feliz.ops[2].valor, { taxa_plataforma_centavos: 99 })
+  assert.deepEqual(feliz.ops[2].valor, { taxa_plataforma_centavos: 99, pago_online_oauth: true })
   assert.deepEqual(feliz.ops[3].valor, { status: 'aprovado', pedido_id: 'ped-1' })
   assert.equal((feliz.ops[5].valor as Record<string, unknown>).tipo, 'comissao_nao_informada')
   assert.equal((feliz.ops[5].valor as Record<string, unknown>).pedido_id, 'ped-1')
@@ -816,7 +829,7 @@ for (const f of ['oauthMercadoPago.ts', '../../mp-oauth-iniciar/index.ts', '../.
   const modulo = readFileSync(new URL('./pedidoAprovado.ts', import.meta.url), 'utf8')
   assert.ok(fonte.includes('tokenDoWebhook('))
   assert.ok(fonte.includes('decidirAprovadoDoPendente('))
-  assert.ok(/update\(\{ taxa_plataforma_centavos: taxaPlataformaCentavos \}\)/.test(modulo))
+  assert.ok(/update\(\{ taxa_plataforma_centavos: taxaPlataformaCentavos, pago_online_oauth: true \}\)/.test(modulo))
   // comissão não informada: o pedido nasce e fica o registro de conciliação
   assert.ok(/if \(decisao\.comissaoNaoInformada\) \{\s*await registrar\('comissao_nao_informada'/.test(modulo))
   assert.ok(!fonte.includes('buscarTokenDoProvedor(supabase, pendente.barraca_id, provedor.chave, Deno.env)\n  if'))

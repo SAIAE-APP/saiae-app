@@ -13,6 +13,7 @@ import { Checkbox } from '../components/ui/Checkbox'
 import { Chip } from '../components/ui/Chip'
 import { BotaoPedir } from '../components/cardapio/BotaoPedir'
 import { CardDestaque } from '../components/cardapio/CardDestaque'
+import { TaxaServicoOpcional } from '../components/cardapio/TaxaServicoOpcional'
 import { resolverDestaque } from '../lib/destaque'
 import { lojaAberta, podeFinalizarPedido } from '../lib/estadoBotaoPedir'
 import { Icone } from '../components/ui/Icone'
@@ -527,6 +528,9 @@ export function CardapioPublico() {
   const [chaveMp, setChaveMp] = useState<string | null>(null)
   // Taxa Sai aê só no OAuth (mesma regra do servidor); o 409 do servidor corrige se a tela divergir.
   const [cobraTaxaPlataforma, setCobraTaxaPlataforma] = useState(false)
+  // Taxa Sai aê opcional: o cliente pode desmarcar; já vem marcada. `taxaAtiva` = a taxa que de fato entra no total.
+  const [apoiaTaxa, setApoiaTaxa] = useState(true)
+  const taxaAtiva = cobraTaxaPlataforma && apoiaTaxa
   // Taxa que o servidor disse valer pra um bairro (quando difere do preview local).
   const [taxaServidor, setTaxaServidor] = useState<{ bairro: string; centavos: number } | null>(null)
   const [aceitaOfertas, setAceitaOfertas] = useState(false)
@@ -1028,7 +1032,8 @@ export function CardapioPublico() {
   /** Recusa do servidor no pagamento online: acerta taxa/cartão com o que ele disse e escolhe o client_uuid da próxima. */
   function tratarFalhaOnline(status: number, corpo: CorpoFalha | null, cartao: boolean) {
     sessaoRecusada(corpo)
-    if (typeof corpo?.taxa_plataforma_centavos === 'number') setCobraTaxaPlataforma(corpo.taxa_plataforma_centavos > 0)
+    // Taxa 0 na resposta só prova que a barraca não cobra se o cliente tinha aceitado a taxa; recusada, 0 é a escolha dele.
+    if (typeof corpo?.taxa_plataforma_centavos === 'number') setCobraTaxaPlataforma(corpo.taxa_plataforma_centavos > 0 || (!apoiaTaxa && cobraTaxaPlataforma))
     if (corpo?.codigo === 'mp_nao_conectado') {
       setChaveMp(null)
       setCobraTaxaPlataforma(false)
@@ -1184,7 +1189,8 @@ export function CardapioPublico() {
         ...(telefoneAviso.trim() ? { cliente_telefone: telefoneAviso.trim() } : {}),
         itens: itensParaEnvio(),
         // Total que o cliente viu (com a taxa Sai aê). Se o servidor chegar a outro, não cobra (409).
-        total_esperado_centavos: totalOnline(cobraTaxaPlataforma, totalCentavosCarrinho - descontoCupom),
+        aceita_taxa_plataforma: apoiaTaxa,
+        total_esperado_centavos: totalOnline(taxaAtiva, totalCentavosCarrinho - descontoCupom),
       },
     })
 
@@ -1414,7 +1420,7 @@ export function CardapioPublico() {
       ? { ...previaTaxaLocal, taxaCentavos: taxaServidor.centavos }
       : previaTaxaLocal
   // Total do Pix/cartão com entrega (com a taxa Sai aê): só existe com bairro escolhido e aceito.
-  const totalPixEntregaCentavos = previaTaxa?.permitido ? totalOnline(cobraTaxaPlataforma, totalCentavosCarrinho - descontoCupom + previaTaxa.taxaCentavos) : null
+  const totalPixEntregaCentavos = previaTaxa?.permitido ? totalOnline(taxaAtiva, totalCentavosCarrinho - descontoCupom + previaTaxa.taxaCentavos) : null
   const subtotalCentavos = totalCentavosCarrinho - descontoCupom
   // Cartão só com a chave do vendedor; sem ela, o meio escolhido volta a ser Pix.
   const meioEfetivo: MeioOnline = chaveMp ? meioOnline : 'pix'
@@ -1461,6 +1467,7 @@ export function CardapioPublico() {
         observacao: observacao.trim() || null,
         client_uuid: uuidDoEnvio(cartao ? 'cartao' : 'pix'),
         itens: itensParaEnvio(),
+        aceita_taxa_plataforma: apoiaTaxa,
         total_esperado_centavos: totalPixEntregaCentavos,
         website: honeypot,
         // eslint-disable-next-line react-hooks/purity -- roda no toque do cliente (handler), nunca no render; falso positivo do compilador
@@ -1591,7 +1598,6 @@ export function CardapioPublico() {
           textoFechado={textoFechado}
           botao={
             <BotaoPedir
-              variante="tinta"
               larguraTotal
               podeAdicionar={!podeComprar || destaque.item_preco_centavos > 0}
               esgotado={destaque.item_esgotado}
@@ -1868,19 +1874,16 @@ export function CardapioPublico() {
                 </div>
               )}
               {mostrarTaxaFormulario && (
-                <div className="flex items-center justify-between text-sm text-mesa-text-secondary">
-                  <span>Taxa de serviço Sai aê</span>
-                  <span>{formatarPrecoBR(TAXA_PLATAFORMA_CENTAVOS)}</span>
-                </div>
+                <TaxaServicoOpcional aceita={apoiaTaxa} onChange={setApoiaTaxa} valorFormatado={formatarPrecoBR(TAXA_PLATAFORMA_CENTAVOS)} />
               )}
               <div className="flex items-center justify-between">
                 <span className="text-sm text-mesa-text-secondary">Total</span>
                 <span className="font-mesa-display text-lg font-bold text-mesa-text-primary">
-                  {formatarPrecoBR(mostrarTaxaFormulario ? totalOnline(cobraTaxaPlataforma, subtotalCentavos) : subtotalCentavos)}
+                  {formatarPrecoBR(mostrarTaxaFormulario ? totalOnline(taxaAtiva, subtotalCentavos) : subtotalCentavos)}
                 </span>
               </div>
               <LinhaCashbackGanho cashback={cashback} />
-              {mostrarTaxaFormulario && mostrarPagarNaEntrega && (
+              {mostrarTaxaFormulario && apoiaTaxa && mostrarPagarNaEntrega && (
                 <p className="text-xs text-mesa-text-tertiary">
                   Pagando na entrega não há taxa de serviço: {formatarPrecoBR(subtotalCentavos)}.
                 </p>
@@ -1979,7 +1982,7 @@ export function CardapioPublico() {
               <CartaoMercadoPago
                 publicKey={chaveMp}
                 desabilitado={itensCarrinho.length === 0 || !podeFinalizar}
-                textoBotao={`Pagar ${formatarPrecoBR(totalOnline(cobraTaxaPlataforma, subtotalCentavos))}`}
+                textoBotao={`Pagar ${formatarPrecoBR(totalOnline(taxaAtiva, subtotalCentavos))}`}
                 onAntesDeGerar={garantirPerfil}
                 onGerarToken={(t) => void pagar(t)}
               />
@@ -2210,10 +2213,7 @@ export function CardapioPublico() {
                 </>
               )}
               {mostrarTaxaEntrega && (
-                <div className="flex items-center justify-between text-sm text-mesa-text-secondary">
-                  <span>Taxa de serviço Sai aê</span>
-                  <span>{formatarPrecoBR(TAXA_PLATAFORMA_CENTAVOS)}</span>
-                </div>
+                <TaxaServicoOpcional aceita={apoiaTaxa} onChange={setApoiaTaxa} valorFormatado={formatarPrecoBR(TAXA_PLATAFORMA_CENTAVOS)} />
               )}
               <div className="flex items-center justify-between">
                 <span className="text-sm text-mesa-text-secondary">Total</span>
