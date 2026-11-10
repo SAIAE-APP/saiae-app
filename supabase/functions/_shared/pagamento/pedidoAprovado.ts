@@ -2,6 +2,7 @@
 // (criar-pagamento-pix). O cliente do banco é injetado: testado em Node com um cliente falso (pagamento.test.ts).
 import type { SupabaseClient } from 'jsr:@supabase/supabase-js@2'
 import type { TipoConciliacao } from './conciliacao.ts'
+import { emitidoViaOauth } from './cobrancaOnline.ts'
 import { desfechoDaCriacao } from './corrida.ts'
 import type { ProvedorPix } from './tipos.ts'
 import { decidirAprovadoDoPendente, metodoDoPedido } from './webhookAprovado.ts'
@@ -74,6 +75,7 @@ export type PendenteAprovado = {
   taxa_entrega_centavos?: unknown
   desconto_cupom_centavos?: unknown
   taxa_plataforma_centavos?: unknown
+  via_oauth?: unknown
 }
 
 export type ContextoAprovado = BaseConciliacao & {
@@ -176,8 +178,12 @@ export async function criarPedidoAprovado(
     if (erroVinculo) console.error(`${origem}: falha ao vincular cliente ao pedido`, erroVinculo.message)
   }
   // Taxa Sai aê copiada para o pedido (mesmo padrão do cliente_id). Best-effort: o pedido já existe e foi pago.
-  if (taxaPlataformaCentavos > 0) {
-    const { error: erroTaxa } = await supabase.from('pedidos').update({ taxa_plataforma_centavos: taxaPlataformaCentavos }).eq('id', pedidoId)
+  // Pago pelo OAuth, com taxa ou sem (cliente recusou): `pago_online_oauth` habilita o estorno no Histórico.
+  if (taxaPlataformaCentavos > 0 || emitidoViaOauth(pendente)) {
+    const { error: erroTaxa } = await supabase
+      .from('pedidos')
+      .update({ taxa_plataforma_centavos: taxaPlataformaCentavos, pago_online_oauth: true })
+      .eq('id', pedidoId)
     if (erroTaxa) console.error(`${origem}: falha ao gravar a taxa Sai aê no pedido`, erroTaxa.message)
   }
   await supabase.from('pagamentos_pendentes').update({ status: 'aprovado', pedido_id: pedidoId }).eq('id', pendente.id)

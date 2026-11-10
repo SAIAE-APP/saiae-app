@@ -372,8 +372,9 @@ function BotaoCancelarEstornar({
   const soEstorno = acao === 'estornar'
   const rotulo = soEstorno ? 'Estornar pagamento' : 'Cancelar e estornar'
   const descricao =
-    `O valor total pago (itens, entrega e a taxa de ${formatarPrecoBR(pedido.taxa_plataforma_centavos ?? 0)}) ` +
-    'volta para o cliente. O estorno não pode ser desfeito.'
+    ((pedido.taxa_plataforma_centavos ?? 0) > 0
+      ? `O valor total pago (itens, entrega e a taxa de ${formatarPrecoBR(pedido.taxa_plataforma_centavos ?? 0)}) `
+      : 'O valor total pago (itens e entrega) ') + 'volta para o cliente. O estorno não pode ser desfeito.'
 
   return (
     <div className="mt-3">

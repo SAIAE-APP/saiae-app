@@ -13,7 +13,7 @@ export type TokenDoWebhook = { ok: true; token: string } | { ok: false; status: 
  * provedor reenviar (renovar ou reconectar depois ainda confirma o pagamento); nunca cai no token colado.
  */
 export async function tokenDoWebhook(
-  pendente: { taxa_plataforma_centavos?: unknown },
+  pendente: { taxa_plataforma_centavos?: unknown; via_oauth?: unknown },
   fontes: { vendedor: () => Promise<ResultadoTokenVendedor>; colado: () => Promise<string | null> },
 ): Promise<TokenDoWebhook> {
   if (!emitidoViaOauth(pendente)) {
@@ -85,7 +85,7 @@ export function decidirAprovadoDoPendente(
  * Repetições não duplicam: a tabela é única por provedor + id externo + tipo.
  */
 export function conciliacaoSemConfirmacao(
-  pendente: { taxa_plataforma_centavos?: unknown; mercadopago_order_id?: unknown },
+  pendente: { taxa_plataforma_centavos?: unknown; via_oauth?: unknown; mercadopago_order_id?: unknown },
   idExterno: string,
   motivo: 'credencial' | 'consulta_recusada',
 ): { tipo: 'pedido_nao_criado'; detalhe: string } | null {

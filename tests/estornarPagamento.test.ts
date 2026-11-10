@@ -46,6 +46,9 @@ describe('estornarPagamento', () => {
     assert.equal(acaoDeEstorno(pago, false, false), null)
     assert.equal(acaoDeEstorno({ status: 'entregue', taxa_plataforma_centavos: 0 }, true, false), null)
     assert.equal(acaoDeEstorno({ status: 'cancelado' }, true, false), null)
+    // cliente recusou a taxa opcional: pago pelo OAuth com taxa 0 continua estornável
+    assert.equal(acaoDeEstorno({ status: 'entregue', taxa_plataforma_centavos: 0, pago_online_oauth: true }, true, false), 'cancelar_e_estornar')
+    assert.equal(acaoDeEstorno({ status: 'entregue', taxa_plataforma_centavos: 0, pago_online_oauth: false }, true, false), null)
   })
 
   test('Histórico: botão só para o dono e erro anunciado ao leitor de tela', () => {

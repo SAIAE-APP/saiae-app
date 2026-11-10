@@ -24,6 +24,7 @@ import {
   chavePublicaDaBarraca,
   corteTokenAtingido,
   decidirCredencial,
+  aceitouTaxaPlataforma,
   emitidoViaOauth,
   expiraEmDoPendente,
   lerMeioPagamento,
@@ -105,6 +106,8 @@ Deno.serve(async (req: Request) => {
     cliente_nome?: string | null
     /** WhatsApp opcional (fora da Entrega) só pra avisar "pedido pronto". */
     cliente_telefone?: string | null
+    /** Cliente aceita a taxa de serviço Sai aê (R$ 0,99)? Ausente = sim (cliente antigo); só `false` recusa. */
+    aceita_taxa_plataforma?: boolean
     /** Total que o cliente viu na tela (itens + taxa). Se o servidor calcular outro, não cobra. */
     total_esperado_centavos?: number | null
     /** Honeypot: campo oculto no formulário; humano nunca preenche. */
@@ -455,7 +458,8 @@ Deno.serve(async (req: Request) => {
   const descontoBeneficio = descontoDoBeneficio(descontoCentavos, cashbackCentavos)
 
   // Tudo em centavos INTEIROS; só vira reais na última linha (MP). A taxa Sai aê entra só no OAuth.
-  const { taxaPlataformaCentavos, totalCentavos: totalCobradoCentavos } = totalDaCobranca({ subtotalItensCentavos: totalCentavos, descontoCentavos: descontoBeneficio, taxaEntregaCentavos, modo: credencial.modo })
+  const aceitaTaxaPlataforma = aceitouTaxaPlataforma(body.aceita_taxa_plataforma)
+  const { taxaPlataformaCentavos, totalCentavos: totalCobradoCentavos } = totalDaCobranca({ subtotalItensCentavos: totalCentavos, descontoCentavos: descontoBeneficio, taxaEntregaCentavos, modo: credencial.modo, aceitaTaxaPlataforma })
 
   // Cliente viu um total na tela; se o servidor chegou a outro (dono mexeu na
   // taxa/preço no meio), NÃO cobra sem o cliente ver o novo valor.
@@ -505,6 +509,7 @@ Deno.serve(async (req: Request) => {
         taxa_entrega_centavos: taxaEntregaCentavos,
         cliente_nome: clienteNome,
         taxa_plataforma_centavos: taxaPlataformaCentavos,
+        via_oauth: credencial.modo === 'oauth',
         meio_pagamento: meioPedido.meio,
         ...(perfil.clienteId ? { cliente_id: perfil.clienteId } : {}),
         // Só quando informado: sem telefone o update é o de sempre.
@@ -530,6 +535,7 @@ Deno.serve(async (req: Request) => {
         itens: itensResolvidos,
         client_uuid,
         taxa_plataforma_centavos: taxaPlataformaCentavos,
+        via_oauth: credencial.modo === 'oauth',
         meio_pagamento: meioPedido.meio,
         // Só entram quando há entrega: pedido comum insere EXATAMENTE o que
         // inseria antes (as colunas novas ficam NULL/0 pelo default).
@@ -575,7 +581,7 @@ Deno.serve(async (req: Request) => {
     const reserva = res.reserva
     if (reserva.desconto_centavos !== descontoCentavos) {
       // Desconto mudou no meio (dono editou o cupom): o cliente confirma o novo total antes de pagar.
-      const novo = totalDaCobranca({ subtotalItensCentavos: totalCentavos, descontoCentavos: reserva.desconto_centavos, taxaEntregaCentavos, modo: credencial.modo })
+      const novo = totalDaCobranca({ subtotalItensCentavos: totalCentavos, descontoCentavos: reserva.desconto_centavos, taxaEntregaCentavos, modo: credencial.modo, aceitaTaxaPlataforma })
       return jsonResponse(
         {
           erro: 'O valor do pedido mudou. Confira o novo total antes de pagar.',
@@ -612,7 +618,7 @@ Deno.serve(async (req: Request) => {
     if (res.resgate !== cashbackCentavos) {
       // Saldo mudou no meio (outro checkout gastou parte): o cliente confirma o novo total antes de pagar.
       await supabase.rpc('cashback_liberar', { p_pendente_id: pendente.id })
-      const novo = totalDaCobranca({ subtotalItensCentavos: totalCentavos, descontoCentavos: res.resgate, taxaEntregaCentavos, modo: credencial.modo })
+      const novo = totalDaCobranca({ subtotalItensCentavos: totalCentavos, descontoCentavos: res.resgate, taxaEntregaCentavos, modo: credencial.modo, aceitaTaxaPlataforma })
       return jsonResponse(
         {
           erro: 'O valor do pedido mudou. Confira o novo total antes de pagar.',

@@ -67,20 +67,34 @@ export function decidirCredencial(p: { vendedor: ResultadoTokenVendedor; corteAt
   return { ok: true, modo: 'token_colado' }
 }
 
-/** Total cobrado = itens − cupom + entrega + taxa Sai aê (só no OAuth; pedido de total zero não paga taxa). */
+/**
+ * Total cobrado = itens − cupom + entrega + taxa Sai aê (só no OAuth; pedido de total zero não paga taxa).
+ * `aceitaTaxaPlataforma` é a escolha do cliente (ausente = aceita, cliente antigo); recusar zera só a taxa.
+ */
 export function totalDaCobranca(p: {
   subtotalItensCentavos: number
   descontoCentavos: number
   taxaEntregaCentavos: number
   modo: 'oauth' | 'token_colado'
+  aceitaTaxaPlataforma?: boolean
 }): { taxaPlataformaCentavos: number; totalCentavos: number } {
   const semTaxa = totalCobrado(p.subtotalItensCentavos, p.descontoCentavos, p.taxaEntregaCentavos)
-  return p.modo === 'oauth' ? aplicarTaxaPlataforma(semTaxa) : { taxaPlataformaCentavos: 0, totalCentavos: semTaxa }
+  return p.modo === 'oauth' && p.aceitaTaxaPlataforma !== false
+    ? aplicarTaxaPlataforma(semTaxa)
+    : { taxaPlataformaCentavos: 0, totalCentavos: semTaxa }
 }
 
-/** Pendente cobrado pelo OAuth? A taxa Sai aê só existe no OAuth, então taxa > 0 identifica a credencial. */
-export function emitidoViaOauth(pendente: { taxa_plataforma_centavos?: unknown }): boolean {
-  return Number(pendente.taxa_plataforma_centavos ?? 0) > 0
+/** Escolha do cliente no corpo: só `false` literal recusa; ausente ou qualquer outro valor = aceita. */
+export function aceitouTaxaPlataforma(valor: unknown): boolean {
+  return valor !== false
+}
+
+/**
+ * Pendente cobrado pelo OAuth? `via_oauth` é o marcador explícito; taxa > 0 cobre pendente de antes da coluna
+ * (a taxa só existia no OAuth). Cobrança OAuth sem taxa (cliente recusou) tem `via_oauth` e taxa 0.
+ */
+export function emitidoViaOauth(pendente: { taxa_plataforma_centavos?: unknown; via_oauth?: unknown }): boolean {
+  return pendente.via_oauth === true || Number(pendente.taxa_plataforma_centavos ?? 0) > 0
 }
 
 /**
