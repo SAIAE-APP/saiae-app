@@ -28,7 +28,7 @@ export function useAdminAcoes() {
     bloquear: (usuarioId: string, motivo?: string) =>
       executar('admin_bloquear_conta', { p_usuario_id: usuarioId, p_motivo: motivo?.trim() || null }),
     desbloquear: (usuarioId: string) => executar('admin_desbloquear_conta', { p_usuario_id: usuarioId }),
-    definirPlano: (usuarioId: string, plano: 'essencial' | 'pro') =>
+    definirPlano: (usuarioId: string, plano: 'essencial' | 'pro' | 'ponto') =>
       executar('admin_definir_plano', { p_usuario_id: usuarioId, p_plano: plano }),
     estender: (usuarioId: string, dias: number) =>
       executar('admin_estender_vencimento', { p_usuario_id: usuarioId, p_dias: dias }),

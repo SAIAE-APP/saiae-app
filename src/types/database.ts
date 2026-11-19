@@ -367,7 +367,8 @@ export type ItemDoPedido = {
 export type PedidoComItens = Pedido & { itens_do_pedido: ItemDoPedido[] }
 
 export type StatusAssinatura = 'trialing' | 'active' | 'past_due' | 'canceled' | 'expired'
-export type PlanoAssinatura = 'essencial' | 'pro'
+/** 'ponto' = plano único vendido hoje (Sai aê, 1 ponto de venda); essencial/pro só em assinantes antigos. */
+export type PlanoAssinatura = 'essencial' | 'pro' | 'ponto'
 export type CicloAssinatura = 'mensal' | 'anual'
 
 /** Linha crua de assinaturas — retorno de minha_assinatura() (RPC), pra

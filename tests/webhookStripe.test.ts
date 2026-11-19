@@ -332,3 +332,38 @@ describe('teste grátis na Stripe (checkout com trial_end): app fica ativo e coe
     assert.equal(sub().current_period_end, new Date(FIM_1 * 1000).toISOString())
   })
 })
+
+describe('pago_em (base paga de verdade, usado pelo módulo Fiscal)', () => {
+  const fatura = (id: string, amount: number) =>
+    ev(id, 'invoice.paid', AGORA_S, { amount_paid: amount, parent: { subscription_details: { subscription: 'sub_1' } } })
+
+  test('invoice.paid com valor > 0 grava pago_em; fatura zero (trial/cupom 100%) NÃO grava', async () => {
+    await enviar(checkout())
+    assert.equal(sub().pago_em, undefined)
+    await enviar(fatura('evt_z', 0))
+    assert.equal(sub().pago_em, undefined)
+    await enviar(fatura('evt_p', 4990))
+    assert.equal(sub().pago_em, new Date(AGORA_MS).toISOString())
+  })
+})
+
+describe('ofertas: plano ponto e lookup price -> (plano, ciclo) sem filtrar ativo', () => {
+  test('ponto anual vira plan=ponto cycle=anual, MESMO com a oferta desativada depois (renovação de legado não quebra)', async () => {
+    banco.ofertas = [
+      { stripe_price_id: 'price_ponto_anual', plano: 'ponto', ciclo: 'anual', ativo: false },
+      { stripe_price_id: 'price_pro', plano: 'pro', ciclo: 'mensal', ativo: false },
+    ]
+    rotas['subscriptions/sub_1'] = { status: 200, corpo: { items: { data: [{ price: { id: 'price_ponto_anual' }, current_period_end: FIM_1 }] } } }
+    assert.equal((await enviar(checkout())).status, 200)
+    assert.equal(sub().plan, 'ponto')
+    assert.equal(sub().cycle, 'anual')
+    assert.equal(sub().status, 'active')
+  })
+
+  test('legado pro mensal com oferta inativa continua resolvendo plano e ciclo', async () => {
+    banco.ofertas = [{ stripe_price_id: 'price_pro', plano: 'pro', ciclo: 'mensal', ativo: false }]
+    assert.equal((await enviar(checkout())).status, 200)
+    assert.equal(sub().plan, 'pro')
+    assert.equal(sub().cycle, 'mensal')
+  })
+})

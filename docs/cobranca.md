@@ -75,3 +75,13 @@ Qualquer ordem é segura. Front antes da migration: o servidor ainda não manda 
 
 - `npm test` → `tests/cobranca.test.ts` (regras puras do front: banner, bloqueio, campo ausente).
 - A migration foi exercitada num Postgres descartável (PGlite) com o schema de assinaturas real e stubs de `auth`/barracas: acesso antes/depois, flag `true` = comportamento original, `criar_barraca` do Essencial, trial e 1 trial por e-mail, falha segura e RLS de `app_config`. Não foi aplicada em staging nem em produção.
+
+## Oferta de preço (plano único `ponto`)
+
+Exibição em `src/lib/planos.ts` (centavos; o servidor decide o valor cobrado, o app nunca envia preço):
+
+- Base "Sai aê" (1 ponto de venda): mensal R$ 57,90/mês ou anual R$ 499,00 por ano (R$ 41,58/mês; economia de R$ 195,80, 28% frente a 12 × 57,90 = 694,80). Mesmos recursos nos dois ciclos.
+- Nota fiscal: módulo opcional R$ 69,90/mês por CNPJ, cobrança sempre mensal, mesmo com a base anual. Resumo: mensal + fiscal = "R$ 127,80 por mês"; anual + fiscal = "R$ 499,00 por ano + R$ 69,90 por mês".
+- Fiscal só com a base `active`, barraca com CNPJ preenchido e `fiscal_contratacao_aberta()` verdadeiro; antes disso a UI mostra "Nota fiscal: em breve" e não chama `criar-checkout-fiscal`.
+- Links `/assinar?plano=essencial|pro&ciclo=…` continuam funcionando e viram `ponto` com o mesmo ciclo. `essencial`/`pro` seguem válidos em assinantes atuais (Assinatura mostra Essencial/Pro/Sai aê); o trial de 3 dias continua Essencial.
+- Limite de 1 ponto no `ponto`: `Sua assinatura cobre um ponto de venda. Para adicionar outro ponto, fale com o suporte.`

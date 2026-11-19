@@ -362,6 +362,9 @@ export function mensagemErroOnboarding(mensagem: string | null | undefined): str
   if (/obrigatorios_pendentes/.test(m)) return 'Faltam passos obrigatórios (horário, pagamento ou atendimento).'
   if (/já está em uso|ja esta em uso/i.test(m)) return 'Esse endereço já está em uso. Escolha outro.'
   if (/plano Essencial/i.test(m)) return 'O plano Essencial permite só 1 barraca.'
+  if (/cobre um ponto de venda/i.test(m)) {
+    return 'Sua assinatura cobre um ponto de venda. Para adicionar outro ponto, fale com o suporte.'
+  }
   if (/failed to fetch|network|load failed/i.test(m)) return 'Sem internet. Tente de novo.'
   return 'Não foi possível salvar agora. Tente de novo.'
 }

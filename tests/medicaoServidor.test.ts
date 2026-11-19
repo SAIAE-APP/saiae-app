@@ -84,6 +84,8 @@ function supabaseFalso(assinatura: Linha) {
         return { data: null, error: null }
       }
       if (tabela === 'assinatura_ofertas') return { data: { plano: 'pro', ciclo: 'mensal' }, error: null }
+      // Qualquer outra tabela (ex.: fiscal_assinaturas, consultada pelo despacho do webhook) está vazia neste cenário.
+      if (tabela !== 'assinaturas') return { data: st.unico ? null : [], error: null }
       const alvo = st.filtros.every((f) => f(assinatura)) ? [assinatura] : []
       if (st.op === 'update') {
         for (const r of alvo) Object.assign(r, st.dados)

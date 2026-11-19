@@ -10,7 +10,7 @@ type Linha = Record<string, unknown>
 
 /** Supabase falso: só o que o handler usa. O UPDATE avalia filtros e aplica no MESMO tick (atômico, como o Postgres). */
 /** Extras da comanda (Task 10): campos a mais da barraca, a comanda e as rodadas dela (consulta por comanda_id). */
-type Extras = { fiscalVigente?: boolean; barraca?: Linha; comanda?: Linha | null; rodadas?: Linha[]; erroLeitura?: (tabela: string, colunas: string) => Linha | null }
+type Extras = { fiscalVigente?: boolean; bloqueioFiscal?: string | null | 'erro'; barraca?: Linha; comanda?: Linha | null; rodadas?: Linha[]; erroLeitura?: (tabela: string, colunas: string) => Linha | null }
 
 function criarBanco(inicial: Linha = {}, linhaToken: Linha = { token_homologacao: 'tok-h', token_producao: 'tok-p' }, extras: Extras = {}) {
   const pedido: Linha = { id: 'p1', barraca_id: 'b1', metodo_pagamento: 'pix', nfce_status: null, nfce_chave: null, nfce_numero: null, nfce_trava_em: null, ...inicial }
@@ -79,7 +79,13 @@ function criarBanco(inicial: Linha = {}, linhaToken: Linha = { token_homologacao
   }
 
   const rpcs: Array<[string, Linha]> = []
-  const rpc = async (fn: string, args: Linha) => (rpcs.push([fn, args]), { data: extras.fiscalVigente ?? true, error: null })
+  const rpc = async (fn: string, args: Linha) => {
+    rpcs.push([fn, args])
+    if (fn === 'fiscal_emissao_bloqueio') {
+      return extras.bloqueioFiscal === 'erro' ? { data: null, error: { message: 'boom' } } : { data: extras.bloqueioFiscal ?? null, error: null }
+    }
+    return { data: extras.fiscalVigente ?? true, error: null }
+  }
   const cliente = { auth: { getUser: async () => ({ data: { user: { id: 'u1' } }, error: null }) }, from: consulta, rpc }
   return { pedido, updates, estado, cliente, rpcs }
 }
@@ -169,6 +175,37 @@ describe('emitir-nfce: trava e reconciliação (handler executado)', () => {
     assert.deepEqual(focus.log.gets, [])
     assert.equal(banco.updates.length, 0) // nem trava
     assert.deepEqual(banco.rpcs[0], ['modulo_ativo', { p_barraca_id: 'b1', p_modulo: 'fiscal' }])
+  })
+
+  test('fiscal pago com base sem vigência: 403 base_sem_vigencia, sem FocusNFe e sem trava', async () => {
+    const { banco, focus, chamar } = montar({}, undefined, {}, { bloqueioFiscal: 'base_sem_vigencia' })
+    const r = await chamar()
+    assert.equal(r.status, 403)
+    assert.equal(r.corpo.erro, 'base_sem_vigencia')
+    assert.deepEqual(focus.log.posts, [])
+    assert.equal(banco.updates.length, 0)
+    assert.deepEqual(banco.rpcs[1], ['fiscal_emissao_bloqueio', { p_barraca_id: 'b1' }])
+  })
+
+  test('CNPJ da barraca diferente do contratado: 403 cnpj_divergente com mensagem clara', async () => {
+    const { focus, chamar } = montar({}, undefined, {}, { bloqueioFiscal: 'cnpj_divergente' })
+    const r = await chamar()
+    assert.equal(r.status, 403)
+    assert.equal(r.corpo.erro, 'cnpj_divergente')
+    assert.match(String(r.corpo.mensagem), /CNPJ contratado/)
+    assert.deepEqual(focus.log.posts, [])
+  })
+
+  test('falha ao consultar a vigência: falha fechada (503) e nada é emitido', async () => {
+    const { focus, chamar } = montar({}, undefined, {}, { bloqueioFiscal: 'erro' })
+    assert.equal((await chamar()).status, 503)
+    assert.deepEqual(focus.log.posts, [])
+  })
+
+  test('sem bloqueio (null: cortesia/teste do admin ou cobrança em dia) emite normalmente', async () => {
+    const { focus, chamar } = montar({}, undefined, {}, { bloqueioFiscal: null })
+    assert.equal((await chamar()).status, 200)
+    assert.deepEqual(focus.log.posts, ['p1'])
   })
 
   test('módulo fiscal vigente emite mesmo com fiscal_habilitado=false (a coluna é só espelho)', async () => {

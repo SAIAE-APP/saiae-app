@@ -4,11 +4,13 @@ import { useNavigate, useSearchParams } from 'react-router'
 import { useBarracaAtual } from '../layouts/contextoBarraca'
 import { supabase } from '../lib/supabase'
 import { mensagemDoErroFuncao } from '../lib/erroFuncao'
-import { PLANOS } from '../lib/planos'
+import { PRECO_FISCAL_MENSAL_CENTAVOS, TERMO_MODULOS_VERSAO, formatarPreco, nomePlano } from '../lib/planos'
+import { useFiscalContratacaoAberta } from '../hooks/useFiscalContratacaoAberta'
 import { cobrancaAtiva } from '../lib/cobranca'
 import { useAssinaturaBarraca } from '../hooks/useAssinaturaBarraca'
 import { Button } from '../components/ui/Button'
 import { Icone } from '../components/ui/Icone'
+import { Checkbox } from '../components/ui/Checkbox'
 import { BottomSheet } from '../components/ui/BottomSheet'
 import { useToast } from '../components/ui/useToast'
 import type { Assinatura as TipoAssinatura } from '../types/database'
@@ -73,6 +75,20 @@ export function Assinatura() {
     mostrarToast('Assinatura cancelada.', { variante: 'sucesso' })
   }
 
+  // O servidor decide valor e elegibilidade; aqui só se pede a Checkout Session do fiscal.
+  async function contratarFiscal() {
+    setContratandoFiscal(true)
+    setErroFiscal(null)
+    const { data, error } = await supabase.functions.invoke('criar-checkout-fiscal', { body: { barraca_id: barraca.id, termo_versao: TERMO_MODULOS_VERSAO } })
+    if (error || !data?.url) {
+      const m = data?.erro ?? (await mensagemDoErroFuncao(error, 'Não foi possível iniciar a contratação. Tente de novo em instantes.'))
+      setErroFiscal(/termo_nao_aceito/.test(m) ? 'O termo de contratação mudou. Recarregue a página, leia e aceite de novo.' : m)
+      setContratandoFiscal(false)
+      return
+    }
+    window.location.assign(data.url)
+  }
+
   useEffect(() => {
     let intervalo: ReturnType<typeof setInterval> | undefined
 
@@ -92,7 +108,12 @@ export function Assinatura() {
 
   const { assinatura: statusBarraca } = useAssinaturaBarraca(barraca.slug)
   const semCobranca = !cobrancaAtiva(statusBarraca)
-  const plano = assinatura?.plan ? PLANOS[assinatura.plan] : null
+  const plano = assinatura?.plan ? nomePlano(assinatura.plan) : null
+  const fiscalAberta = useFiscalContratacaoAberta()
+  const [contratandoFiscal, setContratandoFiscal] = useState(false)
+  const [erroFiscal, setErroFiscal] = useState<string | null>(null)
+  const [aceitouTermoFiscal, setAceitouTermoFiscal] = useState(false)
+  const temCnpj = Boolean(barraca.cnpj && barraca.cnpj.replace(/\D/g, '').length === 14)
   const aindaProcessando = processando && assinatura?.status !== 'active'
 
   return (
@@ -150,7 +171,7 @@ export function Assinatura() {
 
             {plano && (
               <p className="mt-2 text-sm text-mesa-text-secondary">
-                Plano <strong>{plano.nome}</strong>
+                Plano <strong>{plano}</strong>
                 {assinatura?.cycle && ` · ${assinatura.cycle === 'anual' ? 'Anual' : 'Mensal'}`}
               </p>
             )}
@@ -171,6 +192,44 @@ export function Assinatura() {
               </p>
             )}
           </div>
+          )}
+
+          {!semCobranca && assinatura?.status === 'active' && (
+            <div className="rounded-mesa-2xl border border-mesa-border-default bg-mesa-surface p-5">
+              <h2 className="text-base font-semibold text-mesa-text-primary">Nota fiscal (NFC-e)</h2>
+              <p className="mt-1 text-sm text-mesa-text-secondary">
+                Módulo opcional: {formatarPreco(PRECO_FISCAL_MENSAL_CENTAVOS)} por mês por CNPJ, sempre cobrado por
+                mês, mesmo com a assinatura anual.
+              </p>
+              {!fiscalAberta ? (
+                <p className="mt-2 text-sm font-medium text-mesa-text-primary">Nota fiscal: em breve</p>
+              ) : !temCnpj ? (
+                <p className="mt-2 text-sm font-medium text-mesa-text-primary">
+                  Preencha o CNPJ da barraca em Ajustes para contratar a nota fiscal.
+                </p>
+              ) : (
+                <div className="mt-3">
+                  <Checkbox
+                    checked={aceitouTermoFiscal}
+                    onChange={setAceitouTermoFiscal}
+                    label="Li e aceito o termo de contratação do módulo fiscal"
+                  />
+                  <Button
+                    variant="outlineAmber"
+                    size="lg"
+                    loading={contratandoFiscal}
+                    disabled={!aceitouTermoFiscal}
+                    className="mt-2 w-full"
+                    onClick={contratarFiscal}
+                  >
+                    Contratar nota fiscal
+                  </Button>
+                </div>
+              )}
+              {erroFiscal && (
+                <p role="alert" className="mt-2 text-sm font-medium text-mesa-error-500">{erroFiscal}</p>
+              )}
+            </div>
           )}
 
           <div className="rounded-mesa-2xl border border-mesa-border-default bg-mesa-surface p-5">

@@ -8,6 +8,7 @@ import { Chip } from '../components/ui/Chip'
 import { AcoesBarraca } from '../components/admin/AcoesBarraca'
 import { BarraBuscaAdmin } from '../components/admin/BarraBuscaAdmin'
 import { HistoricoAcoesAdmin } from '../components/admin/HistoricoAcoesAdmin'
+import { nomePlano } from '../lib/planos'
 import { useAdminHistorico } from '../hooks/useAdminHistorico'
 import { TAMANHO_PAGINA_ADMIN, useAdminAlertas, useAdminBarracas, useAdminContagens, useAdminResumo, useSouSuperadmin } from '../hooks/useAdminBarracas'
 import {
@@ -161,7 +162,7 @@ export function AdminBarracas() {
   const navigate = useNavigate()
   const ehSuperadmin = useSouSuperadmin()
   const [filtro, setFiltro] = useState<FiltroAdminBarracas | null>(null)
-  const [plano, setPlano] = useState<'essencial' | 'pro' | null>(null)
+  const [plano, setPlano] = useState<'essencial' | 'pro' | 'ponto' | null>(null)
   const [pagina, setPagina] = useState(0)
   const [busca, setBusca] = useState('')
   const [ordem, setOrdem] = useState<OrdemAdmin>('vencimento')
@@ -221,7 +222,7 @@ export function AdminBarracas() {
         })}
       </div>
       <div className="flex flex-wrap gap-2" role="group" aria-label="Plano">
-        {([null, 'essencial', 'pro'] as const).map((p) => (
+        {([null, 'ponto', 'essencial', 'pro'] as const).map((p) => (
           <Chip
             key={p ?? 'todos'}
             className="min-h-11"
@@ -231,7 +232,7 @@ export function AdminBarracas() {
               setPagina(0)
             }}
           >
-            {p === null ? 'Todos os planos' : p === 'pro' ? 'Pro' : 'Essencial'}
+            {p === null ? 'Todos os planos' : nomePlano(p)}
           </Chip>
         ))}
       </div>
@@ -262,7 +263,7 @@ export function AdminBarracas() {
               </div>
               <dl className="grid grid-cols-2 gap-x-3 gap-y-1 text-sm text-mesa-text-secondary">
                 <dt>Plano</dt>
-                <dd className="text-mesa-text-primary">{b.plano === 'pro' ? 'Pro' : b.plano === 'essencial' ? 'Essencial' : '—'}</dd>
+                <dd className="text-mesa-text-primary">{b.plano ? nomePlano(b.plano) : '—'}</dd>
                 <dt>Início</dt>
                 <dd className="text-mesa-text-primary">{formatarData(b.inicio_em)}</dd>
                 <dt>Vencimento</dt>

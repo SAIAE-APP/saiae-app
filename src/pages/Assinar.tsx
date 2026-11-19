@@ -3,6 +3,7 @@ import { useSearchParams } from 'react-router'
 import { useAuth } from '../hooks/useAuth'
 import { supabase } from '../lib/supabase'
 import { mensagemDoErroFuncao } from '../lib/erroFuncao'
+import { PLANO_VENDA, cicloDoLink } from '../lib/planos'
 
 /** /assinar — ponte entre a LP/o app e o checkout da Stripe.
  * Sem sessão: manda pro cadastro preservando ?plano=&ciclo=.
@@ -16,20 +17,21 @@ export function Assinar() {
   const [erro, setErro] = useState<string | null>(null)
   const [aviso, setAviso] = useState<string | null>(null)
 
-  const plano = params.get('plano')
-  const ciclo = params.get('ciclo')
+  // Links antigos (plano=essencial|pro) viram o plano único; só o ciclo é aproveitado.
+  const plano = PLANO_VENDA
+  const ciclo = cicloDoLink(params.get('ciclo'))
 
   useEffect(() => {
     if (carregando) return
 
     if (!usuario) {
-      const destino = new URLSearchParams({ plano: plano ?? '', ciclo: ciclo ?? '' }).toString()
+      const destino = new URLSearchParams({ plano, ciclo: ciclo ?? '' }).toString()
       window.location.replace(`/cadastro?voltar=/assinar&${destino}`)
       return
     }
 
-    if (!plano || !ciclo) {
-      setErro('Plano não informado.')
+    if (!ciclo) {
+      setErro('Periodicidade inválida. Volte e escolha mensal ou anual.')
       return
     }
 

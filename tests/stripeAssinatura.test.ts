@@ -367,3 +367,48 @@ describe('cancelar-assinatura-stripe', () => {
     assert.equal((await tratarCancelarAssinatura(requisicao({}, undefined, false), deps())).status, 401)
   })
 })
+
+describe('criar-checkout-stripe — plano ponto (1 ponto de venda) e legados', () => {
+  beforeEach(() => {
+    banco.ofertas = [
+      { plano: 'ponto', ciclo: 'mensal', ativo: true, stripe_price_id: 'price_ponto_mensal' },
+      { plano: 'ponto', ciclo: 'anual', ativo: true, stripe_price_id: 'price_ponto_anual' },
+      { plano: 'pro', ciclo: 'mensal', ativo: true, stripe_price_id: 'price_pro' },
+      { plano: 'essencial', ciclo: 'anual', ativo: false, stripe_price_id: 'price_ess_anual_off' },
+      { plano: 'fiscal', ciclo: 'mensal', ativo: true, stripe_price_id: 'price_fiscal' },
+    ]
+  })
+
+  test('ponto mensal e anual: o preço vem da oferta do servidor, nunca do cliente', async () => {
+    for (const [ciclo, price] of [['mensal', 'price_ponto_mensal'], ['anual', 'price_ponto_anual']]) {
+      chamadas = []
+      const r = await tratarCriarCheckout(requisicao({ plano: 'ponto', ciclo, price: 'price_hacker', stripe_price_id: 'price_hacker' }), deps())
+      assert.equal(r.status, 200)
+      assert.equal(sessaoCriada()?.corpo.get('line_items[0][price]'), price)
+      assert.equal(sessaoCriada()?.corpo.get('line_items[0][quantity]'), '1')
+    }
+  })
+
+  test('plano ou ciclo sem oferta ativa: 422 e nenhuma sessão (inclui oferta desativada e ciclo inexistente)', async () => {
+    for (const [plano, ciclo] of [['ponto', 'trimestral'], ['inexistente', 'mensal'], ['essencial', 'anual']]) {
+      const r = await tratarCriarCheckout(requisicao({ plano, ciclo }), deps())
+      assert.equal(r.status, 422, `${plano}/${ciclo}`)
+    }
+    assert.equal(sessaoCriada(), undefined)
+  })
+
+  test('plano fiscal NÃO é vendido pelo endpoint da base (só por criar-checkout-fiscal): 400 e nenhuma sessão', async () => {
+    const r = await tratarCriarCheckout(requisicao({ plano: 'fiscal', ciclo: 'mensal' }), deps())
+    assert.equal(r.status, 400)
+    assert.equal(sessaoCriada(), undefined)
+  })
+
+  test('legado pro mensal ainda é aceito; 409 de duplicidade da base segue valendo para ponto', async () => {
+    assert.equal((await tratarCriarCheckout(requisicao({ plano: 'pro', ciclo: 'mensal' }), deps())).status, 200)
+    banco.assinaturas[0].status = 'active'
+    chamadas = []
+    const r = await tratarCriarCheckout(requisicao({ plano: 'ponto', ciclo: 'anual' }), deps())
+    assert.equal(r.status, 409)
+    assert.equal(sessaoCriada(), undefined)
+  })
+})

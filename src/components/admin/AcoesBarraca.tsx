@@ -1,5 +1,6 @@
 import { useState } from 'react'
 import { useAdminAcoes } from '../../hooks/useAdminAcoes'
+import { nomePlano } from '../../lib/planos'
 import { nomeConfere, textoEfeitoAcao, type AdminBarraca } from '../../lib/adminBarracas'
 import { Button } from '../ui/Button'
 import { Chip } from '../ui/Chip'
@@ -22,7 +23,7 @@ function DialogoAcao({
 }) {
   const acoes = useAdminAcoes()
   const [motivo, setMotivo] = useState('')
-  const [plano, setPlano] = useState<'essencial' | 'pro'>(b.plano === 'pro' ? 'essencial' : 'pro')
+  const [plano, setPlano] = useState<'essencial' | 'pro' | 'ponto'>(b.plano === 'ponto' ? 'pro' : 'ponto')
   const [dias, setDias] = useState('30')
   const [nome, setNome] = useState('')
   const diasNum = Number(dias)
@@ -76,9 +77,9 @@ function DialogoAcao({
           confirmarHabilitado={plano !== b.plano}
         >
           <div className="flex gap-2" role="group" aria-label="Novo plano">
-            {(['essencial', 'pro'] as const).map((p) => (
+            {(['ponto', 'essencial', 'pro'] as const).map((p) => (
               <Chip key={p} checked={plano === p} onClick={() => setPlano(p)} className="min-h-11">
-                {p === 'pro' ? 'Pro' : 'Essencial'}
+                {nomePlano(p)}
               </Chip>
             ))}
           </div>

@@ -24,7 +24,7 @@ export function useSouSuperadmin() {
 
 export function useAdminBarracas(
   filtro: FiltroAdminBarracas | null,
-  plano: 'essencial' | 'pro' | null,
+  plano: 'essencial' | 'pro' | 'ponto' | null,
   pagina: number,
   busca: string,
   ordem: OrdemAdmin,

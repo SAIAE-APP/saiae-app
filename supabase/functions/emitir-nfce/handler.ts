@@ -213,6 +213,27 @@ function criarHandlerInterno(deps: DependenciasNfce) {
     return jsonResponse({ erro: 'modulo_desligado' }, 403)
   }
 
+  // Fiscal contratado pela cobrança (módulo de origem 'pago' com assinatura em fiscal_assinaturas): exige a base paga e
+  // vigente e o MESMO CNPJ contratado. Cortesia/teste do admin e 'pago' lançado à mão não são conferidos (a RPC devolve null).
+  // Falha fechada: sem resposta da RPC não emite.
+  const { data: bloqueio, error: erroBloqueio } = await supabase.rpc('fiscal_emissao_bloqueio', { p_barraca_id: barraca.id })
+  if (erroBloqueio) {
+    console.error('emitir-nfce: fiscal_emissao_bloqueio', erroBloqueio.message)
+    return jsonResponse({ erro: 'Não foi possível conferir a vigência do módulo Fiscal agora. Tente de novo em instantes.' }, 503)
+  }
+  if (typeof bloqueio === 'string' && bloqueio) {
+    return jsonResponse(
+      {
+        erro: bloqueio,
+        mensagem:
+          bloqueio === 'cnpj_divergente'
+            ? 'O CNPJ da barraca é diferente do CNPJ contratado no módulo Fiscal. Volte ao CNPJ contratado ou fale com o suporte.'
+            : 'A assinatura do Sai aê não está ativa e em dia, então o módulo Fiscal está suspenso. Regularize a assinatura para voltar a emitir.',
+      },
+      403,
+    )
+  }
+
   if (!barraca.cnpj) {
     return jsonResponse({ erro: 'CNPJ da barraca não configurado' }, 422)
   }

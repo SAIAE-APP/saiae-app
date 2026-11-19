@@ -69,7 +69,8 @@ async function criarCheckoutInterno(req: Request, deps: DepsAssinatura): Promise
   const plano = typeof corpo.plano === 'string' ? corpo.plano : ''
   const ciclo = typeof corpo.ciclo === 'string' ? corpo.ciclo : ''
   if (!plano || !ciclo) return json({ erro: 'plano e ciclo são obrigatórios' }, 400)
-  if (!TOKEN.test(plano) || !TOKEN.test(ciclo)) return json({ erro: 'plano ou ciclo inválido' }, 400)
+  // O fiscal só se contrata por criar-checkout-fiscal (flag, base ativa, CNPJ, reserva); aqui viraria assinatura base.
+  if (!TOKEN.test(plano) || !TOKEN.test(ciclo) || plano === 'fiscal') return json({ erro: 'plano ou ciclo inválido' }, 400)
 
   const usuario = await deps.autenticar((req.headers.get('Authorization') ?? '').replace(/^Bearer\s+/i, ''))
   if (!usuario) return json({ erro: 'Não autenticado' }, 401)
@@ -218,6 +219,11 @@ async function cancelarAssinaturaInterno(req: Request, deps: DepsAssinatura): Pr
   const { supabase } = deps
   const agora = (deps.agoraMs ?? Date.now)()
 
+  // Corpo opcional: {tipo:'fiscal', barraca_id} cancela SÓ o módulo Fiscal daquela barraca (ao fim do período).
+  // Sem corpo = assinatura base, como sempre. Cancelar a base NÃO cancela o fiscal (decisão de produto pendente).
+  const corpo = await lerCorpo(req.clone())
+  if (corpo?.tipo === 'fiscal') return cancelarFiscal(corpo.barraca_id, usuario.id, deps, chaveStripe, agora)
+
   const { data: assinatura, error: erroAssinatura } = await supabase
     .from('assinaturas')
     .select('stripe_subscription_id, status')
@@ -288,6 +294,74 @@ async function cancelarAssinaturaInterno(req: Request, deps: DepsAssinatura): Pr
     )
   } catch (erro) {
     console.error('cancelar-assinatura-stripe: gravação', String(erro))
+    return json(
+      { erro: 'O cancelamento foi registrado na Stripe, mas não conseguimos atualizar sua tela agora. Atualize a página em instantes.' },
+      500,
+    )
+  }
+  return json({ ok: true })
+}
+
+async function cancelarFiscal(barracaId: unknown, usuarioId: string, deps: DepsAssinatura, chaveStripe: string, agora: number): Promise<Response> {
+  const { supabase } = deps
+  if (typeof barracaId !== 'string' || !barracaId) return json({ erro: 'barraca_id inválido' }, 400)
+  const { data: linha, error: erroLinha } = await supabase
+    .from('fiscal_assinaturas')
+    .select('id, status, stripe_subscription_id')
+    .eq('usuario_id', usuarioId)
+    .eq('barraca_id', barracaId)
+    .in('status', ['active', 'past_due'])
+    .maybeSingle()
+  if (erroLinha) {
+    console.error('cancelar-assinatura-stripe: leitura do fiscal', erroLinha.message)
+    return json({ erro: MSG_CANCELAR_FALHA }, 500)
+  }
+  if (!linha?.stripe_subscription_id) return json({ erro: 'Nenhuma assinatura do módulo Fiscal encontrada para essa barraca.' }, 422)
+  if (linha.status !== 'active') {
+    return json({ erro: 'Só dá para cancelar o Fiscal quando o pagamento está em dia. Regularize ou fale com o suporte.' }, 409)
+  }
+
+  const { data: cabe, error: erroLimite } = await supabase.rpc('consulta_externa_registrar', {
+    p_usuario_id: usuarioId,
+    p_tipo: 'cancelar_assinatura',
+    p_limite: LIMITE_CANCELAMENTOS_HORA,
+  })
+  if (erroLimite) {
+    console.error('cancelar-assinatura-stripe: limite', erroLimite.message)
+    return json({ erro: MSG_CANCELAR_FALHA }, 503)
+  }
+  if (cabe !== true) return json({ erro: 'Muitas tentativas. Tente de novo mais tarde.' }, 429)
+
+  let respostaStripe: Response
+  try {
+    respostaStripe = await deps.fetch(`${STRIPE_API}/subscriptions/${linha.stripe_subscription_id}`, {
+      method: 'POST',
+      headers: { Authorization: `Bearer ${chaveStripe}`, 'Content-Type': 'application/x-www-form-urlencoded' },
+      body: new URLSearchParams({ cancel_at_period_end: 'true' }).toString(),
+    })
+  } catch (erro) {
+    console.error('cancelar-assinatura-stripe: Stripe inacessível (fiscal)', String(erro))
+    return json({ erro: MSG_CANCELAR_FALHA }, 502)
+  }
+  const resultado = (await respostaStripe.json().catch(() => null)) as Record<string, unknown> | null
+  if (!respostaStripe.ok || !resultado || resultado.cancel_at_period_end !== true) {
+    console.error('cancelar-assinatura-stripe: Stripe recusou (fiscal)', respostaStripe.status)
+    return json({ erro: MSG_CANCELAR_FALHA }, 502)
+  }
+  // Sem o fim do período não grava `canceled` (cortaria o acesso na hora); o webhook grava o estado completo.
+  const periodoFim = periodoFimIso(resultado)
+  if (!periodoFim) return json({ ok: true, aguardando_confirmacao: true })
+
+  const agoraIso = new Date(agora).toISOString()
+  const quandoIso = new Date(Math.floor(agora / 1000) * 1000).toISOString()
+  const { error: erroGravar } = await supabase
+    .from('fiscal_assinaturas')
+    .update({ status: 'canceled', canceled_at: agoraIso, current_period_end: periodoFim, updated_at: agoraIso, stripe_evento_em: quandoIso })
+    .eq('id', linha.id)
+    .eq('status', 'active')
+    .or(`stripe_evento_em.is.null,stripe_evento_em.lte.${quandoIso}`)
+  if (erroGravar) {
+    console.error('cancelar-assinatura-stripe: gravação do fiscal', erroGravar.message)
     return json(
       { erro: 'O cancelamento foi registrado na Stripe, mas não conseguimos atualizar sua tela agora. Atualize a página em instantes.' },
       500,

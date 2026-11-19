@@ -15,6 +15,7 @@ const AGORA_MS = Date.UTC(2026, 9, 25, 12, 0, 0)
 type Linha = Record<string, any>
 class AdminSimulado {
   assinaturas: Linha[] = []
+  fiscais: Linha[] = []
   falhas = new Set<string>()
   /** Ordem de tudo que mexe em dados, para provar que a Stripe vem antes. */
   eventos: string[] = []
@@ -42,7 +43,7 @@ class AdminSimulado {
     }
     const exec = () => {
       if (this.falhas.has(`${tabela}:${st.op}`)) return { data: null, error: { message: `falha simulada ${tabela}:${st.op}` } }
-      const alvo = this.assinaturas.filter((r) => st.filtros.every((f) => f(r)))
+      const alvo = (tabela === 'fiscal_assinaturas' ? this.fiscais : this.assinaturas).filter((r) => st.filtros.every((f) => f(r)))
       if (st.op === 'update') {
         this.eventos.push('espelho')
         for (const r of alvo) Object.assign(r, st.dados)
@@ -281,5 +282,79 @@ describe('contrato da função', () => {
   })
   test('apaga os arquivos dos dois buckets', () => {
     assert.deepEqual(BUCKETS_EXCLUSAO, ['cardapio-fotos', 'logo-barraca'])
+  })
+})
+
+describe('assinaturas do módulo Fiscal', () => {
+  const fiscal = (status: string, sub: string | null = 'sub_f', sessao: string | null = null) => ({
+    usuario_id: 'u1', status, stripe_subscription_id: sub, stripe_checkout_session_id: sessao,
+  })
+
+  test('base + fiscal vivos: cancela as DUAS na Stripe antes de apagar qualquer coisa', async () => {
+    viva('active')
+    admin.fiscais = [fiscal('active'), fiscal('past_due', 'sub_f2')]
+    rotas['DELETE subscriptions/sub_f'] = { status: 200, corpo: { status: 'canceled' } }
+    rotas['DELETE subscriptions/sub_f2'] = { status: 200, corpo: { status: 'canceled' } }
+    const r = await tratarExcluirConta(requisicao(), deps())
+    assert.equal(r.status, 200)
+    const ordem = admin.eventos.filter((e) => !e.startsWith('espelho'))
+    assert.deepEqual(ordem, [
+      'stripe:DELETE subscriptions/sub_1',
+      'stripe:DELETE subscriptions/sub_f',
+      'stripe:DELETE subscriptions/sub_f2',
+      'rpc:excluir_dados_conta:u1',
+      'deleteUser',
+    ])
+  })
+
+  test('só fiscal vivo (base já cancelada): ainda cancela o fiscal; canceled/expired não chamam a Stripe', async () => {
+    admin.fiscais = [fiscal('active'), fiscal('canceled', 'sub_c'), fiscal('expired', 'sub_e')]
+    rotas['DELETE subscriptions/sub_f'] = { status: 200, corpo: { status: 'canceled' } }
+    assert.equal((await tratarExcluirConta(requisicao(), deps())).status, 200)
+    assert.deepEqual(chamadas.map((c) => c.caminho), ['subscriptions/sub_f'])
+  })
+
+  test('falha FECHADA: Stripe não cancela o fiscal => 502 e nada é apagado', async () => {
+    admin.fiscais = [fiscal('active')]
+    rotas['DELETE subscriptions/sub_f'] = { status: 500 }
+    rotas['GET subscriptions/sub_f'] = { status: 500 }
+    const r = await tratarExcluirConta(requisicao(), deps())
+    assert.equal(r.status, 502)
+    assert.equal(apagouAlgo(), false)
+  })
+
+  test('erro ao ler as assinaturas fiscais: 500 e nada é apagado; sem chave da Stripe com fiscal vivo: 502', async () => {
+    admin.fiscais = [fiscal('active')]
+    admin.falhas.add('fiscal_assinaturas:select')
+    assert.equal((await tratarExcluirConta(requisicao(), deps())).status, 500)
+    admin.falhas.clear()
+    assert.equal((await tratarExcluirConta(requisicao(), deps({ stripeSecretKey: undefined }))).status, 502)
+    assert.equal(apagouAlgo(), false)
+  })
+
+  test('expirar a sessão pendente FALHOU (400 e a consulta diz que já foi concluída; ou erro de rede): 502 e nada é apagado', async () => {
+    admin.fiscais = [fiscal('pendente', null, 'cs_aberta')]
+    rotas['POST checkout/sessions/cs_aberta/expire'] = { status: 400 }
+    rotas['GET checkout/sessions/cs_aberta'] = { status: 200, corpo: { status: 'complete' } }
+    const r = await tratarExcluirConta(requisicao(), deps())
+    assert.equal(r.status, 502)
+    assert.equal(apagouAlgo(), false)
+    rotas['POST checkout/sessions/cs_aberta/expire'] = 'rede'
+    assert.equal((await tratarExcluirConta(requisicao(), deps())).status, 502)
+    assert.equal(apagouAlgo(), false)
+  })
+
+  test('sessão que já estava expirada (400 + consulta expired) conta como sucesso', async () => {
+    admin.fiscais = [fiscal('pendente', null, 'cs_velha')]
+    rotas['POST checkout/sessions/cs_velha/expire'] = { status: 400 }
+    rotas['GET checkout/sessions/cs_velha'] = { status: 200, corpo: { status: 'expired' } }
+    assert.equal((await tratarExcluirConta(requisicao(), deps())).status, 200)
+  })
+
+  test('reserva pendente com checkout aberto: a sessão é expirada na Stripe', async () => {
+    admin.fiscais = [fiscal('pendente', null, 'cs_aberta')]
+    rotas['POST checkout/sessions/cs_aberta/expire'] = { status: 200 }
+    assert.equal((await tratarExcluirConta(requisicao(), deps())).status, 200)
+    assert.deepEqual(chamadas.map((c) => c.caminho), ['checkout/sessions/cs_aberta/expire'])
   })
 })

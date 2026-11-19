@@ -1,8 +1,21 @@
-import { useState } from 'react'
+import { useId, useState } from 'react'
 import clsx from 'clsx'
 import { Button } from './ui/Button'
+import { Checkbox } from './ui/Checkbox'
 import { Icone } from './ui/Icone'
-import { PLANOS, formatarPreco, linkAssinar, textoContaBloqueada } from '../lib/planos'
+import {
+  ANUAL_ECONOMIA_PERCENTUAL,
+  PLANO_VENDA,
+  PRECO_BASE_ANUAL_CENTAVOS,
+  PRECO_BASE_MENSAL_CENTAVOS,
+  PRECO_FISCAL_MENSAL_CENTAVOS,
+  RECURSOS_INCLUIDOS,
+  formatarPreco,
+  linkAssinar,
+  resumoCobranca,
+  textoContaBloqueada,
+} from '../lib/planos'
+import { useFiscalContratacaoAberta } from '../hooks/useFiscalContratacaoAberta'
 import { textoTempoRestante } from '../lib/tempoTrial'
 import type { AssinaturaBarraca } from '../types/database'
 
@@ -13,10 +26,9 @@ type Ciclo = 'mensal' | 'anual'
  * caiu). Mesma cópia/estrutura da landing page (MA_PLANS), redesenhada
  * com os tokens visuais do próprio app.
  *
- * `layout="page"` só é usado por /:slug/planos, pra virar pricing table
- * lado a lado em telas largas — o popup (`layout="sheet"`, default)
- * continua empilhado do jeito que já era, largura de bottom sheet nunca
- * pede grid. */
+ * `layout="page"` só é usado por /:slug/planos e centraliza o card em telas
+ * largas. Plano único (Sai aê, 1 ponto de venda); mensal e anual têm os mesmos
+ * recursos. Os valores são só exibição: o servidor decide o que cobra. */
 export function PaywallConteudo({
   assinatura,
   layout = 'sheet',
@@ -25,6 +37,8 @@ export function PaywallConteudo({
   layout?: 'sheet' | 'page'
 }) {
   const [ciclo, setCiclo] = useState<Ciclo>('mensal')
+  const fiscalAberta = useFiscalContratacaoAberta()
+  const motivoFiscalId = useId()
 
   const textoBloqueio = assinatura ? textoContaBloqueada(assinatura) : null
   if (textoBloqueio) {
@@ -37,6 +51,8 @@ export function PaywallConteudo({
     )
   }
 
+  const anual = ciclo === 'anual'
+  const resumo = resumoCobranca(ciclo, false)
   const emTrial = assinatura?.status === 'trialing'
   const tempoRestante = emTrial ? textoTempoRestante(assinatura.trial_ends_at) : null
 
@@ -52,7 +68,7 @@ export function PaywallConteudo({
           Continue sem largar a mão do papel outra vez
         </h2>
         <p className="mt-1 text-sm text-mesa-text-secondary">
-          Escolha um plano e mantenha caixa, cozinha e chamada de senha funcionando.
+          Escolha a periodicidade e mantenha caixa, cozinha e chamada de senha funcionando.
         </p>
       </div>
 
@@ -75,77 +91,85 @@ export function PaywallConteudo({
                 : 'text-mesa-text-secondary hover:text-mesa-text-primary',
             )}
           >
-            {opcao === 'mensal' ? 'Mensal' : (
-              <span>
-                Anual <span className="opacity-80">até 20% OFF</span>
-              </span>
-            )}
+            {opcao === 'mensal' ? 'Mensal' : `Anual (${ANUAL_ECONOMIA_PERCENTUAL}% de economia)`}
           </button>
         ))}
       </div>
 
-      <div className={clsx('flex flex-col gap-4', layout === 'page' && 'md:grid md:grid-cols-2 md:items-start')}>
-        {Object.values(PLANOS).map((info) => {
-          const preco = ciclo === 'anual' ? info.anual.mes : info.mensal
-          const destaque = info.plano === 'pro'
+      <div
+        className={clsx(
+          'rounded-mesa-2xl border border-mesa-orange-500 bg-mesa-surface p-5 shadow-mesa-2',
+          layout === 'page' && 'md:mx-auto md:w-full md:max-w-lg',
+        )}
+      >
+        <h3 className="text-base font-bold text-mesa-text-primary">Sai aê</h3>
+        <p className="mt-1 text-sm text-mesa-text-secondary">
+          Para quem quer largar o papel. A assinatura cobre 1 ponto de venda.
+        </p>
 
-          return (
-            <div
-              key={info.plano}
-              className={clsx(
-                'rounded-mesa-2xl border p-5',
-                destaque
-                  ? 'border-mesa-orange-500 bg-mesa-surface shadow-mesa-2 [box-shadow:0_0_0_1px_var(--color-mesa-orange-500)]'
-                  : 'border-mesa-border-default bg-mesa-surface shadow-mesa-1',
-              )}
-            >
-              <div className="flex items-center justify-between">
-                <h3 className="text-base font-bold text-mesa-text-primary">{info.nome}</h3>
-                {info.selo && (
-                  <span className="inline-flex items-center gap-1 rounded-mesa-balao bg-mesa-orange-50 px-2.5 py-1 text-xs font-semibold text-mesa-orange-700">
-                    <Icone nome="star" size={12} preenchido /> Mais completo
-                  </span>
-                )}
-              </div>
-              <p className="mt-1 text-sm text-mesa-text-secondary">{info.descricao}</p>
+        <div className="mt-3 flex items-baseline gap-1">
+          <span className="font-mesa-display text-2xl font-bold text-mesa-text-primary">
+            {formatarPreco(anual ? PRECO_BASE_ANUAL_CENTAVOS : PRECO_BASE_MENSAL_CENTAVOS)}
+          </span>
+          <span className="text-sm text-mesa-text-secondary">{anual ? 'por ano' : 'por mês'}</span>
+        </div>
+        {resumo.economia && (
+          <p className="mt-0.5 text-xs font-medium text-mesa-success-700 dark:text-mesa-success-500">{resumo.economia}</p>
+        )}
 
-              <div className="mt-3 flex items-baseline gap-1">
-                <span className="font-mesa-display text-2xl font-bold text-mesa-text-primary">{formatarPreco(preco)}</span>
-                <span className="text-sm text-mesa-text-secondary">/mês</span>
-              </div>
-              {ciclo === 'anual' && (
-                <p className="mt-0.5 text-xs font-medium text-mesa-success-700 dark:text-mesa-success-500">
-                  {formatarPreco(info.anual.total)}/ano · economia de {formatarPreco(info.anual.economia)} (
-                  {info.anual.off})
-                </p>
-              )}
+        <ul className="mt-4 flex flex-col gap-2">
+          {RECURSOS_INCLUIDOS.map((item) => (
+            <li key={item} className="flex items-start gap-2 text-sm text-mesa-text-primary">
+              <Icone nome="check" size={16} className="mt-0.5 text-mesa-neutral-900 dark:text-mesa-neutral-50" />
+              {item}
+            </li>
+          ))}
+        </ul>
 
-              <ul className="mt-4 flex flex-col gap-2">
-                {info.itens.map((item) => (
-                  <li key={item} className="flex items-start gap-2 text-sm text-mesa-text-primary">
-                    <Icone nome="check" size={16} className="mt-0.5 text-mesa-neutral-900 dark:text-mesa-neutral-50" />
-                    {item}
-                  </li>
-                ))}
-              </ul>
+        <div className="mt-4 border-t border-mesa-border-default pt-3">
+          <Checkbox
+            checked={false}
+            onChange={() => {}}
+            disabled
+            label="Nota fiscal (NFC-e)"
+            aria-describedby={motivoFiscalId}
+          />
+          <p id={motivoFiscalId} className="text-xs text-mesa-text-secondary">
+            {fiscalAberta
+              ? 'Nota fiscal: contrate depois de ativar a assinatura, em Minha assinatura. Exige CNPJ da barraca.'
+              : 'Nota fiscal: em breve.'}
+            {' '}Módulo opcional de {formatarPreco(PRECO_FISCAL_MENSAL_CENTAVOS)} por mês por CNPJ, sempre cobrado por mês.
+          </p>
+        </div>
 
-              <Button
-                variant={destaque ? 'primary' : 'outlineAmber'}
-                size="lg"
-                className="mt-5 w-full"
-                onClick={() => {
-                  window.location.href = linkAssinar(info.plano, ciclo)
-                }}
-              >
-                {info.cta}
-              </Button>
-            </div>
-          )
-        })}
+        <div className="mt-4 rounded-mesa-lg bg-mesa-surface-alt p-3" aria-live="polite">
+          <p className="text-xs font-semibold text-mesa-text-secondary">
+            Resumo da cobrança: {resumo.total}
+          </p>
+          <ul className="mt-1 flex flex-col gap-0.5">
+            {resumo.linhas.map((l) => (
+              <li key={l.rotulo} className="flex justify-between gap-3 text-sm text-mesa-text-primary">
+                <span>{l.rotulo}</span>
+                <span className="text-right font-medium">{l.texto}</span>
+              </li>
+            ))}
+          </ul>
+        </div>
+
+        <Button
+          variant="primary"
+          size="lg"
+          className="mt-5 w-full"
+          onClick={() => {
+            window.location.href = linkAssinar(PLANO_VENDA, ciclo)
+          }}
+        >
+          {anual ? 'Assinar o plano anual' : 'Assinar o plano mensal'}
+        </Button>
       </div>
 
       <p className="text-center text-xs text-mesa-text-tertiary">
-        3 dias grátis para testar. Sem fidelidade no mensal. Cancele quando quiser.
+        3 dias grátis para testar. Cancele quando quiser: o acesso segue até o fim do período já pago.
       </p>
     </div>
   )

@@ -22,6 +22,8 @@ export const MSG_EXCLUIR_FALHA = 'Não foi possível excluir a conta agora. Tent
  * cobra de novo) e `expired` já acabou. Nesses a Stripe nem é chamada. */
 const SEM_COBRANCA_FUTURA = ['canceled', 'expired']
 
+type FiscalLinha = { stripe_subscription_id: string | null; stripe_checkout_session_id: string | null; status: string }
+
 function json(body: unknown, status = 200) {
   return new Response(JSON.stringify(body), { status, headers: { ...CORS_HEADERS, 'Content-Type': 'application/json' } })
 }
@@ -68,6 +70,22 @@ async function cancelarNaStripe(deps: DepsExcluirConta, subscriptionId: string):
     if (consulta.ok) return ((await consulta.json().catch(() => null)) as { status?: string } | null)?.status === 'canceled'
     return consulta.status === 404
   } catch {
+    return false
+  }
+}
+
+/** Expira uma sessão de checkout aberta. true = a sessão já não pode ser paga (expirou agora, já estava expirada ou não existe).
+ * Sessão já concluída (o pagamento aconteceu e o webhook ainda não vinculou) ou erro/rede = false. */
+async function expirarSessao(deps: DepsExcluirConta, sessaoId: string): Promise<boolean> {
+  const cabecalhos = { Authorization: `Bearer ${deps.stripeSecretKey}` }
+  try {
+    const resposta = await deps.fetch(`${STRIPE_API}/checkout/sessions/${sessaoId}/expire`, { method: 'POST', headers: cabecalhos })
+    if (resposta.ok || resposta.status === 404) return true
+    const consulta = await deps.fetch(`${STRIPE_API}/checkout/sessions/${sessaoId}`, { headers: cabecalhos })
+    if (!consulta.ok) return false
+    return ((await consulta.json().catch(() => null)) as { status?: string } | null)?.status === 'expired'
+  } catch (erro) {
+    console.error('[excluir-conta] expirar sessão fiscal', String(erro))
     return false
   }
 }
@@ -122,6 +140,30 @@ async function excluirContaInterno(req: Request, deps: DepsExcluirConta): Promis
       )
     } catch (erro) {
       console.error('[excluir-conta] espelho da assinatura', String(erro))
+    }
+  }
+
+  // 1b) Assinaturas do módulo Fiscal (uma Stripe por CNPJ): mesma regra, falha fechada. `canceled`/`expired` não cobram mais.
+  const { data: fiscais, error: erroFiscais } = await admin
+    .from('fiscal_assinaturas')
+    .select('stripe_subscription_id, stripe_checkout_session_id, status')
+    .eq('usuario_id', usuarioId)
+  if (erroFiscais) {
+    console.error('[excluir-conta] leitura do fiscal', erroFiscais.message)
+    return json({ erro: MSG_EXCLUIR_FALHA }, 500)
+  }
+  const fiscaisVivas = ((fiscais ?? []) as FiscalLinha[]).filter((f) => !SEM_COBRANCA_FUTURA.includes(f.status))
+  if (fiscaisVivas.length > 0 && !deps.stripeSecretKey) {
+    console.error('[excluir-conta] STRIPE_SECRET_KEY ausente com assinatura fiscal viva')
+    return json({ erro: MSG_EXCLUIR_ASSINATURA_FALHA }, 502)
+  }
+  for (const f of fiscaisVivas) {
+    if (f.stripe_subscription_id) {
+      if (!(await cancelarNaStripe(deps, f.stripe_subscription_id))) return json({ erro: MSG_EXCLUIR_ASSINATURA_FALHA }, 502)
+    } else if (f.stripe_checkout_session_id) {
+      // Reserva com checkout ainda aberto: expira a sessão pra ninguém pagar depois da conta apagada. Falha FECHADA:
+      // se não der para garantir que a sessão acabou, nada é apagado (uma sessão paga depois viraria cobrança órfã).
+      if (!(await expirarSessao(deps, f.stripe_checkout_session_id))) return json({ erro: MSG_EXCLUIR_ASSINATURA_FALHA }, 502)
     }
   }
 

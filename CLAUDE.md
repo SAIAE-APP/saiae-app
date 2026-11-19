@@ -1030,8 +1030,16 @@ nenhum item daqui sozinho, só quando for pedido explicitamente.
   mudar isso manualmente no banco. Assinatura é por **dono**
   (`usuario_id`), não por barraca — funcionário nunca vê/paga,
   só é liberado/bloqueado pelo status do dono.
-  Planos hoje (`src/lib/planos.ts`, cópia local da landing page):
-  Essencial R$57,90/mês e Pro R$87,90/mês. As diferenças de feature
+  Oferta atual (`src/lib/planos.ts`, valores em centavos, só exibição; o servidor decide a cobrança):
+  plano único `ponto` ("Sai aê", 1 ponto de venda), mensal R$57,90/mês ou anual R$499,00 por ano
+  (R$41,58/mês, economia de R$195,80 = 28% frente a 12 mensalidades), mesmos recursos nos dois ciclos
+  (histórico completo, exportação, custo/lucro e controles de acesso incluídos). Vendas novas só usam
+  `/assinar?plano=ponto&ciclo=mensal|anual`; links antigos `plano=essencial|pro` viram `ponto` mantendo o ciclo.
+  Nota fiscal: módulo opcional R$69,90/mês por CNPJ (sempre mensal), contratado em Minha assinatura via
+  `criar-checkout-fiscal`, só com a base ativa e CNPJ preenchido, e só quando `fiscal_contratacao_aberta()`
+  for true (senão a UI mostra "Nota fiscal: em breve"). `essencial`/`pro` seguem válidos para assinantes atuais
+  e o trial continua Essencial; 'ponto' não é limitado por nenhum gate. Texto abaixo = modelo antigo (histórico).
+  Planos até então: Essencial R$57,90/mês e Pro R$87,90/mês. As diferenças de feature
   entre os dois eram só texto de marketing até 2026-09-26 — nenhuma
   era aplicada no código. Fechado nessa data: **limite de 1 barraca
   no Essencial** (`criar_barraca`, RPC, bloqueia a 2ª barraca por

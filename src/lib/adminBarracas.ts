@@ -10,7 +10,7 @@ export type AdminBarraca = {
   nome: string
   slug: string
   email_dono: string
-  plano: 'essencial' | 'pro' | null
+  plano: 'essencial' | 'pro' | 'ponto' | null
   estado: EstadoAdminBarraca
   tem_acesso: boolean
   inicio_em: string | null

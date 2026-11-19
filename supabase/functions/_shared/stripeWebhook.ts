@@ -13,6 +13,7 @@
 import { iguaisConstante } from './clienteCodigo.ts'
 
 import { enviarPurchase } from './medicaoServidor.ts'
+import { processarEventoFiscal } from './webhookFiscal.ts'
 import type { DepsMedicao } from './medicaoServidor.ts'
 
 export const STRIPE_API = 'https://api.stripe.com/v1'
@@ -203,6 +204,11 @@ async function processarEvento(evento: EventoStripe, deps: DepsWebhookStripe): P
     throw new Error(`Stripe ${caminho}: HTTP ${resp.status}`)
   }
 
+  // Assinaturas do módulo Fiscal (metadata.tipo = 'fiscal') têm tabela própria e nunca tocam `assinaturas`;
+  // metadata ausente = base. O lookup price -> (plano, ciclo) abaixo NÃO filtra `ativo`: desativar uma oferta antiga
+  // não pode quebrar a renovação de legados.
+  if (await processarEventoFiscal(evento, deps, { buscarNaStripe, quandoIso, agoraIso, agora })) return
+
   switch (evento.type) {
     case 'checkout.session.completed': {
       const usuarioId = obj.client_reference_id as string | null
@@ -262,7 +268,14 @@ async function processarEvento(evento: EventoStripe, deps: DepsWebhookStripe): P
       await atualizarAssinatura(
         supabase,
         { coluna: 'stripe_subscription_id', valor: subscriptionId },
-        { status: 'active', current_period_end: periodoFimIso(assinaturaStripe), grace_until: null, updated_at: agoraIso },
+        {
+          status: 'active',
+          current_period_end: periodoFimIso(assinaturaStripe),
+          grace_until: null,
+          updated_at: agoraIso,
+          // Pagamento de verdade (> 0): é o que separa assinante pago de trial/cupom 100% para o módulo Fiscal.
+          ...(typeof obj.amount_paid === 'number' && obj.amount_paid > 0 ? { pago_em: agoraIso } : {}),
+        },
         quandoIso,
         // invoice.paid pode chegar ANTES do checkout.session.completed: sem vínculo ainda, 500 pra reenviar.
         { contexto: 'invoice.paid', exigirLinha: true },

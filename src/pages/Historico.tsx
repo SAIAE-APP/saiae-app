@@ -555,9 +555,8 @@ export function Historico() {
   const { tema, alternarTema } = useTheme()
   const escuro = tema === 'escuro'
 
-  // Plano Essencial: histórico de 7 dias e sem exportar (as outras
-  // diferenças de src/lib/planos.ts, gap fechado em 2026-09-26 — trial
-  // sempre nasce plano 'pro', então nunca cai nessa restrição).
+  // Plano Essencial (trial e assinantes antigos): histórico de 7 dias e sem exportar.
+  // 'ponto' (plano único) e 'pro' liberam tudo.
   const { assinatura } = useAssinaturaBarraca(barraca.slug)
   const planoEssencial = assinatura?.plano === 'essencial'
   const periodosDisponiveis = planoEssencial
