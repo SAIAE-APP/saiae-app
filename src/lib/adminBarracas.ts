@@ -125,7 +125,7 @@ export function nomeConfere(digitado: string, nome: string): boolean {
   return d !== '' && d === nome.trim()
 }
 
-export type AcaoAdmin = 'bloquear' | 'arquivar' | 'plano' | 'estender'
+export type AcaoAdmin = 'bloquear' | 'arquivar' | 'plano' | 'estender' | 'reativar'
 
 /** Efeito da ação em português simples, mostrado no diálogo antes de confirmar. */
 export function textoEfeitoAcao(acao: AcaoAdmin, b: AdminBarraca): string {
@@ -143,6 +143,8 @@ export function textoEfeitoAcao(acao: AcaoAdmin, b: AdminBarraca): string {
         : 'Trocar o plano muda na hora os recursos liberados para esta conta.'
     case 'estender':
       return 'Estender soma dias ao vencimento atual. Não altera a cobrança.'
+    case 'reativar':
+      return 'Reativar libera a conta como paga pelos meses informados, contados a partir de hoje. Use depois de receber o pagamento fora do Stripe (ex.: Pix). Não cria cobrança.'
   }
 }
 
@@ -152,6 +154,8 @@ export function mensagemErroAcao(e: { code?: string; message?: string } | null):
   if (e?.code === '22023') {
     const m = e.message ?? ''
     if (m.includes('conta vencida')) return 'Conta vencida: estender não devolve o acesso. Reative a conta antes.'
+    if (m.includes('meses deve')) return 'Informe de 1 a 36 meses.'
+    if (m.includes('stripe')) return 'Esta conta tem cobrança no Stripe: o estado vem do Stripe e não dá para reativar aqui.'
     if (m.includes('sem vencimento')) return 'Esta conta não tem vencimento para estender.'
     if (m.includes('dias deve')) return 'Informe de 1 a 365 dias.'
     if (m.includes('não confere')) return 'O nome digitado não confere com o nome da barraca.'
@@ -178,6 +182,7 @@ const ROTULO_ACAO: Record<string, string> = {
   desbloquear_conta: 'Conta desbloqueada',
   definir_plano: 'Plano alterado',
   estender_vencimento: 'Vencimento estendido',
+  reativar_conta: 'Conta reativada',
   arquivar_barraca: 'Barraca arquivada',
   restaurar_barraca: 'Barraca restaurada',
   apagar_barraca_definitivo: 'Barraca apagada definitivamente',

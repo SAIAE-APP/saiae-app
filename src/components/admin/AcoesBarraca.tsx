@@ -7,7 +7,7 @@ import { Chip } from '../ui/Chip'
 import { Input } from '../ui/Input'
 import { DialogoConfirmarAdmin } from './DialogoConfirmarAdmin'
 
-type Dialogo = 'bloquear' | 'desbloquear' | 'plano' | 'estender' | 'arquivar' | 'restaurar'
+type Dialogo = 'bloquear' | 'desbloquear' | 'plano' | 'estender' | 'reativar' | 'arquivar' | 'restaurar'
 
 /** Um diálogo por vez; montado só enquanto aberto, então `erro` do hook sempre começa limpo. */
 function DialogoAcao({
@@ -23,11 +23,14 @@ function DialogoAcao({
 }) {
   const acoes = useAdminAcoes()
   const [motivo, setMotivo] = useState('')
-  const [plano, setPlano] = useState<'essencial' | 'pro' | 'ponto'>(b.plano === 'ponto' ? 'pro' : 'ponto')
+  const [plano, setPlano] = useState<'essencial' | 'pro' | 'ponto'>('ponto')
   const [dias, setDias] = useState('30')
   const [nome, setNome] = useState('')
   const diasNum = Number(dias)
   const diasValidos = Number.isInteger(diasNum) && diasNum >= 1 && diasNum <= 365
+  const [meses, setMeses] = useState('12')
+  const mesesNum = Number(meses)
+  const mesesValidos = Number.isInteger(mesesNum) && mesesNum >= 1 && mesesNum <= 36
 
   async function confirmar() {
     try {
@@ -35,6 +38,7 @@ function DialogoAcao({
       else if (tipo === 'desbloquear') await acoes.desbloquear(b.usuario_id)
       else if (tipo === 'plano') await acoes.definirPlano(b.usuario_id, plano)
       else if (tipo === 'estender') await acoes.estender(b.usuario_id, diasNum)
+      else if (tipo === 'reativar') await acoes.reativar(b.usuario_id, mesesNum)
       else if (tipo === 'arquivar') await acoes.arquivar(b.barraca_id, nome)
       else await acoes.restaurar(b.barraca_id)
     } catch {
@@ -77,7 +81,8 @@ function DialogoAcao({
           confirmarHabilitado={plano !== b.plano}
         >
           <div className="flex gap-2" role="group" aria-label="Novo plano">
-            {(['ponto', 'essencial', 'pro'] as const).map((p) => (
+            {/* Só o plano vendido hoje ("Sai aê"); Essencial/Pro aparecem apenas na conta que ainda os tem. */}
+            {(['ponto', ...(b.plano && b.plano !== 'ponto' ? [b.plano] : [])] as const).map((p) => (
               <Chip key={p} checked={plano === p} onClick={() => setPlano(p)} className="min-h-11">
                 {nomePlano(p)}
               </Chip>
@@ -103,6 +108,27 @@ function DialogoAcao({
             value={dias}
             onChange={(e) => setDias(e.target.value)}
             error={diasValidos ? undefined : 'Informe de 1 a 365 dias.'}
+          />
+        </DialogoConfirmarAdmin>
+      )
+    case 'reativar':
+      return (
+        <DialogoConfirmarAdmin
+          {...base}
+          titulo={`Reativar ${b.nome}`}
+          efeito={textoEfeitoAcao('reativar', b)}
+          rotuloConfirmar="Reativar"
+          confirmarHabilitado={mesesValidos}
+        >
+          <Input
+            label="Meses de acesso (1 a 36)"
+            type="number"
+            inputMode="numeric"
+            min={1}
+            max={36}
+            value={meses}
+            onChange={(e) => setMeses(e.target.value)}
+            error={mesesValidos ? undefined : 'Informe de 1 a 36 meses.'}
           />
         </DialogoConfirmarAdmin>
       )
@@ -156,8 +182,9 @@ export function AcoesBarraca({ barraca: b, onConcluido }: { barraca: AdminBarrac
         ) : (
           <>
             {b.bloqueada ? botao('desbloquear', 'Desbloquear') : botao('bloquear', 'Bloquear')}
-            {botao('plano', 'Trocar plano')}
+            {b.plano !== 'ponto' && botao('plano', 'Passar para o plano Sai aê')}
             {podeEstender && botao('estender', 'Estender')}
+            {b.estado === 'vencida' && botao('reativar', 'Reativar')}
             {botao('arquivar', 'Arquivar', 'textDanger')}
           </>
         )}
@@ -165,7 +192,7 @@ export function AcoesBarraca({ barraca: b, onConcluido }: { barraca: AdminBarrac
       {!arquivada && !podeEstender && (
         <p className="text-xs text-mesa-text-secondary">
           {b.estado === 'vencida'
-            ? 'Conta vencida: estender não devolve o acesso. Reative a conta antes.'
+            ? 'Conta vencida: estender não devolve o acesso. Use Reativar.'
             : 'Sem vencimento: não há o que estender.'}
         </p>
       )}

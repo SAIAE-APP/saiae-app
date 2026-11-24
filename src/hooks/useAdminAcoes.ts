@@ -32,6 +32,8 @@ export function useAdminAcoes() {
       executar('admin_definir_plano', { p_usuario_id: usuarioId, p_plano: plano }),
     estender: (usuarioId: string, dias: number) =>
       executar('admin_estender_vencimento', { p_usuario_id: usuarioId, p_dias: dias }),
+    reativar: (usuarioId: string, meses: number) =>
+      executar('admin_reativar_conta', { p_usuario_id: usuarioId, p_meses: meses }),
     arquivar: (barracaId: string, nomeConfirmado: string) =>
       executar('admin_arquivar_barraca', { p_barraca_id: barracaId, p_nome_confirmado: nomeConfirmado }),
     restaurar: (barracaId: string) => executar('admin_restaurar_barraca', { p_barraca_id: barracaId }),
