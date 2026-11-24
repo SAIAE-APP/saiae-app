@@ -196,6 +196,7 @@ function BotaoEmitirNota({ pedido, moduloFiscal }: { pedido: PedidoComItens; mod
   const [ambienteEmitidoAgora, setAmbienteEmitidoAgora] = useState<'homologacao' | 'producao' | null>(null)
   const [emitindo, setEmitindo] = useState(false)
   const [imprimindo, setImprimindo] = useState(false)
+  const [baixando, setBaixando] = useState(false)
   const [cpf, setCpf] = useState('')
   const [erroCpf, setErroCpf] = useState<string | null>(null)
   const { mostrarToast } = useToast()
@@ -227,6 +228,36 @@ function BotaoEmitirNota({ pedido, moduloFiscal }: { pedido: PedidoComItens; mod
       mostrarToast(`Não imprimiu. ${descreverErroImpressao(erroImpressao)}`, { variante: 'erro', duracaoMs: 10000 })
     } finally {
       setImprimindo(false)
+    }
+  }
+
+  // Baixa o XML e abre o DANFCe (HTML) para o dono enviar ao cliente. Só online (a function consulta a FocusNFe).
+  async function baixarNota() {
+    if (baixando) return
+    setBaixando(true)
+    try {
+      const { data, error } = await supabase.functions.invoke('baixar-nota-fiscal', { body: { pedido_id: pedido.id } })
+      if (error || !data?.xml) {
+        const corpo = await error?.context?.json?.().catch(() => null)
+        mostrarToast(mensagemErroEmissao(corpo?.mensagem ?? corpo?.erro ?? 'Não foi possível baixar a nota. Tente novamente.'), { variante: 'erro' })
+        return
+      }
+      const urlXml = URL.createObjectURL(new Blob([data.xml], { type: 'application/xml' }))
+      const link = document.createElement('a')
+      link.href = urlXml
+      link.download = `${data.nome_base}.xml`
+      link.click()
+      setTimeout(() => URL.revokeObjectURL(urlXml), 60000)
+      if (data.danfce_html) {
+        const urlDanfce = URL.createObjectURL(new Blob([data.danfce_html], { type: 'text/html' }))
+        window.open(urlDanfce, '_blank', 'noopener')
+        setTimeout(() => URL.revokeObjectURL(urlDanfce), 60000)
+        mostrarToast('XML baixado. No DANFCe aberto, use Imprimir > Salvar como PDF.', { variante: 'sucesso', duracaoMs: 8000 })
+      } else {
+        mostrarToast('XML baixado. O DANFCe não estava disponível.', { variante: 'sucesso' })
+      }
+    } finally {
+      setBaixando(false)
     }
   }
 
@@ -285,6 +316,10 @@ function BotaoEmitirNota({ pedido, moduloFiscal }: { pedido: PedidoComItens; mod
             Imprimir cupom fiscal
           </Button>
         )}
+        <Button variant="outline" size="md" loading={baixando} onClick={baixarNota} className="mt-2 w-full min-h-11">
+          <Icone nome="download" size={18} />
+          Baixar nota
+        </Button>
       </div>
     )
   }

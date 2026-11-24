@@ -1214,3 +1214,8 @@ nítida de 1px + sombra leve, botões sólidos têm um realce tátil sutil
 no topo). Cantos 20–24px em cards, 16px em botões, canto balão em
 toasts/etiquetas. Mobile-first — o uso real é em celular, em pé, com
 uma mão só — isso não mudou.
+
+## Fiscal: baixar nota (2026-11-24)
+- Edge Function `baixar-nota-fiscal` (handler injetavel, teste `tests/baixarNotaFiscal.test.ts`): nota AUTORIZADA, mesmas checagens do `emitir-nfce` (JWT, acesso, modulo fiscal, `fiscal_emissao_bloqueio`), usa o `nfce_ambiente` gravado; consulta `GET /nfce/{ref}` e devolve `{ xml, danfce_html, nome_base }`. Botao "Baixar nota" no Historico (DANFCe e HTML: o dono usa Imprimir > Salvar como PDF).
+- NAO verificado na FocusNFe real: se o download de `caminho_xml_nota_fiscal`/`caminho_danfe` exige Basic Auth (tenta com e, em 401/403, sem), se o host dos arquivos e a origem da API sem `/v2` (caminho que nao comeca com "/" unico ou muda de origem e recusado), e redirects.
+- Deploy: a function nao tem config no repo (sem `supabase/config.toml`); `verify_jwt` segue o padrao do `emitir-nfce` (padrao ligado), e ela ainda NAO foi deployada.
