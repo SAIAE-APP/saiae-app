@@ -32,6 +32,8 @@ export function qrSvg(texto: string): string {
  * tiver um QR em <img>/<svg>/<canvas>. Sem QR utilizável, devolve o HTML intacto. */
 export function garantirQrNoDanfce(html: string, qrUrl: string | null | undefined, xml?: string | null): string {
   if (/<(img|svg|canvas)\b[^>]*(qr|data:image)/i.test(html)) return html
+  // DANFCe da FocusNFe: o QR nasce por script (qrcode.min.js) dentro de <div id='qr-code0'>.
+  if (/id\s*=\s*['"]qr-code\d*['"]|qrcode\.min\.js/i.test(html)) return html
   const url = (qrUrl ?? '').trim() || qrDoXml(xml)
   if (!url) return html
   let svg: string

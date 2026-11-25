@@ -19,6 +19,12 @@ describe('garantirQrNoDanfce', () => {
     assert.equal(garantirQrNoDanfce(html, URL_QR), html)
   })
 
+  test('DANFCe da FocusNFe (QR por script em div qr-code0): não duplica', () => {
+    const html =
+      "<head><script src=\"https://x.cloudfront.net/qrcode.min.js\"></script></head><body><div id='qr-code0'></div></body>"
+    assert.equal(garantirQrNoDanfce(html, URL_QR), html)
+  })
+
   test('sem </body>: acrescenta no fim', () => {
     assert.match(garantirQrNoDanfce('<p>x</p>', URL_QR), /<p>x<\/p><div[\s\S]*<svg/)
   })
