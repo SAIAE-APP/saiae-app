@@ -13,6 +13,7 @@ import { ROTULO_MODO, nomeDoCliente, rotuloAtendimento, tipoDoPedido } from '../
 import { corMetodo, humanizarMetodoDoPedido, METODOS_DISPONIVEIS } from '../lib/metodoPagamento'
 import { ROTULO_A_RECEBER, pagarDepoisLigado, pedidoAReceber } from '../lib/pagarDepois'
 import { hojeISO } from '../lib/datas'
+import { garantirQrNoDanfce } from '../lib/danfceComQr'
 import {
   calcularIntervalosRelatorio,
   calcularTotalPedido,
@@ -231,7 +232,7 @@ function BotaoEmitirNota({ pedido, moduloFiscal }: { pedido: PedidoComItens; mod
     }
   }
 
-  // Baixa o XML e abre o DANFCe (HTML) para o dono enviar ao cliente. Só online (a function consulta a FocusNFe).
+  // Baixa o XML e o DANFCe (HTML) para o dono enviar ao cliente. Só online (a function consulta a FocusNFe).
   async function baixarNota() {
     if (baixando) return
     setBaixando(true)
@@ -249,10 +250,14 @@ function BotaoEmitirNota({ pedido, moduloFiscal }: { pedido: PedidoComItens; mod
       link.click()
       setTimeout(() => URL.revokeObjectURL(urlXml), 60000)
       if (data.danfce_html) {
-        const urlDanfce = URL.createObjectURL(new Blob([data.danfce_html], { type: 'text/html' }))
-        window.open(urlDanfce, '_blank', 'noopener')
+        const html = garantirQrNoDanfce(data.danfce_html, pedido.nfce_qrcode_url, data.xml)
+        const urlDanfce = URL.createObjectURL(new Blob([html], { type: 'text/html' }))
+        const linkDanfce = document.createElement('a')
+        linkDanfce.href = urlDanfce
+        linkDanfce.download = `${data.nome_base}.html`
+        linkDanfce.click()
         setTimeout(() => URL.revokeObjectURL(urlDanfce), 60000)
-        mostrarToast('XML baixado. No DANFCe aberto, use Imprimir > Salvar como PDF.', { variante: 'sucesso', duracaoMs: 8000 })
+        mostrarToast('XML e DANFCe baixados. Abra o DANFCe e use Imprimir > Salvar como PDF.', { variante: 'sucesso', duracaoMs: 8000 })
       } else {
         mostrarToast('XML baixado. O DANFCe não estava disponível.', { variante: 'sucesso' })
       }
