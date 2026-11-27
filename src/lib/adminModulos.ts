@@ -6,6 +6,7 @@ export const ROTULO_MODULO: Record<Modulo, string> = {
   whatsapp_disparos: 'WhatsApp: disparos',
   whatsapp_bot: 'WhatsApp: bot',
   fiscal: 'Nota fiscal',
+  ia_gestao: 'Gestão por IA',
 }
 
 export const PRECO_MODULO_CENTAVOS: Record<Modulo, number> = {
@@ -13,6 +14,7 @@ export const PRECO_MODULO_CENTAVOS: Record<Modulo, number> = {
   whatsapp_disparos: 3990,
   whatsapp_bot: 6990,
   fiscal: 6990,
+  ia_gestao: 0, // preço ainda não definido
 }
 export const PRECO_PACOTE_WHATSAPP_CENTAVOS = 13990
 export const TAXA_ATIVACAO_FISCAL_CENTAVOS = 9900

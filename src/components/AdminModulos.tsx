@@ -103,7 +103,8 @@ export function AdminModulos({ barracaId }: { barracaId: string }) {
           <Card key={l.modulo} className="flex flex-col gap-2 text-sm">
             <div className="flex items-center justify-between gap-2">
               <span className="font-semibold text-mesa-text-primary">
-                {ROTULO_MODULO[l.modulo]} · {formatarPrecoBR(PRECO_MODULO_CENTAVOS[l.modulo])}/mês
+                {ROTULO_MODULO[l.modulo]}
+                {PRECO_MODULO_CENTAVOS[l.modulo] > 0 && ` · ${formatarPrecoBR(PRECO_MODULO_CENTAVOS[l.modulo])}/mês`}
               </span>
               <Badge variant={l.vigente ? 'success' : 'neutral'}>{l.estado}{l.vigente ? ' · vigente' : ''}</Badge>
             </div>

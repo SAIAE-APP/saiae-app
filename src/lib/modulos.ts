@@ -1,5 +1,5 @@
 // Módulos pagos: quem ativa é o admin (servidor); o app só mostra ou esconde. `null` = ainda sem resposta = desligado.
-export type Modulo = 'whatsapp_avisos' | 'whatsapp_disparos' | 'whatsapp_bot' | 'fiscal'
+export type Modulo = 'whatsapp_avisos' | 'whatsapp_disparos' | 'whatsapp_bot' | 'fiscal' | 'ia_gestao'
 
 const WHATSAPP: readonly Modulo[] = ['whatsapp_avisos', 'whatsapp_disparos', 'whatsapp_bot']
 
