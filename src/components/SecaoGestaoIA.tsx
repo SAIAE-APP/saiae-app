@@ -202,9 +202,12 @@ export function SecaoGestaoIA({ barraca }: { barraca: Barraca }) {
 
   useEffect(() => {
     if (!ehDono) return
-    void carregarTudo()
+    const inicio = window.setTimeout(() => void carregarTudo(), 0)
     const timer = window.setInterval(() => void carregarPropostas(), 5000)
-    return () => window.clearInterval(timer)
+    return () => {
+      window.clearTimeout(inicio)
+      window.clearInterval(timer)
+    }
   }, [ehDono, carregarTudo, carregarPropostas])
 
   if (!ehDono) return null
