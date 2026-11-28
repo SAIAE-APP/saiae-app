@@ -8,7 +8,7 @@ O dono conecta o ChatGPT ou o Claude ao Sai aê e gerencia a barraca por áudio,
 ## Decisões que diferem do rascunho
 - Autenticação: **token por barraca** gerado em Ajustes (`SecaoGestaoIA`), guardado só como hash, com validade e revogação. O OAuth 2.1 ficou de fora (não foi validado que o Claude e o ChatGPT aceitam o fluxo).
 - Confirmação: em vez de `confirmar: boolean` na própria chamada, vale o fluxo **proposta → aprovação do dono no app → aplicar**. A IA nunca consegue aprovar: `mcp_proposta_decidir` só aceita o dono logado (`authenticated`, papel `dono`).
-- Módulo: `ia_gestao` em `modulos_barraca`, atrás de `modulo_ativo`; só o superadmin ativa. Sem módulo a function responde 403 `modulo_desligado` e o token não valida.
+- Sem módulo pago: toda barraca pode criar a chave (decisão do dono do produto, 2026-11-27). O limite por chave e a aprovação do dono são as travas.
 - A function usa a **service role**, mas a barraca vem SÓ do token (nunca do argumento) e toda RPC filtra por `barraca_id`. A RLS não é usada na function; a defesa está nas RPCs `SECURITY DEFINER`, liberadas só para `service_role`.
 
 ## Ferramentas
@@ -55,7 +55,7 @@ Fora de escopo, de propósito: apagar qualquer dado, pagamento e estorno, fiscal
 - **Purga**: `mcp_auditoria_purgar(p_dias default 90)` (só `service_role`, mínimo de 30 dias) apaga auditoria antiga, propostas já decididas (exceto foto ainda não limpa) e contadores de uso com mais de 2 dias. **Não há agendamento criado.** Para agendar: no painel do Supabase, Integrations > Cron, uma tarefa diária de SQL `select public.mcp_auditoria_purgar(90);`; ou, com `pg_cron` habilitado, `select cron.schedule('mcp-auditoria-purgar', '17 3 * * *', 'select public.mcp_auditoria_purgar(90)');`.
 
 ## Banco (migrations)
-`20261127100000_mcp_gestao`, `20261127110000_mcp_aprovacao`, `20261128100000_mcp_propostas_tipos`, `20261128110000_mcp_modulo_ia_gestao`, `20261129100000_mcp_cupom_foto_cardapio` (aditivas, em ordem). A última cria os tipos `cupom`, `foto` e `cardapio`, os auxiliares (`_mcp_chave_nome`, `_mcp_fuso`, `_mcp_data_valida`, `_mcp_cardapio_*`), `mcp_foto_preparar`, `mcp_fotos_limpar_*`, `mcp_uso`, `mcp_limite_registrar` e `mcp_auditoria_purgar`, e troca `mcp_proposta_criar`, `mcp_proposta_aplicar` (agora com o 3º argumento `p_tipo_esperado`) e `mcp_proposta_listar`. O rollback está no cabeçalho do arquivo.
+`20261127100000_mcp_gestao`, `20261127110000_mcp_aprovacao`, `20261128100000_mcp_propostas_tipos`, `20261129100000_mcp_cupom_foto_cardapio` (aditivas, em ordem). A última cria os tipos `cupom`, `foto` e `cardapio`, os auxiliares (`_mcp_chave_nome`, `_mcp_fuso`, `_mcp_data_valida`, `_mcp_cardapio_*`), `mcp_foto_preparar`, `mcp_fotos_limpar_*`, `mcp_uso`, `mcp_limite_registrar` e `mcp_auditoria_purgar`, e troca `mcp_proposta_criar`, `mcp_proposta_aplicar` (agora com o 3º argumento `p_tipo_esperado`) e `mcp_proposta_listar`. O rollback está no cabeçalho do arquivo.
 
 ## App
 Ajustes > Gestão por IA (`SecaoGestaoIA`): URL do conector, token, propostas pendentes para aprovar ou recusar (com foto atual e nova lado a lado, lista completa do cardápio e dados do cupom), histórico e botão Desconectar.

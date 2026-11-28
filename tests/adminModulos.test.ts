@@ -21,7 +21,7 @@ describe('adminModulos', () => {
     assert.match(mensagemDoEstado('ok'), /salv|ok|feito/i)
   })
   test('precos conferem com o design (39,90 / 39,90 / 69,90 / 69,90, pacote 139,90, ativação 99)', () => {
-    assert.deepEqual(PRECO_MODULO_CENTAVOS, { whatsapp_avisos: 3990, whatsapp_disparos: 3990, whatsapp_bot: 6990, fiscal: 6990, ia_gestao: 0 })
+    assert.deepEqual(PRECO_MODULO_CENTAVOS, { whatsapp_avisos: 3990, whatsapp_disparos: 3990, whatsapp_bot: 6990, fiscal: 6990 })
     assert.equal(PRECO_PACOTE_WHATSAPP_CENTAVOS, 13990)
     assert.equal(TAXA_ATIVACAO_FISCAL_CENTAVOS, 9900)
   })

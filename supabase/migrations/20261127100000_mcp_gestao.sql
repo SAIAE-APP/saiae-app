@@ -15,7 +15,7 @@
 --   * Só o DONO (usuarios_barracas.papel = 'dono') cria, lista e revoga. O suporte nunca entra aqui.
 --   * As tabelas não têm policy: o app só mexe nelas pelas funções abaixo. A edge function `mcp-saiae`
 --     usa a service role e SEMPRE filtra por barraca_id vindo do token, nunca de argumento da IA.
---   * Pendente (fatia seguinte): trava por módulo pago (`ia_gestao`), limite de chamadas e purga de mcp_auditoria.
+--   * Sem módulo pago: toda barraca pode criar a chave (decisão do dono do produto, 2026-11-27).
 
 create table if not exists public.mcp_tokens (
   id uuid primary key default gen_random_uuid(),

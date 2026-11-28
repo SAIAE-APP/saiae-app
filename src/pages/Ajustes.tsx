@@ -3155,7 +3155,7 @@ export function Ajustes({ categoria = 'conta' }: { categoria?: CategoriaAjustes 
             <SecaoAcessoSuporte barraca={barraca} />
           </SecaoDaCategoria>
           <SecaoDaCategoria categoria="conta" grupo="ajuda" atual={categoria}>
-            {temModulo(modulos, 'ia_gestao') && <SecaoGestaoIA key={barraca.id} barraca={barraca} />}
+            <SecaoGestaoIA key={barraca.id} barraca={barraca} />
           </SecaoDaCategoria>
           <SecaoDaCategoria categoria="conta" grupo="ajuda" atual={categoria}>
             <SecaoAcessosAdmin barraca={barraca} />

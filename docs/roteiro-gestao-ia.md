@@ -4,10 +4,9 @@ Spec: `docs/superpowers/specs/2026-11-27-mcp-gestao-ia-design.md`. Fazer só no 
 Nada abaixo foi validado em banco, Storage ou cliente de IA reais.
 
 ## 1. Preparação
-1. Aplicar as migrations em ordem: `20261127100000`, `20261127110000`, `20261128100000`, `20261128110000`, `20261129100000`.
+1. Aplicar as migrations em ordem: `20261127100000`, `20261127110000`, `20261128100000`, `20261129100000`.
 2. Publicar a function: `supabase functions deploy mcp-saiae --no-verify-jwt`. Ela exige a `20261129100000` já aplicada.
 3. Publicar o app.
-4. No painel de admin, ativar o módulo `ia_gestao` (cortesia) para a barraca de teste.
 5. Em Ajustes > Conta > Gestão por IA, criar uma chave (aparece uma vez) e copiar o endereço do conector.
 
 ## 2. Conexão
@@ -16,7 +15,6 @@ Nada abaixo foi validado em banco, Storage ou cliente de IA reais.
 - [ ] A lista de ferramentas aparece e as de escrita pedem aprovação do cliente de IA.
 
 ## 3. Segurança (devem falhar)
-- [ ] Sem módulo `ia_gestao`: 403 `modulo_desligado`.
 - [ ] Chave revogada: 401.
 - [ ] Mais de 60 chamadas em 1 minuto: 429.
 - [ ] Item de outra barraca: "não encontrado".
@@ -40,6 +38,5 @@ Nada abaixo foi validado em banco, Storage ou cliente de IA reais.
 
 ## 6. Depois
 - Agendar a purga `mcp_auditoria_purgar(90)` (Integrations > Cron ou `pg_cron`).
-- Definir o preço do módulo `ia_gestao` (hoje 0, escondido no painel).
 - Política de Privacidade: citar que a IA externa lê dados da barraca.
 - Limites conhecidos: DNS rebinding residual, foto sem redimensionar, sem unicidade de nome em itens (ver spec).

@@ -13,7 +13,6 @@ type Linha = Record<string, unknown>
 
 type Opcoes = {
   tokenValido?: boolean
-  moduloDesligado?: boolean
   erroValidar?: boolean
   respostas?: Record<string, Linha | { erro: true }>
   limite?: Linha | { erro: true }
@@ -68,7 +67,6 @@ function montar(opts: Opcoes = {}) {
       }
       if (nome === 'mcp_token_validar') {
         if (opts.erroValidar) return { data: null, error: { message: 'db fora' } }
-        if (opts.moduloDesligado) return { data: { estado: 'modulo_desligado' }, error: null }
         return opts.tokenValido === false ? { data: null, error: null } : { data: { barraca_id: 'bA', token_id: 't1' }, error: null }
       }
       rpcs.push({ nome, args })
@@ -104,14 +102,6 @@ describe('mcp-saiae', () => {
   test('token revogado: 401; banco fora: 503', async () => {
     assert.equal((await montar({ tokenValido: false }).chamar({ jsonrpc: '2.0', id: 1, method: 'ping' })).status, 401)
     assert.equal((await montar({ erroValidar: true }).chamar({ jsonrpc: '2.0', id: 1, method: 'ping' })).status, 503)
-  })
-
-  test('módulo ia_gestao desligado: 403 e nenhuma RPC de ferramenta', async () => {
-    const m = montar({ moduloDesligado: true })
-    const r = await m.chamar({ jsonrpc: '2.0', id: 1, method: 'tools/call', params: { name: 'listar_itens', arguments: {} } })
-    assert.equal(r.status, 403)
-    assert.equal((await r.json()).erro, 'modulo_desligado')
-    assert.equal(m.rpcs.length, 0)
   })
 
   test('initialize negocia a versão e tools/list traz anotações', async () => {
