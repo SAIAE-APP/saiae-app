@@ -213,10 +213,14 @@ export function validarCardapio(
       // Valor livre: o operador digita na venda; o preço de reserva fica R$ 0,00 (a coluna Preço é ignorada).
       precoCentavos = 0
     } else if (precoAberto === false) {
-      const lido = interpretarPreco(textoPreco)
-      if (!lido.ok) problemas.push(lido.motivo)
-      else if (lido.centavos === 0) problemas.push('preço zerado (use a coluna "Preço aberto" = sim para valor livre)')
-      else precoCentavos = lido.centavos
+      // A célula é cortada em 31 caracteres: se passou de 30, o valor lido poderia ser outro (ex.: zeros antes do número).
+      if (textoPreco.length > 30) problemas.push('preço com mais de 30 caracteres')
+      else {
+        const lido = interpretarPreco(textoPreco)
+        if (!lido.ok) problemas.push(lido.motivo)
+        else if (lido.centavos === 0) problemas.push('preço zerado (use a coluna "Preço aberto" = sim para valor livre)')
+        else precoCentavos = lido.centavos
+      }
     }
 
     if (problemas.length > 0) {
